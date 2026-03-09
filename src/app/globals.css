@@ -1,0 +1,215 @@
+@import 'leaflet/dist/leaflet.css';
+@import "tailwindcss";
+
+/* ============================= */
+/* VARIÁVEIS BASE */
+/* ============================= */
+
+:root {
+  --background: #070a12;
+  --foreground: #e5e7eb;
+
+  --color-background: #070a12;
+  --color-foreground: #e5e7eb;
+
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'Fira Code', monospace;
+}
+
+/* Se quiser respeitar o sistema, mantenha. Mas seu app é DARK por padrão. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --background: #070a12;
+    --foreground: #e5e7eb;
+  }
+}
+
+/* ============================= */
+/* BASE DO APP */
+/* ============================= */
+
+html, body {
+  height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  color: var(--foreground);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(59,130,246,0.16), transparent 44%),
+    radial-gradient(circle at 82% 82%, rgba(99,102,241,0.12), transparent 48%),
+    radial-gradient(circle at 55% 55%, rgba(14,165,233,0.06), transparent 60%),
+    linear-gradient(180deg, #04060c 0%, #060914 55%, #04060c 100%);
+  background-attachment: fixed;
+  overflow-x: hidden;
+}
+
+/* Topografia: mais sutil (menos “claro”) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.55;
+  background:
+    repeating-radial-gradient(
+      circle at 20% 25%,
+      rgba(255,255,255,0.035) 0px,
+      rgba(255,255,255,0.035) 1px,
+      transparent 10px,
+      transparent 18px
+    ),
+    repeating-radial-gradient(
+      circle at 78% 72%,
+      rgba(59,130,246,0.04) 0px,
+      rgba(59,130,246,0.04) 1px,
+      transparent 12px,
+      transparent 22px
+    ),
+    repeating-radial-gradient(
+      circle at 55% 40%,
+      rgba(99,102,241,0.035) 0px,
+      rgba(99,102,241,0.035) 1px,
+      transparent 11px,
+      transparent 20px
+    );
+  filter: blur(0.35px);
+}
+
+/* Vinheta: dá profundidade sem clarear */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(circle at 50% 35%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.40) 70%, rgba(0,0,0,0.70) 100%);
+}
+
+/* garante que seu app fique acima do fundo */
+#__next, main, [data-app] {
+  position: relative;
+  z-index: 1;
+}
+
+/* ============================= */
+/* UTILITÁRIOS (reaproveite nos componentes) */
+/* ============================= */
+
+.glass {
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.10);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+}
+
+.glass-card {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 14px 40px rgba(0,0,0,0.35);
+}
+
+.glass-soft {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Inputs no dark por padrão (opcional, ajuda muito) */
+input, textarea, select {
+  color-scheme: dark;
+}
+
+/* ============================= */
+/* MAPA (Leaflet) AJUSTES */
+/* ============================= */
+
+.leaflet-container {
+  background: transparent !important;
+  font-family: var(--font-sans);
+}
+
+/* ============================= */
+/* ANIMAÇÕES JÁ EXISTENTES */
+/* ============================= */
+
+.icone-pulsante {
+  animation: none;
+}
+
+@keyframes pulseAnim {
+  0% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+.pulse-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-size: 20px;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(59,130,246, 0.45); }
+  70% { box-shadow: 0 0 0 12px rgba(59,130,246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59,130,246, 0); }
+}
+
+/* ============================= */
+/* 🔥 STATUS ONLINE (MELHORADO) */
+/* ============================= */
+
+.status-online {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+  font-weight: 600;
+  font-size: 12px;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+}
+
+.status-online::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.9);
+  z-index: 2;
+}
+
+.status-online::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.5);
+  animation: pulseGreen 1.2s infinite;
+  z-index: 1;
+}
+
+@keyframes pulseGreen {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  70% { transform: scale(1.9); opacity: 0; }
+  100% { opacity: 0; }
+}
