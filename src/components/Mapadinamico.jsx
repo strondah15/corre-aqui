@@ -721,11 +721,39 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         aceitoEm: Date.now(),
       }
 
-      await update(ref(database, `pedidos/${p.id}`), {
-        status: 'aceito',
-        aceite,
-        atualizadoEm: serverTimestamp(),
-      })
+      const conversaId = `conversa_${p.id}`
+
+// marcar pedido como aceito
+await update(ref(database, `pedidos/${p.id}`), {
+  status: 'aceito',
+  aceite,
+  conversaId,
+  atualizadoEm: serverTimestamp(),
+})
+
+// criar conversa
+await update(ref(database, `conversas/${conversaId}`), {
+  pedidoId: p.id,
+  clienteId: p?.criador?.id || null,
+  prestadorId: meuId,
+  criadaEm: Date.now(),
+  status: 'ativa'
+})
+
+// mensagem automática
+await update(ref(database, `mensagens/${conversaId}/msg_${Date.now()}`), {
+  texto: `${meuNome} aceitou seu corre.`,
+  sistema: true,
+  criadoEm: Date.now()
+})
+
+// salvar conversa para cliente
+if (p?.criador?.id) {
+  await update(ref(database, `usersChats/${p.criador.id}/${conversaId}`), true)
+}
+
+// salvar conversa para quem aceitou
+await update(ref(database, `usersChats/${meuId}/${conversaId}`), true)
 
       await missãoIncrementar(meuId, 'aceitou')
 
