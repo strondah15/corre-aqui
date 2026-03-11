@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
-
+import AvisoCorreAceito from '@/components/AvisoCorreAceito'
 import { auth, database } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
@@ -1128,19 +1128,34 @@ useEffect(() => {
           </>
         )}
 
-        {/* CLIENTE */}
         {modoApp === 'cliente' && (
-          <ClienteHome
-            meuNome={meuNome}
-            onlineUsers={onlineUsers}
-            onCriarPedido={() => setOpenIA(true)}
-            onIrAoVivo={() => {
-              setTab('aovivo')
-              setOpenMapaAoVivo(true)
-            }}
-          />
-        )}
+  <>
+    <ClienteHome
+      meuNome={meuNome}
+      onlineUsers={onlineUsers}
+      onCriarPedido={() => setOpenIA(true)}
+      onIrAoVivo={() => {
+        setTab('aovivo')
+        setOpenMapaAoVivo(true)
+      }}
+    />
 
+    <AvisoCorreAceito
+      meuId={meuId}
+      corres={corres}
+      showToast={showToast}
+      onAbrirChat={(pedido) => {
+        setModoApp('corre')
+        setTab('corre')
+        setFiltro('todos')
+        setChatPedido(pedido)
+      }}
+      onVerMapa={(pedido) => {
+        setMapItem(pedido)
+      }}
+    />
+  </>
+)}
         {/* CORRE */}
         {modoApp === 'corre' && tab === 'corre' && (
           <>
