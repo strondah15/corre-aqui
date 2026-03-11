@@ -635,6 +635,37 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [showToast])
 
+useEffect(() => {
+  if (!meuId) return
+
+  const pedidoAceito = (corres || []).find((p) => {
+    const marker = `${p.id}:${p?.aceite?.id || ''}`
+    return (
+      p?.criador?.id === meuId &&
+      String(p?.status || '').toLowerCase() === 'aceito' &&
+      !!p?.aceite?.id &&
+      ultimoAceiteNotificado !== marker
+    )
+  })
+
+  if (!pedidoAceito) return
+
+  const marker = `${pedidoAceito.id}:${pedidoAceito?.aceite?.id || ''}`
+  setUltimoAceiteNotificado(marker)
+
+  // abre a área onde o chat já existe no seu app
+  setModoApp('corre')
+  setTab('corre')
+  setFiltro('todos')
+  setChatPedido(pedidoAceito)
+
+  showToast({
+    type: 'success',
+    title: 'Seu corre foi aceito! 🚀',
+    message: `${pedidoAceito?.aceite?.nome || 'Alguém'} aceitou seu pedido.`,
+  })
+}, [corres, meuId, ultimoAceiteNotificado, showToast])
+
   /* =======================
      4) Ler /users (online)
   ======================= */
@@ -722,7 +753,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       aceitoEm: Date.now(),
     }
 
-    const conversaId = `conversa_${p.id}`
+    // ✅ usa o próprio ID do pedido como ID da conversa
+    const conversaId = p.id
 
     // marcar pedido como aceito
     await update(ref(database, `pedidos/${p.id}`), {
@@ -732,29 +764,38 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       atualizadoEm: serverTimestamp(),
     })
 
-    // criar conversa
-    await update(ref(database, `conversas/${conversaId}`), {
+    // ✅ conversa para o cliente
+    if (p?.criador?.id) {
+      await update(ref(database, `conversas/${p.criador.id}/${conversaId}`), {
+        pedidoId: p.id,
+        titulo: p.titulo || 'Corre aqui',
+        outroId: meuId,
+        outroNome: meuNome || 'Anônimo',
+        unread: true,
+        status: 'ativa',
+        updatedAt: Date.now(),
+      })
+    }
+
+    // ✅ conversa para quem aceitou
+    await update(ref(database, `conversas/${meuId}/${conversaId}`), {
       pedidoId: p.id,
-      clienteId: p?.criador?.id || null,
-      prestadorId: meuId,
-      criadaEm: Date.now(),
+      titulo: p.titulo || 'Corre aqui',
+      outroId: p?.criador?.id || null,
+      outroNome: p?.criador?.nome || 'Cliente',
+      unread: false,
       status: 'ativa',
+      updatedAt: Date.now(),
     })
 
-    // mensagem automática
+    // ✅ mensagem automática no mesmo pedidoId
     await update(ref(database, `mensagens/${conversaId}/msg_${Date.now()}`), {
       texto: `${meuNome} aceitou seu corre.`,
       sistema: true,
       criadoEm: Date.now(),
+      autorId: 'sistema',
+      autorNome: 'Sistema',
     })
-
-    // salvar conversa para cliente
-    if (p?.criador?.id) {
-      await set(ref(database, `usersChats/${p.criador.id}/${conversaId}`), true)
-    }
-
-    // salvar conversa para quem aceitou
-    await set(ref(database, `usersChats/${meuId}/${conversaId}`), true)
 
     await missãoIncrementar(meuId, 'aceitou')
 
