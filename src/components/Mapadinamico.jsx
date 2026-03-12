@@ -364,6 +364,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const [categoriaFiltro, setCategoriaFiltro] = useState('todas')
   const [chatPedido, setChatPedido] = useState(null)
+  const [ultimoAceiteNotificado, setUltimoAceiteNotificado] = useState('')
 
   const [editItem, setEditItem] = useState(null)
   const [editTitulo, setEditTitulo] = useState('')
