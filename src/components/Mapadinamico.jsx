@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
-import AvisoCorreAceito from '@/components/AvisoCorreAceito'
+
 import { auth, database } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
@@ -22,6 +22,7 @@ import PerfilDrawer from '@/components/PerfilDrawer'
 import ModalIA from './ModalIA'
 import ChatMensagens from './ChatMensagens'
 import ListaConversas from './ListaConversas'
+import AvisoCorreAceito from '@/components/AvisoCorreAceito'
 
 // ✅ NOVOS COMPONENTES
 import BottomBar from '@/components/BottomBar'
@@ -220,7 +221,6 @@ async function missãoIncrementar(uid, tipo) {
     return next
   })
 
-  // também salva no user (pra mostrar em qualquer lugar depois)
   const userRef = ref(database, `users/${uid}`)
   await runTransaction(userRef, (cur) => {
     const u = cur || {}
@@ -244,10 +244,8 @@ async function aplicarBoostNoPedido({ pedido, level, meuId, meuNome }) {
   const cfg = BOOST_LEVELS[lvl]
   if (!cfg) return
 
-  // só criador pode dar boost
   if (pedido?.criador?.id && pedido.criador.id !== meuId) return
 
-  // só boost se estiver ABERTO
   const status = String(pedido?.status || 'aberto').toLowerCase()
   if (status !== 'aberto') return
 
@@ -356,7 +354,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [busca, setBusca] = useState('')
   const [mapItem, setMapItem] = useState(null)
 
-  // ✅ menu some quando mapa abre (MapinhaModal ou Ao Vivo)
   const [openMapaAoVivo, setOpenMapaAoVivo] = useState(false)
   const isMapOpen = !!openMapaAoVivo || !!mapItem
 
@@ -388,9 +385,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const [unreadInbox, setUnreadInbox] = useState(0)
 
-  /* =======================
-     ✅ VOLTAR LIMPO PRA TELA DAS ABAS
-  ======================= */
   const voltarModoLimpo = () => {
     setOpenPerfil(false)
     setOpenIA(false)
@@ -403,9 +397,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
   }
 
-  /* =======================
-     0) Avatar do LocalStorage
-  ======================= */
   useEffect(() => {
     try {
       const f =
@@ -419,9 +410,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     } catch {}
   }, [openPerfil])
 
-  /* =======================
-     modoApp (prioriza initialMode)
-  ======================= */
   useEffect(() => {
     if (initialMode === 'cliente' || initialMode === 'corre') {
       setModoApp(initialMode)
@@ -440,14 +428,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     } catch {}
   }, [modoApp])
 
-  // ✅ Cliente não usa Inbox / tabs
   useEffect(() => {
     if (modoApp === 'cliente' && tab !== 'corre') setTab('corre')
   }, [modoApp, tab])
 
-  /* =======================
-     1) Identidade (Auth + LocalStorage)
-  ======================= */
   useEffect(() => {
     let off = () => {}
     try {
@@ -475,9 +459,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [])
 
-  /* =======================
-     ✅ Inbox unread count (leve)
-  ======================= */
   useEffect(() => {
     if (!meuId) {
       setUnreadInbox(0)
@@ -495,9 +476,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [meuId])
 
-  /* =======================
-     2) /users/{meuId} ONLINE REAL (+ avatar)
-  ======================= */
   useEffect(() => {
     if (!meuId) return
     let cancelled = false
@@ -576,9 +554,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
   }, [meuId, meuNome, fotoURL, avatarEmoji])
 
-  /* =======================
-     3) Ler pedidos
-  ======================= */
   useEffect(() => {
     setLoadingPedidos(true)
     setErroPedidos(null)
@@ -591,7 +566,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         const raw = snap.val() || {}
         const lista = Object.entries(raw).map(([id, item]) => normalizeLocal({ id, ...item }))
 
-        // ✅ BOOST primeiro
         lista.sort((a, b) => {
           const ba = isBoostAtivo(a) ? 1 : 0
           const bb = isBoostAtivo(b) ? 1 : 0
@@ -636,46 +610,38 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [showToast])
 
-useEffect(() => {
-  if (!meuId) return
-
-  const pedidoAceito = (corres || []).find((p) => {
-    const marker = `${p.id}:${p?.aceite?.id || ''}`
-    return (
-      p?.criador?.id === meuId &&
-      String(p?.status || '').toLowerCase() === 'aceito' &&
-      !!p?.aceite?.id &&
-      ultimoAceiteNotificado !== marker
-    )
-  })
-
-  if (!pedidoAceito) return
-
-  const marker = `${pedidoAceito.id}:${pedidoAceito?.aceite?.id || ''}`
-  setUltimoAceiteNotificado(marker)
-
-  // abre a área onde o chat já existe no seu app
-  setModoApp('corre')
-  setTab('corre')
-  setFiltro('todos')
-  setChatPedido(pedidoAceito)
-
-  showToast({
-    type: 'success',
-    title: 'Seu corre foi aceito! 🚀',
-    message: `${pedidoAceito?.aceite?.nome || 'Alguém'} aceitou seu pedido.`,
-  })
-}, [corres, meuId, ultimoAceiteNotificado, showToast])
-
-  /* =======================
-     4) Ler /users (online)
-  ======================= */
   useEffect(() => {
     const off = onValue(ref(database, 'users'), (snap) => {
       setUsersObj(snap.val() || {})
     })
     return () => off()
   }, [])
+
+  useEffect(() => {
+    if (!meuId) return
+
+    const pedidoAceito = (corres || []).find((p) => {
+      const marker = `${p.id}:${p?.aceite?.id || ''}`
+
+      return (
+        p?.criador?.id === meuId &&
+        String(p?.status || '').toLowerCase() === 'aceito' &&
+        !!p?.aceite?.id &&
+        ultimoAceiteNotificado !== marker
+      )
+    })
+
+    if (!pedidoAceito) return
+
+    const marker = `${pedidoAceito.id}:${pedidoAceito?.aceite?.id || ''}`
+    setUltimoAceiteNotificado(marker)
+
+    showToast({
+      type: 'success',
+      title: 'Seu corre foi aceito! 🚀',
+      message: `${pedidoAceito?.aceite?.nome || 'Alguém'} aceitou seu pedido.`,
+    })
+  }, [corres, meuId, ultimoAceiteNotificado, showToast])
 
   const onlineUsers = useMemo(() => {
     const now = Date.now()
@@ -738,77 +704,78 @@ useEffect(() => {
   }, [corres, filtro, busca, meuId, categoriaFiltro, isProfissional])
 
   async function aceitarCorre(p) {
-  if (!meuId) {
-    showToast({ type: 'error', title: 'Sem login', message: 'Entre para aceitar.' })
-    return
-  }
-  if (aceitandoId) return
-  setAceitandoId(p.id)
-
-  try {
-    const local = await getMyLocation()
-    const aceite = {
-      id: meuId,
-      nome: meuNome,
-      local: local || null,
-      aceitoEm: Date.now(),
+    if (!meuId) {
+      showToast({ type: 'error', title: 'Sem login', message: 'Entre para aceitar.' })
+      return
     }
+    if (aceitandoId) return
+    setAceitandoId(p.id)
 
-    // ✅ usa o próprio ID do pedido como ID da conversa
-    const conversaId = p.id
+    try {
+      const local = await getMyLocation()
+      const aceite = {
+        id: meuId,
+        nome: meuNome,
+        local: local || null,
+        aceitoEm: Date.now(),
+      }
 
-    // marcar pedido como aceito
-    await update(ref(database, `pedidos/${p.id}`), {
-      status: 'aceito',
-      aceite,
-      conversaId,
-      atualizadoEm: serverTimestamp(),
-    })
+      const conversaId = p.id
 
-    // ✅ conversa para o cliente
-    if (p?.criador?.id) {
-      await update(ref(database, `conversas/${p.criador.id}/${conversaId}`), {
+      await update(ref(database, `pedidos/${p.id}`), {
+        status: 'aceito',
+        aceite,
+        conversaId,
+        atualizadoEm: serverTimestamp(),
+      })
+
+      if (p?.criador?.id) {
+        await update(ref(database, `conversas/${p.criador.id}/${conversaId}`), {
+          pedidoId: p.id,
+          titulo: p.titulo || 'Corre aqui',
+          outroId: meuId,
+          outroNome: meuNome || 'Anônimo',
+          unread: true,
+          status: 'ativa',
+          updatedAt: Date.now(),
+        })
+      }
+
+      await update(ref(database, `conversas/${meuId}/${conversaId}`), {
         pedidoId: p.id,
         titulo: p.titulo || 'Corre aqui',
-        outroId: meuId,
-        outroNome: meuNome || 'Anônimo',
-        unread: true,
+        outroId: p?.criador?.id || null,
+        outroNome: p?.criador?.nome || 'Cliente',
+        unread: false,
         status: 'ativa',
         updatedAt: Date.now(),
       })
+
+      await update(ref(database, `mensagens/${conversaId}/msg_${Date.now()}`), {
+        texto: `${meuNome} aceitou seu corre.`,
+        sistema: true,
+        criadoEm: Date.now(),
+        autorId: 'sistema',
+        autorNome: 'Sistema',
+      })
+
+      if (p?.criador?.id) {
+        await set(ref(database, `usersChats/${p.criador.id}/${conversaId}`), true)
+      }
+
+      await set(ref(database, `usersChats/${meuId}/${conversaId}`), true)
+
+      await missãoIncrementar(meuId, 'aceitou')
+
+      setMapItem({ ...p, aceite })
+      showToast({ type: 'success', title: 'Aceito!', message: 'Você aceitou esse corre. +XP ✅' })
+    } catch (e) {
+      console.error('Erro ao aceitar:', e)
+      showToast({ type: 'error', title: 'Falha ao aceitar', message: e?.message || 'Veja o console.' })
+    } finally {
+      setAceitandoId(null)
     }
-
-    // ✅ conversa para quem aceitou
-    await update(ref(database, `conversas/${meuId}/${conversaId}`), {
-      pedidoId: p.id,
-      titulo: p.titulo || 'Corre aqui',
-      outroId: p?.criador?.id || null,
-      outroNome: p?.criador?.nome || 'Cliente',
-      unread: false,
-      status: 'ativa',
-      updatedAt: Date.now(),
-    })
-
-    // ✅ mensagem automática no mesmo pedidoId
-    await update(ref(database, `mensagens/${conversaId}/msg_${Date.now()}`), {
-      texto: `${meuNome} aceitou seu corre.`,
-      sistema: true,
-      criadoEm: Date.now(),
-      autorId: 'sistema',
-      autorNome: 'Sistema',
-    })
-
-    await missãoIncrementar(meuId, 'aceitou')
-
-    setMapItem({ ...p, aceite })
-    showToast({ type: 'success', title: 'Aceito!', message: 'Você aceitou esse corre. +XP ✅' })
-  } catch (e) {
-    console.error('Erro ao aceitar:', e)
-    showToast({ type: 'error', title: 'Falha ao aceitar', message: e?.message || 'Veja o console.' })
-  } finally {
-    setAceitandoId(null)
   }
-}
 
   async function cancelarAceite(p) {
     if (cancelandoId) return
@@ -872,7 +839,6 @@ useEffect(() => {
         atualizadoEm: serverTimestamp(),
       })
 
-      // ✅ QUEM GANHA A ENTREGA?
       const creditUid = aceitadorId || meuId
 
       await subirPatentePorEntrega({
@@ -1068,7 +1034,6 @@ useEffect(() => {
     <div className="min-h-screen">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      {/* ✅ VOLTAR PRA TELA DAS ABAS (AGORA LIMPO) */}
       {typeof onBackToMode === 'function' && (
         <button
           onClick={voltarModoLimpo}
@@ -1088,7 +1053,6 @@ useEffect(() => {
       )}
 
       <div className="max-w-3xl mx-auto p-4 pb-[200px]">
-        {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
             <div className="relative mb-4">
@@ -1130,37 +1094,36 @@ useEffect(() => {
         )}
 
         {modoApp === 'cliente' && (
-  <>
-    <ClienteHome
-      meuNome={meuNome}
-      onlineUsers={onlineUsers}
-      onCriarPedido={() => setOpenIA(true)}
-      onIrAoVivo={() => {
-        setTab('aovivo')
-        setOpenMapaAoVivo(true)
-      }}
-    />
+          <>
+            <ClienteHome
+              meuNome={meuNome}
+              onlineUsers={onlineUsers}
+              onCriarPedido={() => setOpenIA(true)}
+              onIrAoVivo={() => {
+                setTab('aovivo')
+                setOpenMapaAoVivo(true)
+              }}
+            />
 
-    <AvisoCorreAceito
-      meuId={meuId}
-      corres={corres}
-      showToast={showToast}
-      onAbrirChat={(pedido) => {
-        setModoApp('corre')
-        setTab('corre')
-        setFiltro('todos')
-        setChatPedido(pedido)
-      }}
-      onVerMapa={(pedido) => {
-        setMapItem(pedido)
-      }}
-    />
-  </>
-)}
-        {/* CORRE */}
+            <AvisoCorreAceito
+              meuId={meuId}
+              corres={corres}
+              onAbrirChat={(pedido) => {
+                setModoApp('corre')
+                setTab('corre')
+                setFiltro('todos')
+                setChatPedido(pedido)
+              }}
+              onVerMapa={(pedido) => {
+                setMapItem(pedido)
+              }}
+              showToast={showToast}
+            />
+          </>
+        )}
+
         {modoApp === 'corre' && tab === 'corre' && (
           <>
-            {/* filtros status */}
             <div className="mb-4 flex flex-wrap gap-2 justify-center">
               <button
                 className={`px-3 py-1.5 rounded-xl border transition ${
@@ -1199,7 +1162,6 @@ useEffect(() => {
               </button>
             </div>
 
-            {/* Online agora */}
             <div className={`mb-4 rounded-2xl p-3 ${glassCard}`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="text-sm text-gray-200">
@@ -1209,7 +1171,6 @@ useEffect(() => {
               </div>
             </div>
 
-            {/* Busca + categoria */}
             <div className="mb-4 flex gap-2 flex-wrap">
               <input
                 value={busca}
@@ -1234,7 +1195,6 @@ useEffect(() => {
               </select>
             </div>
 
-            {/* indicador profissional */}
             {isProfissional && (
               <div className={`mb-4 rounded-2xl p-3 ${glassCard}`}>
                 <div className="text-sm text-gray-200">🧑‍🔧 Modo Profissional ativo ✅</div>
@@ -1257,7 +1217,6 @@ useEffect(() => {
               </div>
             )}
 
-            {/* Lista */}
             <div className="space-y-3">
               {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
                 <div className="text-sm text-gray-400">Nenhum corre aqui para mostrar.</div>
@@ -1300,7 +1259,6 @@ useEffect(() => {
                       </div>
                     </div>
 
-                    {/* modo + categoria */}
                     <div className="flex gap-2 flex-wrap items-center">
                       <BadgeModo modo={p?.modoPedido} />
 
@@ -1337,7 +1295,6 @@ useEffect(() => {
                       ) : null}
                     </div>
 
-                    {/* taxa / incentivo patente */}
                     <div className="text-[11px] text-gray-400">
                       💸 Taxa estimada: <b className="text-gray-200">{Math.round(taxaEstimada * 100)}%</b>
                       {String(p?.modoPedido || '').toLowerCase() === 'profissional' && isProfissional ? (
@@ -1345,7 +1302,6 @@ useEffect(() => {
                       ) : null}
                     </div>
 
-                    {/* patentes do criador */}
                     <div className="flex gap-2 flex-wrap">
                       <Patente tipo="corre" nivel={patenteCriadorCorre} size="sm" showLabel={false} />
                       {patenteCriadorProf > 0 && <Patente tipo="prof" nivel={patenteCriadorProf} size="sm" />}
@@ -1411,7 +1367,6 @@ useEffect(() => {
                         </button>
                       )}
 
-                      {/* ✅ BOOST (só criador e só aberto) */}
                       {souCriador(p) && status === 'aberto' && (
                         <>
                           <button
@@ -1513,10 +1468,8 @@ useEffect(() => {
           </>
         )}
 
-        {/* MODAL IA */}
         <ModalIA open={openIA} onClose={() => setOpenIA(false)} abrirCriacaoManual={() => setOpenIA(false)} />
 
-        {/* MAPA DO PEDIDO */}
         {mapItem && (
           <MapinhaModal
             open={!!mapItem}
@@ -1535,7 +1488,6 @@ useEffect(() => {
           />
         )}
 
-        {/* MAPA AO VIVO */}
         {openMapaAoVivo && (
           <MapinhaModal
             open={openMapaAoVivo}
@@ -1554,7 +1506,6 @@ useEffect(() => {
           />
         )}
 
-        {/* EDITAR */}
         {editItem && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
             <div className="w-[92%] max-w-md rounded-2xl p-5 shadow-xl border border-white/10 bg-white/10 backdrop-blur-md">
