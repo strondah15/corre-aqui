@@ -244,8 +244,10 @@ async function aplicarBoostNoPedido({ pedido, level, meuId, meuNome }) {
   const cfg = BOOST_LEVELS[lvl]
   if (!cfg) return
 
+  // só criador pode dar boost
   if (pedido?.criador?.id && pedido.criador.id !== meuId) return
 
+  // só boost se estiver ABERTO
   const status = String(pedido?.status || 'aberto').toLowerCase()
   if (status !== 'aberto') return
 
@@ -354,6 +356,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [busca, setBusca] = useState('')
   const [mapItem, setMapItem] = useState(null)
 
+  // ✅ menu some quando mapa abre (MapinhaModal ou Ao Vivo)
   const [openMapaAoVivo, setOpenMapaAoVivo] = useState(false)
   const isMapOpen = !!openMapaAoVivo || !!mapItem
 
@@ -385,6 +388,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const [unreadInbox, setUnreadInbox] = useState(0)
 
+  /* =======================
+     ✅ VOLTAR LIMPO PRA TELA DAS ABAS
+  ======================= */
   const voltarModoLimpo = () => {
     setOpenPerfil(false)
     setOpenIA(false)
@@ -397,6 +403,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
   }
 
+  /* =======================
+     0) Avatar do LocalStorage
+  ======================= */
   useEffect(() => {
     try {
       const f =
@@ -410,6 +419,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     } catch {}
   }, [openPerfil])
 
+  /* =======================
+     modoApp (prioriza initialMode)
+  ======================= */
   useEffect(() => {
     if (initialMode === 'cliente' || initialMode === 'corre') {
       setModoApp(initialMode)
@@ -428,10 +440,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     } catch {}
   }, [modoApp])
 
+  // ✅ Cliente não usa Inbox / tabs
   useEffect(() => {
     if (modoApp === 'cliente' && tab !== 'corre') setTab('corre')
   }, [modoApp, tab])
 
+  /* =======================
+     1) Identidade (Auth + LocalStorage)
+  ======================= */
   useEffect(() => {
     let off = () => {}
     try {
@@ -459,6 +475,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [])
 
+  /* =======================
+     ✅ Inbox unread count (leve)
+  ======================= */
   useEffect(() => {
     if (!meuId) {
       setUnreadInbox(0)
@@ -476,6 +495,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [meuId])
 
+  /* =======================
+     2) /users/{meuId} ONLINE REAL (+ avatar)
+  ======================= */
   useEffect(() => {
     if (!meuId) return
     let cancelled = false
@@ -554,6 +576,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
   }, [meuId, meuNome, fotoURL, avatarEmoji])
 
+  /* =======================
+     3) Ler pedidos
+  ======================= */
   useEffect(() => {
     setLoadingPedidos(true)
     setErroPedidos(null)
@@ -566,6 +591,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         const raw = snap.val() || {}
         const lista = Object.entries(raw).map(([id, item]) => normalizeLocal({ id, ...item }))
 
+        // ✅ BOOST primeiro
         lista.sort((a, b) => {
           const ba = isBoostAtivo(a) ? 1 : 0
           const bb = isBoostAtivo(b) ? 1 : 0
@@ -610,6 +636,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [showToast])
 
+  /* =======================
+     4) Ler /users (online)
+  ======================= */
   useEffect(() => {
     const off = onValue(ref(database, 'users'), (snap) => {
       setUsersObj(snap.val() || {})
@@ -617,6 +646,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [])
 
+  /* =======================
+     Toast quando pedido do cliente for aceito
+  ======================= */
   useEffect(() => {
     if (!meuId) return
 
@@ -720,8 +752,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         aceitoEm: Date.now(),
       }
 
+      // ✅ usa o próprio ID do pedido como conversaId
       const conversaId = p.id
 
+      // marcar pedido como aceito
       await update(ref(database, `pedidos/${p.id}`), {
         status: 'aceito',
         aceite,
@@ -729,6 +763,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         atualizadoEm: serverTimestamp(),
       })
 
+      // ✅ conversa do cliente
       if (p?.criador?.id) {
         await update(ref(database, `conversas/${p.criador.id}/${conversaId}`), {
           pedidoId: p.id,
@@ -741,6 +776,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         })
       }
 
+      // ✅ conversa de quem aceitou
       await update(ref(database, `conversas/${meuId}/${conversaId}`), {
         pedidoId: p.id,
         titulo: p.titulo || 'Corre aqui',
@@ -751,6 +787,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         updatedAt: Date.now(),
       })
 
+      // ✅ mensagem automática
       await update(ref(database, `mensagens/${conversaId}/msg_${Date.now()}`), {
         texto: `${meuNome} aceitou seu corre.`,
         sistema: true,
@@ -759,6 +796,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         autorNome: 'Sistema',
       })
 
+      // ✅ atalhos de conversa
       if (p?.criador?.id) {
         await set(ref(database, `usersChats/${p.criador.id}/${conversaId}`), true)
       }
@@ -839,6 +877,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         atualizadoEm: serverTimestamp(),
       })
 
+      // ✅ QUEM GANHA A ENTREGA?
       const creditUid = aceitadorId || meuId
 
       await subirPatentePorEntrega({
@@ -1034,6 +1073,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     <div className="min-h-screen">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
+      {/* ✅ VOLTAR PRA TELA DAS ABAS (AGORA LIMPO) */}
       {typeof onBackToMode === 'function' && (
         <button
           onClick={voltarModoLimpo}
@@ -1053,6 +1093,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       )}
 
       <div className="max-w-3xl mx-auto p-4 pb-[200px]">
+        {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
             <div className="relative mb-4">
@@ -1093,6 +1134,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           </>
         )}
 
+        {/* CLIENTE */}
         {modoApp === 'cliente' && (
           <>
             <ClienteHome
@@ -1109,9 +1151,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               meuId={meuId}
               corres={corres}
               onAbrirChat={(pedido) => {
-                setModoApp('corre')
-                setTab('corre')
-                setFiltro('todos')
                 setChatPedido(pedido)
               }}
               onVerMapa={(pedido) => {
@@ -1122,8 +1161,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           </>
         )}
 
+        {/* CORRE */}
         {modoApp === 'corre' && tab === 'corre' && (
           <>
+            {/* filtros status */}
             <div className="mb-4 flex flex-wrap gap-2 justify-center">
               <button
                 className={`px-3 py-1.5 rounded-xl border transition ${
@@ -1162,6 +1203,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </button>
             </div>
 
+            {/* Online agora */}
             <div className={`mb-4 rounded-2xl p-3 ${glassCard}`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="text-sm text-gray-200">
@@ -1171,6 +1213,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </div>
             </div>
 
+            {/* Busca + categoria */}
             <div className="mb-4 flex gap-2 flex-wrap">
               <input
                 value={busca}
@@ -1195,6 +1238,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </select>
             </div>
 
+            {/* indicador profissional */}
             {isProfissional && (
               <div className={`mb-4 rounded-2xl p-3 ${glassCard}`}>
                 <div className="text-sm text-gray-200">🧑‍🔧 Modo Profissional ativo ✅</div>
@@ -1217,6 +1261,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </div>
             )}
 
+            {/* Lista */}
             <div className="space-y-3">
               {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
                 <div className="text-sm text-gray-400">Nenhum corre aqui para mostrar.</div>
@@ -1259,6 +1304,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       </div>
                     </div>
 
+                    {/* modo + categoria */}
                     <div className="flex gap-2 flex-wrap items-center">
                       <BadgeModo modo={p?.modoPedido} />
 
@@ -1295,6 +1341,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       ) : null}
                     </div>
 
+                    {/* taxa / incentivo patente */}
                     <div className="text-[11px] text-gray-400">
                       💸 Taxa estimada: <b className="text-gray-200">{Math.round(taxaEstimada * 100)}%</b>
                       {String(p?.modoPedido || '').toLowerCase() === 'profissional' && isProfissional ? (
@@ -1302,6 +1349,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       ) : null}
                     </div>
 
+                    {/* patentes do criador */}
                     <div className="flex gap-2 flex-wrap">
                       <Patente tipo="corre" nivel={patenteCriadorCorre} size="sm" showLabel={false} />
                       {patenteCriadorProf > 0 && <Patente tipo="prof" nivel={patenteCriadorProf} size="sm" />}
@@ -1367,6 +1415,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
+                      {/* ✅ BOOST (só criador e só aberto) */}
                       {souCriador(p) && status === 'aberto' && (
                         <>
                           <button
@@ -1468,8 +1517,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           </>
         )}
 
+        {/* MODAL IA */}
         <ModalIA open={openIA} onClose={() => setOpenIA(false)} abrirCriacaoManual={() => setOpenIA(false)} />
 
+        {/* MAPA DO PEDIDO */}
         {mapItem && (
           <MapinhaModal
             open={!!mapItem}
@@ -1488,6 +1539,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           />
         )}
 
+        {/* MAPA AO VIVO */}
         {openMapaAoVivo && (
           <MapinhaModal
             open={openMapaAoVivo}
@@ -1506,6 +1558,43 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           />
         )}
 
+        {/* CHAT MODAL NO MODO CLIENTE */}
+        {modoApp === 'cliente' && chatPedido && (
+          <div className="fixed inset-0 z-[99999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3">
+            <div className="w-full max-w-2xl rounded-2xl bg-[#0b1220] border border-white/10 shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/5">
+                <div>
+                  <div className="text-sm font-semibold text-white">
+                    Conversa do pedido
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {chatPedido?.titulo || 'Corre aqui'}
+                  </div>
+                </div>
+
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-white"
+                  onClick={() => setChatPedido(null)}
+                  type="button"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              <div className="p-3">
+                <ChatMensagens
+                  pedidoId={chatPedido.id}
+                  meuId={meuId}
+                  meuNome={meuNome}
+                  pedidoTitulo={chatPedido.titulo || 'Corre aqui'}
+                  outroUser={getOutroUser(chatPedido)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* EDITAR */}
         {editItem && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
             <div className="w-[92%] max-w-md rounded-2xl p-5 shadow-xl border border-white/10 bg-white/10 backdrop-blur-md">
