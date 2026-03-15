@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { ref, onValue, update, serverTimestamp } from 'firebase/database'
 import { database } from '@/lib/firebase'
 import { CATEGORIES } from '@/constants/categories'
+import PlanosCorreAqui from '@/components/PlanosCorreAqui'
 
 /* =======================
    Utils
@@ -34,7 +35,7 @@ const safeUrl = (u) => {
 }
 
 export default function PerfilDrawer({ open, onClose, uid }) {
-  const [tab, setTab] = useState('perfil') // perfil | config | profissional
+  const [tab, setTab] = useState('perfil') // perfil | config | profissional | monetizacao
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -384,6 +385,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           <TabButton active={tab === 'profissional'} onClick={() => setTab('profissional')}>
             🧑‍🔧 Profissional
           </TabButton>
+          <TabButton active={tab === 'monetizacao'} onClick={() => setTab('monetizacao')}>
+            💸 Monetização
+          </TabButton>
         </div>
 
         <div className="mt-4 flex-1 overflow-auto pr-1">
@@ -686,7 +690,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     {saving ? 'Salvando…' : 'Salvar Ficha Técnica'}
                   </button>
                 </div>
-              )}
+
+
+              {tab === 'monetizacao' && (
+                <PlanosCorreAqui />
+              )}              )}
             </>
           )}
         </div>
