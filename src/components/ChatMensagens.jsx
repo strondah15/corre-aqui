@@ -234,3 +234,35 @@ export default function ChatMensagens({
     </div>
   )
 }
+
+
+// ====== UPDATE: DATA, HORA E AUDIO ======
+function formatarDataHora(ts){
+  const d = ts ? new Date(ts) : new Date();
+  return d.toLocaleString();
+}
+
+// Exemplo de uso dentro das mensagens:
+// {formatarDataHora(msg.timestamp)}
+
+// ===== AUDIO SIMPLES =====
+let mediaRecorder;
+let chunks = [];
+
+export async function iniciarGravacao(setAudioBlob){
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => chunks.push(e.data);
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    chunks = [];
+    setAudioBlob(blob);
+  };
+  mediaRecorder.start();
+}
+
+export function pararGravacao(){
+  if(mediaRecorder){
+    mediaRecorder.stop();
+  }
+}

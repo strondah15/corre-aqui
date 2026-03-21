@@ -1694,3 +1694,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     </div>
   )
 }
+
+// ====== UPDATE: SUPORTE DATA/HORA NOS DADOS ======
+function agoraTimestamp(){
+  return Date.now();
+}
+
+// exemplo ao criar algo:
+// timestamp: agoraTimestamp()
+
