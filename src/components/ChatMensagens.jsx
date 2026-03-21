@@ -16,6 +16,13 @@ export default function ChatMensagens({
   const [enviando, setEnviando] = useState(false)
 
   const [gravando, setGravando] = useState(false)
+  const [tempo, setTempo] = useState(0)
+  const mediaRef = useRef(null)
+  const chunksRef = useRef([])
+  const timerRef = useRef(null)
+
+
+  const [gravando, setGravando] = useState(false)
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
 
@@ -110,6 +117,68 @@ export default function ChatMensagens({
       }
       reader.readAsDataURL(blob)
     }
+    mediaRef.current.stop()
+    setGravando(false)
+  }
+
+  
+
+  function iniciarTimer() {
+    setTempo(0)
+    timerRef.current = setInterval(() => {
+      setTempo((t) => t + 1)
+    }, 1000)
+  }
+
+  function pararTimer() {
+    clearInterval(timerRef.current)
+  }
+
+  function formatarTempo(segundos) {
+    const min = String(Math.floor(segundos / 60)).padStart(2, '0')
+    const sec = String(segundos % 60).padStart(2, '0')
+    return `${min}:${sec}`
+  }
+
+  async function iniciarGravacao() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+    mediaRef.current = mediaRecorder
+    chunksRef.current = []
+
+    mediaRecorder.ondataavailable = (e) => {
+      chunksRef.current.push(e.data)
+    }
+
+    mediaRecorder.start()
+    setGravando(true)
+    iniciarTimer()
+  }
+
+  function pararGravacao() {
+    if (!mediaRef.current) return
+
+    pararTimer()
+
+    mediaRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64 = reader.result
+
+        await push(ref(database, `chats/${pedidoId}`), {
+          audio: base64,
+          duracao: tempo,
+          autor: meuNome || 'Anônimo',
+          userId: meuId || null,
+          hora: Date.now(),
+        })
+      }
+
+      reader.readAsDataURL(blob)
+    }
+
     mediaRef.current.stop()
     setGravando(false)
   }
@@ -230,6 +299,68 @@ export default function ChatMensagens({
     setGravando(false)
   }
 
+  
+
+  function iniciarTimer() {
+    setTempo(0)
+    timerRef.current = setInterval(() => {
+      setTempo((t) => t + 1)
+    }, 1000)
+  }
+
+  function pararTimer() {
+    clearInterval(timerRef.current)
+  }
+
+  function formatarTempo(segundos) {
+    const min = String(Math.floor(segundos / 60)).padStart(2, '0')
+    const sec = String(segundos % 60).padStart(2, '0')
+    return `${min}:${sec}`
+  }
+
+  async function iniciarGravacao() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+    mediaRef.current = mediaRecorder
+    chunksRef.current = []
+
+    mediaRecorder.ondataavailable = (e) => {
+      chunksRef.current.push(e.data)
+    }
+
+    mediaRecorder.start()
+    setGravando(true)
+    iniciarTimer()
+  }
+
+  function pararGravacao() {
+    if (!mediaRef.current) return
+
+    pararTimer()
+
+    mediaRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64 = reader.result
+
+        await push(ref(database, `chats/${pedidoId}`), {
+          audio: base64,
+          duracao: tempo,
+          autor: meuNome || 'Anônimo',
+          userId: meuId || null,
+          hora: Date.now(),
+        })
+      }
+
+      reader.readAsDataURL(blob)
+    }
+
+    mediaRef.current.stop()
+    setGravando(false)
+  }
+
   return (
     <div className={`w-full max-w-[520px] mt-3 rounded-2xl overflow-hidden ${glass}`}>
       {/* topo */}
@@ -293,6 +424,68 @@ export default function ChatMensagens({
     setGravando(false)
   }
 
+  
+
+  function iniciarTimer() {
+    setTempo(0)
+    timerRef.current = setInterval(() => {
+      setTempo((t) => t + 1)
+    }, 1000)
+  }
+
+  function pararTimer() {
+    clearInterval(timerRef.current)
+  }
+
+  function formatarTempo(segundos) {
+    const min = String(Math.floor(segundos / 60)).padStart(2, '0')
+    const sec = String(segundos % 60).padStart(2, '0')
+    return `${min}:${sec}`
+  }
+
+  async function iniciarGravacao() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+    mediaRef.current = mediaRecorder
+    chunksRef.current = []
+
+    mediaRecorder.ondataavailable = (e) => {
+      chunksRef.current.push(e.data)
+    }
+
+    mediaRecorder.start()
+    setGravando(true)
+    iniciarTimer()
+  }
+
+  function pararGravacao() {
+    if (!mediaRef.current) return
+
+    pararTimer()
+
+    mediaRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64 = reader.result
+
+        await push(ref(database, `chats/${pedidoId}`), {
+          audio: base64,
+          duracao: tempo,
+          autor: meuNome || 'Anônimo',
+          userId: meuId || null,
+          hora: Date.now(),
+        })
+      }
+
+      reader.readAsDataURL(blob)
+    }
+
+    mediaRef.current.stop()
+    setGravando(false)
+  }
+
   return (
             <div key={msg.id} className={`flex ${minha ? 'justify-end' : 'justify-start'}`}>
               <div
@@ -302,7 +495,7 @@ export default function ChatMensagens({
                     : 'bg-white/10 border-white/10 rounded-bl-md'
                 }`}
               >
-                <div className="leading-relaxed whitespace-pre-wrap text-gray-100">{msg.texto}</div>{msg.audio && (<audio controls className='mt-2'><source src={msg.audio} type='audio/webm'/></audio>)}
+                <div className="leading-relaxed whitespace-pre-wrap text-gray-100">{msg.texto}</div>{msg.audio && (<div className='mt-2 flex items-center gap-2'><audio controls><source src={msg.audio} type='audio/webm'/></audio>{msg.duracao && <span className='text-xs text-gray-400'>{formatarTempo(msg.duracao)}</span>}</div>)}{msg.audio && (<audio controls className='mt-2'><source src={msg.audio} type='audio/webm'/></audio>)}
                 <div className="mt-1 text-[10px] text-gray-400 text-right">{hora}</div>
               </div>
             </div>
