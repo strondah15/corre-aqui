@@ -201,7 +201,7 @@ export default function ChatMensagens({
                     : 'bg-white/10 border-white/10 rounded-bl-md'
                 }`}
               >
-                <div className="leading-relaxed whitespace-pre-wrap text-gray-100">{msg.texto}</div>
+                <div className="leading-relaxed whitespace-pre-wrap text-gray-100">{msg.texto}{msg.audio && <audio controls src={msg.audio} />}</div>
                 <div className="mt-1 text-[10px] text-gray-400 text-right">{hora}</div>
               </div>
             </div>
@@ -227,7 +227,7 @@ export default function ChatMensagens({
             className="px-4 rounded-2xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
             type="button"
           >
-            {enviando ? '...' : '➤'}
+            {enviando ? '...' : '➤</button><button onMouseDown={iniciarGravacao} onMouseUp={pararGravacao} style={{marginLeft:8}}>🎤</button>'}
           </button>
         </div>
       </div>
@@ -236,33 +236,47 @@ export default function ChatMensagens({
 }
 
 
-// ====== UPDATE: DATA, HORA E AUDIO ======
-function formatarDataHora(ts){
-  const d = ts ? new Date(ts) : new Date();
-  return d.toLocaleString();
-}
+// ===== AUDIO WHATSAPP FUNCIONAL =====
+const [gravando, setGravando] = useState(false)
+const mediaRef = useRef(null)
+const chunksRef = useRef([])
 
-// Exemplo de uso dentro das mensagens:
-// {formatarDataHora(msg.timestamp)}
+async function iniciarGravacao() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  const mediaRecorder = new MediaRecorder(stream)
 
-// ===== AUDIO SIMPLES =====
-let mediaRecorder;
-let chunks = [];
+  mediaRef.current = mediaRecorder
+  chunksRef.current = []
 
-export async function iniciarGravacao(setAudioBlob){
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-  mediaRecorder.ondataavailable = e => chunks.push(e.data);
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(chunks, { type: 'audio/webm' });
-    chunks = [];
-    setAudioBlob(blob);
-  };
-  mediaRecorder.start();
-}
-
-export function pararGravacao(){
-  if(mediaRecorder){
-    mediaRecorder.stop();
+  mediaRecorder.ondataavailable = (e) => {
+    chunksRef.current.push(e.data)
   }
+
+  mediaRecorder.start()
+  setGravando(true)
+}
+
+function pararGravacao() {
+  if (!mediaRef.current) return
+
+  mediaRef.current.onstop = async () => {
+    const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+
+    const reader = new FileReader()
+    reader.onloadend = async () => {
+      const base64 = reader.result
+
+      await push(ref(database, `chats/${pedidoId}`), {
+        audio: base64,
+        autor: meuNome || 'Anônimo',
+        userId: meuId || null,
+        hora: Date.now(),
+      })
+    }
+
+    reader.readAsDataURL(blob)
+  }
+
+  mediaRef.current.stop()
+  setGravando(false)
 }
