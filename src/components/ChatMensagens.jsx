@@ -15,6 +15,11 @@ export default function ChatMensagens({
   const [texto, setTexto] = useState('')
   const [enviando, setEnviando] = useState(false)
 
+  const [gravando, setGravando] = useState(false)
+  const mediaRef = useRef(null)
+  const chunksRef = useRef([])
+
+
   const chatRef = useRef(null)
   const lastMsgCount = useRef(0)
 
@@ -77,7 +82,39 @@ export default function ChatMensagens({
       lastMsgCount.current = lista.length
     })
 
-    return () => off()
+    
+
+  async function iniciarGravacao() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+    mediaRef.current = mediaRecorder
+    chunksRef.current = []
+    mediaRecorder.ondataavailable = (e) => chunksRef.current.push(e.data)
+    mediaRecorder.start()
+    setGravando(true)
+  }
+
+  function pararGravacao() {
+    if (!mediaRef.current) return
+    mediaRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64 = reader.result
+        await push(ref(database, `chats/${pedidoId}`), {
+          audio: base64,
+          autor: meuNome || 'Anônimo',
+          userId: meuId || null,
+          hora: Date.now(),
+        })
+      }
+      reader.readAsDataURL(blob)
+    }
+    mediaRef.current.stop()
+    setGravando(false)
+  }
+
+  return () => off()
   }, [pedidoId])
 
   /* =========================
@@ -161,6 +198,38 @@ export default function ChatMensagens({
 
   const glass = 'bg-white/10 backdrop-blur-md border border-white/10 shadow-xl shadow-black/30'
 
+  
+
+  async function iniciarGravacao() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+    mediaRef.current = mediaRecorder
+    chunksRef.current = []
+    mediaRecorder.ondataavailable = (e) => chunksRef.current.push(e.data)
+    mediaRecorder.start()
+    setGravando(true)
+  }
+
+  function pararGravacao() {
+    if (!mediaRef.current) return
+    mediaRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64 = reader.result
+        await push(ref(database, `chats/${pedidoId}`), {
+          audio: base64,
+          autor: meuNome || 'Anônimo',
+          userId: meuId || null,
+          hora: Date.now(),
+        })
+      }
+      reader.readAsDataURL(blob)
+    }
+    mediaRef.current.stop()
+    setGravando(false)
+  }
+
   return (
     <div className={`w-full max-w-[520px] mt-3 rounded-2xl overflow-hidden ${glass}`}>
       {/* topo */}
@@ -192,7 +261,39 @@ export default function ChatMensagens({
               ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
               : ''
 
-          return (
+          
+
+  async function iniciarGravacao() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+    mediaRef.current = mediaRecorder
+    chunksRef.current = []
+    mediaRecorder.ondataavailable = (e) => chunksRef.current.push(e.data)
+    mediaRecorder.start()
+    setGravando(true)
+  }
+
+  function pararGravacao() {
+    if (!mediaRef.current) return
+    mediaRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64 = reader.result
+        await push(ref(database, `chats/${pedidoId}`), {
+          audio: base64,
+          autor: meuNome || 'Anônimo',
+          userId: meuId || null,
+          hora: Date.now(),
+        })
+      }
+      reader.readAsDataURL(blob)
+    }
+    mediaRef.current.stop()
+    setGravando(false)
+  }
+
+  return (
             <div key={msg.id} className={`flex ${minha ? 'justify-end' : 'justify-start'}`}>
               <div
                 className={`max-w-[86%] px-3 py-2 text-sm rounded-2xl border ${
@@ -201,7 +302,7 @@ export default function ChatMensagens({
                     : 'bg-white/10 border-white/10 rounded-bl-md'
                 }`}
               >
-                <div className="leading-relaxed whitespace-pre-wrap text-gray-100">{msg.texto}{msg.audio && <audio controls src={msg.audio} />}</div>
+                <div className="leading-relaxed whitespace-pre-wrap text-gray-100">{msg.texto}</div>{msg.audio && (<audio controls className='mt-2'><source src={msg.audio} type='audio/webm'/></audio>)}
                 <div className="mt-1 text-[10px] text-gray-400 text-right">{hora}</div>
               </div>
             </div>
@@ -221,14 +322,26 @@ export default function ChatMensagens({
             className="flex-1 text-sm px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-gray-100 resize-none"
           />
 
-          <button
-            onClick={enviar}
-            disabled={enviando || !texto.trim()}
-            className="px-4 rounded-2xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
-            type="button"
-          >
-            {enviando ? '...' : '➤</button><button onMouseDown={iniciarGravacao} onMouseUp={pararGravacao} style={{marginLeft:8}}>🎤</button>'}
-          </button>
+          <div className="flex gap-2">
+  <button
+    onMouseDown={iniciarGravacao}
+    onMouseUp={pararGravacao}
+    onTouchStart={iniciarGravacao}
+    onTouchEnd={pararGravacao}
+    className={`px-3 rounded-full text-white ${gravando ? 'bg-red-600' : 'bg-green-600'}`}
+  >
+    🎤
+  </button>
+
+  <button
+    onClick={enviar}
+    disabled={enviando || !texto.trim()}
+    className="px-4 rounded-2xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
+    type="button"
+  >
+    {enviando ? '...' : '➤'}
+  </button>
+</div>
         </div>
       </div>
     </div>
@@ -236,47 +349,33 @@ export default function ChatMensagens({
 }
 
 
-// ===== AUDIO WHATSAPP FUNCIONAL =====
-const [gravando, setGravando] = useState(false)
-const mediaRef = useRef(null)
-const chunksRef = useRef([])
-
-async function iniciarGravacao() {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-  const mediaRecorder = new MediaRecorder(stream)
-
-  mediaRef.current = mediaRecorder
-  chunksRef.current = []
-
-  mediaRecorder.ondataavailable = (e) => {
-    chunksRef.current.push(e.data)
-  }
-
-  mediaRecorder.start()
-  setGravando(true)
+// ====== UPDATE: DATA, HORA E AUDIO ======
+function formatarDataHora(ts){
+  const d = ts ? new Date(ts) : new Date();
+  return d.toLocaleString();
 }
 
-function pararGravacao() {
-  if (!mediaRef.current) return
+// Exemplo de uso dentro das mensagens:
+// {formatarDataHora(msg.timestamp)}
 
-  mediaRef.current.onstop = async () => {
-    const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+// ===== AUDIO SIMPLES =====
+let mediaRecorder;
+let chunks = [];
 
-    const reader = new FileReader()
-    reader.onloadend = async () => {
-      const base64 = reader.result
+export async function iniciarGravacao(setAudioBlob){
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => chunks.push(e.data);
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    chunks = [];
+    setAudioBlob(blob);
+  };
+  mediaRecorder.start();
+}
 
-      await push(ref(database, `chats/${pedidoId}`), {
-        audio: base64,
-        autor: meuNome || 'Anônimo',
-        userId: meuId || null,
-        hora: Date.now(),
-      })
-    }
-
-    reader.readAsDataURL(blob)
+export function pararGravacao(){
+  if(mediaRecorder){
+    mediaRecorder.stop();
   }
-
-  mediaRef.current.stop()
-  setGravando(false)
 }
