@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { auth } from '@/lib/firebase'
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth'
+import { signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import TelaBoasVindas from './TelaBoasVindas'
 
 export default function LoginGate({ children }) {
@@ -51,7 +51,26 @@ export default function LoginGate({ children }) {
     setViuBoasVindas(true)
   }
 
-  async function entrar() {
+  
+async function loginGoogle() {
+  try {
+    const provider = new GoogleAuthProvider()
+    const result = await signInWithPopup(auth, provider)
+
+    const user = result.user
+
+    localStorage.setItem('meuNome', user.displayName || '')
+    localStorage.setItem('meuId', user.uid)
+
+    setUid(user.uid)
+    setNome(user.displayName || '')
+  } catch (error) {
+    console.error(error)
+    setErr('Erro ao entrar com Google')
+  }
+}
+
+async function entrar() {
     const n = nome.trim()
     if (!n) {
       setErr('Digite seu nome')
