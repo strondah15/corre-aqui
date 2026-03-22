@@ -1,9 +1,9 @@
-import TelaBoasVindas from './TelaBoasVindas'
 'use client'
 
 import { useEffect, useState } from 'react'
 import { auth } from '@/lib/firebase'
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth'
+import TelaBoasVindas from './TelaBoasVindas'
 
 export default function LoginGate({ children }) {
   const [nome, setNome] = useState('')
@@ -11,9 +11,16 @@ export default function LoginGate({ children }) {
   const [logando, setLogando] = useState(false)
   const [uid, setUid] = useState(null)
   const [err, setErr] = useState('')
+  const [viuBoasVindas, setViuBoasVindas] = useState(false)
 
-  // 1) Observa auth e sincroniza localStorage.meuId com auth.uid
   useEffect(() => {
+    try {
+      const jaViu = localStorage.getItem('viuBoasVindas')
+      if (jaViu === 'true') {
+        setViuBoasVindas(true)
+      }
+    } catch {}
+
     const off = onAuthStateChanged(auth, (user) => {
       if (user?.uid) {
         setUid(user.uid)
@@ -21,7 +28,7 @@ export default function LoginGate({ children }) {
         try {
           const lsId = localStorage.getItem('meuId')
           if (lsId !== user.uid) {
-            localStorage.setItem('meuId', user.uid) // ✅ CORRIGE
+            localStorage.setItem('meuId', user.uid)
           }
 
           const lsNome = localStorage.getItem('meuNome') || ''
@@ -37,6 +44,13 @@ export default function LoginGate({ children }) {
     return () => off()
   }, [])
 
+  function entrarBoasVindas() {
+    try {
+      localStorage.setItem('viuBoasVindas', 'true')
+    } catch {}
+    setViuBoasVindas(true)
+  }
+
   async function entrar() {
     const n = nome.trim()
     if (!n) {
@@ -46,10 +60,10 @@ export default function LoginGate({ children }) {
 
     setErr('')
     setLogando(true)
+
     try {
       const cred = await signInAnonymously(auth)
 
-      // ✅ Fonte da verdade do ID
       localStorage.setItem('meuNome', n)
       localStorage.setItem('meuId', cred.user.uid)
 
@@ -64,25 +78,30 @@ export default function LoginGate({ children }) {
 
   if (loading) return null
 
-  // Se ainda não logou, mostra tela de entrar
+  if (!viuBoasVindas) {
+    return <TelaBoasVindas onEntrar={entrarBoasVindas} />
+  }
+
   if (!uid) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white border rounded-2xl p-6 shadow">
-          <h1 className="text-2xl font-bold">Corre Aqui</h1>
-          <p className="text-sm text-gray-600 mt-1">Entre com seu nome para continuar</p>
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-black via-slate-900 to-blue-950">
+        <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
+          <h1 className="text-2xl font-bold text-white">Corre Aqui</h1>
+          <p className="text-sm text-gray-300 mt-1">
+            Entre com seu nome para continuar
+          </p>
 
           <input
-            className="mt-4 w-full px-3 py-2 border rounded"
+            className="mt-4 w-full px-3 py-2 border border-white/10 rounded-xl bg-white/10 text-white placeholder:text-gray-400 outline-none"
             placeholder="Seu nome"
             value={nome}
             onChange={(e) => setNome(e.target.value)}
           />
 
-          {err && <div className="mt-3 text-sm text-red-600">{err}</div>}
+          {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
 
           <button
-            className="mt-4 w-full py-2 rounded bg-black text-white disabled:opacity-60"
+            className="mt-4 w-full py-3 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-60"
             onClick={entrar}
             disabled={logando}
             type="button"
@@ -94,8 +113,6 @@ export default function LoginGate({ children }) {
     )
   }
 
-  // Se já está logado: garante que o nome existe no localStorage
-  // (se não tiver, mostra input antes de entrar no app)
   const nomeOk = (() => {
     try {
       return !!(localStorage.getItem('meuNome') || '').trim()
@@ -106,21 +123,21 @@ export default function LoginGate({ children }) {
 
   if (!nomeOk) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white border rounded-2xl p-6 shadow">
-          <h2 className="text-xl font-bold">Qual seu nome?</h2>
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-black via-slate-900 to-blue-950">
+        <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
+          <h2 className="text-xl font-bold text-white">Qual seu nome?</h2>
 
           <input
-            className="mt-4 w-full px-3 py-2 border rounded"
+            className="mt-4 w-full px-3 py-2 border border-white/10 rounded-xl bg-white/10 text-white placeholder:text-gray-400 outline-none"
             placeholder="Seu nome"
             value={nome}
             onChange={(e) => setNome(e.target.value)}
           />
 
-          {err && <div className="mt-3 text-sm text-red-600">{err}</div>}
+          {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
 
           <button
-            className="mt-4 w-full py-2 rounded bg-black text-white"
+            className="mt-4 w-full py-3 rounded-xl bg-blue-600 text-white font-semibold"
             onClick={() => {
               const n = nome.trim()
               if (!n) return setErr('Digite seu nome')
