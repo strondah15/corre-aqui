@@ -1,3 +1,4 @@
+import TelaBoasVindas from './TelaBoasVindas'
 'use client'
 
 import { useEffect, useState } from 'react'
