@@ -104,7 +104,76 @@ export default function ChatMensagens({
       setMensagens(lista)
     })
 
-    return () => off()
+    
+
+  // ===== AUDIO WHATSAPP COMPLETO =====
+  const [gravando, setGravando] = useState(false)
+  const [tempo, setTempo] = useState(0)
+  const mediaRef = useRef(null)
+  const chunksRef = useRef([])
+  const timerRef = useRef(null)
+
+  function formatarTempo(segundos) {
+    const min = String(Math.floor(segundos / 60)).padStart(2, '0')
+    const sec = String(segundos % 60).padStart(2, '0')
+    return `${min}:${sec}`
+  }
+
+  function iniciarTimer() {
+    setTempo(0)
+    timerRef.current = setInterval(() => {
+      setTempo(t => t + 1)
+    }, 1000)
+  }
+
+  function pararTimer() {
+    clearInterval(timerRef.current)
+  }
+
+  async function iniciarGravacao() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+
+    mediaRef.current = mediaRecorder
+    chunksRef.current = []
+
+    mediaRecorder.ondataavailable = e => chunksRef.current.push(e.data)
+
+    mediaRecorder.start()
+    setGravando(true)
+    iniciarTimer()
+  }
+
+  function pararGravacao() {
+    if (!mediaRef.current) return
+
+    pararTimer()
+
+    mediaRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      const reader = new FileReader()
+
+      reader.onloadend = async () => {
+        const base64 = reader.result
+
+        await push(ref(database, `chats/${pedidoId}`), {
+          audio: base64,
+          duracao: tempo,
+          autor: meuNome || 'Anônimo',
+          userId: meuId || null,
+          hora: Date.now(),
+        })
+      }
+
+      reader.readAsDataURL(blob)
+    }
+
+    mediaRef.current.stop()
+    setGravando(false)
+  }
+
+
+  return () => off()
   }, [pedidoId])
 
   const enviar = async () => {
@@ -120,14 +189,162 @@ export default function ChatMensagens({
     setTexto('')
   }
 
+  
+
+  // ===== AUDIO WHATSAPP COMPLETO =====
+  const [gravando, setGravando] = useState(false)
+  const [tempo, setTempo] = useState(0)
+  const mediaRef = useRef(null)
+  const chunksRef = useRef([])
+  const timerRef = useRef(null)
+
+  function formatarTempo(segundos) {
+    const min = String(Math.floor(segundos / 60)).padStart(2, '0')
+    const sec = String(segundos % 60).padStart(2, '0')
+    return `${min}:${sec}`
+  }
+
+  function iniciarTimer() {
+    setTempo(0)
+    timerRef.current = setInterval(() => {
+      setTempo(t => t + 1)
+    }, 1000)
+  }
+
+  function pararTimer() {
+    clearInterval(timerRef.current)
+  }
+
+  async function iniciarGravacao() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+
+    mediaRef.current = mediaRecorder
+    chunksRef.current = []
+
+    mediaRecorder.ondataavailable = e => chunksRef.current.push(e.data)
+
+    mediaRecorder.start()
+    setGravando(true)
+    iniciarTimer()
+  }
+
+  function pararGravacao() {
+    if (!mediaRef.current) return
+
+    pararTimer()
+
+    mediaRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      const reader = new FileReader()
+
+      reader.onloadend = async () => {
+        const base64 = reader.result
+
+        await push(ref(database, `chats/${pedidoId}`), {
+          audio: base64,
+          duracao: tempo,
+          autor: meuNome || 'Anônimo',
+          userId: meuId || null,
+          hora: Date.now(),
+        })
+      }
+
+      reader.readAsDataURL(blob)
+    }
+
+    mediaRef.current.stop()
+    setGravando(false)
+  }
+
+
   return (
     <div>
       {mensagens.map((msg) => {
         const hora = new Date(msg.hora || 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-        return (
+        
+
+  // ===== AUDIO WHATSAPP COMPLETO =====
+  const [gravando, setGravando] = useState(false)
+  const [tempo, setTempo] = useState(0)
+  const mediaRef = useRef(null)
+  const chunksRef = useRef([])
+  const timerRef = useRef(null)
+
+  function formatarTempo(segundos) {
+    const min = String(Math.floor(segundos / 60)).padStart(2, '0')
+    const sec = String(segundos % 60).padStart(2, '0')
+    return `${min}:${sec}`
+  }
+
+  function iniciarTimer() {
+    setTempo(0)
+    timerRef.current = setInterval(() => {
+      setTempo(t => t + 1)
+    }, 1000)
+  }
+
+  function pararTimer() {
+    clearInterval(timerRef.current)
+  }
+
+  async function iniciarGravacao() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mediaRecorder = new MediaRecorder(stream)
+
+    mediaRef.current = mediaRecorder
+    chunksRef.current = []
+
+    mediaRecorder.ondataavailable = e => chunksRef.current.push(e.data)
+
+    mediaRecorder.start()
+    setGravando(true)
+    iniciarTimer()
+  }
+
+  function pararGravacao() {
+    if (!mediaRef.current) return
+
+    pararTimer()
+
+    mediaRef.current.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+      const reader = new FileReader()
+
+      reader.onloadend = async () => {
+        const base64 = reader.result
+
+        await push(ref(database, `chats/${pedidoId}`), {
+          audio: base64,
+          duracao: tempo,
+          autor: meuNome || 'Anônimo',
+          userId: meuId || null,
+          hora: Date.now(),
+        })
+      }
+
+      reader.readAsDataURL(blob)
+    }
+
+    mediaRef.current.stop()
+    setGravando(false)
+  }
+
+
+  return (
           <div key={msg.id}>
-            <div>{msg.texto}</div>
+            <div>{msg.texto}
+{msg.audio && (
+  <div className="mt-2 bg-black/30 p-2 rounded-xl">
+    <audio controls className="w-full">
+      <source src={msg.audio} type="audio/webm" />
+    </audio>
+    {msg.duracao && (
+      <span className="text-xs text-gray-400">{formatarTempo(msg.duracao)}</span>
+    )}
+  </div>
+)}</div>
 
             {msg.audio && (
               <div>
