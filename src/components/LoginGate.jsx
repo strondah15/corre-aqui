@@ -2,42 +2,32 @@
 
 import { useEffect, useState } from 'react'
 import { auth } from '@/lib/firebase'
-import { signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
+import {
+  onAuthStateChanged,
+  signInAnonymously,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut
+} from 'firebase/auth'
+
 import TelaBoasVindas from './TelaBoasVindas'
 
 export default function LoginGate({ children }) {
-  const [nome, setNome] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [logando, setLogando] = useState(false)
   const [uid, setUid] = useState(null)
-  const [err, setErr] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [nome, setNome] = useState('')
   const [viuBoasVindas, setViuBoasVindas] = useState(false)
 
   useEffect(() => {
-    try {
-      const jaViu = localStorage.getItem('viuBoasVindas')
-      if (jaViu === 'true') {
-        setViuBoasVindas(true)
-      }
-    } catch {}
+    const viu = localStorage.getItem('viuBoasVindas')
+    if (viu === 'true') setViuBoasVindas(true)
 
     const off = onAuthStateChanged(auth, (user) => {
-      if (user?.uid) {
+      if (user) {
         setUid(user.uid)
-
-        try {
-          const lsId = localStorage.getItem('meuId')
-          if (lsId !== user.uid) {
-            localStorage.setItem('meuId', user.uid)
-          }
-
-          const lsNome = localStorage.getItem('meuNome') || ''
-          setNome(lsNome)
-        } catch {}
       } else {
         setUid(null)
       }
-
       setLoading(false)
     })
 
@@ -45,132 +35,87 @@ export default function LoginGate({ children }) {
   }, [])
 
   function entrarBoasVindas() {
-    try {
-      localStorage.setItem('viuBoasVindas', 'true')
-    } catch {}
+    localStorage.setItem('viuBoasVindas', 'true')
     setViuBoasVindas(true)
   }
 
-  
-async function loginGoogle() {
-  try {
+  async function loginGoogle() {
     const provider = new GoogleAuthProvider()
     const result = await signInWithPopup(auth, provider)
 
-    const user = result.user
+    localStorage.setItem('meuNome', result.user.displayName || '')
+    localStorage.setItem('meuId', result.user.uid)
 
-    localStorage.setItem('meuNome', user.displayName || '')
-    localStorage.setItem('meuId', user.uid)
-
-    setUid(user.uid)
-    setNome(user.displayName || '')
-  } catch (error) {
-    console.error(error)
-    setErr('Erro ao entrar com Google')
+    setUid(result.user.uid)
   }
-}
 
-async function entrar() {
-    const n = nome.trim()
-    if (!n) {
-      setErr('Digite seu nome')
-      return
-    }
+  async function loginAnonimo() {
+    const cred = await signInAnonymously(auth)
 
-    setErr('')
-    setLogando(true)
+    localStorage.setItem('meuNome', nome)
+    localStorage.setItem('meuId', cred.user.uid)
 
-    try {
-      const cred = await signInAnonymously(auth)
+    setUid(cred.user.uid)
+  }
 
-      localStorage.setItem('meuNome', n)
-      localStorage.setItem('meuId', cred.user.uid)
-
-      setUid(cred.user.uid)
-    } catch (e) {
-      console.error(e)
-      setErr(String(e?.message || e))
-    } finally {
-      setLogando(false)
-    }
+  async function sair() {
+    await signOut(auth)
+    localStorage.clear()
+    location.reload()
   }
 
   if (loading) return null
 
+  // 🔥 BOAS-VINDAS
   if (!viuBoasVindas) {
     return <TelaBoasVindas onEntrar={entrarBoasVindas} />
   }
 
+  // 🔥 LOGIN
   if (!uid) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-black via-slate-900 to-blue-950">
-        <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
-          <h1 className="text-2xl font-bold text-white">Corre Aqui</h1>
-          <p className="text-sm text-gray-300 mt-1">
-            Entre com seu nome para continuar
-          </p>
+      <div className="min-h-screen flex items-center justify-center bg-black text-white">
+        <div className="w-full max-w-sm p-6">
+
+          <h1 className="text-2xl font-bold mb-4">Entrar</h1>
 
           <input
-            className="mt-4 w-full px-3 py-2 border border-white/10 rounded-xl bg-white/10 text-white placeholder:text-gray-400 outline-none"
             placeholder="Seu nome"
             value={nome}
             onChange={(e) => setNome(e.target.value)}
+            className="w-full px-3 py-2 mb-3 rounded bg-white/10"
           />
 
-          {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
+          <button
+            onClick={loginAnonimo}
+            className="w-full py-2 bg-blue-600 rounded mb-3"
+          >
+            Entrar com nome
+          </button>
 
           <button
-            className="mt-4 w-full py-3 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-60"
-            onClick={entrar}
-            disabled={logando}
-            type="button"
+            onClick={loginGoogle}
+            className="w-full py-2 bg-white text-black rounded"
           >
-            {logando ? 'Entrando...' : 'Entrar'}
+            Entrar com Google
           </button>
+
         </div>
       </div>
     )
   }
 
-  const nomeOk = (() => {
-    try {
-      return !!(localStorage.getItem('meuNome') || '').trim()
-    } catch {
-      return false
-    }
-  })()
+  // 🔥 APP
+  return (
+    <>
+      <button
+        onClick={sair}
+        className="fixed top-4 right-4 bg-red-600 text-white px-3 py-1 rounded"
+      >
+        Sair
+      </button>
 
-  if (!nomeOk) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-black via-slate-900 to-blue-950">
-        <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl">
-          <h2 className="text-xl font-bold text-white">Qual seu nome?</h2>
-
-          <input
-            className="mt-4 w-full px-3 py-2 border border-white/10 rounded-xl bg-white/10 text-white placeholder:text-gray-400 outline-none"
-            placeholder="Seu nome"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-          />
-
-          {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
-
-          <button
-            className="mt-4 w-full py-3 rounded-xl bg-blue-600 text-white font-semibold"
-            onClick={() => {
-              const n = nome.trim()
-              if (!n) return setErr('Digite seu nome')
-              localStorage.setItem('meuNome', n)
-              setErr('')
-            }}
-            type="button"
-          >
-            Salvar
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return <>{children}</>
+      {children}
+    </>
+  )
 }
