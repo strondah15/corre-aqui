@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { auth } from '@/lib/firebase'
+import { auth, database } from '@/lib/firebase'
 import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
   signOut
 } from 'firebase/auth'
+
+import { ref, set, get } from 'firebase/database'
 
 import TelaBoasVindas from './TelaBoasVindas'
 
@@ -16,16 +18,37 @@ export default function LoginGate({ children }) {
   const [loading, setLoading] = useState(true)
   const [viuBoasVindas, setViuBoasVindas] = useState(false)
 
+  // 🔥 SALVAR USUÁRIO NO BANCO
+  async function salvarUsuario(user) {
+    try {
+      const userRef = ref(database, `users/${user.uid}`)
+      const snap = await get(userRef)
+
+      if (!snap.exists()) {
+        await set(userRef, {
+          nome: user.displayName || '',
+          email: user.email || '',
+          foto: user.photoURL || '',
+          criadoEm: Date.now(),
+        })
+      }
+    } catch (err) {
+      console.error('Erro ao salvar usuário:', err)
+    }
+  }
+
   useEffect(() => {
     const viu = localStorage.getItem('viuBoasVindas')
     if (viu === 'true') setViuBoasVindas(true)
 
-    const off = onAuthStateChanged(auth, (user) => {
+    const off = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUid(user.uid)
 
         localStorage.setItem('meuNome', user.displayName || '')
         localStorage.setItem('meuId', user.uid)
+
+        await salvarUsuario(user) // 🔥 salva no banco
       } else {
         setUid(null)
       }
@@ -51,6 +74,8 @@ export default function LoginGate({ children }) {
       localStorage.setItem('meuNome', user.displayName || '')
       localStorage.setItem('meuId', user.uid)
 
+      await salvarUsuario(user) // 🔥 salva aqui também
+
       setUid(user.uid)
     } catch (error) {
       console.error(error)
@@ -71,17 +96,17 @@ export default function LoginGate({ children }) {
     return <TelaBoasVindas onEntrar={entrarBoasVindas} />
   }
 
-  // 🔐 LOGIN OBRIGATÓRIO
+  // 🔐 LOGIN
   if (!uid) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black text-white">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black via-slate-900 to-blue-950 text-white">
         <div className="w-full max-w-sm p-6 text-center">
 
           <h1 className="text-2xl font-bold mb-6">Entrar</h1>
 
           <button
             onClick={loginGoogle}
-            className="w-full py-3 bg-white text-black rounded-xl font-semibold"
+            className="w-full py-3 bg-white text-black rounded-xl font-semibold hover:scale-105 transition"
           >
             Entrar com Google
           </button>
