@@ -2,9 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { ref, onValue, update, serverTimestamp } from 'firebase/database'
-import { database } from '@/lib/firebase'
-import { ref, update } from 'firebase/database'
-import { database } from '@/lib/firebase'
 import { CATEGORIES } from '@/constants/categories'
 import PlanosCorreAqui from '@/components/PlanosCorreAqui'
 
