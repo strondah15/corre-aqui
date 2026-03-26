@@ -9,8 +9,8 @@ import { ref, onValue, update, onDisconnect } from 'firebase/database'
 
 export default function Mapadinamico() {
   const [usuarios, setUsuarios] = useState([])
+  const [busca, setBusca] = useState('')
 
-  // 🔥 Atualiza localização
   function atualizarLocalizacao(pos) {
     const uid = localStorage.getItem('meuId')
     if (!uid) return
@@ -23,7 +23,6 @@ export default function Mapadinamico() {
     })
   }
 
-  // 🔥 GPS realtime
   useEffect(() => {
     const watch = navigator.geolocation.watchPosition(
       atualizarLocalizacao,
@@ -34,7 +33,6 @@ export default function Mapadinamico() {
     return () => navigator.geolocation.clearWatch(watch)
   }, [])
 
-  // 🔥 Offline automático
   useEffect(() => {
     const uid = localStorage.getItem('meuId')
     if (!uid) return
@@ -46,7 +44,6 @@ export default function Mapadinamico() {
     })
   }, [])
 
-  // 🔥 Buscar usuários
   useEffect(() => {
     const usersRef = ref(database, 'users')
 
@@ -63,7 +60,6 @@ export default function Mapadinamico() {
     return () => off()
   }, [])
 
-  // 🔥 Icone PRO
   function criarIcon(u) {
     return L.divIcon({
       className: '',
@@ -94,19 +90,45 @@ export default function Mapadinamico() {
     })
   }
 
-  return (
-    <MapContainer center={[-23.55, -46.63]} zoom={13} style={{ height: '100vh' }}>
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+  const usuariosFiltrados = usuarios.filter(u =>
+    (u.nome || '').toLowerCase().includes(busca.toLowerCase())
+  )
 
-      {usuarios.map((u) => (
-        <Marker
-          key={u.id}
-          position={[u.latitude, u.longitude]}
-          icon={criarIcon(u)}
+  return (
+    <div style={{ position: 'relative' }}>
+
+      <div style={{
+        position: 'absolute',
+        top: 20,
+        left: 20,
+        zIndex: 999,
+        width: 250
+      }}>
+        <input
+          type="text"
+          placeholder="Buscar usuário..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '10px',
+            borderRadius: '10px',
+            border: 'none'
+          }}
         />
-      ))}
-    </MapContainer>
+      </div>
+
+      <MapContainer center={[-23.55, -46.63]} zoom={13} style={{ height: '100vh' }}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+
+        {usuariosFiltrados.map((u) => (
+          <Marker
+            key={u.id}
+            position={[u.latitude, u.longitude]}
+            icon={criarIcon(u)}
+          />
+        ))}
+      </MapContainer>
+    </div>
   )
 }
