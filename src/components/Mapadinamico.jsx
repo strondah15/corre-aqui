@@ -24,6 +24,8 @@ export default function Mapadinamico() {
   }
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+
     const watch = navigator.geolocation.watchPosition(
       atualizarLocalizacao,
       (err) => console.log(err),
@@ -118,7 +120,11 @@ export default function Mapadinamico() {
         />
       </div>
 
-      <MapContainer center={[-23.55, -46.63]} zoom={13} style={{ height: '100vh' }}>
+      <MapContainer
+        center={[-23.55, -46.63]}
+        zoom={13}
+        style={{ height: '100vh' }}
+      >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
         {usuariosFiltrados.map((u) => (
