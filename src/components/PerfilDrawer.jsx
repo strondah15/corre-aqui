@@ -34,6 +34,8 @@ const safeUrl = (u) => {
 }
 
 export default function PerfilDrawer({ open, onClose, uid }) {
+  if (!uid) return null
+
   const [tab, setTab] = useState('perfil') // perfil | config | profissional | monetizacao
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -42,6 +44,8 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   const toastTimer = useRef(null)
 
   const [profile, setProfile] = useState({
+    // 🔥 SAFE DEFAULT
+
     nome: '',
     bio: '',
     cidade: '',
@@ -212,9 +216,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     if (!uid || !userBasePath) return showToast({ type: 'err', text: 'Sem usuário logado.' })
     setSaving(true)
     try {
-      const nomeClean = safeStr(profile.nome) || 'Anônimo'
-      const fotoClean = safeUrl(profile.fotoURL)
-      const emojiClean = safeStr(profile.avatarEmoji).slice(0, 8) // evita string gigante
+      const nomeClean = safeStr(profile?.nome || '') || 'Anônimo'
+      const fotoClean = safeUrl(profile?.fotoURL || '')
+      const emojiClean = safeStr(profile?.avatarEmoji || '').slice(0, 8) // evita string gigante
 
       const patch = {
         ...profile,
@@ -330,8 +334,8 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
   if (!open) return null
 
-  const previewEmoji = safeStr(profile.avatarEmoji)
-  const previewFoto = safeStr(profile.fotoURL)
+  const previewEmoji = safeStr(profile?.avatarEmoji || '')
+  const previewFoto = safeStr(profile?.fotoURL || '')
 
   const glass = 'bg-white/10 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/40'
 
@@ -421,28 +425,28 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
                   <Field
                     label="Nome"
-                    value={profile.nome}
+                    value={profile?.nome || ''}
                     onChange={(v) => setProfile((p) => ({ ...p, nome: v }))}
                     placeholder="Ex: Robson"
                   />
 
                   <Field
                     label="Cidade"
-                    value={profile.cidade}
+                    value={profile?.cidade || ''}
                     onChange={(v) => setProfile((p) => ({ ...p, cidade: v }))}
                     placeholder="Ex: São Paulo"
                   />
 
                   <Field
                     label="Foto URL"
-                    value={profile.fotoURL}
+                    value={profile?.fotoURL || ''}
                     onChange={(v) => setProfile((p) => ({ ...p, fotoURL: v }))}
                     placeholder="https://..."
                   />
 
                   <Field
                     label="Avatar Emoji (opcional)"
-                    value={profile.avatarEmoji}
+                    value={profile?.avatarEmoji || ''}
                     onChange={(v) => setProfile((p) => ({ ...p, avatarEmoji: v }))}
                     placeholder="Ex: 😎"
                   />
