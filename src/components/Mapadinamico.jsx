@@ -355,6 +355,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [corres, setCorres] = useState([])
   const [filtro, setFiltro] = useState('abertos')
   const [busca, setBusca] = useState('')
+  const [buscaUsuarioMapa, setBuscaUsuarioMapa] = useState('')
   const [mapItem, setMapItem] = useState(null)
 
   // ✅ menu some quando mapa abre (MapinhaModal ou Ao Vivo)
@@ -398,6 +399,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     setChatPedido(null)
     setMapItem(null)
     setOpenMapaAoVivo(false)
+    setBuscaUsuarioMapa('')
 
     if (typeof onBackToMode === 'function') {
       onBackToMode()
@@ -520,6 +522,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         nome: meuNome || 'Anônimo',
         online: true,
         local: local || null,
+        latitude: local?.lat ?? null,
+        longitude: local?.lng ?? null,
         lastSeen: Date.now(),
         updatedAt: serverTimestamp(),
         ...getAvatarPatch(),
@@ -554,9 +558,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       } catch {}
     })
 
-    const heartbeat = setInterval(() => {
+    const heartbeat = setInterval(async () => {
+      const local = await getMyLocation()
       update(userRef, {
         online: true,
+        local: local || null,
+        latitude: local?.lat ?? null,
+        longitude: local?.lng ?? null,
         lastSeen: Date.now(),
         updatedAt: serverTimestamp(),
         ...getAvatarPatch(),
@@ -683,6 +691,17 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       .filter((u) => u?.online === true && now - Number(u?.lastSeen || 0) <= ONLINE_TTL_MS)
       .sort((a, b) => Number(b?.lastSeen || 0) - Number(a?.lastSeen || 0))
   }, [usersObj])
+
+  const onlineUsersFiltrados = useMemo(() => {
+    const t = buscaUsuarioMapa.trim().toLowerCase()
+    if (!t) return onlineUsers
+    return onlineUsers.filter((u) => {
+      const nome = String(u?.nome || '').toLowerCase()
+      const cidade = String(u?.cidade || '').toLowerCase()
+      return nome.includes(t) || cidade.includes(t)
+    })
+  }, [onlineUsers, buscaUsuarioMapa])
+
 
   const meuUserNode = useMemo(() => {
     if (!meuId) return null
@@ -1582,21 +1601,35 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
         {/* MAPA AO VIVO */}
         {openMapaAoVivo && (
-          <MapinhaModal
-            open={openMapaAoVivo}
-            onClose={() => setOpenMapaAoVivo(false)}
-            pedidoLocal={null}
-            aceiteLocal={null}
-            titulo="Mapa ao vivo"
-            infoExtra={{
-              status: 'online',
-              criador: meuNome || 'Anônimo',
-              aceitador: null,
-            }}
-            onlineUsers={onlineUsers}
-            limitOnlineMarkers={30}
-            myUid={meuId}
-          />
+          <>
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[min(92vw,420px)] px-3">
+              <input
+                value={buscaUsuarioMapa}
+                onChange={(e) => setBuscaUsuarioMapa(e.target.value)}
+                placeholder="🔍 Buscar usuário online por nome ou cidade"
+                className="w-full px-4 py-3 rounded-2xl bg-[#0b1220]/95 border border-white/10 text-white placeholder:text-white/40 shadow-2xl backdrop-blur"
+              />
+            </div>
+
+            <MapinhaModal
+              open={openMapaAoVivo}
+              onClose={() => {
+                setOpenMapaAoVivo(false)
+                setBuscaUsuarioMapa('')
+              }}
+              pedidoLocal={null}
+              aceiteLocal={null}
+              titulo="Mapa ao vivo"
+              infoExtra={{
+                status: 'online',
+                criador: meuNome || 'Anônimo',
+                aceitador: null,
+              }}
+              onlineUsers={onlineUsersFiltrados}
+              limitOnlineMarkers={30}
+              myUid={meuId}
+            />
+          </>
         )}
 
         {/* CHAT MODAL NO MODO CLIENTE */}
@@ -1694,12 +1727,3 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     </div>
   )
 }
-
-// ====== UPDATE: SUPORTE DATA/HORA NOS DADOS ======
-function agoraTimestamp(){
-  return Date.now();
-}
-
-// exemplo ao criar algo:
-// timestamp: agoraTimestamp()
-
