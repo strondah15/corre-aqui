@@ -39,8 +39,6 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   if (!open) return null
   if (!uid) return null
 
-  if (!uid) return null
-
   const [tab, setTab] = useState('perfil') // perfil | config | profissional | monetizacao
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -346,7 +344,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
   return (
     <div className="fixed inset-0 z-[9999]">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}  />}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}  />
 
       <div
         className={[
@@ -400,7 +398,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
         <div className="mt-4 flex-1 overflow-auto pr-1">
           {loading ? (
-            <Skeleton  />}
+            <Skeleton  />
           ) : (
             <>
               {/* PERFIL */}
@@ -416,7 +414,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                           onError={(e) => {
                             e.currentTarget.style.display = 'none'
                           }}
-                         />}
+                         />
                       ) : (
                         <span className="text-2xl">{previewEmoji || '🙂'}</span>
                       )}
@@ -433,35 +431,35 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     value={profile?.nome || ''}
                     onChange={(v) => setProfile((p) => ({ ...p, nome: v }))}
                     placeholder="Ex: Robson"
-                   />}
+                   />
 
                   <Field
                     label="Cidade"
                     value={profile?.cidade || ''}
                     onChange={(v) => setProfile((p) => ({ ...p, cidade: v }))}
                     placeholder="Ex: São Paulo"
-                   />}
+                   />
 
                   <Field
                     label="Foto URL"
                     value={profile?.fotoURL || ''}
                     onChange={(v) => setProfile((p) => ({ ...p, fotoURL: v }))}
                     placeholder="https://..."
-                   />}
+                   />
 
                   <Field
                     label="Avatar Emoji (opcional)"
                     value={profile?.avatarEmoji || ''}
                     onChange={(v) => setProfile((p) => ({ ...p, avatarEmoji: v }))}
                     placeholder="Ex: 😎"
-                   />}
+                   />
 
                   <Textarea
                     label="Bio"
                     value={(profile?.bio || '')}
                     onChange={(v) => setProfile((p) => ({ ...p, bio: v }))}
                     placeholder="Fala sobre você em 1-2 linhas…"
-                   />}
+                   />
 
                   <button
                     onClick={salvarPerfil}
@@ -482,14 +480,14 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     desc="Se desligar, você não aparece como online."
                     checked={!!settings.visivelNoMapa}
                     onChange={(v) => setSettings((s) => ({ ...s, visivelNoMapa: v }))}
-                   />}
+                   />
 
                   <Toggle
                     label="Notificações"
                     desc="Ativa avisos de mensagens e missões."
                     checked={!!settings.notificacoes}
                     onChange={(v) => setSettings((s) => ({ ...s, notificacoes: v }))}
-                   />}
+                   />
 
                   <Field
                     label="Raio (km)"
@@ -497,7 +495,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     value={String(settings.raioKm ?? 3)}
                     onChange={(v) => setSettings((s) => ({ ...s, raioKm: v }))}
                     placeholder="3"
-                   />}
+                   />
 
 
                   {/* ✅ Modo do app */}
@@ -555,7 +553,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                             mapa: { ...(s.mapa || {}), mostrarOnline: v },
                           }))
                         }
-                       />}
+                       />
 
                       <Toggle
                         label="Ao vivo (modo forte)"
@@ -567,7 +565,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                             mapa: { ...(s.mapa || {}), aoVivo: v },
                           }))
                         }
-                       />}
+                       />
 
                       {/* ✅ melhor: slider + valor */}
                       <div className="rounded-2xl px-3 py-3 bg-white/5 border border-white/10">
@@ -593,7 +591,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                             }))
                           }
                           className="mt-2 w-full"
-                         />}
+                         />
                       </div>
                     </div>
                   </div>
@@ -617,7 +615,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     desc='Se ligar, você aparece na busca de "Corre" disponível.'
                     checked={!!prof.isCorre}
                     onChange={(v) => setProf((p) => ({ ...p, isCorre: v }))}
-                   />}
+                   />
 
 
                   <Toggle
@@ -625,35 +623,35 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     desc="Se ligar, você aparece como profissional (por categoria)."
                     checked={!!prof.isProfissional}
                     onChange={(v) => setProf((p) => ({ ...p, isProfissional: v }))}
-                   />}
+                   />
 
                   <Textarea
                     label="Resumo do serviço"
                     value={prof.profResumo}
                     onChange={(v) => setProf((p) => ({ ...p, profResumo: v }))}
                     placeholder="Ex: Faço elétrica, tomadas, chuveiro, manutenção..."
-                   />}
+                   />
 
                   <Field
                     label="WhatsApp (opcional)"
                     value={prof.profWhats}
                     onChange={(v) => setProf((p) => ({ ...p, profWhats: v }))}
                     placeholder="Ex: 11999999999"
-                   />}
+                   />
 
                   <Field
                     label="Preço base (opcional)"
                     value={prof.profPrecoBase}
                     onChange={(v) => setProf((p) => ({ ...p, profPrecoBase: v }))}
                     placeholder="Ex: 50"
-                   />}
+                   />
 
                   <Field
                     label="Cidade que atende (opcional)"
                     value={prof.profCidadeAtende}
                     onChange={(v) => setProf((p) => ({ ...p, profCidadeAtende: v }))}
                     placeholder="Ex: São Paulo - Zona Sul"
-                   />}
+                   />
 
                   <div className="rounded-2xl p-3 bg-white/5 border border-white/10">
                     <div className="text-sm font-semibold text-gray-100">Categorias que você atende</div>
@@ -702,9 +700,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
               {/* MONETIZAÇÃO */}
               {tab === 'monetizacao' && (
-                {tab==='monetizacao' && <PlanosCorreAqui  />}
+                {tab==='monetizacao' && <PlanosCorreAqui  />
               )}
-            < />}
+            < />
           )}
         </div>
 
@@ -762,7 +760,7 @@ function Field({ label, value, onChange, type = 'text', placeholder }) {
         value={value ?? ''}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-       />}
+       />
     </div>
   )
 }
@@ -776,7 +774,7 @@ function Textarea({ label, value, onChange, placeholder }) {
         value={value ?? ''}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-       />}
+       />
     </div>
   )
 }
@@ -804,7 +802,7 @@ function Toggle({ label, desc, checked, onChange }) {
             'absolute top-1 w-5 h-5 rounded-full bg-white transition-all',
             checked ? 'left-6' : 'left-1',
           ].join(' ')}
-         />}
+         />
       </button>
     </div>
   )
@@ -813,10 +811,10 @@ function Toggle({ label, desc, checked, onChange }) {
 function Skeleton() {
   return (
     <div className="space-y-3">
-      <div className="h-10 rounded-2xl bg-white/10 border border-white/10 animate-pulse"  />}
-      <div className="h-10 rounded-2xl bg-white/10 border border-white/10 animate-pulse"  />}
-      <div className="h-24 rounded-2xl bg-white/10 border border-white/10 animate-pulse"  />}
-      <div className="h-10 rounded-2xl bg-white/10 border border-white/10 animate-pulse"  />}
+      <div className="h-10 rounded-2xl bg-white/10 border border-white/10 animate-pulse"  />
+      <div className="h-10 rounded-2xl bg-white/10 border border-white/10 animate-pulse"  />
+      <div className="h-24 rounded-2xl bg-white/10 border border-white/10 animate-pulse"  />
+      <div className="h-10 rounded-2xl bg-white/10 border border-white/10 animate-pulse"  />
     </div>
   )
 }
