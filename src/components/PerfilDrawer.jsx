@@ -23,7 +23,10 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     bio: '',
     visivel: true,
     notificacoes: true,
+
     isProfissional: false,
+    titulo: '',
+    descricao: '',
     whatsapp: '',
     preco: ''
   })
@@ -47,6 +50,18 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       ...profile,
       atualizadoEm: serverTimestamp()
     })
+
+    await update(ref(database, `${userBasePath}`), {
+      nome: profile.nome,
+      fotoURL: profile.fotoURL || null,
+      cidade: profile.cidade || '',
+      profissional: profile.isProfissional ? {
+        titulo: profile.titulo,
+        descricao: profile.descricao,
+        preco: profile.preco,
+        whatsapp: profile.whatsapp
+      } : null
+    })
   }
 
   return (
@@ -54,7 +69,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
-      <div className="absolute right-0 top-0 h-full w-[400px] bg-[#0b1220] text-white p-4 overflow-y-auto">
+      <div className="absolute right-0 top-0 h-full w-[420px] bg-[#0b1220] text-white p-4 overflow-y-auto">
 
         <h2 className="text-xl font-bold mb-4">Perfil</h2>
 
@@ -77,7 +92,6 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             <input value={profile.fotoURL} onChange={(e)=>setProfile(p=>({...p,fotoURL:e.target.value}))} placeholder="Foto URL" className="w-full mb-2 p-2 rounded bg-white/10" />
             <input value={profile.avatarEmoji} onChange={(e)=>setProfile(p=>({...p,avatarEmoji:e.target.value}))} placeholder="Emoji 😎" className="w-full mb-2 p-2 rounded bg-white/10" />
             <textarea value={profile.bio} onChange={(e)=>setProfile(p=>({...p,bio:e.target.value}))} placeholder="Bio" className="w-full mb-2 p-2 rounded bg-white/10" />
-            <button onClick={salvar} className="w-full bg-blue-600 py-2 rounded mt-2">Salvar</button>
           </>
         )}
 
@@ -98,19 +112,28 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         {tab === 'profissional' && (
           <>
             <label className="flex justify-between mb-3">
-              <span>Sou profissional</span>
+              <span>Modo profissional</span>
               <input type="checkbox" checked={profile.isProfissional} onChange={(e)=>setProfile(p=>({...p,isProfissional:e.target.checked}))} />
             </label>
 
-            <input value={profile.whatsapp} onChange={(e)=>setProfile(p=>({...p,whatsapp:e.target.value}))} placeholder="WhatsApp" className="w-full mb-2 p-2 rounded bg-white/10" />
-
-            <input value={profile.preco} onChange={(e)=>setProfile(p=>({...p,preco:e.target.value}))} placeholder="Preço base" className="w-full mb-2 p-2 rounded bg-white/10" />
+            {profile.isProfissional && (
+              <div className="space-y-2">
+                <input value={profile.titulo} onChange={(e)=>setProfile(p=>({...p,titulo:e.target.value}))} placeholder="Título (Ex: Eletricista)" className="w-full p-2 rounded bg-white/10" />
+                <textarea value={profile.descricao} onChange={(e)=>setProfile(p=>({...p,descricao:e.target.value}))} placeholder="Descrição profissional" className="w-full p-2 rounded bg-white/10" />
+                <input value={profile.whatsapp} onChange={(e)=>setProfile(p=>({...p,whatsapp:e.target.value}))} placeholder="WhatsApp" className="w-full p-2 rounded bg-white/10" />
+                <input value={profile.preco} onChange={(e)=>setProfile(p=>({...p,preco:e.target.value}))} placeholder="Preço base" className="w-full p-2 rounded bg-white/10" />
+              </div>
+            )}
           </>
         )}
 
         {tab === 'monetizacao' && (
           <PlanosCorreAqui />
         )}
+
+        <button onClick={salvar} className="w-full bg-green-600 py-3 rounded mt-4 font-semibold">
+          Salvar tudo
+        </button>
 
       </div>
     </div>
