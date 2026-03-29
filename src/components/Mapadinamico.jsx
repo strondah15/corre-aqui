@@ -1153,7 +1153,10 @@ const [tab, setTab] = useState('corre') // corre | inbox
                 />
               </div>
             )}
-          </>
+          {usuarioSelecionado && (
+<PerfilPublico user={usuarioSelecionado} onClose={() => setUsuarioSelecionado(null)} />
+)}
+</>
         )}
 
         {/* CLIENTE */}
@@ -1399,7 +1402,10 @@ const [tab, setTab] = useState('corre') // corre | inbox
                         <>
                           {' '}
                           · Valor: <b className="text-gray-200">R$ {Number(p.valor).toFixed(2)}</b>
-                        </>
+                        {usuarioSelecionado && (
+<PerfilPublico user={usuarioSelecionado} onClose={() => setUsuarioSelecionado(null)} />
+)}
+</>
                       ) : null}
                     </div>
 
@@ -1524,7 +1530,10 @@ const [tab, setTab] = useState('corre') // corre | inbox
                           >
                             ⚡ Insano
                           </button>
-                        </>
+                        {usuarioSelecionado && (
+<PerfilPublico user={usuarioSelecionado} onClose={() => setUsuarioSelecionado(null)} />
+)}
+</>
                       )}
 
                       {souCriador(p) && (
@@ -1540,7 +1549,10 @@ const [tab, setTab] = useState('corre') // corre | inbox
                           >
                             {excluindoId === p.id ? 'Excluindo…' : 'Excluir'}
                           </button>
-                        </>
+                        {usuarioSelecionado && (
+<PerfilPublico user={usuarioSelecionado} onClose={() => setUsuarioSelecionado(null)} />
+)}
+</>
                       )}
 
                       {status !== 'aberto' && !aceitoPorMim && temAceitador && (
@@ -1576,7 +1588,10 @@ const [tab, setTab] = useState('corre') // corre | inbox
                 )
               })}
             </div>
-          </>
+          {usuarioSelecionado && (
+<PerfilPublico user={usuarioSelecionado} onClose={() => setUsuarioSelecionado(null)} />
+)}
+</>
         )}
 
         {/* MODAL IA */}
@@ -1631,7 +1646,10 @@ const [tab, setTab] = useState('corre') // corre | inbox
               limitOnlineMarkers={30}
               myUid={meuId}
             />
-          </>
+          {usuarioSelecionado && (
+<PerfilPublico user={usuarioSelecionado} onClose={() => setUsuarioSelecionado(null)} />
+)}
+</>
         )}
 
         {/* CHAT MODAL NO MODO CLIENTE */}
@@ -1729,7 +1747,3 @@ const [tab, setTab] = useState('corre') // corre | inbox
     </div>
   )
 }
-
-{usuarioSelecionado && (
-  <PerfilPublico user={usuarioSelecionado} onClose={() => setUsuarioSelecionado(null)} />
-)}
