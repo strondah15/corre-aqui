@@ -233,7 +233,8 @@ function FitAndInvalidate({ open, start, dest, sheetHeight }) {
  * - mapSettings: { mostrarOnline, aoVivo, limiteOnline }
  * - myUid: uid do usuário atual (pra esconder ele da lista online)
  */
-export default function MapinhaModal({ onClickUser,
+export default function MapinhaModal({
+  onClickUser,
   open,
   onClose,
   pedidoLocal,
@@ -691,7 +692,12 @@ export default function MapinhaModal({ onClickUser,
                 : greenIcon
 
             return (
-              <Marker eventHandlers={{ click: () => onClickUser?.(m) }} key={`on_${m.id}`} position={[m.lat, m.lng]} icon={icon}>
+              <Marker
+                key={`on_${m.id}`}
+                position={[m.lat, m.lng]}
+                icon={icon}
+                eventHandlers={{ click: () => onClickUser?.(m) }}
+              >
                 <Popup>
                   <div className="text-sm">
                     <b>🟢 {m.nome}</b>
@@ -708,7 +714,21 @@ export default function MapinhaModal({ onClickUser,
 
           {/* VOCÊ */}
           {start && (
-            <Marker position={start} icon={getNeonDotIcon('me')}>
+            <Marker
+              position={start}
+              icon={getNeonDotIcon('me')}
+              eventHandlers={{
+                click: () =>
+                  onClickUser?.({
+                    id: myUid,
+                    nome: 'Você',
+                    cidade: '',
+                    fotoURL: '',
+                    avatarEmoji: '🧭',
+                    profissional: null,
+                  })
+              }}
+            >
               <Popup>
                 <div className="text-sm">
                   <b>Você</b>
@@ -719,7 +739,21 @@ export default function MapinhaModal({ onClickUser,
 
           {/* DESTINO */}
           {dest && (
-            <Marker position={dest} icon={getNeonDotIcon('dest')}>
+            <Marker
+              position={dest}
+              icon={getNeonDotIcon('dest')}
+              eventHandlers={{
+                click: () =>
+                  onClickUser?.({
+                    id: 'destino',
+                    nome: 'Destino',
+                    cidade: '',
+                    fotoURL: '',
+                    avatarEmoji: '🎯',
+                    profissional: null,
+                  })
+              }}
+            >
               <Popup>
                 <div className="text-sm">
                   <b>Destino (pedido)</b>
