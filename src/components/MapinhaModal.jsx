@@ -708,7 +708,7 @@ export default function MapinhaModal({ onClickUser,
 
           {/* VOCÊ */}
           {start && (
-            <Marker eventHandlers={{ click: () => onClickUser?.(m) }} position={start} icon={getNeonDotIcon('me')}>
+            <Marker position={start} icon={getNeonDotIcon('me')}>
               <Popup>
                 <div className="text-sm">
                   <b>Você</b>
@@ -719,7 +719,7 @@ export default function MapinhaModal({ onClickUser,
 
           {/* DESTINO */}
           {dest && (
-            <Marker eventHandlers={{ click: () => onClickUser?.(m) }} position={dest} icon={getNeonDotIcon('dest')}>
+            <Marker position={dest} icon={getNeonDotIcon('dest')}>
               <Popup>
                 <div className="text-sm">
                   <b>Destino (pedido)</b>
