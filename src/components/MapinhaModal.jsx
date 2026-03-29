@@ -233,7 +233,7 @@ function FitAndInvalidate({ open, start, dest, sheetHeight }) {
  * - mapSettings: { mostrarOnline, aoVivo, limiteOnline }
  * - myUid: uid do usuário atual (pra esconder ele da lista online)
  */
-export default function MapinhaModal({
+export default function MapinhaModal({ onClickUser, {
   open,
   onClose,
   pedidoLocal,
@@ -691,7 +691,7 @@ export default function MapinhaModal({
                 : greenIcon
 
             return (
-              <Marker key={`on_${m.id}`} position={[m.lat, m.lng]} icon={icon}>
+              <Marker key={`on_${m.id}`} position={[m.lat, m.lng]} icon={icon} eventHandlers={{ click: () => onClickUser?.(u) }}>
                 <Popup>
                   <div className="text-sm">
                     <b>🟢 {m.nome}</b>
@@ -708,7 +708,7 @@ export default function MapinhaModal({
 
           {/* VOCÊ */}
           {start && (
-            <Marker position={start} icon={getNeonDotIcon('me')}>
+            <Marker position={start} icon={getNeonDotIcon('me')} eventHandlers={{ click: () => onClickUser?.(u) }}>
               <Popup>
                 <div className="text-sm">
                   <b>Você</b>
@@ -719,7 +719,7 @@ export default function MapinhaModal({
 
           {/* DESTINO */}
           {dest && (
-            <Marker position={dest} icon={getNeonDotIcon('dest')}>
+            <Marker position={dest} icon={getNeonDotIcon('dest')} eventHandlers={{ click: () => onClickUser?.(u) }}>
               <Popup>
                 <div className="text-sm">
                   <b>Destino (pedido)</b>
