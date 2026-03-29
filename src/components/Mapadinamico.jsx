@@ -1,3 +1,4 @@
+import PerfilPublico from '@/components/PerfilPublico'
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -341,7 +342,8 @@ function BadgeModo({ modo }) {
 }
 
 export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {}) {
-  const [tab, setTab] = useState('corre') // corre | inbox
+  const [usuarioSelecionado, setUsuarioSelecionado] = useState(null)
+const [tab, setTab] = useState('corre') // corre | inbox
 
   const [modoApp, setModoApp] = useState(initialMode === 'cliente' || initialMode === 'corre' ? initialMode : 'corre') // cliente | corre
   const [openPerfil, setOpenPerfil] = useState(false)
@@ -1727,3 +1729,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     </div>
   )
 }
+
+{usuarioSelecionado && (
+  <PerfilPublico user={usuarioSelecionado} onClose={() => setUsuarioSelecionado(null)} />
+)}
