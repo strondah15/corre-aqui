@@ -30,6 +30,7 @@ import BottomBar from '@/components/BottomBar'
 import Patente from '@/components/Patente'
 
 import ClienteHome from '@/components/ClienteHome'
+import PerfilPublico from '@/components/PerfilPublico'
 
 // ✅ CATEGORIAS
 import { CATEGORIES } from '@/constants/categories'
@@ -377,6 +378,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const ONLINE_TTL_MS = 45_000
 
   const [toast, setToast] = useState(null)
+  const [usuarioSelecionado, setUsuarioSelecionado] = useState(null)
   const showToast = useCallback((t) => setToast({ ms: 2800, ...t }), [])
 
   const [loadingPedidos, setLoadingPedidos] = useState(true)
@@ -702,6 +704,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
   }, [onlineUsers, buscaUsuarioMapa])
 
+
+  const onlineUsersParaPerfil = useMemo(() => {
+    return (onlineUsers || []).filter((u) => {
+      if (!u) return false
+      const prof = u?.profissional || null
+      return !!(u?.nome || prof?.titulo || prof?.descricao)
+    })
+  }, [onlineUsers])
 
   const meuUserNode = useMemo(() => {
     if (!meuId) return null
@@ -1593,9 +1603,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               criador: mapItem?.criador?.nome || 'Anônimo',
               aceitador: mapItem?.aceite?.nome || null,
             }}
-            onlineUsers={onlineUsers}
+            onlineUsers={onlineUsersParaPerfil}
             limitOnlineMarkers={30}
             myUid={meuId}
+            onClickUser={(u) => setUsuarioSelecionado(u)}
           />
         )}
 
@@ -1727,3 +1738,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     </div>
   )
 }
+
+/*
+Se o perfil público não abrir ao clicar no usuário online no mapa,
+o próximo arquivo para ajustar é src/components/MapinhaModal.jsx.
+Nos markers de onlineUsers, use:
+eventHandlers={{ click: () => onClickUser?.(u) }}
+*/
