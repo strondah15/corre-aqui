@@ -3,90 +3,115 @@
 import React from 'react'
 
 /**
- * BottomBar (Pirâmide)
- * - modoApp: 'cliente' | 'corre'
- * - active: id da aba
- * - onTab: callback(id)
- * - unreadCount: número de não lidas
- * - hidden: esconde quando o mapa/modal estiver aberto (não ficar na frente)
+ * BottomBar do Corre/Profissional
+ * - Esse menu é usado somente no modo corre/profissional.
+ * - Sem botão de mapa: o mapa ao vivo já fica no topo.
+ * - Ação principal: Disponível / Indisponível.
  */
-export default function BottomBar({ active, onTab, unreadCount = 0, hidden = false, modoApp = 'cliente' }) {
+export default function BottomBar({
+  active,
+  onTab,
+  unreadCount = 0,
+  hidden = false,
+  modoApp = 'corre',
+  disponivel = true,
+}) {
   if (hidden) return null
+  if (modoApp !== 'corre') return null
 
-  const isCliente = modoApp === 'cliente'
+  const itemBase =
+    'h-[58px] rounded-[24px] border flex items-center justify-center gap-2 transition active:scale-[0.98] backdrop-blur-xl shadow-[0_16px_45px_rgba(0,0,0,0.22)]'
 
-  const leftTop = isCliente
-    ? { id: 'cliente', label: 'Pedir', icon: '🧭' }
-    : { id: 'corre', label: 'Trabalhos', icon: '🎯' }
+  const itemInactive =
+    'bg-slate-900/78 text-white border-white/10 hover:bg-slate-800/90'
 
-  const leftBottom = { id: 'inbox', label: 'Inbox', icon: '💬' }
-  const rightTop = { id: 'aovivo', label: 'Mapa', icon: '🗺️' }
-  const rightBottom = { id: 'perfil', label: 'Perfil', icon: '👤' }
+  const itemActive =
+    'bg-white text-slate-950 border-white'
 
-  const center = isCliente
-    ? { id: 'criar', label: 'Criar', icon: '➕' }
-    : { id: 'criar', label: 'Disponível', icon: '🟢' }
-
-  const btn = (item, extra = '') => {
+  const smallBtn = (item, extra = '') => {
     const isActive = active === item.id
+
     return (
       <button
         type="button"
         onClick={() => onTab?.(item.id)}
         className={[
-          'w-[92px] h-[54px] rounded-2xl border text-white flex items-center justify-center gap-2 transition',
-          'active:scale-[0.98]',
-          isActive ? 'bg-white text-black border-white' : 'bg-white/10 border-white/10 hover:bg-white/15',
+          itemBase,
+          'px-4 min-w-[96px]',
+          isActive ? itemActive : itemInactive,
           extra,
         ].join(' ')}
         aria-pressed={isActive}
       >
         <span className="text-lg">{item.icon}</span>
-        <span className="text-[12px] font-semibold">{item.label}</span>
+        <span className="text-[12px] font-extrabold">{item.label}</span>
       </button>
     )
   }
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9998]">
-      <div className="relative w-[340px]">
-        {/* coluna esquerda */}
-        <div className="absolute left-0 bottom-0 flex flex-col gap-2">
-          {btn(leftTop)}
-          {btn(leftBottom)}
-        </div>
-
-        {/* coluna direita */}
-        <div className="absolute right-0 bottom-0 flex flex-col gap-2">
-          {btn(rightTop)}
-          {btn(rightBottom)}
-        </div>
-
-        {/* centro (topo da pirâmide) */}
-        <div className="mx-auto w-[140px]">
-          <button
-            type="button"
-            onClick={() => onTab?.(center.id)}
-            className={[
-              'w-full h-[64px] rounded-3xl border text-white flex flex-col items-center justify-center gap-1 transition',
-              'active:scale-[0.98] shadow-2xl shadow-black/40',
-              'bg-gradient-to-b from-white/20 to-white/5 border-white/10 hover:from-white/25',
-              active === center.id ? 'ring-2 ring-white/50' : '',
-            ].join(' ')}
-          >
-            <div className="text-2xl">{center.icon}</div>
-            <div className="text-[12px] font-extrabold tracking-wide">{center.label}</div>
-          </button>
-        </div>
-
-        {/* badge inbox */}
-        {unreadCount > 0 && (
-          <div className="absolute left-[92px] bottom-[56px]">
-            <div className="min-w-[22px] h-[22px] px-1 rounded-full bg-amber-400 text-black text-[12px] font-extrabold flex items-center justify-center border border-amber-200 shadow">
-              {unreadCount > 99 ? '99+' : unreadCount}
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9998] w-[min(94vw,460px)]">
+      <div className="rounded-[32px] bg-slate-950/55 border border-white/10 backdrop-blur-2xl shadow-[0_24px_80px_rgba(0,0,0,0.35)] p-2">
+        <div className="grid grid-cols-[1fr_1.45fr_1fr] gap-2 items-stretch">
+          {/* esquerda */}
+          <div className="grid grid-rows-2 gap-2">
+            {smallBtn({ id: 'corre', label: 'Trabalhos', icon: '🎯' })}
+            <div className="relative">
+              {smallBtn({ id: 'inbox', label: 'Inbox', icon: '💬' }, 'w-full')}
+              {unreadCount > 0 && (
+                <div className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1 rounded-full bg-amber-400 text-black text-[12px] font-extrabold flex items-center justify-center border border-amber-200 shadow">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </div>
+              )}
             </div>
           </div>
-        )}
+
+          {/* centro principal */}
+          <button
+            type="button"
+            onClick={() => onTab?.('disponivel')}
+            className={[
+              'min-h-[124px] rounded-[30px] border text-white flex flex-col items-center justify-center gap-2 transition active:scale-[0.98]',
+              'shadow-[0_22px_70px_rgba(0,0,0,0.30)]',
+              disponivel
+                ? 'bg-gradient-to-b from-emerald-400 to-emerald-600 border-emerald-300/50 hover:from-emerald-300'
+                : 'bg-gradient-to-b from-rose-500 to-red-700 border-rose-300/40 hover:from-rose-400',
+            ].join(' ')}
+            aria-pressed={disponivel}
+            title={disponivel ? 'Clique para ficar indisponível' : 'Clique para ficar disponível'}
+          >
+            <span
+              className={[
+                'w-10 h-10 rounded-full shadow-[0_0_0_8px_rgba(255,255,255,0.14)]',
+                disponivel ? 'bg-emerald-200 animate-pulse' : 'bg-rose-200',
+              ].join(' ')}
+            />
+            <span className="text-[15px] font-black tracking-wide">
+              {disponivel ? 'Disponível' : 'Indisponível'}
+            </span>
+            <span className="text-[10px] font-bold text-white/75">
+              {disponivel ? 'clientes podem te ver' : 'oculto agora'}
+            </span>
+          </button>
+
+          {/* direita */}
+          <div className="grid grid-rows-2 gap-2">
+            {smallBtn({ id: 'perfil', label: 'Perfil', icon: '👤' })}
+            <button
+              type="button"
+              onClick={() => onTab?.('disponivel')}
+              className={[
+                itemBase,
+                'px-3 text-[12px] font-extrabold',
+                disponivel
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-rose-50 text-rose-700 border-rose-200',
+              ].join(' ')}
+            >
+              {disponivel ? '🟢 Online' : '🔴 Offline'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -4,9 +4,32 @@ import { useMemo, useState } from 'react'
 import { CATEGORIES } from '@/constants/categories'
 
 const glass =
-  'bg-white/10 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/40'
+  'bg-white/95 backdrop-blur-xl border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.10)] text-slate-900'
 
 const safeStr = (v) => String(v || '').trim()
+
+
+const getFotoProvider = (u) => safeStr(
+  u?.fotoURL ||
+    u?.photoURL ||
+    u?.avatarUrl ||
+    u?.avatarURL ||
+    u?.imagem ||
+    u?.imageUrl ||
+    u?.profile?.fotoURL ||
+    u?.profile?.photoURL ||
+    u?.profile?.avatarUrl ||
+    u?.profile?.avatarURL ||
+    u?.profile?.imagem ||
+    u?.profile?.imageUrl ||
+    u?.perfil?.fotoURL ||
+    u?.perfil?.photoURL ||
+    u?.profissional?.fotoURL ||
+    u?.profissional?.photoURL ||
+    u?.corre?.fotoURL ||
+    u?.corre?.photoURL ||
+    ''
+)
 
 const getLabelCategoria = (id) => {
   const c = CATEGORIES.find((x) => x.id === id)
@@ -18,8 +41,8 @@ const normalizeProvider = (u) => {
   if (!uid) return null
 
   const nome = u?.nome || u?.profile?.nome || 'Usuário'
-  const fotoURL = safeStr(u?.fotoURL || u?.profile?.fotoURL || '')
-  const avatarEmoji = safeStr(u?.avatarEmoji || u?.profile?.avatarEmoji || '')
+  const fotoURL = getFotoProvider(u)
+  const avatarEmoji = safeStr(u?.avatarEmoji || u?.profile?.avatarEmoji || u?.perfil?.avatarEmoji || '')
 
   const isCorre = !!(u?.isCorre || u?.profissional?.isCorre)
   const isProfissional = !!(u?.isProfissional || u?.profissional?.isProfissional)
@@ -100,10 +123,10 @@ export default function ClienteHome({
   return (
     <div className="mt-4 space-y-3">
       <div className={`rounded-3xl p-4 ${glass}`}>
-        <div className="text-sm font-semibold text-white">
+        <div className="text-sm font-semibold text-slate-900">
           👋 Olá, {meuNome || 'Anônimo'}
         </div>
-        <div className="mt-1 text-xs text-white/70">
+        <div className="mt-1 text-xs text-slate-500">
           Crie um pedido e encontre quem está disponível.
         </div>
 
@@ -119,7 +142,7 @@ export default function ClienteHome({
           <button
             type="button"
             onClick={() => onIrAoVivo?.()}
-            className="px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-sm font-semibold active:scale-[0.98] transition"
+            className="px-4 py-2 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-semibold active:scale-[0.98] transition"
           >
             🗺️ Ver mapa ao vivo
           </button>
@@ -128,9 +151,9 @@ export default function ClienteHome({
 
       <div className={`rounded-3xl p-4 ${glass}`}>
         <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-white">🔎 Buscar</div>
-          <div className="text-xs text-white/70">
-            Encontrados: <b className="text-white">{list.length}</b>
+          <div className="text-sm font-semibold text-slate-900">🔎 Buscar</div>
+          <div className="text-xs text-slate-500">
+            Encontrados: <b className="text-slate-900">{list.length}</b>
           </div>
         </div>
 
@@ -141,8 +164,8 @@ export default function ClienteHome({
             className={[
               'flex-1 h-11 rounded-2xl text-sm font-semibold border transition',
               modo === 'corre'
-                ? 'bg-yellow-300 text-black border-yellow-300'
-                : 'bg-white/10 text-white border-white/10 hover:bg-white/15',
+                ? 'bg-amber-300 text-black border-yellow-300'
+                : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
             ].join(' ')}
           >
             ⚡ Corre
@@ -154,7 +177,7 @@ export default function ClienteHome({
               'flex-1 h-11 rounded-2xl text-sm font-semibold border transition',
               modo === 'profissional'
                 ? 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white/10 text-white border-white/10 hover:bg-white/15',
+                : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
             ].join(' ')}
           >
             🧑‍🔧 Profissionais
@@ -166,14 +189,14 @@ export default function ClienteHome({
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por nome, cidade ou descrição..."
-            className="w-full px-3 py-3 rounded-2xl bg-white/10 border border-white/10 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full px-3 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
           />
 
           {modo === 'profissional' && (
             <select
               value={catId}
               onChange={(e) => setCatId(e.target.value)}
-              className="w-full px-3 py-3 rounded-2xl bg-white/10 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+              className="w-full px-3 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
             >
               {CATEGORIES.map((c) => (
                 <option key={c.id} value={c.id} className="text-black">
@@ -186,18 +209,18 @@ export default function ClienteHome({
 
         <div className="mt-3 space-y-2">
           {list.length === 0 ? (
-            <div className="rounded-2xl p-4 bg-white/5 border border-white/10 text-white/80">
+            <div className="rounded-2xl p-4 bg-slate-50 border border-slate-200 text-slate-600">
               Ninguém disponível agora.
             </div>
           ) : (
             list.map((p) => (
               <div
                 key={p.uid}
-                className="rounded-2xl p-3 bg-white/5 border border-white/10"
+                className="rounded-2xl p-3 bg-slate-50 border border-slate-200"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-2xl bg-black/40 border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                    <div className="w-11 h-11 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
                       {p.fotoURL ? (
                         <img
                           src={p.fotoURL}
@@ -214,21 +237,21 @@ export default function ClienteHome({
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="font-semibold text-white truncate">{p.nome}</div>
+                        <div className="font-semibold text-slate-900 truncate">{p.nome}</div>
                         {p.isCorre && (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-300/20 text-yellow-100 border border-yellow-300/25">
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
                             corre
                           </span>
                         )}
                         {p.isProfissional && (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-100 border border-blue-500/25">
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                             prof
                           </span>
                         )}
                       </div>
 
                       {modo === 'profissional' && (
-                        <div className="text-[11px] text-white/70 mt-0.5">
+                        <div className="text-[11px] text-slate-500 mt-0.5">
                           {getLabelCategoria(catId)}
                           {p.profCidadeAtende ? ` · ${p.profCidadeAtende}` : ''}
                           {p.profPrecoBase ? ` · base: R$ ${p.profPrecoBase}` : ''}
@@ -236,7 +259,7 @@ export default function ClienteHome({
                       )}
 
                       {p.profResumo ? (
-                        <div className="mt-2 text-xs text-white/80">{p.profResumo}</div>
+                        <div className="mt-2 text-xs text-slate-600">{p.profResumo}</div>
                       ) : null}
                     </div>
                   </div>
@@ -244,7 +267,7 @@ export default function ClienteHome({
                   <div className="flex flex-col gap-2 shrink-0">
                     {p.profWhats ? (
                       <a
-                        className="px-3 py-2 rounded-2xl bg-emerald-500/20 border border-emerald-400/25 text-emerald-100 text-xs font-semibold hover:bg-emerald-500/25"
+                        className="px-3 py-2 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"
                         href={`https://wa.me/${p.profWhats}`}
                         target="_blank"
                         rel="noreferrer"
@@ -256,7 +279,7 @@ export default function ClienteHome({
                     <button
                       type="button"
                       onClick={() => onIrAoVivo?.()}
-                      className="px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-white text-xs font-semibold hover:bg-white/15"
+                      className="px-3 py-2 rounded-2xl bg-white border border-slate-200 text-slate-900 text-xs font-semibold hover:bg-slate-50"
                     >
                       Ver no mapa
                     </button>
@@ -267,7 +290,7 @@ export default function ClienteHome({
           )}
         </div>
 
-        <div className="mt-3 text-[11px] text-white/50">
+        <div className="mt-3 text-[11px] text-slate-400">
           Dica: “Corre” é bico rápido. “Profissionais” é por categoria.
         </div>
       </div>

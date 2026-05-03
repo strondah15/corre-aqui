@@ -1,16 +1,51 @@
 'use client'
 
+function getMs(v) {
+  if (!v) return 0
+  if (typeof v === 'number') return v
+  if (typeof v === 'string') {
+    const parsed = Date.parse(v)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  if (typeof v === 'object' && typeof v.seconds === 'number') return v.seconds * 1000
+  return 0
+}
+
+function formatDataHora(v) {
+  const ms = getMs(v)
+  if (!ms) return 'Sem horário'
+
+  const d = new Date(ms)
+  const hoje = new Date()
+  const ontem = new Date()
+  ontem.setDate(hoje.getDate() - 1)
+
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
+  if (d.toDateString() === hoje.toDateString()) return `Hoje às ${hora}`
+  if (d.toDateString() === ontem.toDateString()) return `Ontem às ${hora}`
+
+  return (
+    d.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+    }) + ` às ${hora}`
+  )
+}
+
 export default function MeusPedidosCliente({
   meuId,
   corres = [],
   onAbrirChat,
   onVerMapa,
+  onConfirmarServicoFeito,
 }) {
   const meusPedidos = (corres || [])
     .filter((p) => p?.criador?.id === meuId)
     .sort((a, b) => {
-      const ta = Number(a?.criadoEm || a?.atualizadoEm || 0)
-      const tb = Number(b?.criadoEm || b?.atualizadoEm || 0)
+      const ta = getMs(a?.criadoEm || a?.createdAt || a?.atualizadoEm || 0)
+      const tb = getMs(b?.criadoEm || b?.createdAt || b?.atualizadoEm || 0)
       return tb - ta
     })
 
@@ -81,6 +116,16 @@ export default function MeusPedidosCliente({
                       {p.descricao}
                     </div>
                   ) : null}
+
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-400">
+                    <span>🕒 Criado: <b className="text-gray-200">{formatDataHora(p?.criadoEm || p?.createdAt || p?.atualizadoEm)}</b></span>
+                    {p?.aceite?.aceitoEm || p?.aceitoEm ? (
+                      <span>✅ Aceito: <b className="text-amber-200">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></span>
+                    ) : null}
+                    {p?.entregueEm ? (
+                      <span>📦 Entregue: <b className="text-sky-200">{formatDataHora(p?.entregueEm)}</b></span>
+                    ) : null}
+                  </div>
                 </div>
 
                 {badgeStatus(p?.status)}
@@ -96,6 +141,9 @@ export default function MeusPedidosCliente({
                 {p?.aceite?.nome ? (
                   <span>
                     🙋 Aceito por <b className="text-gray-200">{p.aceite.nome}</b>
+                    {p?.aceite?.aceitoEm || p?.aceitoEm ? (
+                      <> · <b className="text-amber-200">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></>
+                    ) : null}
                   </span>
                 ) : (
                   <span>⏳ Aguardando alguém aceitar</span>
@@ -110,6 +158,22 @@ export default function MeusPedidosCliente({
                     type="button"
                   >
                     Abrir conversa
+                  </button>
+                ) : null}
+
+                {String(p?.status || '').toLowerCase() === 'aceito' && p?.criador?.id === meuId ? (
+                  <button
+                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 transition active:scale-[0.98]"
+                    onClick={() => {
+                      if (typeof onConfirmarServicoFeito === 'function') {
+                        onConfirmarServicoFeito(p)
+                      } else {
+                        console.warn('Confirmação ainda não conectada no componente pai.')
+                      }
+                    }}
+                    type="button"
+                  >
+                    Confirmar serviço feito
                   </button>
                 ) : null}
 

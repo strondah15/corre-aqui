@@ -85,6 +85,7 @@ export default function ModalIA({
 
   async function criarNoFirebase({ tipo, titulo, descricao, valor, local, categoriaId }) {
     const pedidosRef = ref(database, 'pedidos')
+    const agora = Date.now()
 
     const novoItem = {
       tipo,
@@ -98,8 +99,14 @@ export default function ModalIA({
       status: 'aberto',
       local: local || null,
       criador: { nome: meuNome || 'Anônimo', id: meuId || null },
-      criadoEm: serverTimestamp?.() || Date.now(),
-      atualizadoEm: serverTimestamp?.() || Date.now(),
+
+      // ✅ horário legível e compatível com ordenação
+      criadoEm: agora,
+      atualizadoEm: agora,
+
+      // ✅ mantém também horário do servidor para auditoria/sincronia
+      criadoEmServer: serverTimestamp?.() || agora,
+      atualizadoEmServer: serverTimestamp?.() || agora,
     }
 
     await push(pedidosRef, novoItem)

@@ -30,6 +30,7 @@ import BottomBar from '@/components/BottomBar'
 import Patente from '@/components/Patente'
 
 import ClienteHome from '@/components/ClienteHome'
+import ListaProfissionais from '@/components/ListaProfissionais'
 import PerfilPublico from '@/components/PerfilPublico'
 
 // ✅ CATEGORIAS
@@ -80,7 +81,7 @@ const normalizeLocal = (p) => {
     modoPedido,
     titulo: p.titulo || (p.tipo === 'oferta' ? 'Oferta' : 'Pedido'),
     descricao: p.descricao || p.descricaoPedido || p.texto || '',
-    criadoEm: p.criadoEm || 0,
+    criadoEm: p.criadoEm || p.createdAt || p.criadoEmMs || p.atualizadoEm || 0,
   }
 }
 
@@ -102,15 +103,15 @@ async function getMyLocation() {
 /* =======================
    🔥 PATENTE + TAXA + BOOST + MISSÕES
 ======================= */
-const BASE_TAXA_CORRE = 0.1 // 10%
-const BASE_TAXA_PROF = 0.12 // 12%
+const BASE_TAXA_CORRE = 0 // sem taxa do app
+const BASE_TAXA_PROF = 0 // sem taxa do app
 
 const TAXA_PROF_POR_PATENTE = {
-  1: 0.12,
-  2: 0.1,
-  3: 0.08,
-  4: 0.06,
-  5: 0.04,
+  1: 0,
+  2: 0,
+  3: 0,
+  4: 0,
+  5: 0,
 }
 
 const BOOST_LEVELS = {
@@ -150,6 +151,74 @@ const dayKey = () => {
   const dd = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${dd}`
 }
+
+const getMs = (v) => {
+  if (!v) return 0
+  if (typeof v === 'number') return v
+  if (typeof v === 'string') {
+    const parsed = Date.parse(v)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  if (typeof v === 'object' && typeof v.seconds === 'number') return v.seconds * 1000
+  return 0
+}
+
+const formatDataHora = (v) => {
+  const ms = getMs(v)
+  if (!ms) return 'Sem horário'
+
+  const d = new Date(ms)
+  const hoje = new Date()
+  const ontem = new Date()
+  ontem.setDate(hoje.getDate() - 1)
+
+  const mesmoDia = d.toDateString() === hoje.toDateString()
+  const foiOntem = d.toDateString() === ontem.toDateString()
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
+  if (mesmoDia) return `Hoje às ${hora}`
+  if (foiOntem) return `Ontem às ${hora}`
+
+  return d.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  }) + ` às ${hora}`
+}
+
+const solicitarPermissaoNotificacao = async () => {
+  if (typeof window === 'undefined') return false
+  if (!('Notification' in window)) return false
+
+  if (Notification.permission === 'granted') return true
+  if (Notification.permission === 'denied') return false
+
+  const permission = await Notification.requestPermission()
+  return permission === 'granted'
+}
+
+const notificarTelefone = async ({ title, body, tag }) => {
+  try {
+    if (typeof window === 'undefined') return false
+    if (!('Notification' in window)) return false
+
+    const ok = await solicitarPermissaoNotificacao()
+    if (!ok) return false
+
+    new Notification(title || 'Corre Aqui', {
+      body: body || '',
+      tag: tag || `corre-aqui-${Date.now()}`,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+    })
+
+    return true
+  } catch (e) {
+    console.warn('Falha ao notificar no telefone/navegador:', e)
+    return false
+  }
+}
+
 
 /* =======================
    ✅ Patente por entregas
@@ -291,7 +360,7 @@ function Toast({ toast, onClose }) {
       ? 'bg-emerald-500/15 border-emerald-400/20 text-emerald-100'
       : type === 'error'
       ? 'bg-red-500/15 border-red-400/20 text-red-100'
-      : 'bg-white/10 border-white/10 text-gray-100'
+      : 'bg-white/10 border-white/10 text-slate-950'
 
   return (
     <div className={`${base} ${styles}`}>
@@ -335,7 +404,7 @@ function BadgeModo({ modo }) {
   }
 
   return (
-    <span className="text-xs px-2 py-1 rounded-full bg-white/10 border border-white/10 text-gray-200 font-semibold">
+    <span className="text-xs px-2 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
       ⚪ Geral
     </span>
   )
@@ -356,6 +425,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [corres, setCorres] = useState([])
   const [filtro, setFiltro] = useState('abertos')
   const [busca, setBusca] = useState('')
+  const [clienteProfBusca, setClienteProfBusca] = useState('')
+  const [clienteProfCategoria, setClienteProfCategoria] = useState('')
+  const [openProfissionaisLateral, setOpenProfissionaisLateral] = useState(false)
+
+  // ✅ lateral esquerda: lista dos Corres / bicos
+  const [clienteCorreBusca, setClienteCorreBusca] = useState('')
+  const [clienteCorreCategoria, setClienteCorreCategoria] = useState('')
+  const [openCorresLateral, setOpenCorresLateral] = useState(false)
   const [buscaUsuarioMapa, setBuscaUsuarioMapa] = useState('')
   const [mapItem, setMapItem] = useState(null)
 
@@ -379,6 +456,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const [toast, setToast] = useState(null)
   const [usuarioSelecionado, setUsuarioSelecionado] = useState(null)
+  const [notifPermission, setNotifPermission] = useState('default')
   const showToast = useCallback((t) => setToast({ ms: 2800, ...t }), [])
 
   const [loadingPedidos, setLoadingPedidos] = useState(true)
@@ -391,6 +469,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [salvandoEdicao, setSalvandoEdicao] = useState(false)
 
   const [unreadInbox, setUnreadInbox] = useState(0)
+  const [correDisponivel, setCorreDisponivel] = useState(true)
 
   /* =======================
      ✅ VOLTAR LIMPO PRA TELA DAS ABAS
@@ -424,6 +503,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     } catch {}
   }, [openPerfil])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!('Notification' in window)) {
+      setNotifPermission('unsupported')
+      return
+    }
+    setNotifPermission(Notification.permission || 'default')
+  }, [])
+
   /* =======================
      modoApp (prioriza initialMode)
   ======================= */
@@ -445,7 +533,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     } catch {}
   }, [modoApp])
 
-  // ✅ Cliente não usa Inbox / tabs
+  // ✅ Cliente não usa BottomBar; profissionais abrem em aba lateral direita
   useEffect(() => {
     if (modoApp === 'cliente' && tab !== 'corre') setTab('corre')
   }, [modoApp, tab])
@@ -522,10 +610,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       await update(userRef, {
         id: meuId,
         nome: meuNome || 'Anônimo',
-        online: true,
-        local: local || null,
-        latitude: local?.lat ?? null,
-        longitude: local?.lng ?? null,
+        online: correDisponivel,
+        disponivel: correDisponivel,
+        local: correDisponivel ? (local || null) : null,
+        latitude: correDisponivel ? (local?.lat ?? null) : null,
+        longitude: correDisponivel ? (local?.lng ?? null) : null,
         lastSeen: Date.now(),
         updatedAt: serverTimestamp(),
         ...getAvatarPatch(),
@@ -563,10 +652,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     const heartbeat = setInterval(async () => {
       const local = await getMyLocation()
       update(userRef, {
-        online: true,
-        local: local || null,
-        latitude: local?.lat ?? null,
-        longitude: local?.lng ?? null,
+        online: correDisponivel,
+        disponivel: correDisponivel,
+        local: correDisponivel ? (local || null) : null,
+        latitude: correDisponivel ? (local?.lat ?? null) : null,
+        longitude: correDisponivel ? (local?.lng ?? null) : null,
         lastSeen: Date.now(),
         updatedAt: serverTimestamp(),
         ...getAvatarPatch(),
@@ -585,7 +675,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       window.removeEventListener('pagehide', onExit)
       onExit()
     }
-  }, [meuId, meuNome, fotoURL, avatarEmoji])
+  }, [meuId, meuNome, fotoURL, avatarEmoji, correDisponivel])
 
   /* =======================
      3) Ler pedidos
@@ -682,7 +772,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     showToast({
       type: 'success',
       title: 'Seu corre foi aceito! 🚀',
-      message: `${pedidoAceito?.aceite?.nome || 'Alguém'} aceitou seu pedido.`,
+      message: `${pedidoAceito?.aceite?.nome || 'Alguém'} aceitou "${pedidoAceito?.titulo || 'seu pedido'}" às ${formatDataHora(pedidoAceito?.aceite?.aceitoEm || pedidoAceito?.aceitoEm || pedidoAceito?.atualizadoEm)}.`,
+    })
+
+    notificarTelefone({
+      title: 'Seu corre foi aceito! 🚀',
+      body: `${pedidoAceito?.aceite?.nome || 'Alguém'} aceitou: ${pedidoAceito?.titulo || 'Corre aqui'}`,
+      tag: `corre-aceito-${pedidoAceito?.id || marker}`,
     })
   }, [corres, meuId, ultimoAceiteNotificado, showToast])
 
@@ -774,12 +870,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     setAceitandoId(p.id)
 
     try {
+      const agora = Date.now()
       const local = await getMyLocation()
       const aceite = {
         id: meuId,
         nome: meuNome,
         local: local || null,
-        aceitoEm: Date.now(),
+        aceitoEm: agora,
       }
 
       // ✅ usa o próprio ID do pedido como conversaId
@@ -790,7 +887,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         status: 'aceito',
         aceite,
         conversaId,
-        atualizadoEm: serverTimestamp(),
+        aceitoEm: agora,
+        atualizadoEm: agora,
+        atualizadoEmServer: serverTimestamp(),
       })
 
       // ✅ conversa do cliente
@@ -802,7 +901,20 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           outroNome: meuNome || 'Anônimo',
           unread: true,
           status: 'ativa',
-          updatedAt: Date.now(),
+          tipoNotificacao: 'corre_aceito',
+          mensagemPreview: `${meuNome || 'Alguém'} aceitou seu corre.`,
+          updatedAt: agora,
+        })
+
+        await update(ref(database, `notificacoes/${p.criador.id}/notif_${agora}`), {
+          tipo: 'corre_aceito',
+          pedidoId: p.id,
+          conversaId,
+          titulo: 'Seu corre foi aceito! 🚀',
+          mensagem: `${meuNome || 'Alguém'} aceitou: ${p.titulo || 'Corre aqui'}`,
+          lida: false,
+          criadoEm: agora,
+          autor: { id: meuId, nome: meuNome || 'Anônimo' },
         })
       }
 
@@ -814,14 +926,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         outroNome: p?.criador?.nome || 'Cliente',
         unread: false,
         status: 'ativa',
-        updatedAt: Date.now(),
+        mensagemPreview: 'Você aceitou esse corre.',
+        updatedAt: agora,
       })
 
       // ✅ mensagem automática
-      await update(ref(database, `mensagens/${conversaId}/msg_${Date.now()}`), {
+      await update(ref(database, `mensagens/${conversaId}/msg_${agora}`), {
         texto: `${meuNome} aceitou seu corre.`,
         sistema: true,
-        criadoEm: Date.now(),
+        criadoEm: agora,
+        hora: agora,
         autorId: 'sistema',
         autorNome: 'Sistema',
       })
@@ -835,8 +949,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       await missãoIncrementar(meuId, 'aceitou')
 
-      setMapItem({ ...p, aceite })
-      showToast({ type: 'success', title: 'Aceito!', message: 'Você aceitou esse corre. +XP ✅' })
+      setMapItem({ ...p, aceite, status: 'aceito', aceitoEm: agora, atualizadoEm: agora })
+      showToast({
+        type: 'success',
+        title: 'Corre aceito! ✅',
+        message: `Você aceitou "${p.titulo || 'Corre aqui'}" às ${formatDataHora(agora)}. +XP`,
+      })
     } catch (e) {
       console.error('Erro ao aceitar:', e)
       showToast({ type: 'error', title: 'Falha ao aceitar', message: e?.message || 'Veja o console.' })
@@ -880,13 +998,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     try {
       const criadorId = p?.criador?.id
       const aceitadorId = p?.aceite?.id
-      const pode = meuId && (meuId === criadorId || meuId === aceitadorId)
+      // ✅ Regra correta: somente o CLIENTE/CRIADOR confirma que o serviço foi feito.
+      // Corre/profissional não pode marcar entregue sozinho.
+      const pode = meuId && meuId === criadorId
 
       if (!pode) {
         showToast({
           type: 'error',
           title: 'Sem permissão',
-          message: 'Só criador/aceitador pode marcar entregue.',
+          message: 'Somente o cliente que criou o pedido pode confirmar que o serviço foi feito.',
         })
         return
       }
@@ -900,11 +1020,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         return
       }
 
+      const entregueAgora = Date.now()
+
       await update(ref(database, `pedidos/${p.id}`), {
         status: 'entregue',
-        entregueEm: Date.now(),
+        entregueEm: entregueAgora,
         entreguePor: { id: meuId, nome: meuNome || 'Anônimo' },
-        atualizadoEm: serverTimestamp(),
+        atualizadoEm: entregueAgora,
+        atualizadoEmServer: serverTimestamp(),
       })
 
       // ✅ QUEM GANHA A ENTREGA?
@@ -1031,7 +1154,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         </span>
       )
     return (
-      <span className="text-xs px-2 py-1 rounded-full bg-white/10 border border-white/10 text-gray-200 font-semibold">
+      <span className="text-xs px-2 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
         {s.toUpperCase()}
       </span>
     )
@@ -1079,6 +1202,32 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       })
       return
     }
+    if (id === 'disponivel') {
+      setCorreDisponivel((prev) => {
+        const next = !prev
+
+        if (meuId) {
+          update(ref(database, `users/${meuId}`), {
+            online: next,
+            disponivel: next,
+            lastSeen: Date.now(),
+            updatedAt: serverTimestamp(),
+          }).catch(() => {})
+        }
+
+        showToast({
+          type: next ? 'success' : 'info',
+          title: next ? 'Disponível' : 'Indisponível',
+          message: next
+            ? 'Você está aparecendo para clientes e pedidos.'
+            : 'Você não aparece como disponível agora.',
+        })
+
+        return next
+      })
+      return
+    }
+
     if (id === 'criar') {
       setOpenIA(true)
       return
@@ -1103,62 +1252,101 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     <div className="min-h-screen">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      {/* ✅ VOLTAR PRA TELA DAS ABAS (AGORA LIMPO) */}
-      {typeof onBackToMode === 'function' && (
-        <button
-          onClick={voltarModoLimpo}
-          className="
-            fixed top-4 left-4 z-[99999]
-            rounded-2xl px-4 py-2
-            bg-white/5 hover:bg-white/10
-            border border-white/10
-            text-white/80 text-sm font-semibold
-            backdrop-blur-xl
-            shadow-[0_12px_40px_rgba(0,0,0,0.35)]
-          "
-          type="button"
-        >
-          ← Trocar modo
-        </button>
-      )}
-
       <div className="max-w-3xl mx-auto p-4 pb-[200px]">
+        {/* ✅ TROCAR MODO DENTRO DO LAYOUT (não cobre mais os cards) */}
+        {typeof onBackToMode === 'function' && (
+          <div className="mb-4 flex justify-start">
+            <button
+              onClick={voltarModoLimpo}
+              className="
+                inline-flex items-center gap-2
+                rounded-3xl px-4 py-2.5
+                bg-white/95 hover:bg-white
+                border border-slate-200
+                text-slate-900 text-sm font-extrabold
+                backdrop-blur-xl
+                shadow-[0_16px_45px_rgba(15,23,42,0.22)]
+                active:scale-[0.98] transition
+              "
+              type="button"
+              title="Voltar para escolher Cliente ou Corre"
+            >
+              <span className="text-base">↩</span>
+              <span>Trocar modo</span>
+            </button>
+          </div>
+        )}
+
         {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
-            <div className="relative mb-4">
-              <div className="flex items-center gap-3 justify-between flex-wrap">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-white/10 border border-white/10 text-white flex items-center justify-center font-bold">
-                    CA
-                  </div>
-                  <div className="leading-tight">
-                    <div className="text-sm text-gray-100 font-semibold">Bem-vindo, {meuNome || '...'}</div>
-                    <div className="text-xs text-gray-400">Aceite, entregue, e suba sua patente ⭐</div>
+            <div className="relative mb-4 rounded-[28px] overflow-hidden bg-white/95 border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)] text-slate-900">
+              <div className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-white pointer-events-none" />
 
-                    <div className="mt-2 flex gap-2 flex-wrap">
-                      <Patente tipo="corre" nivel={minhaPatenteCorre} size="sm" showLabel={false} />
-                      {isProfissional && <Patente tipo="prof" nivel={minhaPatenteProf} size="sm" />}
+              <div className="relative p-5">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-12 h-12 rounded-3xl bg-slate-900 text-white flex items-center justify-center font-extrabold shadow-lg shadow-slate-900/15">
+                      CA
                     </div>
+
+                    <div className="leading-tight min-w-0">
+                      <div className="text-base font-extrabold text-slate-950 truncate">
+                        Bem-vindo, {meuNome || '...'}
+                      </div>
+                      <div className="mt-1 text-sm text-slate-500">
+                        Aceite pedidos próximos, entregue e suba sua patente ⭐
+                      </div>
+
+                      <div className="mt-3 flex gap-2 flex-wrap">
+                        <Patente tipo="corre" nivel={minhaPatenteCorre} size="sm" showLabel={false} />
+                        {isProfissional && <Patente tipo="prof" nivel={minhaPatenteProf} size="sm" />}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setTab('corre')}
+                      className="px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-extrabold shadow-lg shadow-blue-500/25 active:scale-[0.98] transition"
+                    >
+                      📋 Pedidos
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOpenMapaAoVivo(true)}
+                      className="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-extrabold shadow-sm active:scale-[0.98] transition"
+                    >
+                      🗺️ Mapa ao vivo
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
 
             {tab === 'inbox' && (
-              <div className="mb-4">
-                <ListaConversas
-                  meuId={meuId}
-                  onAbrirChat={(pedidoId) => {
-                    const p = corres.find((x) => x.id === pedidoId)
-                    if (p) {
-                      setChatPedido(p)
-                      setTab('corre')
-                    } else {
-                      showToast({ type: 'info', title: 'Aguarde', message: 'Esse pedido ainda não carregou.' })
-                    }
-                  }}
-                />
+              <div className="mb-4 rounded-[28px] overflow-hidden bg-white/95 border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)]">
+                <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-br from-white to-slate-50">
+                  <div className="text-base font-extrabold text-slate-950">💬 Inbox</div>
+                  <div className="mt-1 text-xs text-slate-500">Conversas dos pedidos aceitos e enviados.</div>
+                </div>
+
+                <div className="p-3 bg-slate-50/70">
+                  <ListaConversas
+                    meuId={meuId}
+                    onAbrirChat={(pedidoId) => {
+                      const p = corres.find((x) => x.id === pedidoId)
+                      if (p) {
+                        setChatPedido(p)
+                        setTab('corre')
+                      } else {
+                        showToast({ type: 'info', title: 'Aguarde', message: 'Esse pedido ainda não carregou.' })
+                      }
+                    }}
+                  />
+                </div>
               </div>
             )}
           </>
@@ -1172,7 +1360,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onlineUsers={onlineUsers}
               onCriarPedido={() => setOpenIA(true)}
               onIrAoVivo={() => {
-                setTab('aovivo')
                 setOpenMapaAoVivo(true)
               }}
             />
@@ -1198,15 +1385,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onVerMapa={(pedido) => {
                 setMapItem(pedido)
               }}
+              onConfirmarServicoFeito={(pedido) => {
+                marcarEntregue(pedido)
+              }}
             />
 
             <div className={`rounded-2xl p-3 ${glassCard}`}>
               <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-semibold text-gray-100">
+                <div className="text-sm font-semibold text-slate-950">
                   💬 Mensagens do cliente
                 </div>
 
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-slate-500">
                   Conversas dos seus pedidos
                 </div>
               </div>
@@ -1234,87 +1424,98 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {/* CORRE */}
         {modoApp === 'corre' && tab === 'corre' && (
           <>
-            {/* filtros status */}
-            <div className="mb-4 flex flex-wrap gap-2 justify-center">
-              <button
-                className={`px-3 py-1.5 rounded-xl border transition ${
-                  filtro === 'abertos'
-                    ? 'bg-blue-600 text-white border-blue-500/40'
-                    : 'bg-white/10 text-white border-white/10 hover:bg-white/15'
-                }`}
-                onClick={() => setFiltro('abertos')}
-                type="button"
-              >
-                Abertos
-              </button>
+            {/* Painel de filtros do Corre */}
+            <div className="mb-4 rounded-[28px] overflow-hidden bg-white/95 border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)] text-slate-900">
+              <div className="p-4">
+                {/* filtros status */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    className={`px-3 py-3 rounded-2xl border text-sm font-extrabold transition active:scale-[0.98] ${
+                      filtro === 'abertos'
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/25'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                    onClick={() => setFiltro('abertos')}
+                    type="button"
+                  >
+                    Abertos
+                  </button>
 
-              <button
-                className={`px-3 py-1.5 rounded-xl border transition ${
-                  filtro === 'meus'
-                    ? 'bg-blue-600 text-white border-blue-500/40'
-                    : 'bg-white/10 text-white border-white/10 hover:bg-white/15'
-                }`}
-                onClick={() => setFiltro('meus')}
-                type="button"
-              >
-                Aceitos por mim
-              </button>
+                  <button
+                    className={`px-3 py-3 rounded-2xl border text-sm font-extrabold transition active:scale-[0.98] ${
+                      filtro === 'meus'
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/25'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                    onClick={() => setFiltro('meus')}
+                    type="button"
+                  >
+                    Aceitos
+                  </button>
 
-              <button
-                className={`px-3 py-1.5 rounded-xl border transition ${
-                  filtro === 'todos'
-                    ? 'bg-blue-600 text-white border-blue-500/40'
-                    : 'bg-white/10 text-white border-white/10 hover:bg-white/15'
-                }`}
-                onClick={() => setFiltro('todos')}
-                type="button"
-              >
-                Todos
-              </button>
-            </div>
-
-            {/* Online agora */}
-            <div className={`mb-4 rounded-2xl p-3 ${glassCard}`}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm text-gray-200">
-                  🟢 Online agora: <b className="text-gray-100">{onlineUsers.length}</b>
+                  <button
+                    className={`px-3 py-3 rounded-2xl border text-sm font-extrabold transition active:scale-[0.98] ${
+                      filtro === 'todos'
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/25'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                    onClick={() => setFiltro('todos')}
+                    type="button"
+                  >
+                    Todos
+                  </button>
                 </div>
-                <div className="text-xs text-gray-400">expira em {Math.floor(ONLINE_TTL_MS / 1000)}s</div>
+
+                {/* Online agora */}
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3 bg-emerald-50 border border-emerald-200">
+                  <div className="flex items-center gap-2 text-sm text-slate-800">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_0_4px_rgba(16,185,129,0.15)]" />
+                    <span className="font-bold">Online agora:</span>
+                    <b className="text-emerald-700">{onlineUsers.length}</b>
+                  </div>
+
+                  <div className="text-xs text-slate-500">
+                    expira em {Math.floor(ONLINE_TTL_MS / 1000)}s
+                  </div>
+                </div>
+
+                {/* Busca + categoria */}
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-2">
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                    <span className="text-lg">🔍</span>
+                    <input
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      placeholder="Buscar por título, descrição ou criador"
+                      className="min-w-0 flex-1 bg-transparent outline-none text-sm text-slate-900 placeholder:text-slate-400 font-semibold"
+                    />
+                  </div>
+
+                  <select
+                    value={categoriaFiltro}
+                    onChange={(e) => setCategoriaFiltro(e.target.value)}
+                    className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    title="Filtrar por categoria"
+                  >
+                    <option value="todas">📦 Todas categorias</option>
+                    <option value="sem">⚠️ Sem categoria</option>
+                    {(CATEGORIES || []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.emoji} {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
-
-            {/* Busca + categoria */}
-            <div className="mb-4 flex gap-2 flex-wrap">
-              <input
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="🔍 Buscar por título, descrição ou criador"
-                className="flex-1 min-w-[220px] px-3 py-2 rounded-xl bg-white/10 border border-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-              />
-
-              <select
-                value={categoriaFiltro}
-                onChange={(e) => setCategoriaFiltro(e.target.value)}
-                className="px-3 py-2 rounded-xl bg-white/10 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                title="Filtrar por categoria"
-              >
-                <option value="todas">📦 Todas categorias</option>
-                <option value="sem">⚠️ Sem categoria</option>
-                {(CATEGORIES || []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.emoji} {c.label}
-                  </option>
-                ))}
-              </select>
             </div>
 
             {/* indicador profissional */}
             {isProfissional && (
               <div className={`mb-4 rounded-2xl p-3 ${glassCard}`}>
                 <div className="text-sm text-gray-200">🧑‍🔧 Modo Profissional ativo ✅</div>
-                <div className="text-xs text-gray-400 mt-1">
+                <div className="text-xs text-slate-500 mt-1">
                   Suas categorias:{' '}
-                  <b className="text-gray-200">
+                  <b className="text-slate-800">
                     {(minhasCategoriasProf || []).length > 0 ? minhasCategoriasProf.join(', ') : 'Nenhuma'}
                   </b>
                 </div>
@@ -1334,7 +1535,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             {/* Lista */}
             <div className="space-y-3">
               {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
-                <div className="text-sm text-gray-400">Nenhum corre aqui para mostrar.</div>
+                <div className="text-sm text-slate-500">Nenhum corre aqui para mostrar.</div>
               )}
 
               {corresFiltrados.map((p) => {
@@ -1361,9 +1562,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 })
 
                 return (
-                  <div key={p.id} className={`rounded-2xl p-4 ${glassCard} flex flex-col gap-2`}>
+                  <div key={p.id} className="rounded-[26px] p-4 bg-white/95 border border-slate-200 shadow-[0_16px_45px_rgba(15,23,42,0.12)] text-slate-900 flex flex-col gap-3">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="font-semibold text-gray-100">🏁 {p.titulo || '(sem título)'}</div>
+                      <div className="font-extrabold text-slate-950 text-base">🏁 {p.titulo || '(sem título)'}</div>
                       <div className="flex items-center gap-2">
                         {b.ativo && (
                           <span className="text-xs px-2 py-1 rounded-full bg-fuchsia-500/15 border border-fuchsia-400/20 text-fuchsia-200 font-semibold">
@@ -1379,15 +1580,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       <BadgeModo modo={p?.modoPedido} />
 
                       {catObj ? (
-                        <span className="text-xs px-2 py-1 rounded-full bg-white/10 border border-white/10 text-gray-200 font-semibold">
+                        <span className="text-xs px-2 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
                           {catObj.emoji} {catObj.label}
                         </span>
                       ) : p?.categoriaId ? (
-                        <span className="text-xs px-2 py-1 rounded-full bg-white/10 border border-white/10 text-gray-200 font-semibold">
+                        <span className="text-xs px-2 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
                           🏷️ {String(p.categoriaId)}
                         </span>
                       ) : (
-                        <span className="text-xs px-2 py-1 rounded-full bg-white/5 border border-white/10 text-white/60 font-semibold">
+                        <span className="text-xs px-2 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-500 font-semibold">
                           ⚠️ Sem categoria
                         </span>
                       )}
@@ -1399,24 +1600,21 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       )}
                     </div>
 
-                    {p.descricao && <div className="text-sm text-gray-200">{p.descricao}</div>}
+                    {p.descricao && <div className="text-sm text-slate-700 leading-relaxed">{p.descricao}</div>}
 
-                    <div className="text-xs text-gray-400">
-                      Criado por: <b className="text-gray-200">{p.criador?.nome || meuNome || 'Anônimo'}</b>
+                    <div className="text-xs text-slate-500">
+                      Criado por: <b className="text-slate-800">{p.criador?.nome || meuNome || 'Anônimo'}</b>
                       {p.valor != null && Number.isFinite(Number(p.valor)) ? (
                         <>
                           {' '}
-                          · Valor: <b className="text-gray-200">R$ {Number(p.valor).toFixed(2)}</b>
+                          · Valor: <b className="text-slate-800">R$ {Number(p.valor).toFixed(2)}</b>
                         </>
                       ) : null}
                     </div>
 
-                    {/* taxa / incentivo patente */}
-                    <div className="text-[11px] text-gray-400">
-                      💸 Taxa estimada: <b className="text-gray-200">{Math.round(taxaEstimada * 100)}%</b>
-                      {String(p?.modoPedido || '').toLowerCase() === 'profissional' && isProfissional ? (
-                        <span className="ml-2 text-emerald-300/90">✅ menor pela sua patente</span>
-                      ) : null}
+                    {/* taxa removida / incentivo ao profissional */}
+                    <div className="text-[11px] text-emerald-600 font-semibold">
+                      ✅ Sem taxa do app: <b className="text-emerald-700">100% do valor fica com quem faz o serviço</b>
                     </div>
 
                     {/* patentes do criador */}
@@ -1474,14 +1672,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {status === 'aceito' && (souAceitador(p) || souCriador(p)) && (
+                      {status === 'aceito' && souCriador(p) && (
                         <button
                           className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/20 disabled:opacity-60 transition active:scale-[0.98]"
                           onClick={() => marcarEntregue(p)}
                           disabled={entregandoId === p.id}
                           type="button"
                         >
-                          {entregandoId === p.id ? 'Marcando…' : 'Marcar ENTREGUE'}
+                          {entregandoId === p.id ? 'Confirmando…' : 'Confirmar serviço feito'}
                         </button>
                       )}
 
@@ -1552,15 +1750,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       )}
 
                       {status !== 'aberto' && !aceitoPorMim && temAceitador && (
-                        <span className="text-xs text-gray-400">Aceito por {p.aceite?.nome || 'alguém'}</span>
+                        <span className="text-xs text-slate-500">Aceito por {p.aceite?.nome || 'alguém'}</span>
                       )}
                     </div>
 
                     {chatPedido?.id === p.id && (
                       <div className="pt-2">
                         <div className="flex items-center justify-between">
-                          <div className="text-xs text-gray-400">
-                            Chat do pedido: <b className="text-gray-200">{p.titulo || p.id}</b>
+                          <div className="text-xs text-slate-500">
+                            Chat do pedido: <b className="text-slate-800">{p.titulo || p.id}</b>
                           </div>
                           <button
                             className="text-xs px-2 py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-white"
@@ -1613,13 +1811,32 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {/* MAPA AO VIVO */}
         {openMapaAoVivo && (
           <>
-            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[min(92vw,420px)] px-3">
-              <input
-                value={buscaUsuarioMapa}
-                onChange={(e) => setBuscaUsuarioMapa(e.target.value)}
-                placeholder="🔍 Buscar usuário online por nome ou cidade"
-                className="w-full px-4 py-3 rounded-2xl bg-[#0b1220]/95 border border-white/10 text-white placeholder:text-white/40 shadow-2xl backdrop-blur"
-              />
+            <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100000] w-[min(92vw,520px)] px-3">
+              <div className="rounded-3xl bg-white/95 border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.16)] backdrop-blur-xl p-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-lg">
+                    🔎
+                  </div>
+
+                  <input
+                    value={buscaUsuarioMapa}
+                    onChange={(e) => setBuscaUsuarioMapa(e.target.value)}
+                    placeholder="Buscar usuário online por nome ou cidade"
+                    className="min-w-0 flex-1 px-2 py-2 bg-transparent text-slate-900 placeholder:text-slate-400 outline-none text-sm font-semibold"
+                  />
+
+                  {buscaUsuarioMapa ? (
+                    <button
+                      type="button"
+                      onClick={() => setBuscaUsuarioMapa('')}
+                      className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold"
+                      title="Limpar busca"
+                    >
+                      ✕
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             <MapinhaModal
@@ -1652,7 +1869,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   <div className="text-sm font-semibold text-white">
                     Conversa do pedido
                   </div>
-                  <div className="text-xs text-gray-400">
+                  <div className="text-xs text-slate-500">
                     {chatPedido?.titulo || 'Corre aqui'}
                   </div>
                 </div>
@@ -1683,8 +1900,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {editItem && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
             <div className="w-[92%] max-w-md rounded-2xl p-5 shadow-xl border border-white/10 bg-white/10 backdrop-blur-md">
-              <div className="text-lg font-bold text-gray-100">Editar pedido</div>
-              <div className="text-xs text-gray-400 mt-1">Só o criador pode editar</div>
+              <div className="text-lg font-bold text-slate-950">Editar pedido</div>
+              <div className="text-xs text-slate-500 mt-1">Só o criador pode editar</div>
 
               <div className="mt-3 space-y-2">
                 <input
@@ -1730,10 +1947,366 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         )}
       </div>
 
+      {/* ✅ PERFIL RÁPIDO DO PROFISSIONAL SELECIONADO */}
+      {usuarioSelecionado && (
+        <div className="fixed inset-0 z-[100000] bg-black/55 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
+          <div className="w-full max-w-md rounded-3xl bg-white text-slate-900 border border-slate-200 shadow-[0_30px_90px_rgba(0,0,0,0.35)] overflow-hidden">
+            <div className="p-4 bg-gradient-to-br from-white to-slate-50 border-b border-slate-200">
+              <div className="flex items-start gap-3">
+                <div className="w-16 h-16 rounded-3xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center text-3xl shrink-0">
+                  {usuarioSelecionado?.fotoURL || usuarioSelecionado?.profile?.fotoURL ? (
+                    <img
+                      src={usuarioSelecionado?.fotoURL || usuarioSelecionado?.profile?.fotoURL}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span>{usuarioSelecionado?.avatarEmoji || usuarioSelecionado?.profile?.avatarEmoji || '🙂'}</span>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="text-lg font-extrabold text-slate-950 truncate">
+                    {usuarioSelecionado?.nome || usuarioSelecionado?.profile?.nome || 'Profissional'}
+                  </div>
+                  <div className="mt-1 text-sm text-slate-600">
+                    {usuarioSelecionado?.profissional?.titulo ||
+                      usuarioSelecionado?.profile?.titulo ||
+                      usuarioSelecionado?.profResumo ||
+                      'Profissional do Corre Aqui'}
+                  </div>
+                  <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+                    🟢 Disponível
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setUsuarioSelecionado(null)}
+                  className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 space-y-3">
+              <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">Especialidade</div>
+                <div className="mt-1 text-sm text-slate-800">
+                  {usuarioSelecionado?.profissional?.descricao ||
+                    usuarioSelecionado?.profile?.descricao ||
+                    usuarioSelecionado?.profResumo ||
+                    'Ainda sem descrição cadastrada.'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                  <div className="text-xs text-slate-500">Cidade</div>
+                  <div className="font-bold text-slate-800">
+                    {usuarioSelecionado?.profCidadeAtende || usuarioSelecionado?.cidade || usuarioSelecionado?.profile?.cidade || '—'}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                  <div className="text-xs text-slate-500">Base</div>
+                  <div className="font-bold text-slate-800">
+                    {usuarioSelecionado?.profPrecoBase || usuarioSelecionado?.profissional?.preco || usuarioSelecionado?.profile?.preco
+                      ? `R$ ${usuarioSelecionado?.profPrecoBase || usuarioSelecionado?.profissional?.preco || usuarioSelecionado?.profile?.preco}`
+                      : 'A combinar'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsuarioSelecionado(null)
+                    setOpenIA(true)
+                  }}
+                  className="flex-1 h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-extrabold shadow-lg shadow-blue-500/25 active:scale-[0.98]"
+                >
+                  Pedir serviço
+                </button>
+
+                {(usuarioSelecionado?.profWhats || usuarioSelecionado?.profissional?.whatsapp || usuarioSelecionado?.profile?.whatsapp) && (
+                  <a
+                    href={`https://wa.me/55${String(usuarioSelecionado?.profWhats || usuarioSelecionado?.profissional?.whatsapp || usuarioSelecionado?.profile?.whatsapp).replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="h-12 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold flex items-center justify-center shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+                  >
+                    WhatsApp
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ ABA LATERAL ESQUERDA DOS CORRES / BICOS (fora do mapa e sem BottomBar) */}
+      {modoApp === 'cliente' && !isMapOpen && (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpenCorresLateral((v) => !v)}
+            className="
+              fixed left-0 top-1/2 -translate-y-1/2 z-[9997]
+              rounded-r-3xl px-3 py-4
+              bg-white text-slate-900
+              border border-slate-200 border-l-0
+              shadow-[0_18px_60px_rgba(15,23,42,0.18)]
+              font-extrabold text-sm
+              active:scale-[0.98]
+              hidden sm:flex flex-col items-center gap-1
+            "
+            title="Abrir corres"
+          >
+            <span className="text-xl">🧍</span>
+            <span className="[writing-mode:vertical-rl] tracking-wide">
+              Corres
+            </span>
+          </button>
+
+          {openCorresLateral && (
+            <div className="fixed inset-0 z-[9996] pointer-events-none">
+              <div
+                className="absolute inset-0 bg-black/25 pointer-events-auto"
+                onClick={() => setOpenCorresLateral(false)}
+              />
+
+              <aside
+                className="
+                  absolute left-0 top-0 h-full w-[min(92vw,430px)]
+                  bg-white text-slate-900
+                  border-r border-slate-200
+                  shadow-[24px_0_80px_rgba(15,23,42,0.28)]
+                  pointer-events-auto
+                  flex flex-col
+                "
+              >
+                <div className="px-4 py-4 border-b border-slate-200 bg-gradient-to-br from-white to-amber-50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-extrabold text-slate-950 tracking-tight">
+                        🧍 Corres / Bicos
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        Gente disponível para capina, entulho, mudança e ajuda rápida.
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setOpenCorresLateral(false)}
+                      className="w-10 h-10 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <input
+                      value={clienteCorreBusca}
+                      onChange={(e) => setClienteCorreBusca(e.target.value)}
+                      placeholder="Buscar por bico, nome ou cidade..."
+                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                    />
+
+                    <select
+                      value={clienteCorreCategoria}
+                      onChange={(e) => setClienteCorreCategoria(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                      title="Filtrar corres por tipo de bico"
+                    >
+                      <option value="">Todos os bicos</option>
+                      {(CATEGORIES || []).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.emoji} {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 bg-amber-50/40">
+                  <ListaProfissionais
+                    mode="corre"
+                    categoriaId={clienteCorreCategoria}
+                    search={clienteCorreBusca}
+                    limit={200}
+                    onAbrirPerfil={(u) => {
+                      setUsuarioSelecionado(u)
+                      showToast({
+                        type: 'info',
+                        title: u?.nome || u?.profile?.nome || 'Corre',
+                        message:
+                          u?.profResumo ||
+                          u?.profissional?.descricao ||
+                          u?.profile?.descricao ||
+                          'Corre selecionado.',
+                      })
+                    }}
+                  />
+                </div>
+              </aside>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setOpenCorresLateral(true)}
+            className="
+              fixed left-4 bottom-24 z-[9997]
+              rounded-3xl px-4 py-3
+              bg-white text-slate-900
+              border border-slate-200
+              shadow-[0_18px_60px_rgba(15,23,42,0.18)]
+              font-extrabold text-sm
+              active:scale-[0.98]
+              sm:hidden
+            "
+          >
+            🧍 Corres
+          </button>
+        </>
+      )}
+
+      {/* ✅ ABA LATERAL DIREITA DE PROFISSIONAIS (fora do mapa e sem BottomBar) */}
+      {modoApp === 'cliente' && !isMapOpen && (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpenProfissionaisLateral((v) => !v)}
+            className="
+              fixed right-0 top-1/2 -translate-y-1/2 z-[9997]
+              rounded-l-3xl px-3 py-4
+              bg-white text-slate-900
+              border border-slate-200 border-r-0
+              shadow-[0_18px_60px_rgba(15,23,42,0.18)]
+              font-extrabold text-sm
+              active:scale-[0.98]
+              hidden sm:flex flex-col items-center gap-1
+            "
+            title="Abrir profissionais"
+          >
+            <span className="text-xl">👷</span>
+            <span className="[writing-mode:vertical-rl] rotate-180 tracking-wide">
+              Profissionais
+            </span>
+          </button>
+
+          {openProfissionaisLateral && (
+            <div className="fixed inset-0 z-[9996] pointer-events-none">
+              <div
+                className="absolute inset-0 bg-black/25 pointer-events-auto"
+                onClick={() => setOpenProfissionaisLateral(false)}
+              />
+
+              <aside
+                className="
+                  absolute right-0 top-0 h-full w-[min(92vw,430px)]
+                  bg-white text-slate-900
+                  border-l border-slate-200
+                  shadow-[-24px_0_80px_rgba(15,23,42,0.28)]
+                  pointer-events-auto
+                  flex flex-col
+                "
+              >
+                <div className="px-4 py-4 border-b border-slate-200 bg-gradient-to-br from-white to-slate-50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-extrabold text-slate-950 tracking-tight">
+                        👷 Profissionais
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        Lista leve, fora do mapa, com foto, especialidade e contato.
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setOpenProfissionaisLateral(false)}
+                      className="w-10 h-10 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <input
+                      value={clienteProfBusca}
+                      onChange={(e) => setClienteProfBusca(e.target.value)}
+                      placeholder="Buscar por nome, especialidade ou cidade..."
+                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    />
+
+                    <select
+                      value={clienteProfCategoria}
+                      onChange={(e) => setClienteProfCategoria(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      title="Filtrar profissionais por categoria"
+                    >
+                      <option value="">Todas categorias</option>
+                      {(CATEGORIES || []).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.emoji} {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 bg-slate-50">
+                  <ListaProfissionais
+                    mode="profissional"
+                    categoriaId={clienteProfCategoria}
+                    search={clienteProfBusca}
+                    limit={200}
+                    onAbrirPerfil={(u) => {
+                      setUsuarioSelecionado(u)
+                      showToast({
+                        type: 'info',
+                        title: u?.nome || u?.profile?.nome || 'Profissional',
+                        message:
+                          u?.profResumo ||
+                          u?.profissional?.descricao ||
+                          u?.profile?.descricao ||
+                          'Perfil selecionado.',
+                      })
+                    }}
+                  />
+                </div>
+              </aside>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setOpenProfissionaisLateral(true)}
+            className="
+              fixed right-4 bottom-24 z-[9997]
+              rounded-3xl px-4 py-3
+              bg-white text-slate-900
+              border border-slate-200
+              shadow-[0_18px_60px_rgba(15,23,42,0.18)]
+              font-extrabold text-sm
+              active:scale-[0.98]
+              sm:hidden
+            "
+          >
+            👷 Profissionais
+          </button>
+        </>
+      )}
+
       <PerfilDrawer open={openPerfil} onClose={() => setOpenPerfil(false)} uid={meuId} />
 
       {modoApp === 'corre' && (
-        <BottomBar active={tab} onTab={onBottomTab} unreadCount={unreadInbox} modoApp={modoApp} hidden={isMapOpen} />
+        <BottomBar active={tab} onTab={onBottomTab} unreadCount={unreadInbox} modoApp={modoApp} hidden={isMapOpen} disponivel={correDisponivel} />
       )}
     </div>
   )

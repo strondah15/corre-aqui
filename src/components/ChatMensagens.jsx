@@ -4,12 +4,34 @@ import { useEffect, useRef, useState } from 'react'
 import { database } from '@/lib/firebase'
 import { ref, push, onValue, query, limitToLast } from 'firebase/database'
 
+function getMsgMs(v) {
+  if (!v) return 0
+  if (typeof v === 'number') return v
+  if (typeof v === 'string') {
+    const parsed = Date.parse(v)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  if (typeof v === 'object' && typeof v.seconds === 'number') return v.seconds * 1000
+  return 0
+}
+
+function formatarHoraMensagem(v) {
+  const ms = getMsgMs(v)
+  if (!ms) return ''
+  return new Date(ms).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export default function ChatMensagens({
   pedidoId,
   meuId,
   meuNome,
   pedidoTitulo = 'Corre aqui',
   outroUser,
+  planoAtual = 'free',
+  mostrarAnuncio = true,
 }) {
   const [mensagens, setMensagens] = useState([])
   const [texto, setTexto] = useState('')
@@ -24,6 +46,9 @@ export default function ChatMensagens({
 
   const outroNome = outroUser?.nome || 'Alguém'
   const nomeMeu = meuNome || 'Você'
+  const planoNormalizado = String(planoAtual || 'free').toLowerCase()
+  const planoPago = planoNormalizado === 'pro' || planoNormalizado === 'ultra'
+  const deveMostrarAnuncio = mostrarAnuncio && !planoPago
 
   useEffect(() => {
     if (!pedidoId) return
@@ -203,14 +228,26 @@ export default function ChatMensagens({
           Você: <span className="text-gray-200">{nomeMeu}</span> • Outro:{' '}
           <span className="text-gray-200">{outroNome}</span>
         </div>
+
+        <div className="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+          💚 Corre Aqui sem taxa: 100% do valor combinado fica com quem faz o serviço.
+        </div>
       </div>
+
+      {deveMostrarAnuncio && (
+        <div className="border-b border-white/10 bg-slate-950 px-4 py-2">
+          <div className="rounded-2xl border border-yellow-400/20 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
+            📢 Espaço para anúncio leve — no Plano Pro/Ultra essa área pode ficar sem anúncios.
+          </div>
+        </div>
+      )}
 
       <div
         ref={chatRef}
         className="h-[360px] overflow-y-auto px-4 py-4 bg-[#020b22] space-y-3"
       >
         {mensagens.length === 0 && (
-          <div className="text-gray-400 text-sm">Nenhuma mensagem ainda.</div>
+          <div className="text-gray-400 text-sm">Nenhuma mensagem ainda. Combine detalhes do serviço com segurança por aqui.</div>
         )}
 
         {mensagens.map((msg) => {
@@ -218,10 +255,7 @@ export default function ChatMensagens({
             (msg.userId && meuId && String(msg.userId) === String(meuId)) ||
             (!msg.userId && msg.autor && meuNome && String(msg.autor) === String(meuNome))
 
-          const hora = new Date(msg.hora || 0).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
+          const hora = formatarHoraMensagem(msg.hora || msg.criadoEm || msg.createdAt)
 
           return (
             <div key={msg.id} className={`flex ${minha ? 'justify-end' : 'justify-start'}`}>
@@ -286,7 +320,7 @@ export default function ChatMensagens({
                 value={texto}
                 onChange={(e) => setTexto(e.target.value)}
                 onKeyDown={onKeyDown}
-                placeholder="Digite uma mensagem..."
+                placeholder="Digite uma mensagem sobre o serviço..."
                 rows={1}
                 className="w-full min-h-12 max-h-32 resize-none rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white outline-none"
               />
@@ -297,7 +331,7 @@ export default function ChatMensagens({
             type="button"
             onClick={enviar}
             disabled={enviando || !texto.trim() || gravando}
-            className="h-12 px-4 rounded-2xl bg-blue-600 text-white font-semibold disabled:opacity-50"
+            className="h-12 px-4 rounded-2xl bg-blue-600 text-white font-semibold transition hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600"
           >
             {enviando ? '...' : 'Enviar'}
           </button>
