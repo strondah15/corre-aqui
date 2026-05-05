@@ -71,9 +71,32 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
   const whats = String(item?.profWhats || prof?.whatsapp || item?.profile?.whatsapp || '').trim()
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white hover:bg-slate-50 transition p-4 shadow-[0_14px_45px_rgba(15,23,42,0.08)]">
-      <div className="flex items-start gap-3">
-        <div className="w-16 h-16 rounded-3xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 shadow-sm">
+    <>
+      <style>{`
+        .corre-card-clean,
+        .corre-card-clean * {
+          -webkit-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .corre-card-clean ::selection {
+          background: transparent;
+          color: inherit;
+        }
+        .corre-card-clean:active,
+        .corre-card-clean:focus,
+        .corre-card-clean:focus-within {
+          background-color: rgba(255,255,255,0.96);
+          filter: none;
+          transform: none;
+        }
+      `}</style>
+      <div className="corre-card-clean relative overflow-hidden h-full rounded-[22px] md:rounded-[24px] border border-white/80 bg-white/95 transition p-2.5 md:p-3 shadow-[0_14px_42px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/5 select-none cursor-default">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(59,130,246,0.10),transparent_32%),radial-gradient(circle_at_88%_12%,rgba(16,185,129,0.10),transparent_28%)]" />
+      <div className="relative z-10 flex items-start gap-2.5">
+        <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-slate-100 border border-white overflow-hidden flex items-center justify-center shrink-0 shadow-[0_12px_30px_rgba(15,23,42,0.18)] ring-4 ring-slate-100">
           {fotoURL ? (
             <img
               src={fotoURL}
@@ -82,14 +105,15 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
               loading="lazy"
             />
           ) : (
-            <span className="text-3xl">{emoji}</span>
+            <span className="text-xl md:text-2xl">{emoji}</span>
           )}
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="font-extrabold text-slate-950 truncate">
+              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Disponível</div>
+              <div className="mt-0.5 font-black text-slate-950 text-sm md:text-base leading-tight truncate">
                 {nome}
               </div>
 
@@ -102,7 +126,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
               {tags.map((x) => (
                 <span
                   key={x.t}
-                  className={`text-[10px] px-2 py-1 rounded-full border font-extrabold ${x.cls}`}
+                  className={`text-[10px] px-2.5 py-1 rounded-full border font-black shadow-sm ${x.cls}`}
                 >
                   {x.t}
                 </span>
@@ -111,18 +135,18 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
           </div>
 
           {isCorre && (
-            <div className="mt-3 rounded-2xl bg-amber-50 border border-amber-200 p-3">
-              <div className="text-xs font-extrabold text-amber-800">
+            <div className="mt-2 rounded-2xl bg-amber-50/95 border border-amber-200 p-2 md:p-2.5 shadow-sm">
+              <div className="text-xs font-black text-amber-800">
                 ⚡ {tituloCorre}
               </div>
 
               {resumoCorre ? (
-                <div className="mt-1 text-xs text-slate-700 line-clamp-2">
+                <div className="mt-1 text-xs text-slate-700 line-clamp-1">
                   {resumoCorre}
                 </div>
               ) : null}
 
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="mt-1.5 flex flex-wrap gap-1">
                 {transporte ? (
                   <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-amber-200 text-amber-800 font-bold">
                     🚚 {transporte}
@@ -148,18 +172,18 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
           )}
 
           {isProf && (
-            <div className="mt-3 rounded-2xl bg-blue-50 border border-blue-200 p-3">
-              <div className="text-xs font-extrabold text-blue-800">
+            <div className="mt-2 rounded-2xl bg-blue-50/95 border border-blue-200 p-2 md:p-2.5 shadow-sm">
+              <div className="text-xs font-black text-blue-800">
                 🧑‍🔧 {tituloProf || 'Profissional'}
               </div>
 
               {resumoProf ? (
-                <div className="mt-1 text-xs text-slate-700 line-clamp-2">
+                <div className="mt-1 text-xs text-slate-700 line-clamp-1">
                   {resumoProf}
                 </div>
               ) : null}
 
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="mt-1.5 flex flex-wrap gap-1">
                 {preco ? (
                   <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-blue-200 text-blue-800 font-bold">
                     💰 R$ {preco}
@@ -175,16 +199,16 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
           )}
 
           {!isCorre && !isProf && resumo ? (
-            <div className="mt-2 text-xs text-slate-700 line-clamp-2">
+            <div className="mt-2 text-xs text-slate-700 line-clamp-1">
               {resumo}
             </div>
           ) : null}
 
-          <div className="mt-3 flex gap-2 flex-wrap">
+          <div className="mt-2 md:mt-2.5 flex gap-1.5 md:gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => onAbrir?.(item)}
-              className="flex-1 min-w-[120px] h-[40px] rounded-2xl bg-slate-900 hover:bg-black border border-slate-900 text-white text-sm font-bold active:scale-[0.98] transition shadow-lg shadow-slate-900/10"
+              className="flex-1 min-w-[96px] h-[34px] md:h-[38px] rounded-xl bg-slate-950 hover:bg-black border border-slate-900 text-white text-xs font-black transition shadow-lg shadow-slate-900/20"
             >
               Ver currículo
             </button>
@@ -193,7 +217,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
               type="button"
               onClick={() => onWhatsapp?.(item)}
               disabled={!whats}
-              className="h-[40px] px-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition"
+              className="h-[34px] md:h-[38px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-black disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
               title={whats ? 'Chamar no WhatsApp' : 'WhatsApp não informado'}
             >
               WhatsApp
@@ -201,6 +225,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

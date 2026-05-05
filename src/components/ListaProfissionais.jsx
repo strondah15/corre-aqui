@@ -230,21 +230,22 @@ export default function ListaProfissionais({
   }
 
   const glass =
-    'bg-white/95 border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.12)]'
+    'bg-white/95 border border-white/80 shadow-[0_24px_80px_rgba(15,23,42,0.18)] ring-1 ring-slate-900/5 backdrop-blur-xl'
 
   return (
     <div className={`rounded-3xl overflow-hidden ${glass}`}>
-      <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-br from-white to-slate-50">
-        <div className="text-sm font-extrabold text-slate-950">
+      <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50/60">
+        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Busca inteligente</div>
+        <div className="mt-1 text-base font-black text-slate-950">
           {mode === 'corre' ? '🧍 Corres / Bicos disponíveis' : mode === 'ambos' ? '🧭 Corres + Profissionais' : '🧑‍🔧 Profissionais'}
         </div>
-        <div className="text-xs text-slate-500 mt-0.5">
+        <div className="text-xs text-slate-600 mt-1">
           {categoriaLabel ? <>Filtro: <b className="text-slate-700">{categoriaLabel}</b></> : mode === 'corre' ? 'Capina, entulho, mudança, ajudante e bicos rápidos.' : 'Escolha uma categoria para refinar.'}
           {' '}· {filtrados.length} encontrados
         </div>
       </div>
 
-      <div className="p-3">
+      <div className="p-3 sm:p-4 bg-gradient-to-b from-white/60 to-slate-50/80">
         {loading ? (
           <div className="text-sm text-slate-600">Carregando profissionais…</div>
         ) : filtrados.length === 0 ? (
@@ -255,7 +256,7 @@ export default function ListaProfissionais({
             </div>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4 items-stretch">
             {filtrados.map((u) => (
               <CardProfissional
                 key={u.uid}

@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from 'react'
 import { CATEGORIES } from '@/constants/categories'
+import ListaProfissionais from './ListaProfissionais'
 
 const glass =
-  'bg-white/95 backdrop-blur-xl border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.10)] text-slate-900'
+  'bg-white/95 backdrop-blur-xl border border-slate-200 shadow-[0_14px_45px_rgba(15,23,42,0.10)] text-slate-900 select-none'
 
 const safeStr = (v) => String(v || '').trim()
 
@@ -65,6 +66,22 @@ const normalizeProvider = (u) => {
   const lng = Number(local?.lng)
   const okLoc = Number.isFinite(lat) && Number.isFinite(lng)
 
+  const corre = u?.corre || u?.profile?.corre || {}
+  const correCategorias = Array.isArray(u?.correCategorias)
+    ? u.correCategorias
+    : Array.isArray(u?.profile?.correCategorias)
+      ? u.profile.correCategorias
+      : Array.isArray(corre?.categorias)
+        ? corre.categorias
+        : []
+
+  const correTitulo = safeStr(u?.correTitulo || corre?.titulo || 'Corre rápido')
+  const correResumo = safeStr(u?.correResumo || corre?.bio || u?.profile?.bio || '')
+  const correRegiao = safeStr(u?.correRegiao || corre?.regiao || profCidadeAtende || u?.profile?.cidade || '')
+  const correTransporte = safeStr(u?.correTransporte || corre?.transporte || '')
+  const correDisponibilidade = safeStr(u?.correDisponibilidade || corre?.disponibilidade || '')
+  const profExperiencia = safeStr(u?.profExperiencia || u?.profissional?.profExperiencia || u?.profissional?.experiencia || '')
+
   return {
     uid,
     nome,
@@ -73,10 +90,18 @@ const normalizeProvider = (u) => {
     isCorre,
     isProfissional,
     profCategorias,
+    correCategorias,
     profResumo,
     profCidadeAtende,
     profPrecoBase,
     profWhats,
+    profExperiencia,
+    correTitulo,
+    correResumo,
+    correRegiao,
+    correTransporte,
+    correDisponibilidade,
+    regiao: correRegiao || profCidadeAtende,
     local: okLoc ? { lat, lng } : null,
   }
 }
@@ -86,10 +111,15 @@ export default function ClienteHome({
   onCriarPedido,
   onIrAoVivo,
   onlineUsers = [],
+  onAbrirPerfil,
 }) {
   const [modo, setModo] = useState('corre') // corre | profissional
-  const [busca, setBusca] = useState('')
-  const [catId, setCatId] = useState('servicos_gerais')
+
+  // ✅ NOVO: a tela do cliente agora usa uma lista limpa.
+  // Os botões Corre/Profissionais ficam no card principal e a ficha entra direto abaixo,
+  // sem repetir busca, categoria e filtros no meio da tela.
+  const busca = ''
+  const catId = ''
 
   const providers = useMemo(() => {
     const list = Array.isArray(onlineUsers) ? onlineUsers : []
@@ -103,38 +133,74 @@ export default function ClienteHome({
       modo === 'corre' ? p.isCorre : p.isProfissional
     )
 
-    const byCat =
-      modo === 'profissional' && catId
-        ? base.filter((p) => (p.profCategorias || []).includes(catId))
-        : base
+    const byCat = catId
+      ? base.filter((p) => {
+          const cats = modo === 'corre' ? (p.correCategorias || []) : (p.profCategorias || [])
+          // Se o corre ainda não cadastrou segmentos, ele continua aparecendo em "serviços gerais".
+          if (modo === 'corre' && cats.length === 0 && catId === 'servicos_gerais') return true
+          return cats.includes(catId)
+        })
+      : base
 
     const bySearch = !t
       ? byCat
       : byCat.filter((p) => {
           const nome = safeStr(p.nome).toLowerCase()
-          const cidade = safeStr(p.profCidadeAtende).toLowerCase()
-          const resumo = safeStr(p.profResumo).toLowerCase()
-          return nome.includes(t) || cidade.includes(t) || resumo.includes(t)
+          const cidade = safeStr(p.profCidadeAtende || p.correRegiao || p.regiao).toLowerCase()
+          const resumo = safeStr(p.profResumo || p.correResumo).toLowerCase()
+          const titulo = safeStr(p.correTitulo).toLowerCase()
+          return nome.includes(t) || cidade.includes(t) || resumo.includes(t) || titulo.includes(t)
         })
 
     return bySearch.slice(0, 60)
   }, [providers, modo, busca, catId])
 
   return (
-    <div className="mt-4 space-y-3">
-      <div className={`rounded-3xl p-4 ${glass}`}>
-        <div className="text-sm font-semibold text-slate-900">
+    <div className="mt-3 space-y-3 px-3 sm:px-0 pb-32 select-none">
+      <div className={`rounded-[1.7rem] p-3 sm:p-4 ${glass}`}>
+        <div className="text-sm sm:text-base font-black text-slate-900">
           👋 Olá, {meuNome || 'Anônimo'}
         </div>
-        <div className="mt-1 text-xs text-slate-500">
+        <div className="mt-1 text-xs sm:text-sm text-slate-500 leading-snug">
           Crie um pedido e encontre quem está disponível.
         </div>
 
-        <div className="mt-3 flex gap-2 flex-wrap">
+        {/* ✅ CONTROLE ÚNICO: Corre / Profissionais */}
+        <div className="mt-3 grid grid-cols-2 gap-2 rounded-[1.6rem] bg-slate-100/80 p-1 border border-slate-200">
+          <button
+            type="button"
+            onClick={() => setModo('corre')}
+            className={[
+              'w-full h-12 rounded-[1.25rem] text-sm font-black border transition flex items-center justify-center gap-2',
+              modo === 'corre'
+                ? 'bg-amber-300 text-black border-yellow-300 shadow-[0_10px_25px_rgba(245,158,11,0.20)]'
+                : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
+            ].join(' ')}
+          >
+            <span>⚡</span>
+            <span>Corres</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setModo('profissional')}
+            className={[
+              'w-full h-12 rounded-[1.25rem] text-sm font-black border transition flex items-center justify-center gap-2',
+              modo === 'profissional'
+                ? 'bg-blue-500 text-white border-blue-500 shadow-[0_10px_25px_rgba(59,130,246,0.22)]'
+                : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
+            ].join(' ')}
+          >
+            <span>👷</span>
+            <span>Profissionais</span>
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 min-[420px]:grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => onCriarPedido?.()}
-            className="px-4 py-2 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold active:scale-[0.98] transition"
+            className="w-full px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black transition shadow-[0_10px_25px_rgba(37,99,235,0.25)]"
           >
             🎯 Criar pedido
           </button>
@@ -142,158 +208,53 @@ export default function ClienteHome({
           <button
             type="button"
             onClick={() => onIrAoVivo?.()}
-            className="px-4 py-2 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-semibold active:scale-[0.98] transition"
+            className="w-full px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-black transition"
           >
             🗺️ Ver mapa ao vivo
           </button>
         </div>
       </div>
 
-      <div className={`rounded-3xl p-4 ${glass}`}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-slate-900">🔎 Buscar</div>
-          <div className="text-xs text-slate-500">
-            Encontrados: <b className="text-slate-900">{list.length}</b>
+      {/* ✅ LISTA LIMPA: sem busca duplicada, sem filtros duplicados, sem botão flutuante */}
+      <div className={`rounded-[1.7rem] overflow-hidden ${glass}`}>
+        <div className={[
+          'px-4 py-4 border-b border-slate-200',
+          modo === 'corre'
+            ? 'bg-gradient-to-br from-white via-amber-50 to-orange-50'
+            : 'bg-gradient-to-br from-white via-slate-50 to-blue-50',
+        ].join(' ')}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+                Lista da região
+              </div>
+              <div className="mt-1 text-base sm:text-lg font-black text-slate-950 truncate">
+                {modo === 'corre' ? '⚡ Corres disponíveis' : '👷 Profissionais disponíveis'}
+              </div>
+            </div>
+
+            <span className={[
+              'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black border',
+              modo === 'corre'
+                ? 'bg-amber-100 text-amber-800 border-amber-200'
+                : 'bg-blue-100 text-blue-800 border-blue-200',
+            ].join(' ')}>
+              {list.length} ativo(s)
+            </span>
           </div>
         </div>
 
-        <div className="mt-3 flex gap-2">
-          <button
-            type="button"
-            onClick={() => setModo('corre')}
-            className={[
-              'flex-1 h-11 rounded-2xl text-sm font-semibold border transition',
-              modo === 'corre'
-                ? 'bg-amber-300 text-black border-yellow-300'
-                : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
-            ].join(' ')}
-          >
-            ⚡ Corre
-          </button>
-          <button
-            type="button"
-            onClick={() => setModo('profissional')}
-            className={[
-              'flex-1 h-11 rounded-2xl text-sm font-semibold border transition',
-              modo === 'profissional'
-                ? 'bg-blue-500 text-white border-blue-500'
-                : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
-            ].join(' ')}
-          >
-            🧑‍🔧 Profissionais
-          </button>
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 gap-2">
-          <input
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por nome, cidade ou descrição..."
-            className="w-full px-3 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+        <div className="p-3 sm:p-4 bg-slate-50/70">
+          <ListaProfissionais
+            mode={modo}
+            categoriaId={catId}
+            search={busca}
+            limit={200}
+            onAbrirPerfil={onAbrirPerfil}
           />
-
-          {modo === 'profissional' && (
-            <select
-              value={catId}
-              onChange={(e) => setCatId(e.target.value)}
-              className="w-full px-3 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c.id} value={c.id} className="text-black">
-                  {c.emoji} {c.label}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        <div className="mt-3 space-y-2">
-          {list.length === 0 ? (
-            <div className="rounded-2xl p-4 bg-slate-50 border border-slate-200 text-slate-600">
-              Ninguém disponível agora.
-            </div>
-          ) : (
-            list.map((p) => (
-              <div
-                key={p.uid}
-                className="rounded-2xl p-3 bg-slate-50 border border-slate-200"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                      {p.fotoURL ? (
-                        <img
-                          src={p.fotoURL}
-                          alt=""
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none'
-                          }}
-                        />
-                      ) : (
-                        <span className="text-xl">{p.avatarEmoji || '🙂'}</span>
-                      )}
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <div className="font-semibold text-slate-900 truncate">{p.nome}</div>
-                        {p.isCorre && (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-                            corre
-                          </span>
-                        )}
-                        {p.isProfissional && (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                            prof
-                          </span>
-                        )}
-                      </div>
-
-                      {modo === 'profissional' && (
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {getLabelCategoria(catId)}
-                          {p.profCidadeAtende ? ` · ${p.profCidadeAtende}` : ''}
-                          {p.profPrecoBase ? ` · base: R$ ${p.profPrecoBase}` : ''}
-                        </div>
-                      )}
-
-                      {p.profResumo ? (
-                        <div className="mt-2 text-xs text-slate-600">{p.profResumo}</div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2 shrink-0">
-                    {p.profWhats ? (
-                      <a
-                        className="px-3 py-2 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"
-                        href={`https://wa.me/${p.profWhats}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        WhatsApp
-                      </a>
-                    ) : null}
-
-                    <button
-                      type="button"
-                      onClick={() => onIrAoVivo?.()}
-                      className="px-3 py-2 rounded-2xl bg-white border border-slate-200 text-slate-900 text-xs font-semibold hover:bg-slate-50"
-                    >
-                      Ver no mapa
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="mt-3 text-[11px] text-slate-400">
-          Dica: “Corre” é bico rápido. “Profissionais” é por categoria.
         </div>
       </div>
     </div>
   )
+
 }

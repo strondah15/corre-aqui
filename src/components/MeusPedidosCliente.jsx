@@ -54,8 +54,13 @@ export default function MeusPedidosCliente({
 
     if (s === 'aberto') {
       return (
-        <span className="text-[11px] px-2 py-1 rounded-full bg-emerald-400/15 border border-emerald-400/20 text-emerald-200 font-semibold">
-          ABERTO
+        <span className="relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-400/20 border border-emerald-300/60 text-emerald-100 text-[11px] font-black uppercase tracking-[0.12em] shadow-[0_0_22px_rgba(16,185,129,0.45)] animate-pulse overflow-hidden">
+          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-70" />
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.95)]" />
+          </span>
+          <span className="relative drop-shadow-[0_0_7px_rgba(16,185,129,0.85)]">ABERTO</span>
         </span>
       )
     }
@@ -103,16 +108,28 @@ export default function MeusPedidosCliente({
           {meusPedidos.map((p) => (
             <div
               key={p.id}
-              className="rounded-2xl p-3 bg-white/5 border border-white/10"
+              className={[
+                "relative overflow-hidden rounded-2xl p-3 bg-white/5 border border-white/10 transition hover:bg-white/10 select-none",
+                String(p?.status || 'aberto').toLowerCase() === 'aberto'
+                  ? "border-emerald-300/35 ring-1 ring-emerald-300/20 shadow-[0_0_34px_rgba(16,185,129,0.14)]"
+                  : "",
+              ].join(" ")}
             >
+              {String(p?.status || 'aberto').toLowerCase() === 'aberto' && (
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-300 via-lime-200 to-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.85)] animate-pulse" />
+              )}
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-gray-100 truncate">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-emerald-400/10 border border-emerald-300/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100 mb-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
+                    Pedido ativo
+                  </div>
+                  <div className="text-base font-black text-white truncate drop-shadow-[0_0_10px_rgba(255,255,255,0.18)]">
                     {p?.titulo || 'Pedido sem título'}
                   </div>
 
-                  {p?.descricao ? (
-                    <div className="text-xs text-gray-400 mt-1 line-clamp-2">
+                  {p?.descricao && String(p.descricao).trim().toLowerCase() !== String(p?.titulo || '').trim().toLowerCase() ? (
+                    <div className="text-xs text-gray-400 mt-1 line-clamp-2 select-text">
                       {p.descricao}
                     </div>
                   ) : null}
