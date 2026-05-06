@@ -20,13 +20,13 @@ export default function BottomBar({
   if (modoApp !== 'corre') return null
 
   const itemBase =
-    'h-[46px] md:h-[58px] rounded-[18px] md:rounded-[24px] border flex items-center justify-center gap-1.5 md:gap-2 transition backdrop-blur-xl shadow-[0_12px_35px_rgba(0,0,0,0.20)]'
+    'h-[48px] md:h-[60px] rounded-[20px] md:rounded-[24px] border flex items-center justify-center gap-1.5 md:gap-2 transition-all duration-200 active:scale-[0.97] shadow-[0_12px_34px_rgba(15,23,42,0.18)]'
 
   const itemInactive =
-    'bg-slate-900/78 text-white border-white/10 hover:bg-slate-800/90'
+    'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-950'
 
   const itemActive =
-    'bg-white text-slate-950 border-white'
+    'bg-slate-950 text-white border-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.24)]'
 
   const smallBtn = (item, extra = '') => {
     const isActive = active === item.id
@@ -50,8 +50,8 @@ export default function BottomBar({
   }
 
   return (
-    <div className="fixed bottom-2 md:bottom-4 left-1/2 -translate-x-1/2 z-[9998] w-[min(96vw,420px)] md:w-[min(94vw,460px)]">
-      <div className="rounded-[26px] md:rounded-[32px] bg-slate-950/70 border border-white/10 backdrop-blur-2xl shadow-[0_20px_70px_rgba(0,0,0,0.38)] p-1.5 md:p-2">
+    <div className="fixed bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-[9998] w-[min(94vw,420px)] md:w-[min(92vw,460px)]">
+      <div className="rounded-[30px] md:rounded-[34px] bg-white border border-slate-200 shadow-[0_22px_70px_rgba(15,23,42,0.22)] p-1.5 md:p-2">
         <div className="grid grid-cols-[1fr_1.25fr_1fr] md:grid-cols-[1fr_1.45fr_1fr] gap-1.5 md:gap-2 items-stretch">
           {/* esquerda */}
           <div className="grid grid-rows-2 gap-1.5 md:gap-2">
@@ -71,8 +71,8 @@ export default function BottomBar({
             type="button"
             onClick={() => onTab?.('disponivel')}
             className={[
-              'min-h-[96px] md:min-h-[124px] rounded-[24px] md:rounded-[30px] border text-white flex flex-col items-center justify-center gap-1.5 md:gap-2 transition',
-              'shadow-[0_22px_70px_rgba(0,0,0,0.30)]',
+              'min-h-[98px] md:min-h-[126px] rounded-[26px] md:rounded-[30px] border text-white flex flex-col items-center justify-center gap-1.5 md:gap-2 transition-all duration-200 active:scale-[0.98]',
+              'shadow-[0_22px_60px_rgba(16,185,129,0.28)]',
               disponivel
                 ? 'bg-gradient-to-b from-emerald-400 to-emerald-600 border-emerald-300/50 hover:from-emerald-300'
                 : 'bg-gradient-to-b from-rose-500 to-red-700 border-rose-300/40 hover:from-rose-400',

@@ -54,20 +54,20 @@ export default function MeusPedidosCliente({
 
     if (s === 'aberto') {
       return (
-        <span className="relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-400/20 border border-emerald-300/60 text-emerald-100 text-[11px] font-black uppercase tracking-[0.12em] shadow-[0_0_22px_rgba(16,185,129,0.45)] animate-pulse overflow-hidden">
+        <span className="relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-[11px] font-black uppercase tracking-[0.12em] shadow-[0_0_22px_rgba(16,185,129,0.45)] animate-pulse overflow-hidden">
           <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-70" />
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.95)]" />
           </span>
-          <span className="relative drop-shadow-[0_0_7px_rgba(16,185,129,0.85)]">ABERTO</span>
+          <span className="relative ">ABERTO</span>
         </span>
       )
     }
 
     if (s === 'aceito') {
       return (
-        <span className="text-[11px] px-2 py-1 rounded-full bg-amber-400/15 border border-amber-400/20 text-amber-200 font-semibold">
+        <span className="text-[11px] px-2 py-1 rounded-full bg-amber-400/15 border border-amber-400/20 text-amber-300 font-semibold">
           ACEITO
         </span>
       )
@@ -75,32 +75,32 @@ export default function MeusPedidosCliente({
 
     if (s === 'entregue') {
       return (
-        <span className="text-[11px] px-2 py-1 rounded-full bg-sky-400/15 border border-sky-400/20 text-sky-200 font-semibold">
+        <span className="text-[11px] px-2 py-1 rounded-full bg-sky-500/15 border border-sky-400/30 text-sky-300 font-semibold">
           ENTREGUE
         </span>
       )
     }
 
     return (
-      <span className="text-[11px] px-2 py-1 rounded-full bg-white/10 border border-white/10 text-gray-200 font-semibold">
+      <span className="text-[11px] px-2 py-1 rounded-full bg-slate-700 border border-slate-600 text-white font-semibold">
         {s.toUpperCase()}
       </span>
     )
   }
 
   return (
-    <div className="mt-4 rounded-2xl p-3 bg-white/10 backdrop-blur-md border border-white/10 shadow-xl shadow-black/30">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-sm font-semibold text-gray-100">
+    <div className="mt-4 rounded-[1.8rem] p-4 bg-[#0f172a] border border-slate-700 shadow-2xl shadow-black/40">
+      <div className="flex items-center justify-between mb-4 rounded-2xl bg-[#1e293b] border border-slate-600 px-3 py-2.5 shadow-lg shadow-black/20">
+        <div className="text-sm font-semibold text-white">
           📦 Meus pedidos
         </div>
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-slate-400">
           {meusPedidos.length} pedido{meusPedidos.length === 1 ? '' : 's'}
         </div>
       </div>
 
       {meusPedidos.length === 0 ? (
-        <div className="text-sm text-gray-400">
+        <div className="rounded-2xl border border-dashed border-slate-600 bg-[#1e293b] p-4 text-sm font-semibold text-slate-200">
           Você ainda não criou pedidos.
         </div>
       ) : (
@@ -109,38 +109,38 @@ export default function MeusPedidosCliente({
             <div
               key={p.id}
               className={[
-                "relative overflow-hidden rounded-2xl p-3 bg-white/5 border border-white/10 transition hover:bg-white/10 select-none",
+                "relative overflow-hidden rounded-2xl p-4 bg-[#1e293b] border border-slate-600 transition-all duration-200 hover:bg-[#263449] hover:-translate-y-0.5 select-none shadow-lg shadow-black/30",
                 String(p?.status || 'aberto').toLowerCase() === 'aberto'
-                  ? "border-emerald-300/35 ring-1 ring-emerald-300/20 shadow-[0_0_34px_rgba(16,185,129,0.14)]"
+                  ? "border-emerald-500/50 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-900/30"
                   : "",
               ].join(" ")}
             >
               {String(p?.status || 'aberto').toLowerCase() === 'aberto' && (
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-300 via-lime-200 to-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.85)] animate-pulse" />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-lime-300 to-emerald-500" />
               )}
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-emerald-400/10 border border-emerald-300/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100 mb-2">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300 mb-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
                     Pedido ativo
                   </div>
-                  <div className="text-base font-black text-white truncate drop-shadow-[0_0_10px_rgba(255,255,255,0.18)]">
+                  <div className="text-lg font-black text-white truncate">
                     {p?.titulo || 'Pedido sem título'}
                   </div>
 
                   {p?.descricao && String(p.descricao).trim().toLowerCase() !== String(p?.titulo || '').trim().toLowerCase() ? (
-                    <div className="text-xs text-gray-400 mt-1 line-clamp-2 select-text">
+                    <div className="text-sm text-slate-200 mt-1 line-clamp-2 select-text">
                       {p.descricao}
                     </div>
                   ) : null}
 
-                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-400">
-                    <span>🕒 Criado: <b className="text-gray-200">{formatDataHora(p?.criadoEm || p?.createdAt || p?.atualizadoEm)}</b></span>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-200">
+                    <span>🕒 Criado: <b className="text-white">{formatDataHora(p?.criadoEm || p?.createdAt || p?.atualizadoEm)}</b></span>
                     {p?.aceite?.aceitoEm || p?.aceitoEm ? (
-                      <span>✅ Aceito: <b className="text-amber-200">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></span>
+                      <span>✅ Aceito: <b className="text-amber-300">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></span>
                     ) : null}
                     {p?.entregueEm ? (
-                      <span>📦 Entregue: <b className="text-sky-200">{formatDataHora(p?.entregueEm)}</b></span>
+                      <span>📦 Entregue: <b className="text-sky-300">{formatDataHora(p?.entregueEm)}</b></span>
                     ) : null}
                   </div>
                 </div>
@@ -148,18 +148,18 @@ export default function MeusPedidosCliente({
                 {badgeStatus(p?.status)}
               </div>
 
-              <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-400">
+              <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-200">
                 {p?.valor != null && Number.isFinite(Number(p.valor)) ? (
                   <span>
-                    💰 <b className="text-gray-200">R$ {Number(p.valor).toFixed(2)}</b>
+                    💰 <b className="text-white">R$ {Number(p.valor).toFixed(2)}</b>
                   </span>
                 ) : null}
 
                 {p?.aceite?.nome ? (
                   <span>
-                    🙋 Aceito por <b className="text-gray-200">{p.aceite.nome}</b>
+                    🙋 Aceito por <b className="text-white">{p.aceite.nome}</b>
                     {p?.aceite?.aceitoEm || p?.aceitoEm ? (
-                      <> · <b className="text-amber-200">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></>
+                      <> · <b className="text-amber-300">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></>
                     ) : null}
                   </span>
                 ) : (
@@ -196,7 +196,7 @@ export default function MeusPedidosCliente({
 
                 {p?.local?.lat != null && p?.local?.lng != null ? (
                   <button
-                    className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-sm transition active:scale-[0.98]"
+                    className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white text-sm font-semibold transition active:scale-[0.98]"
                     onClick={() => onVerMapa?.(p)}
                     type="button"
                   >

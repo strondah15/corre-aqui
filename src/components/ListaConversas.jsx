@@ -99,15 +99,15 @@ export default function ListaConversas({
     [meuId]
   )
 
-  const glass = 'bg-white/10 backdrop-blur-md border border-white/10 shadow-xl shadow-black/30'
+  const glass = 'bg-[#0f172a] border border-slate-700 shadow-2xl shadow-black/40'
 
   return (
-    <div className={`rounded-2xl overflow-hidden ${glass}`}>
+    <div className={`rounded-[1.8rem] overflow-hidden ${glass}`}>
       {/* header */}
-      <div className="px-4 py-3 border-b border-white/10 bg-white/5">
-        <div className="flex items-center justify-between gap-3">
+      <div className="px-4 py-4 border-b border-slate-600 bg-[#1e293b]">
+        <div className="flex items-center justify-between gap-3.5">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-white/10 border border-white/10 text-white flex items-center justify-center font-bold text-sm overflow-hidden">
+            <div className="w-10 h-10 rounded-2xl bg-[#0f172a] border border-slate-600 text-white flex items-center justify-center font-bold text-sm overflow-hidden">
               {logoUrl ? (
                 <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
               ) : (
@@ -116,13 +116,13 @@ export default function ListaConversas({
             </div>
 
             <div className="leading-tight">
-              <div className="text-sm font-semibold text-gray-100">💬 Inbox</div>
-              <div className="text-xs text-gray-400">Suas conversas recentes</div>
+              <div className="text-sm font-semibold text-white">💬 Inbox</div>
+              <div className="text-xs text-slate-400">Suas conversas recentes</div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="text-[11px] px-2 py-1 rounded-full bg-white/10 border border-white/10 text-gray-200">
+            <div className="text-[11px] px-2 py-1 rounded-full bg-[#0f172a] border border-slate-600 text-slate-200">
               {conversasFiltradas.length} chats
             </div>
 
@@ -130,7 +130,7 @@ export default function ListaConversas({
               className={`text-[11px] px-2 py-1 rounded-full border ${
                 totalNaoLidas > 0
                   ? 'bg-amber-400/15 border-amber-400/25 text-amber-200'
-                  : 'bg-white/10 border-white/10 text-gray-200'
+                  : 'bg-[#1e293b] border-slate-700 text-slate-200'
               }`}
               title="Conversas não lidas"
             >
@@ -145,7 +145,7 @@ export default function ListaConversas({
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="🔍 Buscar conversa..."
-            className="w-full px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+            className="w-full px-3 py-3 rounded-2xl bg-[#0f172a] border border-slate-600 text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
           />
         </div>
       </div>
@@ -153,9 +153,9 @@ export default function ListaConversas({
       {/* conteúdo */}
       <div className="p-3">
         {conversasFiltradas.length === 0 && (
-          <div className="rounded-2xl p-4 bg-white/5 border border-white/10 text-gray-200">
-            <div className="font-semibold text-gray-100">Ainda nada por aqui</div>
-            <div className="text-xs text-gray-400 mt-1">
+          <div className="rounded-2xl p-4 bg-[#0f172a] border border-slate-600 text-slate-200">
+            <div className="font-semibold text-white">Ainda nada por aqui</div>
+            <div className="text-xs text-slate-400 mt-1">
               Abra um pedido e mande uma mensagem pra iniciar uma conversa.
             </div>
           </div>
@@ -178,16 +178,16 @@ export default function ListaConversas({
                     onAbrirChat?.(c.pedidoId)
                   }}
                   className={[
-                    'w-full text-left rounded-2xl border px-3 py-3 transition',
-                    'active:scale-[0.99]',
-                    'hover:bg-white/5',
-                    c.unread ? 'border-amber-400/25 bg-amber-400/10' : 'border-white/10 bg-white/5',
+                    'w-full text-left rounded-2xl border px-3 py-3 transition-all duration-200 hover:-translate-y-0.5',
+                    'active:scale-[0.98]',
+                    'hover:bg-[#263449]',
+                    c.unread ? 'border-amber-400/25 bg-amber-400/15' : 'border-slate-700 bg-[#1e293b]',
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="font-semibold text-gray-100 truncate">{titulo}</div>
+                        <div className="font-semibold text-white truncate">{titulo}</div>
 
                         {c.unread ? (
                           <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-200 border border-amber-400/25">
@@ -196,17 +196,17 @@ export default function ListaConversas({
                         ) : null}
                       </div>
 
-                      <div className="text-[11px] text-gray-400 mt-0.5">{other ? other : '—'}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">{other ? other : '—'}</div>
                     </div>
 
-                    <div className="text-[11px] text-gray-400 shrink-0">{hora}</div>
+                    <div className="text-[11px] text-slate-400 shrink-0">{hora}</div>
                   </div>
 
-                  <div className="mt-2 text-xs text-gray-200">
+                  <div className="mt-2 text-xs text-slate-200">
                     {preview ? (
                       <span className="block overflow-hidden text-ellipsis whitespace-nowrap">{preview}</span>
                     ) : (
-                      <span className="text-gray-500">sem mensagens</span>
+                      <span className="text-slate-500">sem mensagens</span>
                     )}
                   </div>
                 </button>

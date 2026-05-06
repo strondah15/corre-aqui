@@ -5,7 +5,7 @@ import { CATEGORIES } from '@/constants/categories'
 import ListaProfissionais from './ListaProfissionais'
 
 const glass =
-  'bg-white/95 backdrop-blur-xl border border-slate-200 shadow-[0_14px_45px_rgba(15,23,42,0.10)] text-slate-900 select-none'
+  'bg-white border border-slate-200 shadow-[0_18px_55px_rgba(15,23,42,0.12)] text-slate-900 select-none'
 
 const safeStr = (v) => String(v || '').trim()
 
@@ -156,25 +156,25 @@ export default function ClienteHome({
   }, [providers, modo, busca, catId])
 
   return (
-    <div className="mt-3 space-y-3 px-3 sm:px-0 pb-32 select-none">
-      <div className={`rounded-[1.7rem] p-3 sm:p-4 ${glass}`}>
+    <div className="mt-3 space-y-4 px-3 sm:px-0 pb-36 select-none bg-[#eef2f7]">
+      <div className={`rounded-[1.9rem] p-4 sm:p-5 ${glass}`}>
         <div className="text-sm sm:text-base font-black text-slate-900">
           👋 Olá, {meuNome || 'Anônimo'}
         </div>
-        <div className="mt-1 text-xs sm:text-sm text-slate-500 leading-snug">
+        <div className="mt-1 text-xs sm:text-sm text-slate-600 leading-snug">
           Crie um pedido e encontre quem está disponível.
         </div>
 
         {/* ✅ CONTROLE ÚNICO: Corre / Profissionais */}
-        <div className="mt-3 grid grid-cols-2 gap-2 rounded-[1.6rem] bg-slate-100/80 p-1 border border-slate-200">
+        <div className="mt-4 grid grid-cols-2 gap-2 rounded-[1.7rem] bg-slate-100 p-1.5 border border-slate-200">
           <button
             type="button"
             onClick={() => setModo('corre')}
             className={[
-              'w-full h-12 rounded-[1.25rem] text-sm font-black border transition flex items-center justify-center gap-2',
+              'w-full h-12 rounded-[1.35rem] text-sm font-black border transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2',
               modo === 'corre'
                 ? 'bg-amber-300 text-black border-yellow-300 shadow-[0_10px_25px_rgba(245,158,11,0.20)]'
-                : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-950',
             ].join(' ')}
           >
             <span>⚡</span>
@@ -185,10 +185,10 @@ export default function ClienteHome({
             type="button"
             onClick={() => setModo('profissional')}
             className={[
-              'w-full h-12 rounded-[1.25rem] text-sm font-black border transition flex items-center justify-center gap-2',
+              'w-full h-12 rounded-[1.35rem] text-sm font-black border transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2',
               modo === 'profissional'
                 ? 'bg-blue-500 text-white border-blue-500 shadow-[0_10px_25px_rgba(59,130,246,0.22)]'
-                : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50',
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-950',
             ].join(' ')}
           >
             <span>👷</span>
@@ -196,11 +196,11 @@ export default function ClienteHome({
           </button>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 min-[420px]:grid-cols-2 gap-2">
+        <div className="mt-4 grid grid-cols-1 min-[420px]:grid-cols-2 gap-2.5">
           <button
             type="button"
             onClick={() => onCriarPedido?.()}
-            className="w-full px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black transition shadow-[0_10px_25px_rgba(37,99,235,0.25)]"
+            className="w-full px-4 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black transition-all duration-200 active:scale-[0.98] shadow-[0_12px_30px_rgba(37,99,235,0.25)]"
           >
             🎯 Criar pedido
           </button>
@@ -208,7 +208,7 @@ export default function ClienteHome({
           <button
             type="button"
             onClick={() => onIrAoVivo?.()}
-            className="w-full px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-black transition"
+            className="w-full px-4 py-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-black transition-all duration-200 active:scale-[0.98] shadow-sm"
           >
             🗺️ Ver mapa ao vivo
           </button>
@@ -220,8 +220,8 @@ export default function ClienteHome({
         <div className={[
           'px-4 py-4 border-b border-slate-200',
           modo === 'corre'
-            ? 'bg-gradient-to-br from-white via-amber-50 to-orange-50'
-            : 'bg-gradient-to-br from-white via-slate-50 to-blue-50',
+            ? 'bg-gradient-to-br from-white via-amber-50 to-orange-100/80'
+            : 'bg-gradient-to-br from-white via-slate-50 to-blue-100/80',
         ].join(' ')}>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -244,7 +244,7 @@ export default function ClienteHome({
           </div>
         </div>
 
-        <div className="p-3 sm:p-4 bg-slate-50/70">
+        <div className="p-3 sm:p-4 bg-[#eef2f7]">
           <ListaProfissionais
             mode={modo}
             categoriaId={catId}

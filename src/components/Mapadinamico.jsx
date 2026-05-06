@@ -2082,7 +2082,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           Pedidos e Conversas não ficam mais como caixa no meio.
           A barra fica fixa embaixo e cada opção abre uma tela própria com rolagem. */}
       {modoApp === 'cliente' && (
-        <div className="fixed left-0 right-0 bottom-0 z-[99980] bg-white border-t border-slate-200 shadow-[0_-10px_30px_rgba(15,23,42,0.12)] pointer-events-none">
+        <div className="fixed left-0 right-0 bottom-0 z-[99980] bg-[#0f172a] border-t border-slate-700 shadow-[0_-10px_30px_rgba(0,0,0,0.45)] pointer-events-none">
           <div className="mx-auto max-w-3xl pointer-events-auto p-3 grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -2090,7 +2090,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               className={`h-14 rounded-2xl px-3 text-sm font-black border transition active:scale-[0.98] ${
                 clientePainelBaixo === 'meusPedidos'
                   ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20'
-                  : 'bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200'
+                  : 'bg-[#1e293b] text-slate-200 border-slate-700 hover:bg-[#263449]'
               }`}
             >
               📦 Meus pedidos
@@ -2102,7 +2102,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               className={`h-14 rounded-2xl px-3 text-sm font-black border transition active:scale-[0.98] ${
                 clientePainelBaixo === 'conversas'
                   ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20'
-                  : 'bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200'
+                  : 'bg-[#1e293b] text-slate-200 border-slate-700 hover:bg-[#263449]'
               }`}
             >
               💬 Conversas
@@ -2112,15 +2112,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       )}
 
       {modoApp === 'cliente' && clientePainelBaixo && (
-        <div className="fixed inset-0 z-[99990] bg-slate-100 flex justify-center">
-          <div className="w-full max-w-3xl h-[100dvh] bg-slate-100 text-slate-900 shadow-[0_0_40px_rgba(15,23,42,0.18)] flex flex-col">
-            <div className="shrink-0 px-4 pt-4 pb-3 bg-white border-b border-slate-200 shadow-md">
+        <div className="fixed inset-0 z-[99990] bg-[#0f172a] flex justify-center">
+          <div className="w-full max-w-3xl h-[100dvh] bg-[#0f172a] text-white shadow-[0_0_40px_rgba(0,0,0,0.45)] flex flex-col">
+            <div className="shrink-0 px-4 pt-4 pb-3 bg-[#111827] border-b border-slate-700 shadow-md">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">
+                  <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-300">
                     Corre Aqui
                   </div>
-                  <div className="mt-1 text-xl font-black text-slate-950 truncate">
+                  <div className="mt-1 text-xl font-black text-white truncate">
                     {clientePainelBaixo === 'meusPedidos' ? '📦 Meus pedidos' : '💬 Caixa de conversas'}
                   </div>
                 </div>
@@ -2128,7 +2128,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 <button
                   type="button"
                   onClick={() => setClientePainelBaixo('')}
-                  className="w-11 h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-black border border-slate-200"
+                  className="w-11 h-11 rounded-2xl bg-[#1e293b] hover:bg-[#263449] text-white font-black border border-slate-700"
                   aria-label="Fechar"
                 >
                   ✕
@@ -2136,7 +2136,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto overscroll-contain p-3 pb-28 bg-slate-100">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-3 md:p-5 pb-28 bg-[#0f172a]">
               {clientePainelBaixo === 'meusPedidos' && (
                 <MeusPedidosCliente
                   meuId={meuId}
@@ -2154,7 +2154,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               )}
 
               {clientePainelBaixo === 'conversas' && (
-                <div className="rounded-[28px] overflow-hidden bg-white border border-slate-200 shadow-lg text-slate-900">
+                <div className="rounded-[28px] overflow-hidden bg-[#0f172a] border border-slate-700 shadow-lg text-white">
                   <ListaConversas
                     meuId={meuId}
                     onAbrirChat={(pedidoId) => {
