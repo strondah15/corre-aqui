@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
 import {
   MapContainer,
   TileLayer,
@@ -48,7 +49,7 @@ function getNeonDotIcon(kind = "me") {
           border: "rgba(244,63,94,.95)",
           glow: "rgba(244,63,94,.55)",
         } // rosa/vermelho
-      : { label: "🧭", border: "", glow: "" }; // azul
+      : { label: "🧭", border: "rgba(34,211,238,.95)", glow: "rgba(34,211,238,.55)" }; // azul
 
   const size = 34;
   const html = `
@@ -152,7 +153,7 @@ function getAvatarIcon({ fotoURL, emoji, kind }) {
       border:2px solid ${ring};
       box-shadow:
         0 0 0 2px rgba(255,255,255,.14),
-        0 0 18px ,
+        0 0 18px ${glow},
         0 14px 34px rgba(0,0,0,.55);
       background:
         radial-gradient(circle at 30% 20%, rgba(255,255,255,.22), rgba(255,255,255,0) 45%),
@@ -649,15 +650,16 @@ export default function MapinhaModal({
 
   const isDragging = draggingRef.current;
 
-  // ✅ UI estilo do seu app
+  // ✅ UI mapa premium: escuro, limpo e com profundidade
   const glass =
-    "bg-white/95 backdrop-blur-xl border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)] text-slate-900";
+    "bg-[#071120]/95 backdrop-blur-xl border border-cyan-400/10 shadow-[0_24px_80px_rgba(0,0,0,0.45)] text-white";
 
   const pillBase =
-    "px-3.5 py-2 rounded-2xl text-xs font-extrabold border transition active:scale-[0.98] shadow-[0_10px_30px_rgba(15,23,42,0.10)]";
-  const pillOn = "bg-blue-600 text-white border-blue-500";
+    "px-3.5 py-2 rounded-2xl text-xs font-extrabold border transition active:scale-[0.96] shadow-[0_14px_35px_rgba(0,0,0,0.24)]";
+  const pillOn =
+    "bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-cyan-300/30 shadow-[0_0_28px_rgba(34,211,238,0.22)]";
   const pillOff =
-    "bg-white/95 text-slate-800 border-slate-200 hover:bg-slate-50";
+    "bg-[#0f1b2d]/90 text-slate-200 border-white/10 hover:bg-[#14243a]";
 
   const isLiveMap = isMapaAoVivo;
   const onlineResumo = showOnline
@@ -669,17 +671,30 @@ export default function MapinhaModal({
   const ui = (
     <>
       {/* backdrop */}
-      <div className="fixed inset-0 z-[4000] bg-black/55" />
+      <motion.div
+        className="fixed inset-0 z-[4000] bg-[#020617]/70 backdrop-blur-[2px]"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.18 }}
+      />
 
       {/* mapa */}
-      <div className="fixed inset-0 z-[4500]">
+      <motion.div
+        className="fixed inset-0 z-[4500]"
+        initial={{ opacity: 0, scale: 1.015 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.28, ease: "easeOut" }}
+      >
         <MapContainer
           center={center}
           zoom={15}
           className="h-full w-full"
           preferCanvas={true}
           style={{
-            filter: "brightness(0.94) contrast(1.08) saturate(0.98)",
+            filter: "brightness(0.82) contrast(1.12) saturate(0.9)",
+            background: "#020617",
           }}
         >
           <FitAndInvalidate
@@ -691,7 +706,7 @@ export default function MapinhaModal({
 
           <TileLayer
             attribution="&copy; OpenStreetMap contributors &copy; CARTO"
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
 
           {/* ONLINE */}
@@ -785,10 +800,15 @@ export default function MapinhaModal({
             <Polyline positions={route} weight={6} opacity={0.9} />
           )}
         </MapContainer>
-      </div>
+      </motion.div>
 
       {/* topo premium */}
-      <div className="fixed top-4 left-4 right-4 z-[9000] pointer-events-none">
+      <motion.div
+        className="fixed top-4 left-4 right-4 z-[9000] pointer-events-none"
+        initial={{ opacity: 0, y: -18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08, duration: 0.28, ease: "easeOut" }}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="pointer-events-auto flex items-center gap-2">
             {!isMapaAoVivo && (
@@ -825,34 +845,39 @@ export default function MapinhaModal({
 
           <button
             onClick={onClose}
-            className="pointer-events-auto w-12 h-12 rounded-3xl bg-white/95 border border-slate-200 text-slate-800 flex items-center justify-center hover:bg-slate-50 active:scale-[0.98] transition shadow-[0_18px_45px_rgba(15,23,42,0.18)] text-xl"
+            className="pointer-events-auto w-12 h-12 rounded-3xl bg-[#0f1b2d]/95 border border-white/10 text-white flex items-center justify-center hover:bg-[#14243a] active:scale-[0.96] transition shadow-[0_18px_45px_rgba(0,0,0,0.35)] text-xl"
             title="Fechar"
             type="button"
           >
             ✕
           </button>
         </div>
-      </div>
+      </motion.div>
 
       {isLiveMap && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[9000] w-[min(92vw,520px)] pointer-events-none">
-          <div className="pointer-events-auto rounded-3xl bg-white/95 border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.16)] backdrop-blur-xl px-4 py-3">
+        <motion.div
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-[9000] w-[min(92vw,520px)] pointer-events-none"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.25 }}
+        >
+          <div className="pointer-events-auto rounded-3xl bg-[#071120]/95 border border-cyan-400/10 shadow-[0_18px_60px_rgba(0,0,0,0.38)] backdrop-blur-xl px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-xl">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-400/10 border border-cyan-300/15 flex items-center justify-center text-xl shadow-[0_0_24px_rgba(34,211,238,0.12)]">
                 🔎
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-extrabold text-slate-950">
+                <div className="text-sm font-extrabold text-white">
                   Mapa ao vivo
                 </div>
-                <div className="text-xs text-slate-500 truncate">
+                <div className="text-xs text-slate-300 truncate">
                   {onlineMarkers.length} online · {onlineResumo}
                 </div>
               </div>
 
               {showOnline && (
-                <div className="hidden sm:flex items-center gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2">
+                <div className="hidden sm:flex items-center gap-2 text-xs text-slate-300 bg-white/5 border border-white/10 rounded-2xl px-3 py-2">
                   <span className="font-bold">Limite</span>
                   <input
                     type="range"
@@ -862,16 +887,21 @@ export default function MapinhaModal({
                     onChange={(e) => setOnlineLimit(Number(e.target.value))}
                     className="w-20 accent-blue-600"
                   />
-                  <span className="font-extrabold text-slate-900 w-7 text-right">{onlineLimit}</span>
+                  <span className="font-extrabold text-white w-7 text-right">{onlineLimit}</span>
                 </div>
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* bottom sheet premium */}
-      <div className="fixed left-0 right-0 bottom-0 z-[8000]">
+      <motion.div
+        className="fixed left-0 right-0 bottom-0 z-[8000]"
+        initial={{ opacity: 0, y: 80 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12, duration: 0.32, ease: "easeOut" }}
+      >
         <div
           className={[
             "mx-auto max-w-[820px] rounded-t-[28px] overflow-hidden",
@@ -881,7 +911,7 @@ export default function MapinhaModal({
             height: isLiveMap ? Math.min(sheetHeight, 210) : sheetHeight,
             transition: isDragging ? "none" : "height 180ms ease",
             background:
-              "linear-gradient(to top, rgba(255,255,255,0.98), rgba(255,255,255,0.94))",
+              "linear-gradient(to top, rgba(7,17,32,0.98), rgba(11,23,40,0.94))",
           }}
         >
           {/* header / handle */}
@@ -893,14 +923,14 @@ export default function MapinhaModal({
               onDragStart(e.touches[0].clientY);
             }}
           >
-            <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-300" />
+            <div className="mx-auto h-1.5 w-12 rounded-full bg-cyan-300/30 shadow-[0_0_18px_rgba(34,211,238,0.18)]" />
 
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-base font-extrabold text-slate-950 truncate">
+                <div className="text-base font-extrabold text-white truncate">
                   {isLiveMap ? "🟢 Pessoas online agora" : `📍 ${titulo}`}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="mt-1 text-xs text-slate-300">
                   {isLiveMap
                     ? "Acompanhe usuários ativos sem pesar a tela principal."
                     : "Detalhes do pedido e rota."}
@@ -912,7 +942,7 @@ export default function MapinhaModal({
                   <button
                     type="button"
                     onClick={() => snapTo(sheet === "max" ? "mid" : "max")}
-                    className="px-3 py-2 rounded-2xl text-xs font-bold bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 shadow-sm"
+                    className="px-3 py-2 rounded-2xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition"
                   >
                     {sheet === "max" ? "↧ Recolher" : "↥ Expandir"}
                   </button>
@@ -920,7 +950,7 @@ export default function MapinhaModal({
                   <button
                     type="button"
                     onClick={() => snapTo(sheet === "min" ? "mid" : "min")}
-                    className="px-3 py-2 rounded-2xl text-xs font-bold bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 shadow-sm"
+                    className="px-3 py-2 rounded-2xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition"
                   >
                     {sheet === "min" ? "▢ Detalhes" : "— Minimizar"}
                   </button>
@@ -929,26 +959,26 @@ export default function MapinhaModal({
             </div>
 
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div className="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2">
-                <div className="text-slate-500">Online</div>
-                <div className="font-extrabold text-slate-950">{onlineMarkers.length}</div>
+              <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="text-slate-400">Online</div>
+                <div className="font-extrabold text-white">{onlineMarkers.length}</div>
               </div>
 
-              <div className="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2">
-                <div className="text-slate-500">Modo</div>
-                <div className="font-extrabold text-slate-950">{onlineResumo}</div>
+              <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="text-slate-400">Modo</div>
+                <div className="font-extrabold text-white">{onlineResumo}</div>
               </div>
 
-              <div className="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2">
-                <div className="text-slate-500">Distância</div>
-                <div className="font-extrabold text-slate-950">
+              <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="text-slate-400">Distância</div>
+                <div className="font-extrabold text-white">
                   {distKm != null ? `${distKm.toFixed(2)} km` : "—"}
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2">
-                <div className="text-slate-500">Tempo</div>
-                <div className="font-extrabold text-slate-950">
+              <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="text-slate-400">Tempo</div>
+                <div className="font-extrabold text-white">
                   {durMin != null ? `${Math.round(durMin)} min` : "—"}
                 </div>
               </div>
@@ -967,11 +997,11 @@ export default function MapinhaModal({
               className="px-5 pb-5 overflow-auto"
               style={{ height: sheetHeight - 118 }}
             >
-              <div className="text-xs text-slate-600">
+              <div className="text-xs text-slate-300">
                 {infoExtra?.status ? (
                   <>
                     Status:{" "}
-                    <b className="text-slate-900">
+                    <b className="text-white">
                       {String(infoExtra.status).toUpperCase()}
                     </b>
                   </>
@@ -979,14 +1009,14 @@ export default function MapinhaModal({
                 {infoExtra?.criador ? (
                   <>
                     {" "}
-                    · Criador: <b className="text-slate-900">{infoExtra.criador}</b>
+                    · Criador: <b className="text-white">{infoExtra.criador}</b>
                   </>
                 ) : null}
                 {infoExtra?.aceitador ? (
                   <>
                     {" "}
                     · Aceitador:{" "}
-                    <b className="text-slate-900">{infoExtra.aceitador}</b>
+                    <b className="text-white">{infoExtra.aceitador}</b>
                   </>
                 ) : null}
               </div>
@@ -1014,7 +1044,7 @@ export default function MapinhaModal({
                     href={googleMapsUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-4 py-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 font-bold shadow-sm"
+                    className="px-4 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold shadow-sm active:scale-[0.98] transition"
                   >
                     Abrir no Google Maps
                   </a>
@@ -1022,13 +1052,13 @@ export default function MapinhaModal({
               </div>
 
               {!dest && !isMapaAoVivo && showPedido && (
-                <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-3 py-2">
+                <div className="mt-3 text-xs text-amber-200 bg-amber-400/10 border border-amber-300/15 rounded-2xl px-3 py-2">
                   Este pedido não tem localização salva ainda.
                 </div>
               )}
 
               {!showPedido && !isMapaAoVivo && (
-                <div className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2">
+                <div className="mt-3 text-xs text-slate-300 bg-white/5 border border-white/10 rounded-2xl px-3 py-2">
                   Pedido oculto (você desligou no topo). Ligue em “📍 Pedido”.
                 </div>
               )}
@@ -1037,7 +1067,7 @@ export default function MapinhaModal({
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
     </>
   );
 

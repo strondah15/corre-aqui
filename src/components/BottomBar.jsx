@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { motion } from 'framer-motion'
 
 /**
  * BottomBar do Corre/Profissional
@@ -32,8 +33,10 @@ export default function BottomBar({
     const isActive = active === item.id
 
     return (
-      <button
+      <motion.button
         type="button"
+        whileTap={{ scale: 0.94 }}
+        whileHover={{ y: -2 }}
         onClick={() => onTab?.(item.id)}
         className={[
           itemBase,
@@ -45,7 +48,7 @@ export default function BottomBar({
       >
         <span className="text-base md:text-lg">{item.icon}</span>
         <span className="text-[10px] md:text-[12px] font-extrabold leading-none">{item.label}</span>
-      </button>
+      </motion.button>
     )
   }
 
@@ -67,8 +70,10 @@ export default function BottomBar({
           </div>
 
           {/* centro principal */}
-          <button
+          <motion.button
             type="button"
+            whileTap={{ scale: 0.97 }}
+            whileHover={{ y: -2 }}
             onClick={() => onTab?.('disponivel')}
             className={[
               'min-h-[98px] md:min-h-[126px] rounded-[26px] md:rounded-[30px] border text-white flex flex-col items-center justify-center gap-1.5 md:gap-2 transition-all duration-200 active:scale-[0.98]',
@@ -92,13 +97,15 @@ export default function BottomBar({
             <span className="text-[9px] md:text-[10px] font-bold text-white/75 text-center leading-tight">
               {disponivel ? 'clientes podem te ver' : 'oculto agora'}
             </span>
-          </button>
+          </motion.button>
 
           {/* direita */}
           <div className="grid grid-rows-2 gap-1.5 md:gap-2">
             {smallBtn({ id: 'perfil', label: 'Perfil', icon: '👤' })}
-            <button
+            <motion.button
               type="button"
+              whileTap={{ scale: 0.94 }}
+              whileHover={{ y: -2 }}
               onClick={() => onTab?.('disponivel')}
               className={[
                 itemBase,
@@ -109,7 +116,7 @@ export default function BottomBar({
               ].join(' ')}
             >
               {disponivel ? '🟢 Online' : '🔴 Offline'}
-            </button>
+            </motion.button>
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { motion } from 'framer-motion'
 
 import { auth, database } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -1540,7 +1541,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 <div className="text-sm text-slate-500">Nenhum corre aqui para mostrar.</div>
               )}
 
-              {corresFiltrados.map((p) => {
+              {corresFiltrados.map((p, index) => {
                 const status = (p.status || 'aberto').toLowerCase()
                 const aceitoPorMim = p?.aceite?.id === meuId
                 const temAceitador = !!p?.aceite?.id
@@ -1564,8 +1565,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 })
 
                 return (
-                  <div
+                  <motion.div
                     key={p.id}
+                    layout
+                    initial={{ opacity: 0, y: 22, scale: 0.985 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.34, delay: Math.min(index * 0.055, 0.35), ease: 'easeOut' }}
+                    whileHover={{ y: -3, scale: 1.008 }}
+                    whileTap={{ scale: 0.985 }}
                     className={[
                       "corre-card-clean relative overflow-hidden rounded-[24px] md:rounded-3xl p-2.5 md:p-4 text-slate-950 flex flex-col gap-2 md:gap-2.5 select-none cursor-default",
                       "bg-white border border-white/80 shadow-[0_16px_44px_rgba(15,23,42,0.14)]",
@@ -1809,7 +1816,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         />
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 )
               })}
             </div>

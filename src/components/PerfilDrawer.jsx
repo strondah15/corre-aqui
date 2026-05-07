@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ref, onValue, update, serverTimestamp } from 'firebase/database'
 import { database } from '@/lib/firebase'
 import dynamic from 'next/dynamic'
+import { motion } from 'framer-motion'
 
 const PlanosCorreAqui = dynamic(() => import('@/components/PlanosCorreAqui'), {
   ssr: false
@@ -38,7 +39,7 @@ const tabLabel = {
   perfil: 'Perfil',
   corre: 'Corre',
   profissional: 'Profissional',
-  config: 'Config',
+  config: 'Ajustes',
   monetizacao: 'Monetização'
 }
 
@@ -76,7 +77,7 @@ function PlanoResumo({ plano = 'Free', onOpenPlanos }) {
   const atual = planoInfo[plano] || planoInfo.Free
 
   return (
-    <div className="mt-4 w-full rounded-3xl bg-gradient-to-br from-emerald-500/10 via-slate-900/80 to-blue-500/10 border border-white/10 p-4 text-left shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
+    <div className="mt-5 w-full rounded-[26px] bg-[#0c1a2e] border border-cyan-400/10 p-4 text-left shadow-[0_0_40px_rgba(34,211,238,0.08)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] uppercase tracking-[0.18em] font-black text-emerald-300">
@@ -277,20 +278,23 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   return (
     <div className="fixed inset-0 z-[9999]">
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/72 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      <aside
+      <motion.aside
+        initial={{ x: 42, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 120, damping: 18 }}
         className="
           absolute right-0 top-0 h-full w-[min(94vw,520px)]
-          bg-[#07111f] text-white
+          bg-[#06101d] text-white
           border-l border-white/10
           shadow-[-30px_0_90px_rgba(0,0,0,0.45)]
           overflow-y-auto
         "
       >
-        <div className="sticky top-0 z-10 bg-[#07111f]/92 backdrop-blur-xl border-b border-white/10">
+        <div className="sticky top-0 z-10 bg-[#06101d]/95 backdrop-blur-xl border-b border-white/10">
           <div className="px-5 py-4 flex items-center justify-between gap-3">
             <div>
               <div className="text-lg font-extrabold text-white">Meu perfil</div>
@@ -302,7 +306,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             <button
               type="button"
               onClick={onClose}
-              className="w-11 h-11 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold active:scale-[0.98] transition"
+              className="w-12 h-12 rounded-3xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-white text-xl font-black active:scale-[0.96] transition shadow-lg"
               title="Fechar"
             >
               ✕
@@ -312,7 +316,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
         <div className="p-5">
           {/* FOTO + HEADER */}
-          <div className="rounded-[28px] bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-white/10 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.22)]">
+          <div className="rounded-[32px] bg-gradient-to-br from-[#0b1730] via-[#0a1428] to-[#050b16] border border-cyan-300/10 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
             <div className="flex flex-col items-center text-center">
               <label className="cursor-pointer relative group">
                 <input
@@ -340,7 +344,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 {profile.fotoURL ? (
                   <img
                     src={profile.fotoURL}
-                    className="w-28 h-28 rounded-full object-cover border-4 border-blue-500/80 shadow-2xl shadow-blue-500/20"
+                    className="w-28 h-28 rounded-full object-cover border-4 border-cyan-300/80 ring-4 ring-cyan-400/15 shadow-[0_0_45px_rgba(34,211,238,0.28)]"
                     alt="Foto do perfil"
                   />
                 ) : (
@@ -362,38 +366,57 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 {profile.cidade || 'Cidade não informada'}
               </div>
 
-              <PlanoResumo plano={profile.plano} onOpenPlanos={() => setTab('monetizacao')} />
-
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <span className={`px-3 py-1.5 rounded-full text-xs font-bold border ${
+                <span className={`px-3 py-1.5 rounded-full text-xs font-black border ${
                   profile.visivel
-                    ? 'bg-emerald-500/15 border-emerald-400/20 text-emerald-300'
+                    ? 'bg-emerald-500/15 border-emerald-400/20 text-emerald-300 shadow-[0_0_22px_rgba(16,185,129,0.12)]'
                     : 'bg-slate-500/15 border-slate-400/20 text-slate-300'
                 }`}>
                   {profile.visivel ? '🟢 Visível' : '⚫ Oculto'}
                 </span>
 
+                <span className="px-3 py-1.5 rounded-full text-xs font-black bg-amber-500/10 border border-amber-300/20 text-amber-200">
+                  ⚡ Corre rápido
+                </span>
+
                 {profile.isProfissional && (
-                  <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-500/15 border border-blue-400/20 text-blue-300">
+                  <span className="px-3 py-1.5 rounded-full text-xs font-black bg-blue-500/15 border border-blue-400/20 text-blue-300">
                     🧑‍🔧 Profissional
                   </span>
                 )}
               </div>
+
+              <div className="mt-5 grid grid-cols-3 gap-2 w-full">
+                <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
+                  <div className="text-lg font-black text-white">0</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Serviços</div>
+                </div>
+                <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
+                  <div className="text-lg font-black text-white">⭐ 5.0</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Nota</div>
+                </div>
+                <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
+                  <div className="text-lg font-black text-white">📍</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">{profile.cidade || 'Região'}</div>
+                </div>
+              </div>
+
+              <PlanoResumo plano={profile.plano} onOpenPlanos={() => setTab('monetizacao')} />
             </div>
           </div>
 
           {/* TABS */}
-          <div className="mt-5 grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
             {['perfil', 'corre', 'profissional', 'config', 'monetizacao'].map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 type="button"
                 className={[
-                  'px-3 py-3 rounded-2xl text-sm font-extrabold border transition active:scale-[0.98]',
+                  'min-w-[96px] px-3 py-3 rounded-2xl text-sm font-extrabold border transition active:scale-[0.96]',
                   tab === t
-                    ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
-                    : 'bg-white/10 hover:bg-white/15 text-slate-200 border-white/10',
+                    ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white border-cyan-300/30 shadow-lg shadow-cyan-500/20'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-white/10',
                 ].join(' ')}
               >
                 <span className="mr-1">{tabIcon[t]}</span>
@@ -404,7 +427,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* PERFIL */}
           {tab === 'perfil' && (
-            <div className="mt-5 rounded-[28px] bg-white/[0.06] border border-white/10 p-4 space-y-4">
+            <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-4">
               <Field label="Nome">
                 <input
                   value={profile.nome}
@@ -445,7 +468,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* CONFIG */}
           {tab === 'config' && (
-            <div className="mt-5 rounded-[28px] bg-white/[0.06] border border-white/10 p-4 space-y-3">
+            <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-3">
               <label className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/70 border border-white/10 px-4 py-3">
                 <div>
                   <div className="text-sm font-extrabold text-white">Visível no mapa</div>
@@ -476,7 +499,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* CORRE */}
           {tab === 'corre' && (
-            <div className="mt-5 rounded-[28px] bg-white/[0.06] border border-white/10 p-4 space-y-4">
+            <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-4">
               <label className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/70 border border-white/10 px-4 py-3">
                 <div>
                   <div className="text-sm font-extrabold text-white">Ativar currículo de Corre</div>
@@ -562,7 +585,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* PROFISSIONAL */}
           {tab === 'profissional' && (
-            <div className="mt-5 rounded-[28px] bg-white/[0.06] border border-white/10 p-4 space-y-4">
+            <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-4">
               <label className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/70 border border-white/10 px-4 py-3">
                 <div>
                   <div className="text-sm font-extrabold text-white">Modo profissional</div>
@@ -645,7 +668,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           {/* MONETIZAÇÃO */}
           {tab === 'monetizacao' && (
             <div className="mt-5 space-y-4">
-              <div className="rounded-[28px] bg-gradient-to-br from-emerald-500/10 via-slate-900/80 to-blue-500/10 border border-white/10 p-4">
+              <div className="rounded-[28px] bg-gradient-to-br from-emerald-500/10 via-[#0b1628] to-blue-500/10 border border-cyan-400/10 p-4 shadow-[0_0_35px_rgba(34,211,238,0.06)]">
                 <div className="text-lg font-black text-white">💚 Corre Aqui sem taxa</div>
                 <div className="mt-1 text-sm leading-relaxed text-slate-300">
                   O trabalhador fica com 100% do valor do serviço. A monetização fica organizada por planos, anúncios leves e boost de destaque.
@@ -677,7 +700,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 </div>
               </div>
 
-              <div className="rounded-[28px] bg-white/[0.06] border border-white/10 p-4">
+              <div className="rounded-[28px] bg-[#0b1628] border border-white/10 p-4">
                 <PlanosCorreAqui planoAtual={profile.plano || 'Free'} onSelecionarPlano={(plano) => setProfile(p => ({ ...p, plano }))} />
               </div>
             </div>
@@ -702,7 +725,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           <div className="h-8" />
         </div>
-      </aside>
+      </motion.aside>
     </div>
   )
 }

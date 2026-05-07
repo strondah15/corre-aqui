@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { motion } from 'framer-motion'
 
 function safeUrl(u) {
   const s = String(u || '').trim()
@@ -93,7 +94,14 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
           transform: none;
         }
       `}</style>
-      <div className="corre-card-clean relative overflow-hidden h-full rounded-[24px] md:rounded-[26px] border border-slate-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_54px_rgba(15,23,42,0.16)] p-3 md:p-3.5 shadow-[0_14px_42px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/5 select-none cursor-default">
+      <motion.div
+        initial={{ opacity: 0, y: 22, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+        whileHover={{ y: -3, scale: 1.01 }}
+        whileTap={{ scale: 0.985 }}
+        className="corre-card-clean relative overflow-hidden h-full rounded-[24px] md:rounded-[26px] border border-slate-200 bg-white transition-shadow duration-200 hover:shadow-[0_22px_54px_rgba(15,23,42,0.16)] p-3 md:p-3.5 shadow-[0_14px_42px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/5 select-none cursor-default"
+      >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(59,130,246,0.12),transparent_32%),radial-gradient(circle_at_88%_12%,rgba(16,185,129,0.12),transparent_28%)]" />
       <div className="relative z-10 flex items-start gap-2.5">
         <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-slate-100 border border-white overflow-hidden flex items-center justify-center shrink-0 shadow-[0_12px_30px_rgba(15,23,42,0.18)] ring-4 ring-slate-100">
@@ -205,27 +213,29 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
           ) : null}
 
           <div className="mt-2 md:mt-2.5 flex gap-1.5 md:gap-2 flex-wrap">
-            <button
+            <motion.button
               type="button"
+              whileTap={{ scale: 0.96 }}
               onClick={() => onAbrir?.(item)}
               className="flex-1 min-w-[96px] h-[34px] md:h-[38px] rounded-xl bg-slate-950 hover:bg-black border border-slate-900 text-white text-xs font-black transition-all duration-200 active:scale-[0.98] shadow-lg shadow-slate-900/20"
             >
               Ver currículo
-            </button>
+            </motion.button>
 
-            <button
+            <motion.button
               type="button"
+              whileTap={{ scale: 0.96 }}
               onClick={() => onWhatsapp?.(item)}
               disabled={!whats}
               className="h-[34px] md:h-[38px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-black disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.98] shadow-sm"
               title={whats ? 'Chamar no WhatsApp' : 'WhatsApp não informado'}
             >
               WhatsApp
-            </button>
+            </motion.button>
           </div>
         </div>
       </div>
-      </div>
+      </motion.div>
     </>
   )
 }

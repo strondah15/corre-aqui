@@ -1,5 +1,7 @@
 'use client'
 
+import { motion } from 'framer-motion'
+
 function getMs(v) {
   if (!v) return 0
   if (typeof v === 'number') return v
@@ -105,11 +107,16 @@ export default function MeusPedidosCliente({
         </div>
       ) : (
         <div className="space-y-3">
-          {meusPedidos.map((p) => (
-            <div
+          {meusPedidos.map((p, index) => (
+            <motion.div
               key={p.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: index * 0.06, ease: 'easeOut' }}
+              whileHover={{ scale: 1.01, y: -2 }}
+              whileTap={{ scale: 0.985 }}
               className={[
-                "relative overflow-hidden rounded-2xl p-4 bg-[#1e293b] border border-slate-600 transition-all duration-200 hover:bg-[#263449] hover:-translate-y-0.5 select-none shadow-lg shadow-black/30",
+                "relative overflow-hidden rounded-2xl p-4 bg-[#1e293b] border border-slate-600 transition-colors duration-200 hover:bg-[#263449] select-none shadow-lg shadow-black/30",
                 String(p?.status || 'aberto').toLowerCase() === 'aberto'
                   ? "border-emerald-500/50 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-900/30"
                   : "",
@@ -169,17 +176,17 @@ export default function MeusPedidosCliente({
 
               <div className="mt-3 flex gap-2 flex-wrap">
                 {p?.aceite?.id ? (
-                  <button
+                  <motion.button
                     className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition active:scale-[0.98]"
                     onClick={() => onAbrirChat?.(p)}
                     type="button"
                   >
                     Abrir conversa
-                  </button>
+                  </motion.button>
                 ) : null}
 
                 {String(p?.status || '').toLowerCase() === 'aceito' && p?.criador?.id === meuId ? (
-                  <button
+                  <motion.button
                     className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 transition active:scale-[0.98]"
                     onClick={() => {
                       if (typeof onConfirmarServicoFeito === 'function') {
@@ -191,20 +198,20 @@ export default function MeusPedidosCliente({
                     type="button"
                   >
                     Confirmar serviço feito
-                  </button>
+                  </motion.button>
                 ) : null}
 
                 {p?.local?.lat != null && p?.local?.lng != null ? (
-                  <button
+                  <motion.button
                     className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white text-sm font-semibold transition active:scale-[0.98]"
                     onClick={() => onVerMapa?.(p)}
                     type="button"
                   >
                     Ver no mapa
-                  </button>
+                  </motion.button>
                 ) : null}
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
       )}

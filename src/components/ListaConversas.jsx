@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { ref, onValue, update, query, limitToLast } from 'firebase/database'
 import { database } from '@/lib/firebase'
+import { motion } from 'framer-motion'
 
 function timeShort(ts) {
   if (!ts) return ''
@@ -163,15 +164,20 @@ export default function ListaConversas({
 
         {conversasFiltradas.length > 0 && (
           <div className="space-y-2">
-            {conversasFiltradas.map((c) => {
+            {conversasFiltradas.map((c, index) => {
               const hora = timeShort(c.lastAt)
               const titulo = c.titulo || 'Conversa'
               const preview = String(c.lastText || '').trim()
               const other = c.otherNome ? `com ${c.otherNome}` : null
 
               return (
-                <button
+                <motion.button
                   key={c.pedidoId}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.28, delay: Math.min(index * 0.045, 0.25), ease: 'easeOut' }}
+                  whileHover={{ y: -2, scale: 1.006 }}
+                  whileTap={{ scale: 0.98 }}
                   type="button"
                   onClick={() => {
                     marcarLidaOptimista(c.pedidoId)
@@ -209,7 +215,7 @@ export default function ListaConversas({
                       <span className="text-slate-500">sem mensagens</span>
                     )}
                   </div>
-                </button>
+                </motion.button>
               )
             })}
           </div>

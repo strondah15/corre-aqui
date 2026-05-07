@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { database } from '@/lib/firebase'
 import { ref, push, onValue, query, limitToLast } from 'firebase/database'
+import { motion } from 'framer-motion'
 
 function getMsgMs(v) {
   if (!v) return 0
@@ -32,12 +33,14 @@ export default function ChatMensagens({
   outroUser,
   planoAtual = 'free',
   mostrarAnuncio = true,
+  onClose,
 }) {
   const [mensagens, setMensagens] = useState([])
   const [texto, setTexto] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [gravando, setGravando] = useState(false)
   const [tempo, setTempo] = useState(0)
+  const [fechado, setFechado] = useState(false)
 
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
@@ -210,8 +213,21 @@ export default function ChatMensagens({
     }
   }
 
+  const fecharChat = () => {
+    try {
+      onClose?.()
+    } catch {}
+    setFechado(true)
+  }
+
+  useEffect(() => {
+    setFechado(false)
+  }, [pedidoId])
+
+  if (fechado) return null
+
   return (
-    <div className="w-full max-w-[720px] rounded-3xl overflow-hidden border border-white/10 bg-slate-950/90 shadow-2xl shadow-black/30">
+    <div className="relative z-[9999] pointer-events-auto w-full max-w-[720px] rounded-3xl overflow-hidden border border-white/10 bg-slate-950/90 shadow-2xl shadow-black/30">
       <div className="px-4 py-4 border-b border-white/10 bg-slate-900/80">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -219,8 +235,19 @@ export default function ChatMensagens({
             <div className="text-gray-400 text-sm truncate max-w-[420px]">{pedidoTitulo}</div>
           </div>
 
-          <div className="text-xs px-3 py-1.5 rounded-full bg-white/10 text-gray-200">
-            {mensagens.length} mensagens
+          <div className="flex items-center gap-2">
+            <div className="text-xs px-3 py-1.5 rounded-full bg-white/10 text-gray-200">
+              {mensagens.length} mensagens
+            </div>
+
+            <button
+              type="button"
+              onClick={fecharChat}
+              aria-label="Fechar conversa"
+              className="relative z-[99999] h-9 w-9 rounded-full bg-red-500/15 text-red-100 border border-red-400/25 flex items-center justify-center text-lg font-bold transition hover:bg-red-500/25 active:scale-95"
+            >
+              ×
+            </button>
           </div>
         </div>
 
@@ -250,7 +277,7 @@ export default function ChatMensagens({
           <div className="text-gray-400 text-sm">Nenhuma mensagem ainda. Combine detalhes do serviço com segurança por aqui.</div>
         )}
 
-        {mensagens.map((msg) => {
+        {mensagens.map((msg, index) => {
           const minha =
             (msg.userId && meuId && String(msg.userId) === String(meuId)) ||
             (!msg.userId && msg.autor && meuNome && String(msg.autor) === String(meuNome))
@@ -258,7 +285,12 @@ export default function ChatMensagens({
           const hora = formatarHoraMensagem(msg.hora || msg.criadoEm || msg.createdAt)
 
           return (
-            <div key={msg.id} className={`flex ${minha ? 'justify-end' : 'justify-start'}`}>
+            <motion.div
+              key={msg.id}
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.22, delay: Math.min(index * 0.025, 0.18), ease: 'easeOut' }}
+              className={`flex ${minha ? 'justify-end' : 'justify-start'}`}>
               <div
                 className={`max-w-[82%] rounded-2xl px-3 py-2 ${
                   minha ? 'bg-blue-600 text-white rounded-br-md' : 'bg-slate-800 text-white rounded-bl-md'
@@ -286,7 +318,7 @@ export default function ChatMensagens({
 
                 <div className="mt-1 text-[10px] text-right text-white/70">{hora}</div>
               </div>
-            </div>
+            </motion.div>
           )
         })}
       </div>

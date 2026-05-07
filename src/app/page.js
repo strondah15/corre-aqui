@@ -1,21 +1,20 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import SplashScreen from '@/components/SplashScreen'
-import LoginGate from '@/components/LoginGate'
-import ModoGate from '@/components/ModoGate'
+import { useState } from "react";
+import SplashCorreAqui from "@/components/SplashCorreAqui";
+import LoginGate from "@/components/LoginGate";
+import ModoGate from "@/components/ModoGate";
+
 export default function Page() {
-  const [mostrarLogo, setMostrarLogo] = useState(true)
+  const [mostrarLogo, setMostrarLogo] = useState(true);
 
-  // 1️⃣ PRIMEIRO: logo
   if (mostrarLogo) {
-    return <SplashScreen onFinish={() => setMostrarLogo(false)} />
+    return <SplashCorreAqui onFinish={() => setMostrarLogo(false)} />;
   }
 
-  // 2️⃣ DEPOIS: app normal
   return (
     <LoginGate>
       <ModoGate />
     </LoginGate>
-  )
+  );
 }
