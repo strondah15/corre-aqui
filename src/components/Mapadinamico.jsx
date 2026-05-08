@@ -1255,7 +1255,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 corre-aqui-no-select">
+    <div className="relative min-h-screen overflow-hidden bg-[#020617] text-slate-900 corre-aqui-no-select">
+      <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.20),transparent_34%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_32%),linear-gradient(180deg,#071120_0%,#020617_55%,#020617_100%)]" />
       <style>{`
         .corre-aqui-no-select,
         .corre-aqui-no-select * {
@@ -1282,7 +1283,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       `}</style>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="max-w-3xl mx-auto p-4 pb-[200px]">
+      <div className="relative z-10 w-full max-w-[1320px] mx-auto px-4 sm:px-5 lg:px-6 py-4 pb-[220px]">
         {/* ✅ TROCAR MODO DENTRO DO LAYOUT (não cobre mais os cards) */}
         {typeof onBackToMode === 'function' && (
           <div className="mb-4 flex justify-start">
@@ -1309,7 +1310,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
-            <div className="relative mb-4 rounded-[28px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)] text-slate-900">
+            <div className="relative mb-4 rounded-[32px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)] text-slate-900">
               <div className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-white pointer-events-none" />
 
               <div className="relative p-5">
@@ -1356,7 +1357,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             </div>
 
             {tab === 'inbox' && (
-              <div className="mb-4 rounded-[28px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)]">
+              <div className="mb-4 rounded-[32px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)]">
                 <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-br from-white to-slate-50">
                   <div className="text-base font-extrabold text-slate-950">💬 Inbox</div>
                   <div className="mt-1 text-xs text-slate-500">Conversas dos pedidos aceitos e enviados.</div>
@@ -1428,7 +1429,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {modoApp === 'corre' && tab === 'corre' && (
           <>
             {/* Painel de filtros do Corre */}
-            <div className="mb-4 rounded-[28px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)] text-slate-900">
+            <div className="mb-4 rounded-[32px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)] text-slate-900">
               <div className="p-4">
                 {/* filtros status */}
                 <div className="grid grid-cols-3 gap-2">
@@ -2090,7 +2091,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           A barra fica fixa embaixo e cada opção abre uma tela própria com rolagem. */}
       {modoApp === 'cliente' && (
         <div className="fixed left-0 right-0 bottom-0 z-[99980] bg-[#0f172a] border-t border-slate-700 shadow-[0_-10px_30px_rgba(0,0,0,0.45)] pointer-events-none">
-          <div className="mx-auto max-w-3xl pointer-events-auto p-3 grid grid-cols-2 gap-2">
+          <div className="mx-auto w-full max-w-[760px] pointer-events-auto p-3 grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => setClientePainelBaixo('meusPedidos')}
@@ -2120,7 +2121,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       {modoApp === 'cliente' && clientePainelBaixo && (
         <div className="fixed inset-0 z-[99990] bg-[#0f172a] flex justify-center">
-          <div className="w-full max-w-3xl h-[100dvh] bg-[#0f172a] text-white shadow-[0_0_40px_rgba(0,0,0,0.45)] flex flex-col">
+          <div className="w-full max-w-[900px] h-[100dvh] bg-[#0f172a] text-white shadow-[0_0_40px_rgba(0,0,0,0.45)] flex flex-col">
             <div className="shrink-0 px-4 pt-4 pb-3 bg-[#111827] border-b border-slate-700 shadow-md">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">

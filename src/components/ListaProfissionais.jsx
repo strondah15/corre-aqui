@@ -250,21 +250,21 @@ export default function ListaProfissionais({
     'bg-white border border-slate-200 shadow-[0_24px_70px_rgba(15,23,42,0.16)] ring-1 ring-slate-900/5'
 
   return (
-    <div className={`rounded-[1.7rem] overflow-hidden ${glass}`}>
-      <div className="px-4 py-4 border-b border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-100/70">
+    <div className={`rounded-[2rem] overflow-hidden ${glass}`}>
+      <div className="px-4 sm:px-5 py-4 border-b border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-100/70">
         <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Busca inteligente</div>
         <div className="mt-1 text-base font-black text-slate-950">
           {mode === 'corre' ? '🧍 Corres / Bicos disponíveis' : mode === 'ambos' ? '🧭 Corres + Profissionais' : '🧑‍🔧 Profissionais'}
         </div>
 
-        <div className="mt-3 space-y-3">
+        <div className="mt-3 space-y-2.5">
           <div className="relative">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
             <input
               value={buscaLocal}
               onChange={(e) => setBuscaLocal(e.target.value)}
               placeholder={mode === 'corre' ? 'Buscar corre, cidade ou serviço rápido...' : 'Buscar profissional, cidade ou serviço...'}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-11 py-3 text-sm font-semibold text-slate-800 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/15"
+              className="w-full rounded-[1.35rem] border border-slate-200 bg-white px-11 py-3 text-sm font-semibold text-slate-800 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/15"
             />
             {buscaLocal ? (
               <button
@@ -307,7 +307,7 @@ export default function ListaProfissionais({
         </div>
       </div>
 
-      <div className="p-3 sm:p-4 bg-[#eef2f7]">
+      <div className="p-3 sm:p-4 bg-slate-100/80">
         {loading ? (
           <div className="text-sm text-slate-600">Carregando profissionais…</div>
         ) : filtrados.length === 0 ? (
@@ -318,7 +318,7 @@ export default function ListaProfissionais({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 md:gap-4 items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 md:gap-4 items-stretch">
             {filtrados.map((u) => (
               <CardProfissional
                 key={u.uid}

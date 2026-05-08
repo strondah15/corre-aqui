@@ -100,11 +100,11 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
         transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
         whileHover={{ y: -3, scale: 1.01 }}
         whileTap={{ scale: 0.985 }}
-        className="corre-card-clean relative overflow-hidden h-full rounded-[24px] md:rounded-[26px] border border-slate-200 bg-white transition-shadow duration-200 hover:shadow-[0_22px_54px_rgba(15,23,42,0.16)] p-3 md:p-3.5 shadow-[0_14px_42px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/5 select-none cursor-default"
+        className="corre-card-clean relative overflow-hidden h-full rounded-[28px] md:rounded-[26px] border border-slate-200 bg-white transition-shadow duration-200 hover:shadow-[0_22px_54px_rgba(15,23,42,0.16)] p-3 md:p-3.5 shadow-[0_14px_42px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/5 select-none cursor-default"
       >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(59,130,246,0.12),transparent_32%),radial-gradient(circle_at_88%_12%,rgba(16,185,129,0.12),transparent_28%)]" />
       <div className="relative z-10 flex items-start gap-2.5">
-        <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-slate-100 border border-white overflow-hidden flex items-center justify-center shrink-0 shadow-[0_12px_30px_rgba(15,23,42,0.18)] ring-4 ring-slate-100">
+        <div className="w-10 h-10 md:w-12 md:h-12 rounded-[1.35rem] bg-slate-100 border border-white overflow-hidden flex items-center justify-center shrink-0 shadow-[0_12px_30px_rgba(15,23,42,0.18)] ring-4 ring-slate-100">
           {fotoURL ? (
             <img
               src={fotoURL}
@@ -143,7 +143,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
           </div>
 
           {isCorre && (
-            <div className="mt-2 rounded-2xl bg-amber-50/95 border border-amber-200 p-2 md:p-2.5 shadow-sm">
+            <div className="mt-2 rounded-[1.35rem] bg-amber-50/95 border border-amber-200 p-2 md:p-2.5 shadow-sm">
               <div className="text-xs font-black text-amber-800">
                 ⚡ {tituloCorre}
               </div>
@@ -180,7 +180,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
           )}
 
           {isProf && (
-            <div className="mt-2 rounded-2xl bg-blue-50/95 border border-blue-200 p-2 md:p-2.5 shadow-sm">
+            <div className="mt-2 rounded-[1.35rem] bg-blue-50/95 border border-blue-200 p-2 md:p-2.5 shadow-sm">
               <div className="text-xs font-black text-blue-800">
                 🧑‍🔧 {tituloProf || 'Profissional'}
               </div>

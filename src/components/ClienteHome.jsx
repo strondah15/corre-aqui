@@ -7,6 +7,9 @@ import ListaProfissionais from './ListaProfissionais'
 const glass =
   'bg-white border border-slate-200 shadow-[0_18px_55px_rgba(15,23,42,0.12)] text-slate-900 select-none'
 
+const floatingSection =
+  'bg-white border border-slate-200 shadow-[0_18px_55px_rgba(15,23,42,0.12)] text-slate-900 select-none'
+
 const safeStr = (v) => String(v || '').trim()
 
 
@@ -156,8 +159,8 @@ export default function ClienteHome({
   }, [providers, modo, busca, catId])
 
   return (
-    <div className="mt-3 space-y-4 px-3 sm:px-0 pb-36 select-none bg-[#eef2f7]">
-      <div className={`rounded-[1.9rem] p-4 sm:p-5 ${glass}`}>
+    <div className="mt-3 space-y-5 px-3 sm:px-0 pb-36 select-none bg-transparent">
+      <div className={`rounded-[2.25rem] p-4 sm:p-5 lg:p-6 ${glass}`}>
         <div className="text-sm sm:text-base font-black text-slate-900">
           👋 Olá, {meuNome || 'Anônimo'}
         </div>
@@ -216,9 +219,9 @@ export default function ClienteHome({
       </div>
 
       {/* ✅ LISTA LIMPA: sem busca duplicada, sem filtros duplicados, sem botão flutuante */}
-      <div className={`rounded-[1.7rem] overflow-hidden ${glass}`}>
+      <div className="space-y-4">
         <div className={[
-          'px-4 py-4 border-b border-slate-200',
+          'px-4 sm:px-5 py-4 rounded-[2rem] border border-slate-200 shadow-[0_18px_55px_rgba(15,23,42,0.12)]',
           modo === 'corre'
             ? 'bg-gradient-to-br from-white via-amber-50 to-orange-100/80'
             : 'bg-gradient-to-br from-white via-slate-50 to-blue-100/80',
@@ -244,7 +247,7 @@ export default function ClienteHome({
           </div>
         </div>
 
-        <div className="p-3 sm:p-4 bg-[#eef2f7]">
+        <div className="p-0 bg-transparent">
           <ListaProfissionais
             mode={modo}
             categoriaId={catId}
