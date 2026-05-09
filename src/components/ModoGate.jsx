@@ -3,10 +3,24 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Mapadinamico from '@/components/Mapadinamico'
+import PerfilDrawer from '@/components/PerfilDrawer'
+import { auth } from '@/lib/firebase'
+import { onAuthStateChanged } from 'firebase/auth'
 
 export default function ModoGate() {
   const [selectedMode, setSelectedMode] = useState('cliente') // 'cliente' | 'corre'
   const [stage, setStage] = useState('select') // 'select' | 'app'
+  const [openPerfilGlobal, setOpenPerfilGlobal] = useState(false)
+  const [uid, setUid] = useState(null)
+
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setUid(user?.uid || null)
+    })
+
+    return () => unsub()
+  }, [])
 
   useEffect(() => {
     // só pra lembrar a última escolha (mas SEM pular a tela)
@@ -120,6 +134,21 @@ export default function ModoGate() {
             </div>
           )}
 
+
+          <button
+            type="button"
+            onClick={() => setOpenPerfilGlobal(true)}
+            className="
+              mt-5 w-full rounded-2xl py-3 font-extrabold
+              bg-white/10 hover:bg-white/15
+              border border-white/10 text-white
+              shadow-[0_12px_35px_rgba(0,0,0,0.18)]
+              active:scale-[0.98] transition
+            "
+          >
+            👤 Perfil e configurações
+          </button>
+
           <button
             onClick={continuar}
             className="
@@ -149,6 +178,12 @@ export default function ModoGate() {
         <div className="mt-6 text-center text-[11px] text-white/50">
           Dica: pra testar MVP rápido, use <b>Corre</b> primeiro.
         </div>
+
+        <PerfilDrawer
+          open={openPerfilGlobal}
+          onClose={() => setOpenPerfilGlobal(false)}
+          uid={uid}
+        />
       </div>
     </div>
   )

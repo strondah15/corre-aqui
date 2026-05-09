@@ -8,6 +8,7 @@ import { motion } from 'framer-motion'
  * - Esse menu é usado somente no modo corre/profissional.
  * - Sem botão de mapa: o mapa ao vivo já fica no topo.
  * - Ação principal: Disponível / Indisponível.
+ * - Perfil/configurações agora ficam na tela inicial de escolha do modo.
  */
 export default function BottomBar({
   active,
@@ -100,8 +101,7 @@ export default function BottomBar({
           </motion.button>
 
           {/* direita */}
-          <div className="grid grid-rows-2 gap-1.5 md:gap-2">
-            {smallBtn({ id: 'perfil', label: 'Perfil', icon: '👤' })}
+          <div className="grid grid-rows-1 gap-1.5 md:gap-2">
             <motion.button
               type="button"
               whileTap={{ scale: 0.94 }}
