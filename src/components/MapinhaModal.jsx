@@ -256,6 +256,24 @@ export default function MapinhaModal({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // Preferência visual do mapa: claro / escuro
+  const [modoMapa, setModoMapa] = useState("claro");
+
+  useEffect(() => {
+    try {
+      const salvo = window.localStorage.getItem("correAquiModoMapa");
+      if (salvo === "claro" || salvo === "escuro") {
+        setModoMapa(salvo);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("correAquiModoMapa", modoMapa);
+    } catch {}
+  }, [modoMapa]);
+
   // trava scroll do body quando aberto
   useEffect(() => {
     if (!open) return;
@@ -310,8 +328,8 @@ export default function MapinhaModal({
   const [liveTick, setLiveTick] = useState(0);
 
   // bottom sheet
-  const SHEET_MIN = 120;
-  const SHEET_MID = 290;
+  const SHEET_MIN = 80;
+  const SHEET_MID = 190;
   const [sheet, setSheet] = useState("mid");
   const [sheetHeight, setSheetHeight] = useState(SHEET_MID);
 
@@ -650,12 +668,18 @@ export default function MapinhaModal({
 
   const isDragging = draggingRef.current;
 
+  const MAPA_CLARO_URL =
+    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+  const MAPA_ESCURO_URL =
+    "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+  const tileUrl = modoMapa === "escuro" ? MAPA_ESCURO_URL : MAPA_CLARO_URL;
+
   // ✅ UI mapa premium: escuro, limpo e com profundidade
   const glass =
-    "bg-[#071120]/95 backdrop-blur-xl border border-cyan-400/10 shadow-[0_24px_80px_rgba(0,0,0,0.45)] text-white";
+    "bg-[#071120]/78 backdrop-blur-xl border border-cyan-400/10 shadow-[0_24px_80px_rgba(0,0,0,0.45)] text-white";
 
   const pillBase =
-    "px-3.5 py-2 rounded-2xl text-xs font-extrabold border transition active:scale-[0.96] shadow-[0_14px_35px_rgba(0,0,0,0.24)]";
+    "px-3 py-1.5 rounded-full text-[11px] font-black border transition active:scale-[0.96] shadow-[0_14px_35px_rgba(0,0,0,0.24)]";
   const pillOn =
     "bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-cyan-300/30 shadow-[0_0_28px_rgba(34,211,238,0.22)]";
   const pillOff =
@@ -681,7 +705,7 @@ export default function MapinhaModal({
 
       {/* mapa */}
       <motion.div
-        className="fixed inset-0 z-[4500]"
+        className="fixed inset-0 z-[4500] overflow-hidden"
         initial={{ opacity: 0, scale: 1.015 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0 }}
@@ -693,8 +717,11 @@ export default function MapinhaModal({
           className="h-full w-full"
           preferCanvas={true}
           style={{
-            filter: "brightness(0.82) contrast(1.12) saturate(0.9)",
-            background: "#020617",
+            filter:
+              modoMapa === "escuro"
+                ? "brightness(1.08) contrast(1.25) saturate(1.08)"
+                : "brightness(0.98) contrast(1.12) saturate(1.04)",
+            background: modoMapa === "escuro" ? "#020617" : "#eef2f7",
           }}
         >
           <FitAndInvalidate
@@ -706,7 +733,7 @@ export default function MapinhaModal({
 
           <TileLayer
             attribution="&copy; OpenStreetMap contributors &copy; CARTO"
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            url={tileUrl}
           />
 
           {/* ONLINE */}
@@ -800,6 +827,35 @@ export default function MapinhaModal({
             <Polyline positions={route} weight={6} opacity={0.9} />
           )}
         </MapContainer>
+
+        {/* seletor claro/escuro */}
+        <div className="pointer-events-auto absolute right-4 top-5 z-[4700] flex items-center gap-1 rounded-full border border-white/15 bg-[#020617]/80 p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => setModoMapa("claro")}
+            className={`rounded-full px-3 py-2 text-xs font-black transition active:scale-95 ${
+              modoMapa === "claro"
+                ? "bg-white text-slate-950 shadow-lg"
+                : "text-white/80 hover:bg-white/10"
+            }`}
+            title="Mapa claro"
+          >
+            ☀️ Claro
+          </button>
+          <button
+            type="button"
+            onClick={() => setModoMapa("escuro")}
+            className={`rounded-full px-3 py-2 text-xs font-black transition active:scale-95 ${
+              modoMapa === "escuro"
+                ? "bg-cyan-500 text-white shadow-[0_0_24px_rgba(34,211,238,0.35)]"
+                : "text-white/80 hover:bg-white/10"
+            }`}
+            title="Mapa escuro"
+          >
+            🌙 Escuro
+          </button>
+        </div>
+
       </motion.div>
 
       {/* topo premium */}
@@ -845,7 +901,7 @@ export default function MapinhaModal({
 
           <button
             onClick={onClose}
-            className="pointer-events-auto w-12 h-12 rounded-3xl bg-[#0f1b2d]/95 border border-white/10 text-white flex items-center justify-center hover:bg-[#14243a] active:scale-[0.96] transition shadow-[0_18px_45px_rgba(0,0,0,0.35)] text-xl"
+            className="pointer-events-auto w-12 h-12 rounded-3xl bg-[#0f1b2d]/95 border border-white/10 text-white flex items-center justify-center hover:bg-[#14243a] active:scale-[0.96] transition shadow-[0_14px_40px_rgba(0,0,0,0.28)] text-xl"
             title="Fechar"
             type="button"
           >
@@ -861,9 +917,9 @@ export default function MapinhaModal({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15, duration: 0.25 }}
         >
-          <div className="pointer-events-auto rounded-3xl bg-[#071120]/95 border border-cyan-400/10 shadow-[0_18px_60px_rgba(0,0,0,0.38)] backdrop-blur-xl px-4 py-3">
+          <div className="pointer-events-auto rounded-3xl bg-[#071120]/78 border border-cyan-400/10 shadow-[0_18px_60px_rgba(0,0,0,0.38)] backdrop-blur-xl px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-cyan-400/10 border border-cyan-300/15 flex items-center justify-center text-xl shadow-[0_0_24px_rgba(34,211,238,0.12)]">
+              <div className="w-10 h-10 rounded-3xl bg-cyan-400/10 border border-cyan-300/15 flex items-center justify-center text-xl shadow-[0_0_24px_rgba(34,211,238,0.12)]">
                 🔎
               </div>
 
@@ -877,7 +933,7 @@ export default function MapinhaModal({
               </div>
 
               {showOnline && (
-                <div className="hidden sm:flex items-center gap-2 text-xs text-slate-300 bg-white/5 border border-white/10 rounded-2xl px-3 py-2">
+                <div className="hidden sm:flex items-center gap-2 text-xs text-slate-300 bg-white/5 border border-white/10 rounded-3xl px-3 py-2">
                   <span className="font-bold">Limite</span>
                   <input
                     type="range"
@@ -942,7 +998,7 @@ export default function MapinhaModal({
                   <button
                     type="button"
                     onClick={() => snapTo(sheet === "max" ? "mid" : "max")}
-                    className="px-3 py-2 rounded-2xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition"
+                    className="px-3 py-2 rounded-3xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition"
                   >
                     {sheet === "max" ? "↧ Recolher" : "↥ Expandir"}
                   </button>
@@ -950,7 +1006,7 @@ export default function MapinhaModal({
                   <button
                     type="button"
                     onClick={() => snapTo(sheet === "min" ? "mid" : "min")}
-                    className="px-3 py-2 rounded-2xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition"
+                    className="px-3 py-2 rounded-3xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition"
                   >
                     {sheet === "min" ? "▢ Detalhes" : "— Minimizar"}
                   </button>
@@ -959,24 +1015,24 @@ export default function MapinhaModal({
             </div>
 
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="rounded-3xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 <div className="text-slate-400">Online</div>
                 <div className="font-extrabold text-white">{onlineMarkers.length}</div>
               </div>
 
-              <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="rounded-3xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 <div className="text-slate-400">Modo</div>
                 <div className="font-extrabold text-white">{onlineResumo}</div>
               </div>
 
-              <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="rounded-3xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 <div className="text-slate-400">Distância</div>
                 <div className="font-extrabold text-white">
                   {distKm != null ? `${distKm.toFixed(2)} km` : "—"}
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <div className="rounded-3xl bg-white/5 border border-white/10 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 <div className="text-slate-400">Tempo</div>
                 <div className="font-extrabold text-white">
                   {durMin != null ? `${Math.round(durMin)} min` : "—"}
@@ -1026,7 +1082,7 @@ export default function MapinhaModal({
                   <button
                     onClick={usarMinhaLocalizacao}
                     disabled={loadingStart}
-                    className="px-4 py-3 rounded-2xl text-white font-bold disabled:opacity-60 active:scale-[0.98]"
+                    className="px-4 py-3 rounded-3xl text-white font-bold disabled:opacity-60 active:scale-[0.98]"
                     type="button"
                     style={{
                       background: "linear-gradient(135deg,#2563eb,#1d4ed8)",
@@ -1044,7 +1100,7 @@ export default function MapinhaModal({
                     href={googleMapsUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-4 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold shadow-sm active:scale-[0.98] transition"
+                    className="px-4 py-3 rounded-3xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold shadow-sm active:scale-[0.98] transition"
                   >
                     Abrir no Google Maps
                   </a>
@@ -1052,13 +1108,13 @@ export default function MapinhaModal({
               </div>
 
               {!dest && !isMapaAoVivo && showPedido && (
-                <div className="mt-3 text-xs text-amber-200 bg-amber-400/10 border border-amber-300/15 rounded-2xl px-3 py-2">
+                <div className="mt-3 text-xs text-amber-200 bg-amber-400/10 border border-amber-300/15 rounded-3xl px-3 py-2">
                   Este pedido não tem localização salva ainda.
                 </div>
               )}
 
               {!showPedido && !isMapaAoVivo && (
-                <div className="mt-3 text-xs text-slate-300 bg-white/5 border border-white/10 rounded-2xl px-3 py-2">
+                <div className="mt-3 text-xs text-slate-300 bg-white/5 border border-white/10 rounded-3xl px-3 py-2">
                   Pedido oculto (você desligou no topo). Ligue em “📍 Pedido”.
                 </div>
               )}

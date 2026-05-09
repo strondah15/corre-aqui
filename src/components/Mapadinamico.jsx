@@ -136,7 +136,7 @@ const boostInfo = (p) => {
   return { lvl, cfg, until, ativo }
 }
 
-const calcTaxaEntrega = ({ modoPedido, isProfissionalUser, patenteProf }) => {
+const calcTaxaServiço = ({ modoPedido, isProfissionalUser, patenteProf }) => {
   const modo = String(modoPedido || 'geral').toLowerCase()
   if (modo === 'profissional' && isProfissionalUser) {
     const lvl = Math.max(1, Math.min(5, Number(patenteProf || 1)))
@@ -222,10 +222,10 @@ const notificarTelefone = async ({ title, body, tag }) => {
 
 
 /* =======================
-   ✅ Patente por entregas
+   ✅ Patente por serviços
 ======================= */
-const calcPatente = (entregas = 0) => {
-  const n = Number(entregas || 0)
+const calcPatente = (serviços = 0) => {
+  const n = Number(serviços || 0)
   if (n >= 60) return 5
   if (n >= 30) return 4
   if (n >= 15) return 3
@@ -233,7 +233,7 @@ const calcPatente = (entregas = 0) => {
   return 1
 }
 
-async function subirPatentePorEntrega({ uid, modoPedido = 'geral' }) {
+async function subirPatentePorServiço({ uid, modoPedido = 'geral' }) {
   if (!uid) return
 
   const userRef = ref(database, `users/${uid}`)
@@ -241,20 +241,20 @@ async function subirPatentePorEntrega({ uid, modoPedido = 'geral' }) {
   await runTransaction(userRef, (current) => {
     const u = current || {}
 
-    const entregasCorre = Number(u.entregasCorre || 0) + 1
+    const serviçosCorre = Number(u.serviçosCorre || 0) + 1
 
     const isProf = String(modoPedido || 'geral').toLowerCase() === 'profissional'
-    const entregasProf = isProf ? Number(u.entregasProf || 0) + 1 : Number(u.entregasProf || 0)
+    const serviçosProf = isProf ? Number(u.serviçosProf || 0) + 1 : Number(u.serviçosProf || 0)
 
-    const patenteCorre = calcPatente(entregasCorre)
+    const patenteCorre = calcPatente(serviçosCorre)
 
     const isProfissionalUser = !!u.isProfissional
-    const patenteProf = isProfissionalUser ? calcPatente(entregasProf) : 0
+    const patenteProf = isProfissionalUser ? calcPatente(serviçosProf) : 0
 
     return {
       ...u,
-      entregasCorre,
-      entregasProf,
+      serviçosCorre,
+      serviçosProf,
       patenteCorre,
       patenteProf,
       patenteAtualizadaEm: Date.now(),
@@ -466,7 +466,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const [aceitandoId, setAceitandoId] = useState(null)
   const [cancelandoId, setCancelandoId] = useState(null)
-  const [entregandoId, setEntregandoId] = useState(null)
+  const [serviçondoId, setServiçondoId] = useState(null)
   const [excluindoId, setExcluindoId] = useState(null)
   const [salvandoEdicao, setSalvandoEdicao] = useState(false)
 
@@ -993,15 +993,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
   }
 
-  async function marcarEntregue(p) {
-    if (entregandoId) return
-    setEntregandoId(p.id)
+  async function marcarConcluído(p) {
+    if (serviçondoId) return
+    setServiçondoId(p.id)
 
     try {
       const criadorId = p?.criador?.id
       const aceitadorId = p?.aceite?.id
       // ✅ Regra correta: somente o CLIENTE/CRIADOR confirma que o serviço foi feito.
-      // Corre/profissional não pode marcar entregue sozinho.
+      // Corre/profissional não pode marcar concluido sozinho.
       const pode = meuId && meuId === criadorId
 
       if (!pode) {
@@ -1022,20 +1022,20 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         return
       }
 
-      const entregueAgora = Date.now()
+      const concluidoAgora = Date.now()
 
       await update(ref(database, `pedidos/${p.id}`), {
-        status: 'entregue',
-        entregueEm: entregueAgora,
-        entreguePor: { id: meuId, nome: meuNome || 'Anônimo' },
-        atualizadoEm: entregueAgora,
+        status: 'concluido',
+        concluidoEm: concluidoAgora,
+        concluidoPor: { id: meuId, nome: meuNome || 'Anônimo' },
+        atualizadoEm: concluidoAgora,
         atualizadoEmServer: serverTimestamp(),
       })
 
       // ✅ QUEM GANHA A ENTREGA?
       const creditUid = aceitadorId || meuId
 
-      await subirPatentePorEntrega({
+      await subirPatentePorServiço({
         uid: creditUid,
         modoPedido: p?.modoPedido || 'geral',
       })
@@ -1048,10 +1048,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         message: 'ENTREGUE ✅ Patente atualizada + Missão +XP + moedas 💰',
       })
     } catch (e) {
-      console.error('Erro ao marcar entregue:', e)
+      console.error('Erro ao marcar concluido:', e)
       showToast({ type: 'error', title: 'Falha', message: e?.message || 'Veja o console.' })
     } finally {
-      setEntregandoId(null)
+      setServiçondoId(null)
     }
   }
 
@@ -1153,7 +1153,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           ACEITO
         </span>
       )
-    if (s === 'entregue')
+    if (s === 'concluido')
       return (
         <span className="text-[11px] md:text-xs px-2 py-0.5 md:py-1 rounded-full bg-sky-400/15 border border-sky-400/20 text-sky-200 font-semibold">
           ENTREGUE
@@ -1325,7 +1325,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         Bem-vindo, {meuNome || '...'}
                       </div>
                       <div className="mt-1 text-sm text-slate-500">
-                        Aceite pedidos próximos, entregue e suba sua patente ⭐
+                        Aceite pedidos próximos, concluido e suba sua patente ⭐
                       </div>
 
                       <div className="mt-3 flex gap-2 flex-wrap">
@@ -1559,7 +1559,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 const patenteCriadorCorre = Number(userCriador?.patenteCorre || 1)
                 const patenteCriadorProf = Number(userCriador?.patenteProf || 0)
 
-                const taxaEstimada = calcTaxaEntrega({
+                const taxaEstimada = calcTaxaServiço({
                   modoPedido: p?.modoPedido,
                   isProfissionalUser: isProfissional,
                   patenteProf: minhaPatenteProf,
@@ -1714,11 +1714,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       {status === 'aceito' && souCriador(p) && (
                         <button
                           className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/20 disabled:opacity-60 transition"
-                          onClick={() => marcarEntregue(p)}
-                          disabled={entregandoId === p.id}
+                          onClick={() => marcarConcluído(p)}
+                          disabled={serviçondoId === p.id}
                           type="button"
                         >
-                          {entregandoId === p.id ? 'Confirmando…' : 'Confirmar serviço feito'}
+                          {serviçondoId === p.id ? 'Confirmando…' : 'Confirmar serviço feito'}
                         </button>
                       )}
 
@@ -2156,7 +2156,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     setMapItem(pedido)
                   }}
                   onConfirmarServicoFeito={(pedido) => {
-                    marcarEntregue(pedido)
+                    marcarConcluído(pedido)
                   }}
                 />
               )}

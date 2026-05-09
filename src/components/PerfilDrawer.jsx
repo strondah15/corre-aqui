@@ -40,7 +40,7 @@ const tabLabel = {
   corre: 'Corre',
   profissional: 'Profissional',
   config: 'Ajustes',
-  monetizacao: 'Monetização'
+  monetizacao: 'Planos'
 }
 
 const tabIcon = {
@@ -287,7 +287,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         animate={{ x: 0, opacity: 1 }}
         transition={{ type: 'spring', stiffness: 120, damping: 18 }}
         className="
-          absolute right-0 top-0 h-full w-[min(94vw,520px)]
+          absolute right-0 top-0 h-full w-[min(96vw,560px)]
           bg-[#06101d] text-white
           border-l border-white/10
           shadow-[-30px_0_90px_rgba(0,0,0,0.45)]
@@ -405,24 +405,27 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             </div>
           </div>
 
-          {/* TABS */}
-          <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
-            {['perfil', 'corre', 'profissional', 'config', 'monetizacao'].map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                type="button"
-                className={[
-                  'min-w-[96px] px-3 py-3 rounded-2xl text-sm font-extrabold border transition active:scale-[0.96]',
-                  tab === t
-                    ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white border-cyan-300/30 shadow-lg shadow-cyan-500/20'
-                    : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-white/10',
-                ].join(' ')}
-              >
-                <span className="mr-1">{tabIcon[t]}</span>
-                {tabLabel[t]}
-              </button>
-            ))}
+          {/* MENU DO PERFIL */}
+          <div className="mt-5 rounded-[30px] bg-slate-950/65 border border-white/10 p-2 shadow-[0_20px_70px_rgba(0,0,0,0.28)]">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+              {['perfil', 'corre', 'profissional', 'config', 'monetizacao'].map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  type="button"
+                  className={[
+                    'group min-h-[72px] rounded-[24px] px-2 py-3 text-center border transition-all duration-200 active:scale-[0.96]',
+                    'flex flex-col items-center justify-center gap-1',
+                    tab === t
+                      ? 'bg-gradient-to-br from-blue-600 via-cyan-500 to-emerald-400 text-white border-cyan-200/40 shadow-[0_12px_45px_rgba(34,211,238,0.22)]'
+                      : 'bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border-white/10 hover:border-white/20',
+                  ].join(' ')}
+                >
+                  <span className="text-lg leading-none">{tabIcon[t]}</span>
+                  <span className="text-[11px] sm:text-[12px] font-black leading-tight">{tabLabel[t]}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* PERFIL */}
@@ -468,32 +471,56 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* CONFIG */}
           {tab === 'config' && (
-            <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-3">
-              <label className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/70 border border-white/10 px-4 py-3">
-                <div>
-                  <div className="text-sm font-extrabold text-white">Visível no mapa</div>
-                  <div className="text-xs text-slate-400">Permite que outros usuários encontrem você.</div>
+            <div className="mt-5 space-y-4">
+              <div className="rounded-[28px] bg-gradient-to-br from-[#0b1628] via-[#081426] to-[#050b16] border border-cyan-300/10 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.24)]">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-white/8 border border-white/10 flex items-center justify-center text-xl shadow-lg">
+                    ⚙️
+                  </div>
+                  <div>
+                    <div className="text-base font-black text-white">Ajustes rápidos</div>
+                    <div className="text-xs text-slate-400">Controle como você aparece no Corre Aqui.</div>
+                  </div>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={profile.visivel}
-                  onChange={(e) => setProfile(p => ({ ...p, visivel: e.target.checked }))}
-                  className="w-5 h-5 accent-blue-600"
-                />
-              </label>
+              </div>
 
-              <label className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/70 border border-white/10 px-4 py-3">
-                <div>
-                  <div className="text-sm font-extrabold text-white">Notificações</div>
-                  <div className="text-xs text-slate-400">Receba avisos de pedidos, chat e aceite.</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={profile.notificacoes}
-                  onChange={(e) => setProfile(p => ({ ...p, notificacoes: e.target.checked }))}
-                  className="w-5 h-5 accent-blue-600"
-                />
-              </label>
+              <div className="grid grid-cols-1 gap-3">
+                <label className="flex items-center justify-between gap-4 rounded-[26px] bg-slate-900/75 border border-white/10 px-4 py-4 shadow-[0_14px_45px_rgba(0,0,0,0.18)]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-300/20 flex items-center justify-center text-lg">
+                      🟢
+                    </div>
+                    <div>
+                      <div className="text-sm font-extrabold text-white">Visível no mapa</div>
+                      <div className="text-xs text-slate-400">Clientes e corres podem encontrar você em tempo real.</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={profile.visivel}
+                    onChange={(e) => setProfile(p => ({ ...p, visivel: e.target.checked }))}
+                    className="w-5 h-5 accent-emerald-500"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between gap-4 rounded-[26px] bg-slate-900/75 border border-white/10 px-4 py-4 shadow-[0_14px_45px_rgba(0,0,0,0.18)]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-blue-500/15 border border-blue-300/20 flex items-center justify-center text-lg">
+                      🔔
+                    </div>
+                    <div>
+                      <div className="text-sm font-extrabold text-white">Notificações</div>
+                      <div className="text-xs text-slate-400">Receba avisos de pedidos, chat, aceite e conclusão.</div>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={profile.notificacoes}
+                    onChange={(e) => setProfile(p => ({ ...p, notificacoes: e.target.checked }))}
+                    className="w-5 h-5 accent-blue-600"
+                  />
+                </label>
+              </div>
             </div>
           )}
 
@@ -519,7 +546,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <input
                       value={profile.correTitulo}
                       onChange={(e) => setProfile(p => ({ ...p, correTitulo: e.target.value }))}
-                      placeholder="Ex: Faço entregas rápidas, compras e pequenos corres"
+                      placeholder="Ex: Faço serviços rápidas, compras e pequenos corres"
                       className={inputClass()}
                     />
                   </Field>
@@ -573,7 +600,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                       <input
                         value={profile.correExperiencia}
                         onChange={(e) => setProfile(p => ({ ...p, correExperiencia: e.target.value }))}
-                        placeholder="Ex: 2 anos fazendo entregas e compras"
+                        placeholder="Ex: 2 anos fazendo serviços e compras"
                         className={inputClass()}
                       />
                     </Field>
@@ -605,7 +632,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <input
                       value={profile.titulo}
                       onChange={(e) => setProfile(p => ({ ...p, titulo: e.target.value }))}
-                      placeholder="Ex: Eletricista, entregador, diarista..."
+                      placeholder="Ex: Eletricista, serviçodor, diarista..."
                       className={inputClass()}
                     />
                   </Field>

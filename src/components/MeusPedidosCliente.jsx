@@ -75,7 +75,7 @@ export default function MeusPedidosCliente({
       )
     }
 
-    if (s === 'entregue') {
+    if (s === 'concluido') {
       return (
         <span className="text-[11px] px-2 py-1 rounded-full bg-sky-500/15 border border-sky-400/30 text-sky-300 font-semibold">
           ENTREGUE
@@ -146,8 +146,8 @@ export default function MeusPedidosCliente({
                     {p?.aceite?.aceitoEm || p?.aceitoEm ? (
                       <span>✅ Aceito: <b className="text-amber-300">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></span>
                     ) : null}
-                    {p?.entregueEm ? (
-                      <span>📦 Entregue: <b className="text-sky-300">{formatDataHora(p?.entregueEm)}</b></span>
+                    {p?.concluidoEm ? (
+                      <span>📦 Concluído: <b className="text-sky-300">{formatDataHora(p?.concluidoEm)}</b></span>
                     ) : null}
                   </div>
                 </div>

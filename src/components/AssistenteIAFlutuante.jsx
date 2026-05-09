@@ -5,13 +5,13 @@ import { database } from '@/lib/firebase'
 import { ref, push, set, serverTimestamp } from 'firebase/database'
 import { criarPedido } from '../lib/mapapedidos'
 
-const TIPOS = ['entrega', 'compra', 'ajuda', 'carona', 'outro']
+const TIPOS = ['serviço', 'compra', 'ajuda', 'carona', 'outro']
 const URGENCIAS = ['baixa', 'normal', 'alta']
 const FORMAS = ['pix', 'dinheiro', 'cartão']
 
 function classificarTipo(texto) {
   const t = (texto || '').toLowerCase()
-  if (/entreg(ar|a)|levar|coletar|retirar/.test(t)) return 'entrega'
+  if (/entreg(ar|a)|levar|coletar|retirar/.test(t)) return 'serviço'
   if (/compr(ar|a)|mercado|farm(a|á)cia|loja/.test(t)) return 'compra'
   if (/ajuda|aux(í|i)lio|arrumar|consertar|manuten(c|ç)ao|manuten(c|ç)ão/.test(t)) return 'ajuda'
   if (/carona|levar.*(pessoa|algu(é|e)m)/.test(t)) return 'carona'
@@ -89,7 +89,7 @@ export default function AssistenteIAFlutuante({
       addMsg('ia', `1) Qual **título** curto para o pedido?`)
       limparChips()
       setChips([
-        { label: 'Entrega de pacote', value: 'Entrega de pacote' },
+        { label: 'Serviço de pacote', value: 'Serviço de pacote' },
         { label: 'Comprar no mercado', value: 'Comprar no mercado' },
         { label: 'Ajuda em casa', value: 'Ajuda em casa' },
       ])
@@ -152,7 +152,7 @@ export default function AssistenteIAFlutuante({
     if (p.chips?.length) setChips(p.chips)
     if (p.campo === 'titulo' && !p.chips) {
       setChips([
-        { label: 'Entrega de documento', value: 'Entrega de documento' },
+        { label: 'Serviço de documento', value: 'Serviço de documento' },
         { label: 'Comprar na farmácia', value: 'Comprar na farmácia' },
         { label: 'Carona até o centro', value: 'Carona até o centro' },
       ])
@@ -345,7 +345,7 @@ Confirma?`)
             value={entrada}
             onChange={(e) => setEntrada(e.target.value)}
             placeholder={modo === 'pedido'
-              ? 'Responda ou clique nas opções acima (ex.: "entrega", "pix", "alta", "confirmar").'
+              ? 'Responda ou clique nas opções acima (ex.: "serviço", "pix", "alta", "confirmar").'
               : 'Diga "criar pedido" ou use as opções acima.'}
             className="flex-1 border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
           />
