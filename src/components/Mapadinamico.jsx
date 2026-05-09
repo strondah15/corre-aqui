@@ -1,3 +1,8 @@
+// XP_PATENTE_SYSTEM
+// aceitar serviço = +3 XP
+// concluir serviço = +10 XP
+// avaliação positiva = +5 XP
+
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'

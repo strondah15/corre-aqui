@@ -1,80 +1,84 @@
-'use client'
+"use client";
 
-import { useEffect, useMemo, useState } from 'react'
-import { ref, onValue, update, serverTimestamp } from 'firebase/database'
-import { database } from '@/lib/firebase'
-import dynamic from 'next/dynamic'
-import { motion } from 'framer-motion'
+import { useEffect, useMemo, useState } from "react";
+import { ref, onValue, update, serverTimestamp } from "firebase/database";
+import { database } from "@/lib/firebase";
+import dynamic from "next/dynamic";
+import { motion } from "framer-motion";
+import PainelPatentes from "./PainelPatentes";
 
-const PlanosCorreAqui = dynamic(() => import('@/components/PlanosCorreAqui'), {
-  ssr: false
-})
+const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
+  ssr: false,
+});
 
 const initialProfile = {
-  nome: '',
-  cidade: '',
-  fotoURL: '',
-  avatarEmoji: '',
-  bio: '',
+  nome: "",
+  cidade: "",
+  fotoURL: "",
+  avatarEmoji: "",
+  bio: "",
   visivel: true,
   notificacoes: true,
   isCorre: true,
-  correTitulo: '',
-  correBio: '',
-  correTransporte: '',
-  correRegiao: '',
-  correDisponibilidade: '',
-  correExperiencia: '',
+  correTitulo: "",
+  correBio: "",
+  correTransporte: "",
+  correRegiao: "",
+  correDisponibilidade: "",
+  correExperiencia: "",
   isProfissional: false,
-  titulo: '',
-  descricao: '',
-  whatsapp: '',
-  preco: '',
-  profRegiao: '',
-  profExperiencia: '',
-  plano: 'Free'
-}
+  titulo: "",
+  descricao: "",
+  whatsapp: "",
+  preco: "",
+  profRegiao: "",
+  profExperiencia: "",
+  plano: "Free",
+};
 
 const tabLabel = {
-  perfil: 'Perfil',
-  corre: 'Corre',
-  profissional: 'Profissional',
-  config: 'Ajustes',
-  monetizacao: 'Planos'
-}
+  perfil: "Perfil",
+  corre: "Corre",
+  profissional: "Profissional",
+  config: "Ajustes",
+  monetizacao: "Planos",
+  patentes: "Patentes",
+};
 
 const tabIcon = {
-  perfil: '👤',
-  corre: '⚡',
-  profissional: '🧑‍🔧',
-  config: '⚙️',
-  monetizacao: '💎'
-}
-
+  perfil: "👤",
+  corre: "⚡",
+  profissional: "🧑‍🔧",
+  config: "⚙️",
+  monetizacao: "💎",
+  patentes: "🏆",
+};
 
 const planoInfo = {
   Free: {
-    nome: 'Free',
-    icon: '🟢',
-    badge: 'bg-emerald-500/15 border-emerald-400/20 text-emerald-300',
-    descricao: 'Use o Corre Aqui com anúncios leves e 0% de taxa por serviço.',
+    nome: "Free",
+    icon: "🟢",
+    badge: "bg-emerald-500/15 border-emerald-400/20 text-emerald-300",
+    descricao: "Use o Corre Aqui com anúncios leves e 0% de taxa por serviço.",
   },
   Pro: {
-    nome: 'Pro',
-    icon: '💎',
-    badge: 'bg-blue-500/15 border-blue-400/20 text-blue-300',
-    descricao: 'Mais visibilidade, menos anúncios e recursos para crescer no app.',
+    nome: "Pro",
+    icon: "💎",
+    badge: "bg-blue-500/15 border-blue-400/20 text-blue-300",
+    descricao:
+      "Mais visibilidade, menos anúncios e recursos para crescer no app.",
   },
   Ultra: {
-    nome: 'Ultra',
-    icon: '🚀',
-    badge: 'bg-fuchsia-500/15 border-fuchsia-400/20 text-fuchsia-300',
-    descricao: 'Destaque máximo, prioridade e ferramentas avançadas para profissionais.',
+    nome: "Ultra",
+    icon: "🚀",
+    badge: "bg-fuchsia-500/15 border-fuchsia-400/20 text-fuchsia-300",
+    descricao:
+      "Destaque máximo, prioridade e ferramentas avançadas para profissionais.",
   },
-}
+};
 
-function PlanoResumo({ plano = 'Free', onOpenPlanos }) {
-  const atual = planoInfo[plano] || planoInfo.Free
+function PlanoResumo({ plano = "Free", onOpenPlanos }) {
+  const atual = planoInfo[plano] || planoInfo.Free;
 
   return (
     <div className="mt-5 w-full rounded-[26px] bg-[#0c1a2e] border border-cyan-400/10 p-4 text-left shadow-[0_0_40px_rgba(34,211,238,0.08)]">
@@ -87,11 +91,14 @@ function PlanoResumo({ plano = 'Free', onOpenPlanos }) {
             💚 Sem taxa do app
           </div>
           <div className="mt-1 text-xs leading-relaxed text-slate-300">
-            100% do valor combinado fica com quem faz o serviço. O app cresce com planos, boost e anúncios leves.
+            100% do valor combinado fica com quem faz o serviço. O app cresce
+            com planos, boost e anúncios leves.
           </div>
         </div>
 
-        <span className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-black border ${atual.badge}`}>
+        <span
+          className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-black border ${atual.badge}`}
+        >
           {atual.icon} {atual.nome}
         </span>
       </div>
@@ -103,8 +110,9 @@ function PlanoResumo({ plano = 'Free', onOpenPlanos }) {
       >
         Ver planos e vantagens
       </button>
+      
     </div>
-  )
+  );
 }
 
 function Field({ label, children, hint }) {
@@ -114,103 +122,120 @@ function Field({ label, children, hint }) {
         {label}
       </div>
       {children}
-      {hint ? <div className="mt-1 text-[11px] text-slate-500">{hint}</div> : null}
+      {hint ? (
+        <div className="mt-1 text-[11px] text-slate-500">{hint}</div>
+      ) : null}
     </label>
-  )
+  );
 }
 
-function inputClass(extra = '') {
+function inputClass(extra = "") {
   return [
-    'w-full rounded-2xl bg-slate-900/70 border border-white/10',
-    'px-4 py-3 text-slate-100 placeholder:text-slate-500',
-    'outline-none focus:ring-2 focus:ring-blue-500/35 focus:border-blue-400/50',
-    'transition',
+    "w-full rounded-2xl bg-slate-900/70 border border-white/10",
+    "px-4 py-3 text-slate-100 placeholder:text-slate-500",
+    "outline-none focus:ring-2 focus:ring-blue-500/35 focus:border-blue-400/50",
+    "transition",
     extra,
-  ].join(' ')
+  ].join(" ");
 }
 
 export default function PerfilDrawer({ open, onClose, uid }) {
-  const [tab, setTab] = useState('perfil')
+  const [tab, setTab] = useState("perfil");
 
-  const [profile, setProfile] = useState(initialProfile)
-  const [salvando, setSalvando] = useState(false)
-  const [salvo, setSalvo] = useState(false)
+  const [profile, setProfile] = useState(initialProfile);
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
 
-  const userBasePath = useMemo(() => (uid ? `users/${uid}` : ''), [uid])
+  const userBasePath = useMemo(() => (uid ? `users/${uid}` : ""), [uid]);
 
   useEffect(() => {
-    if (!open || !uid) return
+    if (!open || !uid) return;
 
-    const pRef = ref(database, `${userBasePath}/profile`)
+    const pRef = ref(database, `${userBasePath}/profile`);
 
     return onValue(pRef, (snap) => {
       if (snap.exists()) {
         setProfile((prev) => {
-          const data = snap.val() || {}
-          const corre = data.corre || {}
-          const profissional = data.profissional || {}
+          const data = snap.val() || {};
+          const corre = data.corre || {};
+          const profissional = data.profissional || {};
 
           return {
             ...prev,
             ...data,
             isCorre: data.isCorre ?? corre.ativo ?? prev.isCorre,
-            correTitulo: data.correTitulo || corre.titulo || '',
-            correBio: data.correBio || corre.bio || '',
-            correTransporte: data.correTransporte || corre.transporte || '',
-            correRegiao: data.correRegiao || corre.regiao || '',
-            correDisponibilidade: data.correDisponibilidade || corre.disponibilidade || '',
-            correExperiencia: data.correExperiencia || corre.experiencia || '',
-            isProfissional: data.isProfissional ?? profissional.ativo ?? prev.isProfissional,
-            titulo: data.titulo || profissional.titulo || '',
-            descricao: data.descricao || profissional.descricao || '',
-            whatsapp: data.whatsapp || profissional.whatsapp || '',
-            preco: data.preco || profissional.preco || '',
-            profRegiao: data.profRegiao || profissional.regiao || '',
-            profExperiencia: data.profExperiencia || profissional.experiencia || '',
-            fotoURL: data.fotoURL || data.photoURL || data.avatar || prev.fotoURL || '',
-            photoURL: data.photoURL || data.fotoURL || data.avatar || prev.photoURL || '',
-            avatar: data.avatar || data.fotoURL || data.photoURL || prev.avatar || '',
-            plano: data.plano || data.assinatura?.plano || prev.plano || 'Free',
-          }
-        })
+            correTitulo: data.correTitulo || corre.titulo || "",
+            correBio: data.correBio || corre.bio || "",
+            correTransporte: data.correTransporte || corre.transporte || "",
+            correRegiao: data.correRegiao || corre.regiao || "",
+            correDisponibilidade:
+              data.correDisponibilidade || corre.disponibilidade || "",
+            correExperiencia: data.correExperiencia || corre.experiencia || "",
+            isProfissional:
+              data.isProfissional ?? profissional.ativo ?? prev.isProfissional,
+            titulo: data.titulo || profissional.titulo || "",
+            descricao: data.descricao || profissional.descricao || "",
+            whatsapp: data.whatsapp || profissional.whatsapp || "",
+            preco: data.preco || profissional.preco || "",
+            profRegiao: data.profRegiao || profissional.regiao || "",
+            profExperiencia:
+              data.profExperiencia || profissional.experiencia || "",
+            fotoURL:
+              data.fotoURL ||
+              data.photoURL ||
+              data.avatar ||
+              prev.fotoURL ||
+              "",
+            photoURL:
+              data.photoURL ||
+              data.fotoURL ||
+              data.avatar ||
+              prev.photoURL ||
+              "",
+            avatar:
+              data.avatar || data.fotoURL || data.photoURL || prev.avatar || "",
+            plano: data.plano || data.assinatura?.plano || prev.plano || "Free",
+          };
+        });
       }
-    })
-  }, [open, uid, userBasePath])
+    });
+  }, [open, uid, userBasePath]);
 
   const salvar = async () => {
-    if (!uid) return
+    if (!uid) return;
 
-    setSalvando(true)
-    setSalvo(false)
+    setSalvando(true);
+    setSalvo(false);
 
     try {
       const corre = {
         ativo: !!profile.isCorre,
-        titulo: profile.correTitulo || 'Corre rápido',
-        bio: profile.correBio || '',
-        transporte: profile.correTransporte || '',
-        regiao: profile.correRegiao || profile.cidade || '',
-        disponibilidade: profile.correDisponibilidade || '',
-        experiencia: profile.correExperiencia || '',
-      }
+        titulo: profile.correTitulo || "Corre rápido",
+        bio: profile.correBio || "",
+        transporte: profile.correTransporte || "",
+        regiao: profile.correRegiao || profile.cidade || "",
+        disponibilidade: profile.correDisponibilidade || "",
+        experiencia: profile.correExperiencia || "",
+      };
 
       const profissional = {
         ativo: !!profile.isProfissional,
-        titulo: profile.titulo || '',
-        descricao: profile.descricao || '',
-        preco: profile.preco || '',
-        whatsapp: profile.whatsapp || '',
-        regiao: profile.profRegiao || profile.cidade || '',
-        experiencia: profile.profExperiencia || '',
-      }
+        titulo: profile.titulo || "",
+        descricao: profile.descricao || "",
+        preco: profile.preco || "",
+        whatsapp: profile.whatsapp || "",
+        regiao: profile.profRegiao || profile.cidade || "",
+        experiencia: profile.profExperiencia || "",
+      };
 
-      const fotoPrincipal = profile.fotoURL || profile.photoURL || profile.avatar || ''
+      const fotoPrincipal =
+        profile.fotoURL || profile.photoURL || profile.avatar || "";
 
       await update(ref(database, `${userBasePath}/profile`), {
         ...profile,
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
-        avatar: fotoPrincipal || profile.avatarEmoji || '',
+        avatar: fotoPrincipal || profile.avatarEmoji || "",
         corre: {
           ...corre,
           fotoURL: fotoPrincipal || null,
@@ -221,17 +246,17 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           fotoURL: fotoPrincipal || null,
           photoURL: fotoPrincipal || null,
         },
-        atualizadoEm: serverTimestamp()
-      })
+        atualizadoEm: serverTimestamp(),
+      });
 
       await update(ref(database, `${userBasePath}`), {
         nome: profile.nome,
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
-        avatar: fotoPrincipal || profile.avatarEmoji || '',
-        avatarEmoji: profile.avatarEmoji || '',
-        cidade: profile.cidade || '',
-        bio: profile.bio || '',
+        avatar: fotoPrincipal || profile.avatarEmoji || "",
+        avatarEmoji: profile.avatarEmoji || "",
+        cidade: profile.cidade || "",
+        bio: profile.bio || "",
         isCorre: !!profile.isCorre,
         corre: {
           ...corre,
@@ -239,41 +264,43 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           photoURL: fotoPrincipal || null,
         },
         isProfissional: !!profile.isProfissional,
-        profissional: profile.isProfissional ? {
-          ...profissional,
-          fotoURL: fotoPrincipal || null,
-          photoURL: fotoPrincipal || null,
-        } : null,
-        plano: profile.plano || 'Free',
+        profissional: profile.isProfissional
+          ? {
+              ...profissional,
+              fotoURL: fotoPrincipal || null,
+              photoURL: fotoPrincipal || null,
+            }
+          : null,
+        plano: profile.plano || "Free",
         assinatura: {
-          plano: profile.plano || 'Free',
-          origem: 'perfil',
-          atualizadoEm: serverTimestamp()
-        }
-      })
+          plano: profile.plano || "Free",
+          origem: "perfil",
+          atualizadoEm: serverTimestamp(),
+        },
+      });
 
       await update(ref(database, `usuariosOnline/${uid}`), {
-        nome: profile.nome || '',
+        nome: profile.nome || "",
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
-        avatar: fotoPrincipal || profile.avatarEmoji || '',
-        avatarEmoji: profile.avatarEmoji || '',
-        cidade: profile.cidade || '',
+        avatar: fotoPrincipal || profile.avatarEmoji || "",
+        avatarEmoji: profile.avatarEmoji || "",
+        cidade: profile.cidade || "",
         isCorre: !!profile.isCorre,
         isProfissional: !!profile.isProfissional,
-        plano: profile.plano || 'Free',
-        atualizadoEm: serverTimestamp()
-      })
+        plano: profile.plano || "Free",
+        atualizadoEm: serverTimestamp(),
+      });
 
-      setSalvo(true)
-      setTimeout(() => setSalvo(false), 2200)
+      setSalvo(true);
+      setTimeout(() => setSalvo(false), 2200);
     } finally {
-      setSalvando(false)
+      setSalvando(false);
     }
-  }
+  };
 
-  if (!open) return null
-  if (!uid) return null
+  if (!open) return null;
+  if (!uid) return null;
 
   return (
     <div className="fixed inset-0 z-[9999]">
@@ -285,7 +312,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       <motion.aside
         initial={{ x: 42, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 120, damping: 18 }}
+        transition={{ type: "spring", stiffness: 120, damping: 18 }}
         className="
           absolute right-0 top-0 h-full w-[min(96vw,560px)]
           bg-[#06101d] text-white
@@ -297,7 +324,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         <div className="sticky top-0 z-10 bg-[#06101d]/95 backdrop-blur-xl border-b border-white/10">
           <div className="px-5 py-4 flex items-center justify-between gap-3">
             <div>
-              <div className="text-lg font-extrabold text-white">Meu perfil</div>
+              <div className="text-lg font-extrabold text-white">
+                Meu perfil
+              </div>
               <div className="text-xs text-slate-400">
                 Configure como você aparece no Corre Aqui.
               </div>
@@ -324,20 +353,20 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   accept="image/*"
                   className="hidden"
                   onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
+                    const file = e.target.files?.[0];
+                    if (!file) return;
 
-                    const reader = new FileReader()
+                    const reader = new FileReader();
                     reader.onload = () => {
-                      const fotoBase64 = reader.result || ''
-                      setProfile(p => ({
+                      const fotoBase64 = reader.result || "";
+                      setProfile((p) => ({
                         ...p,
                         fotoURL: fotoBase64,
                         photoURL: fotoBase64,
                         avatar: fotoBase64,
-                      }))
-                    }
-                    reader.readAsDataURL(file)
+                      }));
+                    };
+                    reader.readAsDataURL(file);
                   }}
                 />
 
@@ -349,7 +378,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   />
                 ) : (
                   <div className="w-28 h-28 rounded-full bg-white/10 flex items-center justify-center text-4xl border border-white/20 shadow-2xl">
-                    {profile.avatarEmoji || '📷'}
+                    {profile.avatarEmoji || "📷"}
                   </div>
                 )}
 
@@ -359,20 +388,22 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               </label>
 
               <div className="mt-4 text-2xl font-extrabold text-white">
-                {profile.nome || 'Seu nome'}
+                {profile.nome || "Seu nome"}
               </div>
 
               <div className="mt-1 text-sm text-slate-400">
-                {profile.cidade || 'Cidade não informada'}
+                {profile.cidade || "Cidade não informada"}
               </div>
 
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <span className={`px-3 py-1.5 rounded-full text-xs font-black border ${
-                  profile.visivel
-                    ? 'bg-emerald-500/15 border-emerald-400/20 text-emerald-300 shadow-[0_0_22px_rgba(16,185,129,0.12)]'
-                    : 'bg-slate-500/15 border-slate-400/20 text-slate-300'
-                }`}>
-                  {profile.visivel ? '🟢 Visível' : '⚫ Oculto'}
+                <span
+                  className={`px-3 py-1.5 rounded-full text-xs font-black border ${
+                    profile.visivel
+                      ? "bg-emerald-500/15 border-emerald-400/20 text-emerald-300 shadow-[0_0_22px_rgba(16,185,129,0.12)]"
+                      : "bg-slate-500/15 border-slate-400/20 text-slate-300"
+                  }`}
+                >
+                  {profile.visivel ? "🟢 Visível" : "⚫ Oculto"}
                 </span>
 
                 <span className="px-3 py-1.5 rounded-full text-xs font-black bg-amber-500/10 border border-amber-300/20 text-amber-200">
@@ -389,52 +420,67 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               <div className="mt-5 grid grid-cols-3 gap-2 w-full">
                 <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
                   <div className="text-lg font-black text-white">0</div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Serviços</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    Serviços
+                  </div>
                 </div>
                 <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
                   <div className="text-lg font-black text-white">⭐ 5.0</div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Nota</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    Nota
+                  </div>
                 </div>
                 <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
                   <div className="text-lg font-black text-white">📍</div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">{profile.cidade || 'Região'}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">
+                    {profile.cidade || "Região"}
+                  </div>
                 </div>
               </div>
 
-              <PlanoResumo plano={profile.plano} onOpenPlanos={() => setTab('monetizacao')} />
+              <PlanoResumo
+                plano={profile.plano}
+                onOpenPlanos={() => setTab("monetizacao")}
+              />
             </div>
           </div>
 
           {/* MENU DO PERFIL */}
           <div className="mt-5 rounded-[30px] bg-slate-950/65 border border-white/10 p-2 shadow-[0_20px_70px_rgba(0,0,0,0.28)]">
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-              {['perfil', 'corre', 'profissional', 'config', 'monetizacao'].map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  type="button"
-                  className={[
-                    'group min-h-[72px] rounded-[24px] px-2 py-3 text-center border transition-all duration-200 active:scale-[0.96]',
-                    'flex flex-col items-center justify-center gap-1',
-                    tab === t
-                      ? 'bg-gradient-to-br from-blue-600 via-cyan-500 to-emerald-400 text-white border-cyan-200/40 shadow-[0_12px_45px_rgba(34,211,238,0.22)]'
-                      : 'bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border-white/10 hover:border-white/20',
-                  ].join(' ')}
-                >
-                  <span className="text-lg leading-none">{tabIcon[t]}</span>
-                  <span className="text-[11px] sm:text-[12px] font-black leading-tight">{tabLabel[t]}</span>
-                </button>
-              ))}
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {["perfil", "corre", "profissional", "config", "monetizacao", "patentes"].map(
+                (t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    type="button"
+                    className={[
+                      "group min-h-[72px] rounded-[24px] px-2 py-3 text-center border transition-all duration-200 active:scale-[0.96]",
+                      "flex flex-col items-center justify-center gap-1",
+                      tab === t
+                        ? "bg-gradient-to-br from-blue-600 via-cyan-500 to-emerald-400 text-white border-cyan-200/40 shadow-[0_12px_45px_rgba(34,211,238,0.22)]"
+                        : "bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border-white/10 hover:border-white/20",
+                    ].join(" ")}
+                  >
+                    <span className="text-lg leading-none">{tabIcon[t]}</span>
+                    <span className="text-[11px] sm:text-[12px] font-black leading-tight">
+                      {tabLabel[t]}
+                    </span>
+                  </button>
+                ),
+              )}
             </div>
           </div>
 
           {/* PERFIL */}
-          {tab === 'perfil' && (
+          {tab === "perfil" && (
             <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-4">
               <Field label="Nome">
                 <input
                   value={profile.nome}
-                  onChange={(e) => setProfile(p => ({ ...p, nome: e.target.value }))}
+                  onChange={(e) =>
+                    setProfile((p) => ({ ...p, nome: e.target.value }))
+                  }
                   placeholder="Seu nome"
                   className={inputClass()}
                 />
@@ -443,16 +489,23 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               <Field label="Cidade">
                 <input
                   value={profile.cidade}
-                  onChange={(e) => setProfile(p => ({ ...p, cidade: e.target.value }))}
+                  onChange={(e) =>
+                    setProfile((p) => ({ ...p, cidade: e.target.value }))
+                  }
                   placeholder="Sua cidade"
                   className={inputClass()}
                 />
               </Field>
 
-              <Field label="Emoji do avatar" hint="Use quando ainda não tiver foto. Ex: 🙂, 🧑‍🔧, 🚗">
+              <Field
+                label="Emoji do avatar"
+                hint="Use quando ainda não tiver foto. Ex: 🙂, 🧑‍🔧, 🚗"
+              >
                 <input
                   value={profile.avatarEmoji}
-                  onChange={(e) => setProfile(p => ({ ...p, avatarEmoji: e.target.value }))}
+                  onChange={(e) =>
+                    setProfile((p) => ({ ...p, avatarEmoji: e.target.value }))
+                  }
                   placeholder="🙂"
                   className={inputClass()}
                 />
@@ -461,16 +514,18 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               <Field label="Bio">
                 <textarea
                   value={profile.bio}
-                  onChange={(e) => setProfile(p => ({ ...p, bio: e.target.value }))}
+                  onChange={(e) =>
+                    setProfile((p) => ({ ...p, bio: e.target.value }))
+                  }
                   placeholder="Fale um pouco sobre você"
-                  className={inputClass('min-h-28 resize-y')}
+                  className={inputClass("min-h-28 resize-y")}
                 />
               </Field>
             </div>
           )}
 
           {/* CONFIG */}
-          {tab === 'config' && (
+          {tab === "config" && (
             <div className="mt-5 space-y-4">
               <div className="rounded-[28px] bg-gradient-to-br from-[#0b1628] via-[#081426] to-[#050b16] border border-cyan-300/10 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.24)]">
                 <div className="flex items-center gap-3">
@@ -478,8 +533,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     ⚙️
                   </div>
                   <div>
-                    <div className="text-base font-black text-white">Ajustes rápidos</div>
-                    <div className="text-xs text-slate-400">Controle como você aparece no Corre Aqui.</div>
+                    <div className="text-base font-black text-white">
+                      Ajustes rápidos
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      Controle como você aparece no Corre Aqui.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -491,14 +550,20 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                       🟢
                     </div>
                     <div>
-                      <div className="text-sm font-extrabold text-white">Visível no mapa</div>
-                      <div className="text-xs text-slate-400">Clientes e corres podem encontrar você em tempo real.</div>
+                      <div className="text-sm font-extrabold text-white">
+                        Visível no mapa
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        Clientes e corres podem encontrar você em tempo real.
+                      </div>
                     </div>
                   </div>
                   <input
                     type="checkbox"
                     checked={profile.visivel}
-                    onChange={(e) => setProfile(p => ({ ...p, visivel: e.target.checked }))}
+                    onChange={(e) =>
+                      setProfile((p) => ({ ...p, visivel: e.target.checked }))
+                    }
                     className="w-5 h-5 accent-emerald-500"
                   />
                 </label>
@@ -509,14 +574,23 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                       🔔
                     </div>
                     <div>
-                      <div className="text-sm font-extrabold text-white">Notificações</div>
-                      <div className="text-xs text-slate-400">Receba avisos de pedidos, chat, aceite e conclusão.</div>
+                      <div className="text-sm font-extrabold text-white">
+                        Notificações
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        Receba avisos de pedidos, chat, aceite e conclusão.
+                      </div>
                     </div>
                   </div>
                   <input
                     type="checkbox"
                     checked={profile.notificacoes}
-                    onChange={(e) => setProfile(p => ({ ...p, notificacoes: e.target.checked }))}
+                    onChange={(e) =>
+                      setProfile((p) => ({
+                        ...p,
+                        notificacoes: e.target.checked,
+                      }))
+                    }
                     className="w-5 h-5 accent-blue-600"
                   />
                 </label>
@@ -525,17 +599,23 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           )}
 
           {/* CORRE */}
-          {tab === 'corre' && (
+          {tab === "corre" && (
             <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-4">
               <label className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/70 border border-white/10 px-4 py-3">
                 <div>
-                  <div className="text-sm font-extrabold text-white">Ativar currículo de Corre</div>
-                  <div className="text-xs text-slate-400">Apareça para bicos rápidos e pedidos do bairro.</div>
+                  <div className="text-sm font-extrabold text-white">
+                    Ativar currículo de Corre
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    Apareça para bicos rápidos e pedidos do bairro.
+                  </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={profile.isCorre}
-                  onChange={(e) => setProfile(p => ({ ...p, isCorre: e.target.checked }))}
+                  onChange={(e) =>
+                    setProfile((p) => ({ ...p, isCorre: e.target.checked }))
+                  }
                   className="w-5 h-5 accent-blue-600"
                 />
               </label>
@@ -545,7 +625,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   <Field label="Título do Corre">
                     <input
                       value={profile.correTitulo}
-                      onChange={(e) => setProfile(p => ({ ...p, correTitulo: e.target.value }))}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          correTitulo: e.target.value,
+                        }))
+                      }
                       placeholder="Ex: Faço serviços rápidas, compras e pequenos corres"
                       className={inputClass()}
                     />
@@ -554,9 +639,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   <Field label="Resumo / currículo do Corre">
                     <textarea
                       value={profile.correBio}
-                      onChange={(e) => setProfile(p => ({ ...p, correBio: e.target.value }))}
+                      onChange={(e) =>
+                        setProfile((p) => ({ ...p, correBio: e.target.value }))
+                      }
                       placeholder="Conte que tipo de corre você faz, como trabalha e sua experiência."
-                      className={inputClass('min-h-28 resize-y')}
+                      className={inputClass("min-h-28 resize-y")}
                     />
                   </Field>
 
@@ -564,22 +651,44 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <Field label="Transporte">
                       <select
                         value={profile.correTransporte}
-                        onChange={(e) => setProfile(p => ({ ...p, correTransporte: e.target.value }))}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            correTransporte: e.target.value,
+                          }))
+                        }
                         className={inputClass()}
                       >
-                        <option value="" className="text-black">Selecione</option>
-                        <option value="A pé" className="text-black">🚶 A pé</option>
-                        <option value="Bike" className="text-black">🚲 Bike</option>
-                        <option value="Moto" className="text-black">🏍️ Moto</option>
-                        <option value="Carro" className="text-black">🚗 Carro</option>
-                        <option value="Van" className="text-black">🚐 Van</option>
+                        <option value="" className="text-black">
+                          Selecione
+                        </option>
+                        <option value="A pé" className="text-black">
+                          🚶 A pé
+                        </option>
+                        <option value="Bike" className="text-black">
+                          🚲 Bike
+                        </option>
+                        <option value="Moto" className="text-black">
+                          🏍️ Moto
+                        </option>
+                        <option value="Carro" className="text-black">
+                          🚗 Carro
+                        </option>
+                        <option value="Van" className="text-black">
+                          🚐 Van
+                        </option>
                       </select>
                     </Field>
 
                     <Field label="Região que atende">
                       <input
                         value={profile.correRegiao}
-                        onChange={(e) => setProfile(p => ({ ...p, correRegiao: e.target.value }))}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            correRegiao: e.target.value,
+                          }))
+                        }
                         placeholder="Ex: Nova Iguaçu, Centro, bairros próximos"
                         className={inputClass()}
                       />
@@ -590,7 +699,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <Field label="Disponibilidade">
                       <input
                         value={profile.correDisponibilidade}
-                        onChange={(e) => setProfile(p => ({ ...p, correDisponibilidade: e.target.value }))}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            correDisponibilidade: e.target.value,
+                          }))
+                        }
                         placeholder="Ex: Noites, fins de semana, qualquer hora"
                         className={inputClass()}
                       />
@@ -599,7 +713,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <Field label="Experiência">
                       <input
                         value={profile.correExperiencia}
-                        onChange={(e) => setProfile(p => ({ ...p, correExperiencia: e.target.value }))}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            correExperiencia: e.target.value,
+                          }))
+                        }
                         placeholder="Ex: 2 anos fazendo serviços e compras"
                         className={inputClass()}
                       />
@@ -611,17 +730,26 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           )}
 
           {/* PROFISSIONAL */}
-          {tab === 'profissional' && (
+          {tab === "profissional" && (
             <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-4">
               <label className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/70 border border-white/10 px-4 py-3">
                 <div>
-                  <div className="text-sm font-extrabold text-white">Modo profissional</div>
-                  <div className="text-xs text-slate-400">Apareça na lista de profissionais para clientes.</div>
+                  <div className="text-sm font-extrabold text-white">
+                    Modo profissional
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    Apareça na lista de profissionais para clientes.
+                  </div>
                 </div>
                 <input
                   type="checkbox"
                   checked={profile.isProfissional}
-                  onChange={(e) => setProfile(p => ({ ...p, isProfissional: e.target.checked }))}
+                  onChange={(e) =>
+                    setProfile((p) => ({
+                      ...p,
+                      isProfissional: e.target.checked,
+                    }))
+                  }
                   className="w-5 h-5 accent-blue-600"
                 />
               </label>
@@ -631,7 +759,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   <Field label="Título profissional">
                     <input
                       value={profile.titulo}
-                      onChange={(e) => setProfile(p => ({ ...p, titulo: e.target.value }))}
+                      onChange={(e) =>
+                        setProfile((p) => ({ ...p, titulo: e.target.value }))
+                      }
                       placeholder="Ex: Eletricista, serviçodor, diarista..."
                       className={inputClass()}
                     />
@@ -640,9 +770,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   <Field label="Descrição do serviço">
                     <textarea
                       value={profile.descricao}
-                      onChange={(e) => setProfile(p => ({ ...p, descricao: e.target.value }))}
+                      onChange={(e) =>
+                        setProfile((p) => ({ ...p, descricao: e.target.value }))
+                      }
                       placeholder="Conte o que você faz, região que atende e diferenciais."
-                      className={inputClass('min-h-28 resize-y')}
+                      className={inputClass("min-h-28 resize-y")}
                     />
                   </Field>
 
@@ -650,7 +782,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <Field label="Preço base">
                       <input
                         value={profile.preco}
-                        onChange={(e) => setProfile(p => ({ ...p, preco: e.target.value }))}
+                        onChange={(e) =>
+                          setProfile((p) => ({ ...p, preco: e.target.value }))
+                        }
                         placeholder="Ex: 50"
                         inputMode="decimal"
                         className={inputClass()}
@@ -660,7 +794,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <Field label="WhatsApp">
                       <input
                         value={profile.whatsapp}
-                        onChange={(e) => setProfile(p => ({ ...p, whatsapp: e.target.value }))}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            whatsapp: e.target.value,
+                          }))
+                        }
                         placeholder="21999999999"
                         inputMode="tel"
                         className={inputClass()}
@@ -672,7 +811,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <Field label="Região profissional">
                       <input
                         value={profile.profRegiao}
-                        onChange={(e) => setProfile(p => ({ ...p, profRegiao: e.target.value }))}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            profRegiao: e.target.value,
+                          }))
+                        }
                         placeholder="Ex: Baixada, Centro, Zona Norte"
                         className={inputClass()}
                       />
@@ -681,7 +825,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <Field label="Experiência profissional">
                       <input
                         value={profile.profExperiencia}
-                        onChange={(e) => setProfile(p => ({ ...p, profExperiencia: e.target.value }))}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            profExperiencia: e.target.value,
+                          }))
+                        }
                         placeholder="Ex: 5 anos como eletricista"
                         className={inputClass()}
                       />
@@ -693,42 +842,59 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           )}
 
           {/* MONETIZAÇÃO */}
-          {tab === 'monetizacao' && (
+          {tab === "monetizacao" && (
             <div className="mt-5 space-y-4">
               <div className="rounded-[28px] bg-gradient-to-br from-emerald-500/10 via-[#0b1628] to-blue-500/10 border border-cyan-400/10 p-4 shadow-[0_0_35px_rgba(34,211,238,0.06)]">
-                <div className="text-lg font-black text-white">💚 Corre Aqui sem taxa</div>
+                <div className="text-lg font-black text-white">
+                  💚 Corre Aqui sem taxa
+                </div>
                 <div className="mt-1 text-sm leading-relaxed text-slate-300">
-                  O trabalhador fica com 100% do valor do serviço. A monetização fica organizada por planos, anúncios leves e boost de destaque.
+                  O trabalhador fica com 100% do valor do serviço. A monetização
+                  fica organizada por planos, anúncios leves e boost de
+                  destaque.
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {['Free', 'Pro', 'Ultra'].map((plano) => {
-                    const item = planoInfo[plano]
-                    const ativo = (profile.plano || 'Free') === plano
+                  {["Free", "Pro", "Ultra"].map((plano) => {
+                    const item = planoInfo[plano];
+                    const ativo = (profile.plano || "Free") === plano;
 
                     return (
                       <button
                         key={plano}
                         type="button"
-                        onClick={() => setProfile(p => ({ ...p, plano }))}
+                        onClick={() => setProfile((p) => ({ ...p, plano }))}
                         className={[
-                          'rounded-2xl border px-3 py-3 text-left active:scale-[0.98] transition',
+                          "rounded-2xl border px-3 py-3 text-left active:scale-[0.98] transition",
                           ativo
-                            ? 'bg-blue-600/20 border-blue-400/50 shadow-lg shadow-blue-500/10'
-                            : 'bg-slate-900/70 border-white/10 hover:bg-white/10'
-                        ].join(' ')}
+                            ? "bg-blue-600/20 border-blue-400/50 shadow-lg shadow-blue-500/10"
+                            : "bg-slate-900/70 border-white/10 hover:bg-white/10",
+                        ].join(" ")}
                       >
-                        <div className="text-sm font-black text-white">{item.icon} {item.nome}</div>
-                        <div className="mt-1 text-[11px] leading-relaxed text-slate-400">{item.descricao}</div>
-                        {ativo ? <div className="mt-2 text-[11px] font-black text-emerald-300">Plano atual ✅</div> : null}
+                        <div className="text-sm font-black text-white">
+                          {item.icon} {item.nome}
+                        </div>
+                        <div className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                          {item.descricao}
+                        </div>
+                        {ativo ? (
+                          <div className="mt-2 text-[11px] font-black text-emerald-300">
+                            Plano atual ✅
+                          </div>
+                        ) : null}
                       </button>
-                    )
+                    );
                   })}
                 </div>
               </div>
 
               <div className="rounded-[28px] bg-[#0b1628] border border-white/10 p-4">
-                <PlanosCorreAqui planoAtual={profile.plano || 'Free'} onSelecionarPlano={(plano) => setProfile(p => ({ ...p, plano }))} />
+                <PlanosCorreAqui
+                  planoAtual={profile.plano || "Free"}
+                  onSelecionarPlano={(plano) =>
+                    setProfile((p) => ({ ...p, plano }))
+                  }
+                />
               </div>
             </div>
           )}
@@ -747,12 +913,21 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             "
             type="button"
           >
-            {salvando ? 'Salvando…' : salvo ? 'Salvo ✅' : 'Salvar'}
+            {salvando ? "Salvando…" : salvo ? "Salvo ✅" : "Salvar"}
           </button>
 
           <div className="h-8" />
+
+          {/* PATENTES */}
+          {tab === "patentes" && (
+            <div className="mt-5">
+              <PainelPatentes />
+            </div>
+          )}
         </div>
+
+        
       </motion.aside>
     </div>
-  )
+  );
 }
