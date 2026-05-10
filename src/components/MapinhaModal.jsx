@@ -679,7 +679,7 @@ export default function MapinhaModal({
     "bg-[#071120]/78 backdrop-blur-xl border border-cyan-400/10 shadow-[0_24px_80px_rgba(0,0,0,0.45)] text-white";
 
   const pillBase =
-    "px-3 py-1.5 rounded-full text-[11px] font-black border transition active:scale-[0.96] shadow-[0_14px_35px_rgba(0,0,0,0.24)]";
+    "px-3.5 py-2 rounded-full text-[12px] font-black border transition-all duration-300 hover:-translate-y-[2px] active:scale-[0.96] shadow-[0_14px_35px_rgba(0,0,0,0.24)]";
   const pillOn =
     "bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-cyan-300/30 shadow-[0_0_28px_rgba(34,211,238,0.22)]";
   const pillOff =
@@ -759,7 +759,7 @@ export default function MapinhaModal({
                 eventHandlers={{ click: () => onClickUser?.(m) }}
               >
                 <Popup>
-                  <div className="text-sm">
+                  <div className="text-[13px]">
                     <b>🟢 {m.nome}</b>
                     {m.lastSeen ? (
                       <div className="text-xs text-gray-600">
@@ -790,7 +790,7 @@ export default function MapinhaModal({
               }}
             >
               <Popup>
-                <div className="text-sm">
+                <div className="text-[13px]">
                   <b>Você</b>
                 </div>
               </Popup>
@@ -815,7 +815,7 @@ export default function MapinhaModal({
               }}
             >
               <Popup>
-                <div className="text-sm">
+                <div className="text-[13px]">
                   <b>Destino (pedido)</b>
                 </div>
               </Popup>
@@ -828,45 +828,20 @@ export default function MapinhaModal({
           )}
         </MapContainer>
 
-        {/* seletor claro/escuro */}
-        <div className="pointer-events-auto absolute right-4 top-5 z-[4700] flex items-center gap-1 rounded-full border border-white/15 bg-[#020617]/80 p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-          <button
-            type="button"
-            onClick={() => setModoMapa("claro")}
-            className={`rounded-full px-3 py-2 text-xs font-black transition active:scale-95 ${
-              modoMapa === "claro"
-                ? "bg-white text-slate-950 shadow-lg"
-                : "text-white/80 hover:bg-white/10"
-            }`}
-            title="Mapa claro"
-          >
-            ☀️ Claro
-          </button>
-          <button
-            type="button"
-            onClick={() => setModoMapa("escuro")}
-            className={`rounded-full px-3 py-2 text-xs font-black transition active:scale-95 ${
-              modoMapa === "escuro"
-                ? "bg-cyan-500 text-white shadow-[0_0_24px_rgba(34,211,238,0.35)]"
-                : "text-white/80 hover:bg-white/10"
-            }`}
-            title="Mapa escuro"
-          >
-            🌙 Escuro
-          </button>
-        </div>
+        
+
 
       </motion.div>
 
       {/* topo premium */}
       <motion.div
-        className="fixed top-4 left-4 right-4 z-[9000] pointer-events-none"
+        className="fixed top-6 left-4 right-4 z-[9000] pointer-events-none"
         initial={{ opacity: 0, y: -18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08, duration: 0.28, ease: "easeOut" }}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="pointer-events-auto flex items-center gap-2">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/10 bg-[#071120]/72 p-1.5 backdrop-blur-xl shadow-[0_14px_44px_rgba(0,0,0,0.24)] backdrop-blur-2xl">
             {!isMapaAoVivo && (
               <button
                 type="button"
@@ -899,41 +874,71 @@ export default function MapinhaModal({
             )}
           </div>
 
-          <button
-            onClick={onClose}
-            className="pointer-events-auto w-12 h-12 rounded-3xl bg-[#0f1b2d]/95 border border-white/10 text-white flex items-center justify-center hover:bg-[#14243a] active:scale-[0.96] transition shadow-[0_14px_40px_rgba(0,0,0,0.28)] text-xl"
-            title="Fechar"
-            type="button"
-          >
-            ✕
-          </button>
+          <div className="pointer-events-auto flex items-center gap-2">
+            <div className="flex items-center rounded-full border border-white/10 bg-[#071120]/88 p-1.5 shadow-[0_14px_44px_rgba(0,0,0,0.24)] backdrop-blur-2xl">
+              <button
+                type="button"
+                onClick={() => setModoMapa("claro")}
+                className={`grid h-9 w-9 place-items-center rounded-full text-[13px] font-black transition-all duration-300 hover:-translate-y-[2px] active:scale-95 ${
+                  modoMapa === "claro"
+                    ? "bg-white text-slate-950 shadow-lg"
+                    : "text-white/75 hover:bg-white/10"
+                }`}
+                title="Mapa claro"
+              >
+                ☀️
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModoMapa("escuro")}
+                className={`grid h-9 w-9 place-items-center rounded-full text-[13px] font-black transition-all duration-300 hover:-translate-y-[2px] active:scale-95 ${
+                  modoMapa === "escuro"
+                    ? "bg-cyan-500 text-white shadow-[0_0_24px_rgba(34,211,238,0.35)]"
+                    : "text-white/75 hover:bg-white/10"
+                }`}
+                title="Mapa escuro"
+              >
+                🌙
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="grid h-11 w-11 place-items-center rounded-full bg-[#071120]/92 border border-white/10 text-white hover:bg-[#14243a] active:scale-[0.96] transition-all duration-300 hover:-translate-y-[2px] shadow-[0_14px_44px_rgba(0,0,0,0.24)] text-xl backdrop-blur-2xl"
+              title="Fechar"
+              type="button"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       </motion.div>
 
       {isLiveMap && (
         <motion.div
-          className="fixed top-20 left-1/2 -translate-x-1/2 z-[9000] w-[min(92vw,520px)] pointer-events-none"
+          className="fixed top-[86px] left-1/2 -translate-x-1/2 z-[9000] w-[min(90vw,440px)] pointer-events-none"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15, duration: 0.25 }}
         >
-          <div className="pointer-events-auto rounded-3xl bg-[#071120]/78 border border-cyan-400/10 shadow-[0_18px_60px_rgba(0,0,0,0.38)] backdrop-blur-xl px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-3xl bg-cyan-400/10 border border-cyan-300/15 flex items-center justify-center text-xl shadow-[0_0_24px_rgba(34,211,238,0.12)]">
+          <div className="pointer-events-auto rounded-[26px] bg-[#071120]/86 border border-cyan-400/10 shadow-[0_16px_52px_rgba(0,0,0,0.32)] backdrop-blur-2xl px-3.5 py-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="grid h-9 w-9 place-items-center rounded-2xl bg-cyan-400/10 border border-cyan-300/15 text-lg shadow-[0_0_20px_rgba(34,211,238,0.12)]">
                 🔎
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-extrabold text-white">
+                <div className="text-[13px] font-black text-white">
                   Mapa ao vivo
                 </div>
-                <div className="text-xs text-slate-300 truncate">
+                <div className="text-[11px] text-slate-300 truncate">
                   {onlineMarkers.length} online · {onlineResumo}
                 </div>
               </div>
 
               {showOnline && (
-                <div className="hidden sm:flex items-center gap-2 text-xs text-slate-300 bg-white/5 border border-white/10 rounded-3xl px-3 py-2">
+                <div className="hidden sm:flex items-center gap-2 text-[11px] text-slate-300 bg-white/5 border border-white/10 rounded-2xl px-2.5 py-1.5">
                   <span className="font-bold">Limite</span>
                   <input
                     type="range"
@@ -941,9 +946,9 @@ export default function MapinhaModal({
                     max={80}
                     value={onlineLimit}
                     onChange={(e) => setOnlineLimit(Number(e.target.value))}
-                    className="w-20 accent-blue-600"
+                    className="w-16 accent-blue-600"
                   />
-                  <span className="font-extrabold text-white w-7 text-right">{onlineLimit}</span>
+                  <span className="font-extrabold text-white w-6 text-right">{onlineLimit}</span>
                 </div>
               )}
             </div>
@@ -994,11 +999,11 @@ export default function MapinhaModal({
               </div>
 
               {!isLiveMap && (
-                <div className="flex gap-2 shrink-0">
+                <div className="flex gap-3 shrink-0">
                   <button
                     type="button"
                     onClick={() => snapTo(sheet === "max" ? "mid" : "max")}
-                    className="px-3 py-2 rounded-3xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition"
+                    className="px-3 py-2 rounded-3xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition-all duration-300 hover:-translate-y-[2px]"
                   >
                     {sheet === "max" ? "↧ Recolher" : "↥ Expandir"}
                   </button>
@@ -1006,7 +1011,7 @@ export default function MapinhaModal({
                   <button
                     type="button"
                     onClick={() => snapTo(sheet === "min" ? "mid" : "min")}
-                    className="px-3 py-2 rounded-3xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition"
+                    className="px-3 py-2 rounded-3xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-100 shadow-sm active:scale-[0.97] transition-all duration-300 hover:-translate-y-[2px]"
                   >
                     {sheet === "min" ? "▢ Detalhes" : "— Minimizar"}
                   </button>
@@ -1077,7 +1082,7 @@ export default function MapinhaModal({
                 ) : null}
               </div>
 
-              <div className="mt-3 flex gap-2 flex-wrap">
+              <div className="mt-3 flex gap-3 flex-wrap">
                 {!start && dest && (
                   <button
                     onClick={usarMinhaLocalizacao}
@@ -1100,7 +1105,7 @@ export default function MapinhaModal({
                     href={googleMapsUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-4 py-3 rounded-3xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold shadow-sm active:scale-[0.98] transition"
+                    className="px-4 py-3 rounded-3xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold shadow-sm active:scale-[0.98] transition-all duration-300 hover:-translate-y-[2px]"
                   >
                     Abrir no Google Maps
                   </a>
