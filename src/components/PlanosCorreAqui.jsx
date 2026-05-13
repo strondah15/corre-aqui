@@ -51,7 +51,7 @@ export default function PlanosCorreAqui({
       descricao: "Máxima visibilidade para profissionais e negócios.",
       beneficios: [
         "Tudo do Pro",
-        "Boost mensal grátis",
+        "Impulsionar mensal grátis",
         "Prioridade máxima no mapa",
         "Sem anúncios no app",
         "Área futura de estatísticas",
@@ -181,14 +181,14 @@ export default function PlanosCorreAqui({
         </div>
 
         <div className={card}>
-          <div className="text-sm font-semibold text-gray-100">🚀 Boosts</div>
+          <div className="text-sm font-semibold text-gray-100">✨ Impulsionars</div>
           <div className="text-xs text-gray-400 mt-1">
             Mais visibilidade sem cobrar comissão por serviço.
           </div>
           <ul className="mt-3 text-xs text-gray-300 space-y-1">
-            <li>• Boost · 20 min</li>
-            <li>• Turbo · 1h</li>
-            <li>• Insano · 3h</li>
+            <li>• Impulsionar · 20 min</li>
+            <li>•  · 1h</li>
+            <li>•  · 3h</li>
           </ul>
         </div>
       </div>

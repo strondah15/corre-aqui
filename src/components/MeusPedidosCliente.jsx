@@ -1,6 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
+import { database } from '@/lib/firebase'
+import { ref, update, serverTimestamp } from 'firebase/database'
 
 function getMs(v) {
   if (!v) return 0
@@ -42,7 +45,67 @@ export default function MeusPedidosCliente({
   onAbrirChat,
   onVerMapa,
   onConfirmarServicoFeito,
+  onToast,
 }) {
+  const [pedidoAlcance, setPedidoAlcance] = useState(null)
+  const [aplicandoAlcance, setAplicandoAlcance] = useState(false)
+
+  const avisar = (payload) => {
+    if (typeof onToast === 'function') onToast(payload)
+  }
+
+  const aplicarAlcance = async (tipo) => {
+    if (!pedidoAlcance?.id || aplicandoAlcance) return
+
+    try {
+      setAplicandoAlcance(true)
+      const agora = Date.now()
+      const payload = {
+        atualizadoEm: serverTimestamp(),
+        boost: {
+          level: tipo === 'emergencia' ? 2 : 1,
+          tipo,
+          label: tipo === 'emergencia' ? 'Emergência' : 'Destaque',
+          preco: tipo === 'emergencia' ? 4.99 : 2.99,
+          until: agora + (tipo === 'emergencia' ? 20 : 30) * 60 * 1000,
+          createdAt: agora,
+          by: { id: meuId || null },
+        },
+      }
+
+      if (tipo === 'emergencia') {
+        payload.emergencia = true
+        payload.destaque = false
+        payload.urgencia = 'emergencia'
+        payload.prioridade = 'alta'
+        payload.alertaCorres = {
+          ativo: true,
+          tipo: 'emergencia',
+          titulo: '🚨 Pedido urgente perto de você',
+          criadoEm: agora,
+          lidoPor: {},
+        }
+      } else {
+        payload.destaque = true
+        payload.emergencia = false
+        payload.urgencia = null
+        payload.prioridade = 'media'
+      }
+
+      await update(ref(database, `pedidos/${pedidoAlcance.id}`), payload)
+      avisar({
+        type: 'success',
+        title: tipo === 'emergencia' ? 'Emergência ativada!' : 'Pedido destacado!',
+        message: tipo === 'emergencia' ? 'Seu pedido foi marcado como urgente.' : 'Seu pedido ganhou mais alcance.',
+      })
+      setPedidoAlcance(null)
+    } catch (e) {
+      avisar({ type: 'error', title: 'Não consegui atualizar', message: e?.message || 'Tente novamente.' })
+    } finally {
+      setAplicandoAlcance(false)
+    }
+  }
+
   const meusPedidos = (corres || [])
     .filter((p) => p?.criador?.id === meuId)
     .sort((a, b) => {
@@ -178,10 +241,23 @@ export default function MeusPedidosCliente({
                 {p?.aceite?.id ? (
                   <motion.button
                     className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition active:scale-[0.98]"
-                    onClick={() => onAbrirChat?.(p)}
+                    onClick={() => {
+                      setPedidoAlcance(null)
+                      onAbrirChat?.(p)
+                    }}
                     type="button"
                   >
                     Abrir conversa
+                  </motion.button>
+                ) : null}
+
+                {String(p?.status || 'aberto').toLowerCase() === 'aberto' && !p?.aceite?.id ? (
+                  <motion.button
+                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-fuchsia-600 to-blue-600 hover:brightness-110 text-white text-sm font-black shadow-md shadow-blue-500/25 transition active:scale-[0.98]"
+                    onClick={() => setPedidoAlcance(p)}
+                    type="button"
+                  >
+                    ⚡ Melhorar alcance
                   </motion.button>
                 ) : null}
 
@@ -215,6 +291,67 @@ export default function MeusPedidosCliente({
           ))}
         </div>
       )}
+
+      {pedidoAlcance ? (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/75 backdrop-blur-md p-3">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 18 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="w-full max-w-md overflow-hidden rounded-[30px] border border-white/12 bg-[#07111f]/95 p-5 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xl font-black">⚡ Melhorar alcance</div>
+                <div className="mt-1 text-sm text-slate-400">
+                  Use quando seu pedido ainda estiver aberto e ninguém aceitou.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPedidoAlcance(null)}
+                className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/10 hover:bg-white/15"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="text-sm font-black text-white truncate">{pedidoAlcance?.titulo || 'Pedido'}</div>
+              <div className="mt-1 text-xs text-slate-400 line-clamp-2">{pedidoAlcance?.descricao || 'Sem descrição'}</div>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <button
+                type="button"
+                disabled={aplicandoAlcance}
+                onClick={() => aplicarAlcance('destaque')}
+                className="w-full rounded-3xl border border-fuchsia-400/25 bg-fuchsia-500/12 p-4 text-left hover:bg-fuchsia-500/18 disabled:opacity-60"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-black text-fuchsia-100">🚀 Destacar por 30 minutos</div>
+                  <div className="rounded-2xl bg-white/10 px-3 py-1 text-sm font-black text-white">R$ 2,99</div>
+                </div>
+                <div className="mt-1 text-xs text-slate-400">Coloca o pedido em destaque e sobe ele na lista dos corres.</div>
+              </button>
+
+              <button
+                type="button"
+                disabled={aplicandoAlcance}
+                onClick={() => aplicarAlcance('emergencia')}
+                className="w-full rounded-3xl border border-red-400/25 bg-red-500/12 p-4 text-left hover:bg-red-500/18 disabled:opacity-60"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-black text-red-100">🚨 Tornar urgente</div>
+                  <div className="rounded-2xl bg-white/10 px-3 py-1 text-sm font-black text-white">R$ 4,99</div>
+                </div>
+                <div className="mt-1 text-xs text-slate-400">Prioridade máxima, card urgente e alerta para os corres. Sem alterar o mapa por enquanto.</div>
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
+
     </div>
   )
 }
+

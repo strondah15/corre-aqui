@@ -25,6 +25,7 @@ import {
 } from 'firebase/database'
 
 import PerfilDrawer from '@/components/PerfilDrawer'
+import XpToast from '@/components/XpToast'
 import ModalIA from './ModalIA'
 import ChatMensagens from './ChatMensagens'
 import ListaConversas from './ListaConversas'
@@ -121,9 +122,8 @@ const TAXA_PROF_POR_PATENTE = {
 }
 
 const BOOST_LEVELS = {
-  1: { minutos: 20, label: 'Boost', emoji: '🚀' },
-  2: { minutos: 60, label: 'Turbo', emoji: '🔥' },
-  3: { minutos: 180, label: 'Insano', emoji: '⚡' },
+  1: { minutos: 30, label: 'Destaque', emoji: '🚀', preco: 2.99 },
+  2: { minutos: 20, label: 'Emergência', emoji: '🚨', preco: 4.99 },
 }
 
 const nowMs = () => Date.now()
@@ -133,12 +133,33 @@ const isBoostAtivo = (p) => {
   return until > nowMs()
 }
 
+// Compatibilidade com trechos antigos do componente.
+// Agora "impulsionar" usa a mesma base de destaque/emergência.
+const isImpulsionarAtivo = isBoostAtivo
+
+const isPedidoEmergencia = (p) => {
+  return !!(p?.emergencia || p?.urgencia === 'emergencia' || p?.boost?.tipo === 'emergencia' || Number(p?.boost?.level || 0) === 2)
+}
+
+const isPedidoDestaque = (p) => {
+  return !!(p?.destaque || p?.boost?.tipo === 'destaque' || Number(p?.boost?.level || 0) === 1)
+}
+
+const prioridadePedido = (p) => {
+  if ((p?.status || 'aberto') !== 'aberto') return 0
+  if (isPedidoEmergencia(p) && isBoostAtivo(p)) return 300
+  if (isPedidoDestaque(p) && isBoostAtivo(p)) return 200
+  return 100
+}
+
 const boostInfo = (p) => {
   const lvl = Number(p?.boost?.level || 0)
   const cfg = BOOST_LEVELS[lvl]
   const until = Number(p?.boost?.until || 0)
   const ativo = until > nowMs()
-  return { lvl, cfg, until, ativo }
+  const emergencia = isPedidoEmergencia(p) && ativo
+  const destaque = !emergencia && isPedidoDestaque(p) && ativo
+  return { lvl, cfg, until, ativo, emergencia, destaque }
 }
 
 const calcTaxaServiço = ({ modoPedido, isProfissionalUser, patenteProf }) => {
@@ -314,7 +335,7 @@ async function missãoIncrementar(uid, tipo) {
   })
 }
 
-async function aplicarBoostNoPedido({ pedido, level, meuId, meuNome }) {
+async function aplicarImpulsionarNoPedido({ pedido, level, meuId, meuNome }) {
   if (!pedido?.id || !meuId) return
 
   const lvl = Number(level || 1)
@@ -418,10 +439,11 @@ function BadgeModo({ modo }) {
 
 export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {}) {
   const [tab, setTab] = useState('corre') // corre | inbox
-  const [clientePainelBaixo, setClientePainelBaixo] = useState('') // '' | meusPedidos | conversas
+  const [clientePainelBaixo, setClientePainelBaixo] = useState('') // '' | meusPedidos | conversas | chat
 
   const [modoApp, setModoApp] = useState(initialMode === 'cliente' || initialMode === 'corre' ? initialMode : 'corre') // cliente | corre
   const [openPerfil, setOpenPerfil] = useState(false)
+const [showXpToast, setShowXpToast] = useState(false)
 
   const [meuNome, setMeuNome] = useState('')
   const [meuId, setMeuId] = useState('')
@@ -430,6 +452,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [avatarEmoji, setAvatarEmoji] = useState('')
 
   const [corres, setCorres] = useState([])
+  const [cardAbertoId, setCardAbertoId] = useState(null)
+
   const [filtro, setFiltro] = useState('abertos')
   const [busca, setBusca] = useState('')
   const [clienteProfBusca, setClienteProfBusca] = useState('')
@@ -701,8 +725,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
         // ✅ BOOST primeiro
         lista.sort((a, b) => {
-          const ba = isBoostAtivo(a) ? 1 : 0
-          const bb = isBoostAtivo(b) ? 1 : 0
+          const ba = isImpulsionarAtivo(a) ? 1 : 0
+          const bb = isImpulsionarAtivo(b) ? 1 : 0
           if (bb !== ba) return bb - ba
 
           const la = Number(a?.boost?.level || 0)
@@ -841,31 +865,41 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }
 
   const corresFiltrados = useMemo(() => {
-    return (corres || []).filter((p) => {
-      const modo = String(p?.modoPedido || 'geral').toLowerCase()
+    return (corres || [])
+      .filter((p) => {
+        const modo = String(p?.modoPedido || 'geral').toLowerCase()
 
-      if (modo === 'profissional' && !isProfissional) return false
+        if (modo === 'profissional' && !isProfissional) return false
 
-      if (filtro === 'abertos' && (p.status || 'aberto') !== 'aberto') return false
-      if (filtro === 'meus' && p?.aceite?.id !== meuId) return false
+        if (filtro === 'abertos' && (p.status || 'aberto') !== 'aberto') return false
+        if (filtro === 'meus' && p?.aceite?.id !== meuId) return false
 
-      const cat = p?.categoriaId ?? p?.categoria ?? null
-      if (categoriaFiltro === 'sem') {
-        if (cat) return false
-      } else if (categoriaFiltro !== 'todas') {
-        if (String(cat || '') !== String(categoriaFiltro)) return false
-      }
+        const cat = p?.categoriaId ?? p?.categoria ?? null
+        if (categoriaFiltro === 'sem') {
+          if (cat) return false
+        } else if (categoriaFiltro !== 'todas') {
+          if (String(cat || '') !== String(categoriaFiltro)) return false
+        }
 
-      if (busca.trim()) {
-        const t = busca.trim().toLowerCase()
-        const hay =
-          (p.titulo || '').toLowerCase().includes(t) ||
-          (p.descricao || '').toLowerCase().includes(t) ||
-          (p.criador?.nome || '').toLowerCase().includes(t)
-        if (!hay) return false
-      }
-      return true
-    })
+        if (busca.trim()) {
+          const t = busca.trim().toLowerCase()
+          const hay =
+            (p.titulo || '').toLowerCase().includes(t) ||
+            (p.descricao || '').toLowerCase().includes(t) ||
+            (p.criador?.nome || '').toLowerCase().includes(t)
+          if (!hay) return false
+        }
+        return true
+      })
+      .sort((a, b) => {
+        const pa = prioridadePedido(a)
+        const pb = prioridadePedido(b)
+        if (pb !== pa) return pb - pa
+
+        const ta = getMs(a?.criadoEm || a?.createdAt || a?.atualizadoEm || 0)
+        const tb = getMs(b?.criadoEm || b?.createdAt || b?.atualizadoEm || 0)
+        return tb - ta
+      })
   }, [corres, filtro, busca, meuId, categoriaFiltro, isProfissional])
 
   async function aceitarCorre(p) {
@@ -1554,6 +1588,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 const mapOk = !!(p?.local?.lat != null && p?.local?.lng != null)
 
                 const b = boostInfo(p)
+                const cardAberto = cardAbertoId === p.id
 
                 const catObj = getCatObj(p?.categoriaId || p?.categoria)
                 const combinaComigo =
@@ -1580,19 +1615,28 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     whileHover={{ y: -3, scale: 1.008 }}
                     whileTap={{ scale: 0.985 }}
                     className={[
-                      "corre-card-clean relative overflow-hidden rounded-[24px] md:rounded-3xl p-2.5 md:p-4 text-slate-950 flex flex-col gap-2 md:gap-2.5 select-none cursor-default",
+                      "corre-card-clean relative overflow-hidden rounded-[22px] md:rounded-[26px] p-2.5 md:p-3 text-slate-950 flex flex-col gap-1.5 md:gap-2 select-none cursor-default",
                       "bg-white border border-white/80 shadow-[0_16px_44px_rgba(15,23,42,0.14)]",
                       "ring-1 ring-slate-900/5 transition",
                       status === 'aberto' ? "border-emerald-300/70 ring-2 ring-emerald-300/35 shadow-[0_18px_55px_rgba(16,185,129,0.20)]" : "",
-                      b.ativo ? "border-amber-300/80 ring-2 ring-amber-300/35" : "",
+                      b.destaque ? "border-fuchsia-300/90 ring-2 ring-fuchsia-300/40 shadow-[0_18px_60px_rgba(217,70,239,0.22)]" : "",
+                      b.emergencia ? "border-red-400 ring-2 ring-red-400/60 shadow-[0_20px_70px_rgba(239,68,68,0.32)] animate-pulse" : "",
                     ].join(" ")}
                   >
-                    {status === 'aberto' && (
+                    {b.emergencia ? (
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-red-500 via-orange-300 to-red-600 shadow-[0_0_36px_rgba(239,68,68,0.95)] animate-pulse" />
+                    ) : b.destaque ? (
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-fuchsia-500 via-amber-300 to-blue-500 shadow-[0_0_32px_rgba(217,70,239,0.75)]" />
+                    ) : status === 'aberto' ? (
                       <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-emerald-300 via-lime-200 to-emerald-400 shadow-[0_0_28px_rgba(16,185,129,0.95)] animate-pulse" />
-                    )}
-                    {status === 'aberto' && (
+                    ) : null}
+                    {b.emergencia ? (
+                      <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-red-400/35 blur-2xl animate-pulse" />
+                    ) : b.destaque ? (
+                      <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-fuchsia-400/30 blur-2xl" />
+                    ) : status === 'aberto' ? (
                       <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-emerald-300/25 blur-2xl animate-pulse" />
-                    )}
+                    ) : null}
                     <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(59,130,246,0.12),transparent_34%),radial-gradient(circle_at_90%_15%,rgba(16,185,129,0.16),transparent_28%)]" />
                     <div className="relative z-10 flex items-start justify-between gap-2 md:gap-3">
                       <div className="min-w-0">
@@ -1603,11 +1647,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         <div className="mt-2 font-black text-slate-950 text-base md:text-xl leading-tight line-clamp-1 drop-shadow-[0_1px_0_rgba(255,255,255,0.65)]">🏁 {p.titulo || '(sem título)'}</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {b.ativo && (
-                          <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-100 border border-amber-300 text-amber-800 font-black shadow-sm">
-                            {b.cfg?.emoji || '🚀'} DESTAQUE
+                        {b.emergencia ? (
+                          <span className="text-[11px] px-2.5 py-1 rounded-full bg-red-100 border border-red-300 text-red-800 font-black shadow-sm animate-pulse">
+                            🚨 URGENTE
                           </span>
-                        )}
+                        ) : b.destaque ? (
+                          <span className="text-[11px] px-2.5 py-1 rounded-full bg-fuchsia-100 border border-fuchsia-300 text-fuchsia-800 font-black shadow-sm">
+                            🚀 DESTAQUE
+                          </span>
+                        ) : null}
                         <BadgeStatus status={status} />
                       </div>
                     </div>
@@ -1637,6 +1685,29 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       )}
                     </div>
 
+                    <div className="relative z-10 flex items-center justify-between gap-2 rounded-2xl bg-white/75 border border-slate-200/70 px-2.5 md:px-3 py-2">
+                      <div className="min-w-0 text-[11px] md:text-xs font-black uppercase tracking-wide">
+                        {b.emergencia ? (
+                          <span className="text-red-700">🚨 Resposta rápida</span>
+                        ) : b.destaque ? (
+                          <span className="text-fuchsia-700">🚀 Mais visibilidade</span>
+                        ) : (
+                          <span className="text-emerald-700">✅ Disponível agora</span>
+                        )}
+                      </div>
+                      {p.valor != null && Number.isFinite(Number(p.valor)) ? (
+                        <div className="shrink-0 rounded-xl bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-sm md:text-base font-black text-emerald-700">
+                          R$ {Number(p.valor).toFixed(2)}
+                        </div>
+                      ) : (
+                        <div className="shrink-0 rounded-xl bg-slate-50 border border-slate-200 px-2.5 py-1 text-xs font-black text-slate-600">
+                          combinar
+                        </div>
+                      )}
+                    </div>
+
+                    {cardAberto && (
+                      <>
                     {p.descricao && String(p.descricao).trim().toLowerCase() !== String(p.titulo || '').trim().toLowerCase() && (
                       <div className="relative z-10 rounded-2xl bg-slate-50/90 border border-slate-200/80 px-2.5 md:px-3 py-2 text-xs md:text-sm text-slate-700 leading-relaxed select-none">
                         {p.descricao}
@@ -1656,6 +1727,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       ) : null}
                     </div>
 
+                    {b.emergencia ? (
+                      <div className="relative z-10 rounded-2xl bg-red-50 border border-red-300 px-2.5 md:px-3 py-2 text-[11px] md:text-[12px] text-red-800 font-black shadow-sm">
+                        🚨 Emergência: cliente pediu resposta rápida. Prioridade máxima na lista dos corres.
+                      </div>
+                    ) : b.destaque ? (
+                      <div className="relative z-10 rounded-2xl bg-fuchsia-50 border border-fuchsia-300 px-2.5 md:px-3 py-2 text-[11px] md:text-[12px] text-fuchsia-800 font-black shadow-sm">
+                        🚀 Pedido destacado: mais visibilidade para quem está disponível agora.
+                      </div>
+                    ) : null}
+
                     {/* taxa removida / incentivo ao profissional */}
                     <div className="relative z-10 rounded-2xl bg-emerald-500/10 border border-emerald-300/50 px-2.5 md:px-3 py-2 text-[11px] md:text-[12px] text-emerald-800 font-black shadow-sm">
                       ✅ Sem taxa do app: <b>100% do valor fica com quem faz o serviço</b>
@@ -1667,7 +1748,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       {patenteCriadorProf > 0 && <Patente tipo="prof" nivel={patenteCriadorProf} size="sm" />}
                     </div>
 
+                      </>
+                    )}
+
                     <div className="relative z-10 grid grid-cols-2 sm:flex gap-1.5 md:gap-2 flex-wrap mt-1">
+                      <button
+                        className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-800 font-black hover:bg-slate-50 shadow-sm transition"
+                        onClick={() => setCardAbertoId(cardAberto ? null : p.id)}
+                        type="button"
+                      >
+                        {cardAberto ? 'Ocultar' : 'Detalhes'}
+                      </button>
+
                       {p.local && (
                         <button
                           onClick={() => {
@@ -1727,71 +1819,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {/* ✅ BOOST (só criador e só aberto) */}
-                      {souCriador(p) && status === 'aberto' && (
-                        <>
-                          <button
-                            className="px-2.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-700 text-white shadow-md shadow-fuchsia-500/20 transition"
-                            onClick={async () => {
-                              try {
-                                await aplicarBoostNoPedido({ pedido: p, level: 1, meuId, meuNome })
-                                showToast({ type: 'success', title: 'Boost!', message: 'Seu pedido subiu pro topo 🚀' })
-                              } catch (e) {
-                                showToast({ type: 'error', title: 'Falha no boost', message: e?.message || 'Erro' })
-                              }
-                            }}
-                            type="button"
-                          >
-                            🚀 Boost
-                          </button>
+                      {/* Alcance/urgência fica somente em MeusPedidosCliente (área do cliente). */}
 
-                          <button
-                            className="px-2.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white shadow-md shadow-orange-500/20 transition"
-                            onClick={async () => {
-                              try {
-                                await aplicarBoostNoPedido({ pedido: p, level: 2, meuId, meuNome })
-                                showToast({ type: 'success', title: 'Turbo!', message: 'Turbo ativado 🔥' })
-                              } catch (e) {
-                                showToast({ type: 'error', title: 'Falha no turbo', message: e?.message || 'Erro' })
-                              }
-                            }}
-                            type="button"
-                          >
-                            🔥 Turbo
-                          </button>
-
-                          <button
-                            className="px-2.5 py-1.5 rounded-xl bg-yellow-600 hover:bg-yellow-700 text-white shadow-md shadow-yellow-500/20 transition"
-                            onClick={async () => {
-                              try {
-                                await aplicarBoostNoPedido({ pedido: p, level: 3, meuId, meuNome })
-                                showToast({ type: 'success', title: 'Insano!', message: 'Insano ativado ⚡' })
-                              } catch (e) {
-                                showToast({ type: 'error', title: 'Falha no insano', message: e?.message || 'Erro' })
-                              }
-                            }}
-                            type="button"
-                          >
-                            ⚡ Insano
-                          </button>
-                        </>
-                      )}
-
-                      {souCriador(p) && (
-                        <>
-                          <button className={btnGhost} onClick={() => abrirEditar(p)} type="button">
-                            Editar
-                          </button>
-                          <button
-                            className="px-2.5 py-1.5 rounded-xl bg-red-500/15 text-red-200 border border-red-400/20 hover:bg-red-500/20 disabled:opacity-60 transition"
-                            onClick={() => excluirPedido(p)}
-                            disabled={excluindoId === p.id}
-                            type="button"
-                          >
-                            {excluindoId === p.id ? 'Excluindo…' : 'Excluir'}
-                          </button>
-                        </>
-                      )}
 
                       {status !== 'aberto' && !aceitoPorMim && temAceitador && (
                         <span className="text-xs text-slate-500">Aceito por {p.aceite?.nome || 'alguém'}</span>
@@ -1904,8 +1933,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           </>
         )}
 
+
         {/* CHAT MODAL NO MODO CLIENTE */}
-        {modoApp === 'cliente' && chatPedido && (
+        {modoApp === 'cliente' && chatPedido && !clientePainelBaixo && (
           <div className="fixed inset-0 z-[99999] bg-black/70  flex items-center justify-center p-3">
             <div className="w-full max-w-2xl rounded-2xl bg-[#0b1220] border border-white/10 shadow-2xl overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/5">
@@ -2134,13 +2164,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     Corre Aqui
                   </div>
                   <div className="mt-1 text-xl font-black text-white truncate">
-                    {clientePainelBaixo === 'meusPedidos' ? '📦 Meus pedidos' : '💬 Caixa de conversas'}
+                    {clientePainelBaixo === 'meusPedidos' ? '📦 Meus pedidos' : clientePainelBaixo === 'chat' ? '💬 Conversa' : '💬 Caixa de conversas'}
                   </div>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => setClientePainelBaixo('')}
+                  onClick={() => {
+                    setClientePainelBaixo('')
+                    if (clientePainelBaixo === 'chat') setChatPedido(null)
+                  }}
                   className="w-11 h-11 rounded-2xl bg-[#1e293b] hover:bg-[#263449] text-white font-black border border-slate-700"
                   aria-label="Fechar"
                 >
@@ -2156,6 +2189,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   corres={corres}
                   onAbrirChat={(pedido) => {
                     setChatPedido(pedido)
+                    setClientePainelBaixo('chat')
                   }}
                   onVerMapa={(pedido) => {
                     setMapItem(pedido)
@@ -2163,6 +2197,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   onConfirmarServicoFeito={(pedido) => {
                     marcarConcluído(pedido)
                   }}
+                  onToast={showToast}
                 />
               )}
 
@@ -2175,6 +2210,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                       if (p) {
                         setChatPedido(p)
+                        setClientePainelBaixo('chat')
                       } else {
                         showToast({
                           type: 'info',
@@ -2186,6 +2222,39 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   />
                 </div>
               )}
+
+              {clientePainelBaixo === 'chat' && chatPedido && (
+                <div className="rounded-[28px] overflow-hidden bg-[#0f172a] border border-slate-700 shadow-lg text-white">
+                  <div className="px-4 py-3 border-b border-slate-700 bg-[#111827]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-300">Chat do pedido</div>
+                        <div className="mt-1 text-base font-black text-white truncate">{chatPedido?.titulo || 'Corre aqui'}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChatPedido(null)
+                          setClientePainelBaixo('conversas')
+                        }}
+                        className="px-3 py-2 rounded-2xl bg-[#1e293b] hover:bg-[#263449] text-white text-xs font-black border border-slate-700"
+                      >
+                        Voltar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-3">
+                    <ChatMensagens
+                      pedidoId={chatPedido.id}
+                      meuId={meuId}
+                      meuNome={meuNome}
+                      pedidoTitulo={chatPedido.titulo || 'Corre aqui'}
+                      outroUser={getOutroUser(chatPedido)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2193,6 +2262,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       {/* ✅ ClienteHome agora controla Corre/Profissionais e mostra a lista rica direto no centro.
           Removido bloco duplicado de busca/filtros e qualquer botão flutuante extra. */}
+
+      <XpToast
+        open={showXpToast}
+        xp={10}
+      />
 
       <PerfilDrawer open={openPerfil} onClose={() => setOpenPerfil(false)} uid={meuId} />
 
@@ -2209,3 +2283,5 @@ o próximo arquivo para ajustar é src/components/MapinhaModal.jsx.
 Nos markers de onlineUsers, use:
 eventHandlers={{ click: () => onClickUser?.(u) }}
 */
+
+// cards limpos para corre/profissional

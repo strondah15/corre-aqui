@@ -217,7 +217,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
               type="button"
               whileTap={{ scale: 0.96 }}
               onClick={() => onAbrir?.(item)}
-              className="flex-1 min-w-[96px] h-[34px] md:h-[38px] rounded-xl bg-slate-950 hover:bg-black border border-slate-900 text-white text-xs font-black transition-all duration-200 active:scale-[0.98] shadow-lg shadow-slate-900/20"
+              className="flex-1 min-w-[96px] h-[34px] md:h-[38px] rounded-xl bg-slate-950 hover:bg-black border border-slate-900 text-white text-xs font-black transition-all duration-300 hover:-translate-y-[3px] duration-200 active:scale-[0.98] shadow-lg shadow-slate-900/20"
             >
               Ver currículo
             </motion.button>
@@ -227,7 +227,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
               whileTap={{ scale: 0.96 }}
               onClick={() => onWhatsapp?.(item)}
               disabled={!whats}
-              className="h-[34px] md:h-[38px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-black disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 active:scale-[0.98] shadow-sm"
+              className="h-[34px] md:h-[38px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-black disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 hover:-translate-y-[3px] duration-200 active:scale-[0.98] shadow-sm"
               title={whats ? 'Chamar no WhatsApp' : 'WhatsApp não informado'}
             >
               WhatsApp

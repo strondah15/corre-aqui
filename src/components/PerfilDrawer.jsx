@@ -303,26 +303,26 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   if (!uid) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999]">
+    <div className="fixed inset-0 z-[100000] bg-[#020617]">
       <div
         className="absolute inset-0 bg-black/72 backdrop-blur-sm"
         onClick={onClose}
       />
 
       <motion.aside
-        initial={{ x: 42, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
+        initial={{ opacity: 0, scale: 0.985 }}
+        animate={{ opacity: 1, scale: 1 }}
         transition={{ type: "spring", stiffness: 120, damping: 18 }}
         className="
-          absolute right-0 top-0 h-full w-[min(96vw,560px)]
+          fixed inset-0 h-screen w-screen
           bg-[#06101d] text-white
-          border-l border-white/10
-          shadow-[-30px_0_90px_rgba(0,0,0,0.45)]
+          border-0
+          shadow-[0_30px_120px_rgba(0,0,0,0.65)]
           overflow-y-auto
         "
       >
         <div className="sticky top-0 z-10 bg-[#06101d]/95 backdrop-blur-xl border-b border-white/10">
-          <div className="px-5 py-4 flex items-center justify-between gap-3">
+          <div className="mx-auto w-full max-w-7xl px-4 md:px-8 py-4 flex items-center justify-between gap-3">
             <div>
               <div className="text-lg font-extrabold text-white">
                 Meu perfil
@@ -343,9 +343,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           </div>
         </div>
 
-        <div className="p-5">
+        <div className="mx-auto w-full max-w-7xl p-4 md:p-8">
           {/* FOTO + HEADER */}
-          <div className="rounded-[32px] bg-gradient-to-br from-[#0b1730] via-[#0a1428] to-[#050b16] border border-cyan-300/10 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
+          <div className="rounded-[32px] bg-gradient-to-br from-[#0b1730] via-[#0a1428] to-[#050b16] border border-cyan-300/10 p-5 md:p-8 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
             <div className="flex flex-col items-center text-center">
               <label className="cursor-pointer relative group">
                 <input

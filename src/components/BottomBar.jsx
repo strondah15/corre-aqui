@@ -22,7 +22,7 @@ export default function BottomBar({
   if (modoApp !== 'corre') return null
 
   const itemBase =
-    'h-[48px] md:h-[60px] rounded-[20px] md:rounded-[24px] border flex items-center justify-center gap-1.5 md:gap-2 transition-all duration-200 active:scale-[0.97] shadow-[0_12px_34px_rgba(15,23,42,0.18)]'
+    'h-[48px] md:h-[60px] rounded-[20px] md:rounded-[24px] border flex items-center justify-center gap-1.5 md:gap-2 transition-all duration-300-all duration-200 active:scale-[0.97] shadow-[0_12px_34px_rgba(15,23,42,0.18)]'
 
   const itemInactive =
     'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-950'
@@ -77,7 +77,7 @@ export default function BottomBar({
             whileHover={{ y: -2 }}
             onClick={() => onTab?.('disponivel')}
             className={[
-              'min-h-[98px] md:min-h-[126px] rounded-[26px] md:rounded-[30px] border text-white flex flex-col items-center justify-center gap-1.5 md:gap-2 transition-all duration-200 active:scale-[0.98]',
+              'min-h-[98px] md:min-h-[126px] rounded-[26px] md:rounded-[30px] border text-white flex flex-col items-center justify-center gap-1.5 md:gap-2 transition-all duration-300-all duration-200 active:scale-[0.98]',
               'shadow-[0_22px_60px_rgba(16,185,129,0.28)]',
               disponivel
                 ? 'bg-gradient-to-b from-emerald-400 to-emerald-600 border-emerald-300/50 hover:from-emerald-300'
