@@ -14,6 +14,9 @@ export default function BottomBar({
   active,
   onTab,
   unreadCount = 0,
+  agendaCount = 0,
+  agendaConfirmados = 0,
+  agendaRecusados = 0,
   hidden = false,
   modoApp = 'corre',
   disponivel = true,
@@ -54,17 +57,25 @@ export default function BottomBar({
   }
 
   return (
-    <div className="fixed bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-[9998] w-[min(94vw,420px)] md:w-[min(92vw,460px)]">
+    <div className="fixed bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 z-[9998] w-[min(96vw,520px)] md:w-[min(92vw,560px)]">
       <div className="rounded-[30px] md:rounded-[34px] bg-white border border-slate-200 shadow-[0_22px_70px_rgba(15,23,42,0.22)] p-1.5 md:p-2">
         <div className="grid grid-cols-[1fr_1.25fr_1fr] md:grid-cols-[1fr_1.45fr_1fr] gap-1.5 md:gap-2 items-stretch">
           {/* esquerda */}
-          <div className="grid grid-rows-2 gap-1.5 md:gap-2">
+          <div className="grid grid-rows-3 gap-1.5 md:gap-2">
             {smallBtn({ id: 'corre', label: 'Trabalhos', icon: '🎯' })}
             <div className="relative">
               {smallBtn({ id: 'inbox', label: 'Inbox', icon: '💬' }, 'w-full')}
               {unreadCount > 0 && (
                 <div className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1 rounded-full bg-amber-400 text-black text-[12px] font-extrabold flex items-center justify-center border border-amber-200 shadow">
                   {unreadCount > 99 ? '99+' : unreadCount}
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              {smallBtn({ id: 'agenda', label: 'Agenda', icon: '📅' }, 'w-full')}
+              {agendaCount > 0 && (
+                <div className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1 rounded-full bg-red-500 text-white text-[12px] font-extrabold flex items-center justify-center border border-red-200 shadow">
+                  {agendaCount > 99 ? '99+' : agendaCount}
                 </div>
               )}
             </div>
@@ -77,7 +88,7 @@ export default function BottomBar({
             whileHover={{ y: -2 }}
             onClick={() => onTab?.('disponivel')}
             className={[
-              'min-h-[98px] md:min-h-[126px] rounded-[26px] md:rounded-[30px] border text-white flex flex-col items-center justify-center gap-1.5 md:gap-2 transition-all duration-300-all duration-200 active:scale-[0.98]',
+              'min-h-[150px] md:min-h-[184px] rounded-[26px] md:rounded-[30px] border text-white flex flex-col items-center justify-center gap-1.5 md:gap-2 transition-all duration-300-all duration-200 active:scale-[0.98]',
               'shadow-[0_22px_60px_rgba(16,185,129,0.28)]',
               disponivel
                 ? 'bg-gradient-to-b from-emerald-400 to-emerald-600 border-emerald-300/50 hover:from-emerald-300'
@@ -100,23 +111,79 @@ export default function BottomBar({
             </span>
           </motion.button>
 
-          {/* direita */}
-          <div className="grid grid-rows-1 gap-1.5 md:gap-2">
-            <motion.button
+          {/* direita: agenda resumida */}
+          <div className="rounded-[24px] border border-slate-200 bg-white/95 backdrop-blur-md p-3 shadow-[0_12px_34px_rgba(15,23,42,0.10)] flex flex-col justify-between">
+            <button
               type="button"
-              whileTap={{ scale: 0.94 }}
-              whileHover={{ y: -2 }}
-              onClick={() => onTab?.('disponivel')}
-              className={[
-                itemBase,
-                'px-2 md:px-3 text-[10px] md:text-[12px] font-extrabold',
-                disponivel
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-rose-50 text-rose-700 border-rose-200',
-              ].join(' ')}
+              onClick={() => onTab?.('agenda')}
+              className="w-full flex items-center justify-between gap-2 text-left"
             >
-              {disponivel ? '🟢 Online' : '🔴 Offline'}
-            </motion.button>
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="h-10 w-10 rounded-2xl bg-violet-100 border border-violet-200 flex items-center justify-center text-xl shrink-0">
+                  📅
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[15px] md:text-base font-black text-slate-950 leading-none">Agenda</div>
+                  <div className="mt-1 text-[10px] md:text-[11px] font-bold text-slate-500 leading-none">Resumo</div>
+                </div>
+              </div>
+              <div className="text-slate-400 text-xl">›</div>
+            </button>
+
+            <div className="mt-3 space-y-1.5">
+              <button
+                type="button"
+                onClick={() => onTab?.('agenda')}
+                className="w-full rounded-2xl bg-orange-50 border border-orange-100 px-2.5 py-1.5 flex items-center justify-between gap-2"
+                title="Pendentes"
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-sm">🕒</span>
+                  <span className="text-[11px] font-black text-orange-800 truncate">Pendentes</span>
+                </span>
+                <span className="min-w-[24px] h-6 px-1.5 rounded-full bg-orange-500 text-white text-xs font-black flex items-center justify-center">
+                  {agendaCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onTab?.('agenda')}
+                className="w-full rounded-2xl bg-emerald-50 border border-emerald-100 px-2.5 py-1.5 flex items-center justify-between gap-2"
+                title="Confirmados"
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-sm">✅</span>
+                  <span className="text-[11px] font-black text-emerald-800 truncate">Confirmado</span>
+                </span>
+                <span className="min-w-[24px] h-6 px-1.5 rounded-full bg-emerald-500 text-white text-xs font-black flex items-center justify-center">
+                  {agendaConfirmados}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onTab?.('agenda')}
+                className="w-full rounded-2xl bg-rose-50 border border-rose-100 px-2.5 py-1.5 flex items-center justify-between gap-2"
+                title="Recusados"
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-sm">❌</span>
+                  <span className="text-[11px] font-black text-rose-800 truncate">Recusado</span>
+                </span>
+                <span className="min-w-[24px] h-6 px-1.5 rounded-full bg-rose-500 text-white text-xs font-black flex items-center justify-center">
+                  {agendaRecusados}
+                </span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onTab?.('agenda')}
+              className="mt-3 w-full rounded-2xl bg-gradient-to-r from-violet-500 to-indigo-500 px-3 py-2 text-xs font-black text-white shadow-[0_8px_24px_rgba(139,92,246,0.22)]"
+            >
+              Abrir agenda
+            </button>
           </div>
         </div>
       </div>

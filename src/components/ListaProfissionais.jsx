@@ -129,6 +129,9 @@ function normalizeUsers(raw) {
       profPrecoBase: user.profPrecoBase || profile.preco || profissional.preco || '',
       profWhats: user.profWhats || profile.whatsapp || profissional.whatsapp || '',
       profExperiencia: user.profExperiencia || profile.profExperiencia || profissional.experiencia || '',
+      statusProfissional: user.statusProfissional || profile.statusProfissional || profissional.statusProfissional || 'disponivel',
+      ocupadoAte: user.ocupadoAte || profile.ocupadoAte || profissional.ocupadoAte || null,
+      agendaAberta: user.agendaAberta ?? profile.agendaAberta ?? profissional.agendaAberta ?? true,
       profile,
       profissional,
     }
@@ -141,6 +144,7 @@ export default function ListaProfissionais({
   search = '',
   limit = 200,
   onAbrirPerfil,
+  onAgendar,
 }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -325,6 +329,7 @@ export default function ListaProfissionais({
                 item={u}
                 onAbrir={onAbrirPerfil}
                 onWhatsapp={openWhatsapp}
+                onAgendar={onAgendar}
               />
             ))}
           </div>

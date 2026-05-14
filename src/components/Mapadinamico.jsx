@@ -27,10 +27,12 @@ import {
 import PerfilDrawer from '@/components/PerfilDrawer'
 import XpToast from '@/components/XpToast'
 import ModalIA from './ModalIA'
+import ModalAgenda from './ModalAgenda'
 import ChatMensagens from './ChatMensagens'
 import ListaConversas from './ListaConversas'
 import AvisoCorreAceito from '@/components/AvisoCorreAceito'
 import MeusPedidosCliente from '@/components/MeusPedidosCliente'
+import AgendaProfissional from '@/components/AgendaProfissional'
 
 // ✅ NOVOS COMPONENTES
 import BottomBar from '@/components/BottomBar'
@@ -438,7 +440,7 @@ function BadgeModo({ modo }) {
 }
 
 export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {}) {
-  const [tab, setTab] = useState('corre') // corre | inbox
+  const [tab, setTab] = useState('corre') // corre | inbox | agenda
   const [clientePainelBaixo, setClientePainelBaixo] = useState('') // '' | meusPedidos | conversas | chat
 
   const [modoApp, setModoApp] = useState(initialMode === 'cliente' || initialMode === 'corre' ? initialMode : 'corre') // cliente | corre
@@ -487,6 +489,7 @@ const [showXpToast, setShowXpToast] = useState(false)
 
   const [toast, setToast] = useState(null)
   const [usuarioSelecionado, setUsuarioSelecionado] = useState(null)
+  const [agendaClienteUser, setAgendaClienteUser] = useState(null)
   const [notifPermission, setNotifPermission] = useState('default')
   const showToast = useCallback((t) => setToast({ ms: 2800, ...t }), [])
 
@@ -500,6 +503,9 @@ const [showXpToast, setShowXpToast] = useState(false)
   const [salvandoEdicao, setSalvandoEdicao] = useState(false)
 
   const [unreadInbox, setUnreadInbox] = useState(0)
+  const [agendaPendentes, setAgendaPendentes] = useState(0)
+  const [agendaConfirmados, setAgendaConfirmados] = useState(0)
+  const [agendaRecusados, setAgendaRecusados] = useState(0)
   const [correDisponivel, setCorreDisponivel] = useState(true)
 
   /* =======================
@@ -614,6 +620,27 @@ const [showXpToast, setShowXpToast] = useState(false)
       const list = Object.values(raw)
       const total = list.reduce((acc, c) => acc + (c?.unread === true ? 1 : 0), 0)
       setUnreadInbox(total)
+    })
+
+    return () => off()
+  }, [meuId])
+
+
+  /* =======================
+     ✅ Agenda pending count
+  ======================= */
+  useEffect(() => {
+    if (!meuId) {
+      setAgendaPendentes(0)
+      return
+    }
+
+    const off = onValue(ref(database, 'agendamentos'), (snap) => {
+      const raw = snap.val() || {}
+      const total = Object.values(raw).filter((a) => {
+        return a?.profissionalId === meuId && String(a?.status || 'pendente') === 'pendente'
+      }).length
+      setAgendaPendentes(total)
     })
 
     return () => off()
@@ -932,6 +959,22 @@ const [showXpToast, setShowXpToast] = useState(false)
         atualizadoEm: agora,
         atualizadoEmServer: serverTimestamp(),
       })
+
+      // 📅 Agenda inteligente: ao aceitar um serviço, o profissional fica "em serviço"
+      // e continua disponível para receber agendamentos futuros.
+      await update(ref(database, `users/${meuId}`), {
+        statusProfissional: "em_servico",
+        ocupadoAte: agora + 3 * 24 * 60 * 60 * 1000,
+        agendaAberta: true,
+        atualizadoEm: serverTimestamp(),
+      }).catch(() => {})
+
+      await update(ref(database, `users/${meuId}/profile`), {
+        statusProfissional: "em_servico",
+        ocupadoAte: agora + 3 * 24 * 60 * 60 * 1000,
+        agendaAberta: true,
+        atualizadoEm: serverTimestamp(),
+      }).catch(() => {})
 
       // ✅ conversa do cliente
       if (p?.criador?.id) {
@@ -1421,6 +1464,22 @@ const [showXpToast, setShowXpToast] = useState(false)
           </>
         )}
 
+
+            {tab === 'agenda' && (
+              <div className="mb-4 rounded-[32px] overflow-hidden bg-[#020617] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.35)]">
+                <div className="px-4 py-4 border-b border-white/10 bg-gradient-to-br from-[#07111f] to-[#0f172a]">
+                  <div className="text-xl font-black text-white">📅 Minha agenda</div>
+                  <div className="mt-1 text-xs text-slate-400">
+                    Solicitações futuras dos clientes. Aceite, recuse e organize sua fila.
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#020617]">
+                  <AgendaProfissional uid={meuId} modo="profissional" />
+                </div>
+              </div>
+            )}
+
         {/* CLIENTE */}
         {modoApp === 'cliente' && (
           <div className="space-y-4">
@@ -1443,6 +1502,9 @@ const [showXpToast, setShowXpToast] = useState(false)
                     u?.profile?.descricao ||
                     'Ficha selecionada.',
                 })
+              }}
+              onAgendar={(u) => {
+                setAgendaClienteUser(u)
               }}
             />
 
@@ -2105,6 +2167,14 @@ const [showXpToast, setShowXpToast] = useState(false)
                   Pedir serviço
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => setAgendaClienteUser(usuarioSelecionado)}
+                  className="h-12 px-4 rounded-2xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-extrabold flex items-center justify-center shadow-lg shadow-violet-500/20"
+                >
+                  📅 Agendar
+                </button>
+
                 {(usuarioSelecionado?.profWhats || usuarioSelecionado?.profissional?.whatsapp || usuarioSelecionado?.profile?.whatsapp) && (
                   <a
                     href={`https://wa.me/55${String(usuarioSelecionado?.profWhats || usuarioSelecionado?.profissional?.whatsapp || usuarioSelecionado?.profile?.whatsapp).replace(/\D/g, '')}`}
@@ -2270,8 +2340,14 @@ const [showXpToast, setShowXpToast] = useState(false)
 
       <PerfilDrawer open={openPerfil} onClose={() => setOpenPerfil(false)} uid={meuId} />
 
+      <ModalAgenda
+        open={!!agendaClienteUser}
+        profissional={agendaClienteUser}
+        onClose={() => setAgendaClienteUser(null)}
+      />
+
       {modoApp === 'corre' && (
-        <BottomBar active={tab} onTab={onBottomTab} unreadCount={unreadInbox} modoApp={modoApp} hidden={isMapOpen} disponivel={correDisponivel} />
+        <BottomBar active={tab} onTab={onBottomTab} unreadCount={unreadInbox} agendaCount={agendaPendentes} agendaConfirmados={agendaConfirmados} agendaRecusados={agendaRecusados} modoApp={modoApp} hidden={isMapOpen} disponivel={correDisponivel} />
       )}
     </div>
   )

@@ -38,12 +38,29 @@ function getFotoURL(item) {
   )
 }
 
-export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
+
+function formatOcupadoAte(v) {
+  if (!v) return ''
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })
+}
+
+function getAgendaStatus(item) {
+  const status = item?.statusProfissional || item?.profile?.statusProfissional || item?.profissional?.statusProfissional || 'disponivel'
+  const ocupadoAte = item?.ocupadoAte || item?.profile?.ocupadoAte || item?.profissional?.ocupadoAte || null
+  const agendaAberta = item?.agendaAberta ?? item?.profile?.agendaAberta ?? item?.profissional?.agendaAberta ?? true
+  const emServico = status === 'em_servico' || (!!ocupadoAte && Date.now() < Number(ocupadoAte))
+  return { status, ocupadoAte, agendaAberta, emServico }
+}
+
+export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
   const nome = item?.nome || item?.profile?.nome || 'Profissional'
   const fotoURL = getFotoURL(item)
   const emoji = String(item?.avatarEmoji || item?.profile?.avatarEmoji || item?.perfil?.avatarEmoji || '🙂')
   const isProf = !!(item?.isProfissional || item?.profile?.isProfissional || item?.profissional)
   const isCorre = !!(item?.isCorre || item?.profile?.isCorre)
+  const agendaStatus = getAgendaStatus(item)
 
   const tags = useMemo(() => {
     const out = []
@@ -212,6 +229,23 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
             </div>
           ) : null}
 
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {agendaStatus.emServico ? (
+              <span className="text-[10px] px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-black">
+                🟡 Em serviço {agendaStatus.ocupadoAte ? `até ${formatOcupadoAte(agendaStatus.ocupadoAte)}` : ''}
+              </span>
+            ) : (
+              <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-black">
+                🟢 Disponível agora
+              </span>
+            )}
+            {agendaStatus.agendaAberta ? (
+              <span className="text-[10px] px-2 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-black">
+                📅 Agenda aberta
+              </span>
+            ) : null}
+          </div>
+
           <div className="mt-2 md:mt-2.5 flex gap-1.5 md:gap-2 flex-wrap">
             <motion.button
               type="button"
@@ -221,6 +255,18 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp }) {
             >
               Ver currículo
             </motion.button>
+
+            {agendaStatus?.agendaAberta ? (
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.96 }}
+                onClick={() => onAgendar?.(item)}
+                className="h-[34px] md:h-[38px] px-3 rounded-xl bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-black transition-all duration-300 hover:-translate-y-[3px] active:scale-[0.98] shadow-sm"
+                title="Agendar serviço"
+              >
+                📅 Agendar
+              </motion.button>
+            ) : null}
 
             <motion.button
               type="button"

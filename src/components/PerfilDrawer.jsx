@@ -34,6 +34,9 @@ const initialProfile = {
   profRegiao: "",
   profExperiencia: "",
   plano: "Free",
+  statusProfissional: "disponivel",
+  ocupadoAte: "",
+  agendaAberta: true,
 };
 
 const tabLabel = {
@@ -195,6 +198,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             avatar:
               data.avatar || data.fotoURL || data.photoURL || prev.avatar || "",
             plano: data.plano || data.assinatura?.plano || prev.plano || "Free",
+            statusProfissional: data.statusProfissional || data.profissional?.statusProfissional || prev.statusProfissional || "disponivel",
+            ocupadoAte: data.ocupadoAte || data.profissional?.ocupadoAte || prev.ocupadoAte || "",
+            agendaAberta: data.agendaAberta ?? data.profissional?.agendaAberta ?? prev.agendaAberta ?? true,
           };
         });
       }
@@ -226,6 +232,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         whatsapp: profile.whatsapp || "",
         regiao: profile.profRegiao || profile.cidade || "",
         experiencia: profile.profExperiencia || "",
+        statusProfissional: profile.statusProfissional || "disponivel",
+        ocupadoAte: profile.ocupadoAte || "",
+        agendaAberta: profile.agendaAberta !== false,
       };
 
       const fotoPrincipal =
@@ -272,6 +281,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             }
           : null,
         plano: profile.plano || "Free",
+        statusProfissional: profile.statusProfissional || "disponivel",
+        ocupadoAte: profile.ocupadoAte || "",
+        agendaAberta: profile.agendaAberta !== false,
         assinatura: {
           plano: profile.plano || "Free",
           origem: "perfil",
@@ -289,6 +301,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         isCorre: !!profile.isCorre,
         isProfissional: !!profile.isProfissional,
         plano: profile.plano || "Free",
+        statusProfissional: profile.statusProfissional || "disponivel",
+        ocupadoAte: profile.ocupadoAte || "",
+        agendaAberta: profile.agendaAberta !== false,
         atualizadoEm: serverTimestamp(),
       });
 
@@ -756,6 +771,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
               {profile.isProfissional && (
                 <div className="space-y-4">
+
                   <Field label="Título profissional">
                     <input
                       value={profile.titulo}

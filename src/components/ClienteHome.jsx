@@ -115,6 +115,7 @@ export default function ClienteHome({
   onIrAoVivo,
   onlineUsers = [],
   onAbrirPerfil,
+  onAgendar,
 }) {
   const [modo, setModo] = useState('corre') // corre | profissional
 
@@ -254,6 +255,7 @@ export default function ClienteHome({
             search={busca}
             limit={200}
             onAbrirPerfil={onAbrirPerfil}
+            onAgendar={onAgendar}
           />
         </div>
       </div>
