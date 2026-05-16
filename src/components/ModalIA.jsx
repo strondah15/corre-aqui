@@ -60,7 +60,7 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
   async function criarNoFirebase({ tipo, titulo, descricao, valor, local, categoriaId, destaqueInicial, emergencia }) {
     const pedidosRef = ref(database, 'pedidos')
     const agora = Date.now()
-    const boostUntil = destaqueInicial ? agora + 30 * 60_000 : 0
+    const boostUntil = 0
 
     const novoItem = {
       tipo,
@@ -71,11 +71,11 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
       status: 'aberto',
       local: local || null,
       criador: { nome: meuNome || 'Anônimo', id: meuId || null },
-      urgencia: emergencia ? 'emergencia' : 'normal',
-      emergencia: !!emergencia,
-      prioridade: emergencia ? 'alta' : destaqueInicial ? 'destaque' : 'normal',
-      boost: destaqueInicial
-        ? { level: 1, label: emergencia ? 'Emergência' : 'Destaque', until: boostUntil, createdAt: agora, by: { id: meuId || null, nome: meuNome || 'Anônimo' } }
+      urgencia: 'normal',
+      emergencia: false,
+      prioridade: 'normal',
+      boost: false && destaqueInicial
+        ? { level: 1, label: emergencia ? 'Emergência (em breve)' : 'Destaque (em breve)', until: boostUntil, createdAt: agora, by: { id: meuId || null, nome: meuNome || 'Anônimo' } }
         : null,
       criadoEm: agora,
       atualizadoEm: agora,
@@ -117,7 +117,7 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
 
     try {
       await criarNoFirebase({ tipo, titulo, descricao: msg, valor: valorFinal, local, categoriaId, destaqueInicial, emergencia })
-      setResposta(`✅ Pedido criado · ${getCategoryLabel(categoriaId)}${valorFinal != null ? ` · R$ ${valorFinal.toFixed(2)}` : ''}${emergencia ? ' · Emergência' : destaqueInicial ? ' · Destaque' : ''}`)
+      setResposta(`✅ Pedido criado · ${getCategoryLabel(categoriaId)}${valorFinal != null ? ` · R$ ${valorFinal.toFixed(2)}` : ''}`)
       setMensagem('')
       setValorDigitado('')
       setCategoriaId('servicos_gerais')
@@ -178,12 +178,12 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
           <div className="rounded-[26px] border border-white/10 bg-white/[0.04] p-3">
             <div className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-slate-400">Alcance do pedido</div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => { setDestaqueInicial(!destaqueInicial); if (emergencia) setEmergencia(false) }} className={`${optionBase} ${destaqueInicial ? 'border-fuchsia-400/50 bg-fuchsia-500/15 text-fuchsia-100 shadow-[0_0_30px_rgba(217,70,239,0.20)]' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]'}`}>
-                <div className="font-black">🚀 Destacar pedido</div>
+              <button type="button" onClick={() => {}} className={`${optionBase} cursor-not-allowed opacity-60 border-white/10 bg-white/[0.03] text-slate-300`}>
+                <div className="font-black">🚀 Destacar pedido (em breve)</div>
                 <div className="mt-1 text-xs text-slate-400">Aparece com mais força para quem está disponível.</div>
               </button>
-              <button type="button" onClick={() => { setEmergencia(!emergencia); if (!emergencia) setDestaqueInicial(true) }} className={`${optionBase} ${emergencia ? 'border-red-400/55 bg-red-500/15 text-red-100 shadow-[0_0_30px_rgba(239,68,68,0.22)]' : 'border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]'}`}>
-                <div className="font-black">🚨 Emergência</div>
+              <button type="button" onClick={() => {}} className={`${optionBase} cursor-not-allowed opacity-60 border-white/10 bg-white/[0.03] text-slate-300`}>
+                <div className="font-black">🚨 Emergência (em breve)</div>
                 <div className="mt-1 text-xs text-slate-400">Use quando precisa de resposta mais rápida.</div>
               </button>
             </div>

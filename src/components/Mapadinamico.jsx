@@ -124,8 +124,8 @@ const TAXA_PROF_POR_PATENTE = {
 }
 
 const BOOST_LEVELS = {
-  1: { minutos: 30, label: 'Destaque', emoji: '🚀', preco: 2.99 },
-  2: { minutos: 20, label: 'Emergência', emoji: '🚨', preco: 4.99 },
+  1: { minutos: 30, label: 'Destaque (breve)', emoji: '🚀', preco: 2.99 },
+  2: { minutos: 20, label: 'Emergência (breve)', emoji: '🚨', preco: 4.99 },
 }
 
 const nowMs = () => Date.now()
@@ -1711,11 +1711,11 @@ const [showXpToast, setShowXpToast] = useState(false)
                       <div className="flex items-center gap-2">
                         {b.emergencia ? (
                           <span className="text-[11px] px-2.5 py-1 rounded-full bg-red-100 border border-red-300 text-red-800 font-black shadow-sm animate-pulse">
-                            🚨 URGENTE
+                            🚨 URGENTE ANTIGO
                           </span>
                         ) : b.destaque ? (
                           <span className="text-[11px] px-2.5 py-1 rounded-full bg-fuchsia-100 border border-fuchsia-300 text-fuchsia-800 font-black shadow-sm">
-                            🚀 DESTAQUE
+                            🚀 DESTAQUE ANTIGO
                           </span>
                         ) : null}
                         <BadgeStatus status={status} />
@@ -2194,31 +2194,76 @@ const [showXpToast, setShowXpToast] = useState(false)
       {/* ✅ BARRA INFERIOR REAL DO CLIENTE
           Pedidos e Conversas não ficam mais como caixa no meio.
           A barra fica fixa embaixo e cada opção abre uma tela própria com rolagem. */}
-      {modoApp === 'cliente' && (
-        <div className="fixed left-0 right-0 bottom-0 z-[99980] bg-[#0f172a] border-t border-slate-700 shadow-[0_-10px_30px_rgba(0,0,0,0.45)] pointer-events-none">
-          <div className="mx-auto w-full max-w-[760px] pointer-events-auto p-3 grid grid-cols-2 gap-2">
+      
+
+
+{modoApp === 'cliente' && (
+        <div className="fixed inset-x-0 bottom-4 z-[99980] flex justify-center pointer-events-none">
+          <div className="
+            pointer-events-auto relative
+            flex items-center gap-1.5
+            rounded-[34px]
+            border border-blue-400/25
+            bg-[#0b1220]/95
+            px-2 py-2
+            shadow-[0_18px_50px_rgba(0,0,0,0.50),0_0_36px_rgba(59,130,246,0.22)]
+            backdrop-blur-xl
+            overflow-hidden
+          ">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_50%,rgba(59,130,246,0.22),transparent_35%),radial-gradient(circle_at_82%_50%,rgba(168,85,247,0.20),transparent_35%)]" />
+
             <button
               type="button"
               onClick={() => setClientePainelBaixo('meusPedidos')}
-              className={`h-14 rounded-2xl px-3 text-sm font-black border transition active:scale-[0.98] ${
-                clientePainelBaixo === 'meusPedidos'
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20'
-                  : 'bg-[#1e293b] text-slate-200 border-slate-700 hover:bg-[#263449]'
-              }`}
+              className={`relative h-13 min-w-[148px] rounded-[26px]
+                flex items-center justify-center gap-3
+                text-[15px] font-black
+                transition-all duration-300 active:scale-[0.96]
+                ${
+                  clientePainelBaixo === 'meusPedidos'
+                    ? 'bg-gradient-to-r from-blue-600 to-cyan-400 text-white shadow-[0_10px_26px_rgba(37,99,235,0.42),inset_0_0_20px_rgba(255,255,255,0.12)]'
+                    : 'bg-white/[0.055] text-white/82 hover:text-white hover:bg-white/[0.09]'
+                }`}
             >
-              📦 Meus pedidos
+              <span className={`grid h-9 w-9 place-items-center rounded-2xl border text-[22px] ${
+                clientePainelBaixo === 'meusPedidos'
+                  ? 'border-cyan-200/35 bg-white/12 shadow-[0_0_18px_rgba(103,232,249,0.50)]'
+                  : 'border-white/10 bg-white/[0.07]'
+              }`}>
+                📦
+              </span>
+              <span>Pedidos</span>
+              {clientePainelBaixo === 'meusPedidos' ? (
+                <span className="absolute bottom-1.5 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-cyan-200 shadow-[0_0_16px_rgba(103,232,249,0.85)]" />
+              ) : null}
             </button>
+
+            <div className="relative h-9 w-px bg-white/15" />
 
             <button
               type="button"
               onClick={() => setClientePainelBaixo('conversas')}
-              className={`h-14 rounded-2xl px-3 text-sm font-black border transition active:scale-[0.98] ${
-                clientePainelBaixo === 'conversas'
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20'
-                  : 'bg-[#1e293b] text-slate-200 border-slate-700 hover:bg-[#263449]'
-              }`}
+              className={`relative h-13 min-w-[148px] rounded-[26px]
+                flex items-center justify-center gap-3
+                text-[15px] font-black
+                transition-all duration-300 active:scale-[0.96]
+                ${
+                  clientePainelBaixo === 'conversas'
+                    ? 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-[0_10px_26px_rgba(168,85,247,0.42),inset_0_0_20px_rgba(255,255,255,0.12)]'
+                    : 'bg-white/[0.055] text-white/82 hover:text-white hover:bg-white/[0.09]'
+                }`}
             >
-              💬 Conversas
+              <span className={`grid h-9 w-9 place-items-center rounded-2xl border text-[22px] ${
+                clientePainelBaixo === 'conversas'
+                  ? 'border-fuchsia-200/35 bg-white/12 shadow-[0_0_18px_rgba(240,171,252,0.50)]'
+                  : 'border-white/10 bg-white/[0.07]'
+              }`}>
+                💬
+              </span>
+              <span>Conversas</span>
+              {clientePainelBaixo === 'conversas' ? (
+                <span className="absolute bottom-1.5 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-fuchsia-200 shadow-[0_0_16px_rgba(240,171,252,0.85)]" />
+              ) : null}
             </button>
           </div>
         </div>

@@ -56,22 +56,22 @@ export default function ModoGate() {
 
   // ✅ SEMPRE mostrar as duas abas primeiro
   return (
-    <div className="min-h-screen w-full flex items-center justify-center px-4 py-10 bg-[#0B0F1A] text-white">
+    <div className="min-h-screen w-full flex items-center justify-center px-4 py-6 bg-[#0B0F1A] text-white">
       <div className="w-full max-w-md">
         <div className="text-center">
-          <div className="mx-auto w-14 h-14 rounded-3xl bg-white/10 border border-white/10 flex items-center justify-center text-2xl">
+          <div className="mx-auto w-14 h-14 rounded-[24px] bg-white/10 border border-white/10 flex items-center justify-center text-2xl">
             ⚡
           </div>
           <h1 className="mt-4 text-2xl font-extrabold tracking-tight">
             Escolha o modo
           </h1>
           <p className="mt-2 text-sm text-white/70">
-            Você pode escolher sempre que entrar.
+            Escolha seu modo.
           </p>
         </div>
 
         {/* ✅ ABAS (Cliente / Corre) */}
-        <div className="mt-6 relative flex rounded-2xl border border-white/10 bg-white/5 p-1">
+        <div className="mt-3 relative flex rounded-2xl border border-white/10 bg-white/5 p-1">
           <motion.div
             layout
             className="absolute top-1 bottom-1 w-1/2 rounded-xl bg-white/10"
@@ -101,7 +101,7 @@ export default function ModoGate() {
         </div>
 
         {/* Conteúdo de cada modo */}
-        <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+        <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
           {selectedMode === 'cliente' ? (
             <div className="flex items-start gap-3">
               <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-400/20 flex items-center justify-center text-2xl">
@@ -113,7 +113,7 @@ export default function ModoGate() {
                   Você cria pedidos e encontra quem vai resolver.
                 </div>
                 <div className="mt-2 text-[11px] text-white/55">
-                  • Criar missão • Acompanhar no chat • Ver no mapa
+                  • Criar missão • Chat • Mapa
                 </div>
               </div>
             </div>
@@ -128,54 +128,59 @@ export default function ModoGate() {
                   Você trabalha: aparece disponível e aceita missões.
                 </div>
                 <div className="mt-2 text-[11px] text-white/55">
-                  • Ficar online • Receber mensagens • Aceitar pedidos
+                  • Online • Mensagens • Pedidos
                 </div>
               </div>
             </div>
           )}
+
+          <button
+            onClick={continuar}
+            className="
+              
+              mt-3 w-full rounded-[20px] py-3 font-black
+              text-white tracking-[0.01em]
+              bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400
+              hover:from-sky-400 hover:via-blue-400 hover:to-cyan-300
+              border border-cyan-300/20
+              shadow-[0_0_18px_rgba(56,189,248,0.28),0_14px_40px_rgba(37,99,235,0.30)]
+              hover:shadow-[0_0_26px_rgba(56,189,248,0.40),0_18px_50px_rgba(37,99,235,0.40)]
+              transition-all duration-300
+              active:scale-[0.985]
+            "
+          >
+            Continuar como {selectedMode === 'cliente' ? 'Cliente' : 'Corre'}
+          </button>
 
 
           <button
             type="button"
             onClick={() => setOpenPerfilGlobal(true)}
             className="
-              mt-5 w-full rounded-2xl py-3 font-extrabold
-              bg-white/10 hover:bg-white/15
-              border border-white/10 text-white
-              shadow-[0_12px_35px_rgba(0,0,0,0.18)]
-              active:scale-[0.98] transition
+              
+              mt-2 w-full rounded-[18px] py-2.5 font-semibold
+              bg-white/[0.035] hover:bg-white/[0.06]
+              border border-white/5
+              text-white/60
+              shadow-[0_6px_18px_rgba(0,0,0,0.10)]
+              transition-all duration-300
             "
           >
             👤 Perfil e configurações
           </button>
-
-          <button
-            onClick={continuar}
-            className="
-              mt-6 w-full rounded-2xl py-3 font-semibold
-              bg-gradient-to-r from-sky-500/70 to-cyan-400/70
-              hover:from-sky-500/80 hover:to-cyan-400/80
-              border border-white/10
-              shadow-[0_12px_40px_rgba(56,189,248,0.18)]
-            "
-          >
-            Continuar como {selectedMode === 'cliente' ? 'Cliente' : 'Corre'}
-          </button>
-
-          <button
-            onClick={() => {
-              try {
-                localStorage.removeItem('modoApp')
-              } catch {}
-              setSelectedMode('cliente')
-            }}
-            className="mt-3 w-full rounded-2xl py-3 text-sm bg-white/5 hover:bg-white/10 border border-white/10 text-white/70"
-          >
-            Resetar escolha (opcional)
-          </button>
         </div>
 
-        <div className="mt-6 text-center text-[11px] text-white/50">
+        <div className="
+w-full mt-2 rounded-[16px]
+bg-white/[0.03]
+hover:bg-white/[0.05]
+text-white/60
+font-semibold
+py-2.5
+border border-white/5
+shadow-[0_6px_18px_rgba(0,0,0,0.12)]
+transition-all duration-300
+">
           Dica: pra testar MVP rápido, use <b>Corre</b> primeiro.
         </div>
 

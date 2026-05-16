@@ -21,7 +21,7 @@ export default function PatenteUpModal({
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.82, y: 25 }}
             transition={{ type: 'spring', stiffness: 180, damping: 18 }}
-            className="w-full max-w-md rounded-[36px] border border-yellow-300/20 bg-[#071120]/95 p-8 text-center shadow-[0_30px_100px_rgba(250,204,21,0.18)]"
+            className="w-full max-w-md rounded-[28px] border border-yellow-300/20 bg-[#071120]/95 p-6 text-center shadow-[0_30px_100px_rgba(250,204,21,0.18)]"
           >
             <div className="mx-auto grid h-24 w-24 place-items-center rounded-[30px] bg-gradient-to-br from-yellow-300 to-orange-500 text-5xl">
               🏆

@@ -358,9 +358,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           </div>
         </div>
 
-        <div className="mx-auto w-full max-w-7xl p-4 md:p-8">
+        <div className="mx-auto w-full max-w-7xl p-4 md:p-6">
           {/* FOTO + HEADER */}
-          <div className="rounded-[32px] bg-gradient-to-br from-[#0b1730] via-[#0a1428] to-[#050b16] border border-cyan-300/10 p-5 md:p-8 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
+          <div className="rounded-[32px] bg-gradient-to-br from-[#0b1730] via-[#0a1428] to-[#050b16] border border-cyan-300/10 p-5 md:p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
             <div className="flex flex-col items-center text-center">
               <label className="cursor-pointer relative group">
                 <input

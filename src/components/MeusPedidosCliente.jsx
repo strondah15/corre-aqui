@@ -254,10 +254,17 @@ export default function MeusPedidosCliente({
                 {String(p?.status || 'aberto').toLowerCase() === 'aberto' && !p?.aceite?.id ? (
                   <motion.button
                     className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-fuchsia-600 to-blue-600 hover:brightness-110 text-white text-sm font-black shadow-md shadow-blue-500/25 transition active:scale-[0.98]"
-                    onClick={() => setPedidoAlcance(p)}
+                    onClick={() =>
+                      avisar({
+                        type: 'info',
+                        title: 'Recurso em breve',
+                        message: 'Impulsionar e emergência serão liberados quando o app tiver mais movimento.',
+                      })
+                    }
+                    disabled
                     type="button"
                   >
-                    ⚡ Melhorar alcance
+                    ⚡ Melhorar alcance (breve)
                   </motion.button>
                 ) : null}
 
@@ -301,9 +308,9 @@ export default function MeusPedidosCliente({
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xl font-black">⚡ Melhorar alcance</div>
+                <div className="text-xl font-black">⚡ Melhorar alcance (breve)</div>
                 <div className="mt-1 text-sm text-slate-400">
-                  Use quando seu pedido ainda estiver aberto e ninguém aceitou.
+                  Disponível em breve. Vamos liberar quando houver mais profissionais e pedidos ativos no app.
                 </div>
               </div>
               <button
@@ -323,28 +330,28 @@ export default function MeusPedidosCliente({
             <div className="mt-5 space-y-3">
               <button
                 type="button"
-                disabled={aplicandoAlcance}
-                onClick={() => aplicarAlcance('destaque')}
+                disabled
+                onClick={() => {}}
                 className="w-full rounded-3xl border border-fuchsia-400/25 bg-fuchsia-500/12 p-4 text-left hover:bg-fuchsia-500/18 disabled:opacity-60"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="font-black text-fuchsia-100">🚀 Destacar por 30 minutos</div>
-                  <div className="rounded-2xl bg-white/10 px-3 py-1 text-sm font-black text-white">R$ 2,99</div>
+                  <div className="font-black text-fuchsia-100">🚀 Impulsionar — em breve</div>
+                  <div className="rounded-2xl bg-white/10 px-3 py-1 text-sm font-black text-white">Breve</div>
                 </div>
-                <div className="mt-1 text-xs text-slate-400">Coloca o pedido em destaque e sobe ele na lista dos corres.</div>
+                <div className="mt-1 text-xs text-slate-400">Será liberado quando houver mais movimento no app.</div>
               </button>
 
               <button
                 type="button"
-                disabled={aplicandoAlcance}
-                onClick={() => aplicarAlcance('emergencia')}
+                disabled
+                onClick={() => {}}
                 className="w-full rounded-3xl border border-red-400/25 bg-red-500/12 p-4 text-left hover:bg-red-500/18 disabled:opacity-60"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="font-black text-red-100">🚨 Tornar urgente</div>
-                  <div className="rounded-2xl bg-white/10 px-3 py-1 text-sm font-black text-white">R$ 4,99</div>
+                  <div className="font-black text-red-100">🚨 Emergência — em breve</div>
+                  <div className="rounded-2xl bg-white/10 px-3 py-1 text-sm font-black text-white">Breve</div>
                 </div>
-                <div className="mt-1 text-xs text-slate-400">Prioridade máxima, card urgente e alerta para os corres. Sem alterar o mapa por enquanto.</div>
+                <div className="mt-1 text-xs text-slate-400">Alerta de urgência será liberado numa próxima fase.</div>
               </button>
             </div>
           </motion.div>
