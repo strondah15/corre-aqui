@@ -44,7 +44,7 @@ const tabLabel = {
   corre: "Corre",
   profissional: "Profissional",
   config: "Ajustes",
-  monetizacao: "Planos",
+  monetizacao: "Em breve",
   patentes: "Patentes",
 };
 
@@ -53,49 +53,34 @@ const tabIcon = {
   corre: "⚡",
   profissional: "🧑‍🔧",
   config: "⚙️",
-  monetizacao: "💎",
+  monetizacao: "📢",
   patentes: "🏆",
 };
 
 const planoInfo = {
-  Free: {
-    nome: "Free",
-    icon: "🟢",
+  EmBreve: {
+    nome: "Em breve",
+    icon: "✨",
     badge: "bg-emerald-500/15 border-emerald-400/20 text-emerald-300",
-    descricao: "Use o Corre Aqui com anúncios leves e 0% de taxa por serviço.",
-  },
-  Pro: {
-    nome: "Pro",
-    icon: "💎",
-    badge: "bg-blue-500/15 border-blue-400/20 text-blue-300",
-    descricao:
-      "Mais visibilidade, menos anúncios e recursos para crescer no app.",
-  },
-  Ultra: {
-    nome: "Ultra",
-    icon: "🚀",
-    badge: "bg-fuchsia-500/15 border-fuchsia-400/20 text-fuchsia-300",
-    descricao:
-      "Destaque máximo, prioridade e ferramentas avançadas para profissionais.",
+    descricao: "Recursos premium e anúncios locais serão liberados futuramente.",
   },
 };
 
-function PlanoResumo({ plano = "Free", onOpenPlanos }) {
-  const atual = planoInfo[plano] || planoInfo.Free;
+function PlanoResumo({ onOpenPlanos }) {
+  const atual = planoInfo.EmBreve;
 
   return (
     <div className="mt-5 w-full rounded-[26px] bg-[#0c1a2e] border border-cyan-400/10 p-4 text-left shadow-[0_0_40px_rgba(34,211,238,0.08)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] uppercase tracking-[0.18em] font-black text-emerald-300">
-            Monetização justa
+            Crescimento justo
           </div>
           <div className="mt-1 text-sm font-extrabold text-white">
             💚 Sem taxa do app
           </div>
           <div className="mt-1 text-xs leading-relaxed text-slate-300">
-            100% do valor combinado fica com quem faz o serviço. O app cresce
-            com planos, boost e anúncios leves.
+            100% do valor combinado fica com quem faz o serviço. Recursos premium e anúncios locais chegam em breve.
           </div>
         </div>
 
@@ -111,7 +96,7 @@ function PlanoResumo({ plano = "Free", onOpenPlanos }) {
         onClick={onOpenPlanos}
         className="mt-3 w-full rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-4 py-3 text-sm font-extrabold text-white active:scale-[0.98] transition"
       >
-        Ver planos e vantagens
+        Ver recursos em breve
       </button>
       
     </div>
@@ -865,42 +850,22 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   💚 Corre Aqui sem taxa
                 </div>
                 <div className="mt-1 text-sm leading-relaxed text-slate-300">
-                  O trabalhador fica com 100% do valor do serviço. A monetização
-                  fica organizada por planos, anúncios leves e boost de
-                  destaque.
+                  O trabalhador fica com 100% do valor do serviço. Recursos premium, anúncios locais e boosts serão preparados com calma, sem cobrança obrigatória agora.
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {["Free", "Pro", "Ultra"].map((plano) => {
-                    const item = planoInfo[plano];
-                    const ativo = (profile.plano || "Free") === plano;
-
-                    return (
-                      <button
-                        key={plano}
-                        type="button"
-                        onClick={() => setProfile((p) => ({ ...p, plano }))}
-                        className={[
-                          "rounded-2xl border px-3 py-3 text-left active:scale-[0.98] transition",
-                          ativo
-                            ? "bg-blue-600/20 border-blue-400/50 shadow-lg shadow-blue-500/10"
-                            : "bg-slate-900/70 border-white/10 hover:bg-white/10",
-                        ].join(" ")}
-                      >
-                        <div className="text-sm font-black text-white">
-                          {item.icon} {item.nome}
-                        </div>
-                        <div className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                          {item.descricao}
-                        </div>
-                        {ativo ? (
-                          <div className="mt-2 text-[11px] font-black text-emerald-300">
-                            Plano atual ✅
-                          </div>
-                        ) : null}
-                      </button>
-                    );
-                  })}
+                  {[
+                    "✨ Premium em breve",
+                    "📢 Anúncios locais",
+                    "🚀 Boosts futuros",
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-3 text-sm font-black text-white"
+                    >
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </div>
 

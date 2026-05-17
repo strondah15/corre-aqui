@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { ref, push, set, serverTimestamp } from 'firebase/database'
 import { database } from '@/lib/firebase'
 
@@ -9,6 +10,11 @@ function tomorrow() {
   d.setDate(d.getDate() + 1)
   return d.toISOString().slice(0, 10)
 }
+
+const inputClass =
+  'mt-1.5 w-full rounded-2xl border border-white/10 bg-white/[0.065] px-3 py-3 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-blue-300/35 focus:bg-white/[0.09] focus:ring-2 focus:ring-blue-400/20'
+
+const labelClass = 'text-[11px] uppercase tracking-[0.14em] font-black text-slate-400'
 
 export default function ModalAgenda({ open, onClose, profissional }) {
   const [data, setData] = useState(tomorrow())
@@ -60,144 +66,75 @@ export default function ModalAgenda({ open, onClose, profissional }) {
 
   return (
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 999999,
-        background: 'rgba(0,0,0,0.72)',
-        backdropFilter: 'blur(10px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 16,
+      className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/75 px-4 py-5 text-white backdrop-blur-md"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose?.()
       }}
     >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 430,
-          borderRadius: 32,
-          overflow: 'hidden',
-          background: '#ffffff',
-          boxShadow: '0 30px 90px rgba(0,0,0,0.45)',
-          border: '1px solid rgba(255,255,255,0.4)',
-        }}
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.24, ease: 'easeOut' }}
+        className="relative max-h-[92dvh] w-full max-w-[460px] overflow-hidden rounded-[32px] border border-white/10 bg-[#07111f]/96 shadow-[0_30px_110px_rgba(0,0,0,0.62)]"
       >
-        <div
-          style={{
-            background: 'linear-gradient(135deg,#7c3aed,#4f46e5,#2563eb)',
-            padding: '22px 20px',
-            color: '#fff',
-            position: 'relative',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-              gap: 12,
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '6px 12px',
-                  borderRadius: 999,
-                  background: 'rgba(255,255,255,0.15)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  fontSize: 11,
-                  fontWeight: 900,
-                }}
-              >
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(124,58,237,0.24),transparent_36%),radial-gradient(circle_at_88%_16%,rgba(37,99,235,0.20),transparent_34%)]" />
+
+        <div className="relative border-b border-white/10 bg-white/[0.035] px-5 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="inline-flex rounded-full border border-violet-200/20 bg-violet-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-violet-100">
                 📅 Agenda inteligente
               </div>
 
-              <div
-                style={{
-                  marginTop: 14,
-                  fontSize: 26,
-                  fontWeight: 900,
-                  lineHeight: 1,
-                  color: '#fff',
-                }}
-              >
+              <h2 className="mt-3 text-2xl font-black leading-tight tracking-tight text-white">
                 Agendar serviço
-              </div>
+              </h2>
 
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: 'rgba(255,255,255,0.85)',
-                }}
-              >
+              <p className="mt-1 text-sm font-semibold text-slate-300">
                 com {profissionalNome}
-              </div>
+              </p>
             </div>
 
             <button
               type="button"
               onClick={onClose}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 18,
-                border: '1px solid rgba(255,255,255,0.12)',
-                background: 'rgba(255,255,255,0.14)',
-                color: '#fff',
-                fontWeight: 900,
-                fontSize: 18,
-                cursor: 'pointer',
-              }}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.07] text-lg font-black text-white/80 transition hover:bg-white/[0.12]"
+              aria-label="Fechar agenda"
             >
-              ✕
+              x
             </button>
           </div>
         </div>
 
-        <div style={{ padding: 18 }}>
+        <div className="relative max-h-[calc(92dvh-128px)] overflow-y-auto p-5">
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-[11px] uppercase tracking-wide font-black text-slate-500">
-                Data
-              </span>
-
+              <span className={labelClass}>Data</span>
               <input
                 type="date"
                 value={data}
                 onChange={(e) => setData(e.target.value)}
-                className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold outline-none"
+                className={inputClass}
               />
             </label>
 
             <label className="block">
-              <span className="text-[11px] uppercase tracking-wide font-black text-slate-500">
-                Hora
-              </span>
-
+              <span className={labelClass}>Hora</span>
               <input
                 type="time"
                 value={hora}
                 onChange={(e) => setHora(e.target.value)}
-                className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold outline-none"
+                className={inputClass}
               />
             </label>
           </div>
 
-          <div className="mt-3">
-            <span className="text-[11px] uppercase tracking-wide font-black text-slate-500">
-              Duração estimada
-            </span>
-
+          <label className="mt-3 block">
+            <span className={labelClass}>Duração estimada</span>
             <select
               value={duracao}
               onChange={(e) => setDuracao(e.target.value)}
-              className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold outline-none"
+              className={inputClass}
             >
               <option>1h</option>
               <option>2h</option>
@@ -206,49 +143,50 @@ export default function ModalAgenda({ open, onClose, profissional }) {
               <option>3 dias</option>
               <option>1 semana</option>
             </select>
-          </div>
+          </label>
 
-          <div className="mt-3">
-            <span className="text-[11px] uppercase tracking-wide font-black text-slate-500">
-              Detalhes do serviço
-            </span>
-
+          <label className="mt-3 block">
+            <span className={labelClass}>Detalhes do serviço</span>
             <textarea
               rows={3}
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
               placeholder="Ex: preciso instalar uma torneira..."
-              className="mt-1.5 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold outline-none"
+              className={`${inputClass} resize-none font-semibold leading-relaxed`}
             />
-          </div>
+          </label>
 
-          <div className="mt-3">
-            <span className="text-[11px] uppercase tracking-wide font-black text-slate-500">
-              Valor opcional
-            </span>
-
-            <div className="mt-1.5 flex items-center rounded-2xl border border-slate-200 bg-slate-50 px-3">
-              <span className="text-sm font-black text-slate-400">R$</span>
-
+          <label className="mt-3 block">
+            <span className={labelClass}>Valor opcional</span>
+            <div className="mt-1.5 flex items-center rounded-2xl border border-white/10 bg-white/[0.065] px-3 transition focus-within:border-emerald-300/35 focus-within:ring-2 focus-within:ring-emerald-400/20">
+              <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-2 py-1 text-sm font-black text-emerald-200">
+                R$
+              </span>
               <input
                 value={valor}
                 onChange={(e) => setValor(e.target.value)}
                 placeholder="120"
-                className="w-full bg-transparent px-2 py-3 text-sm font-bold outline-none"
+                inputMode="decimal"
+                className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm font-bold text-white outline-none placeholder:text-slate-500"
               />
             </div>
+          </label>
+
+          <div className="mt-4 rounded-[22px] border border-white/10 bg-white/[0.045] p-3 text-xs leading-relaxed text-slate-400">
+            A solicitação fica pendente até o profissional aceitar ou recusar.
           </div>
 
-          <button
+          <motion.button
             type="button"
+            whileTap={{ scale: 0.98 }}
             disabled={salvando}
             onClick={enviar}
-            className="mt-4 w-full rounded-[22px] bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-4 text-sm font-black text-white"
+            className="mt-4 w-full rounded-[22px] bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 px-4 py-4 text-sm font-black text-white shadow-[0_18px_46px_rgba(79,70,229,0.32)] transition disabled:cursor-not-allowed disabled:opacity-65"
           >
             {salvando ? 'Enviando...' : 'Solicitar agendamento'}
-          </button>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
     </div>
   )
 }

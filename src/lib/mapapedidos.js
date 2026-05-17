@@ -111,4 +111,6 @@ export async function criarPedido({ draft = {}, mapRef, meuId, meuNome }) {
 }
 
 // Export default opcional para compatibilidade (pode importar default ou nomeado)
-export default { criarPedido, normalizePedido }
+const mapapedidos = { criarPedido, normalizePedido }
+
+export default mapapedidos

@@ -1,38 +1,56 @@
 import { auth, database } from "@/lib/firebase";
-import { GoogleAuthProvider, signInWithPopup, signInWithRedirect } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  GoogleAuthProvider,
+  setPersistence,
+  signInAnonymously,
+  signInWithPopup,
+} from "firebase/auth";
 import { ref, update, serverTimestamp } from "firebase/database";
 
 const provider = new GoogleAuthProvider();
-// opcional: provider.addScope("email");
 
-export async function signInWithGoogle({ mode = "popup" } = {}) {
+async function salvarPerfilGoogle(user) {
+  if (!user?.uid) return;
+
+  await update(ref(database, `users/${user.uid}`), {
+    profile: {
+      nome: user.displayName || "",
+      fotoURL: user.photoURL || "",
+      email: user.email || "",
+      atualizadoEm: serverTimestamp(),
+      criadoEm: serverTimestamp(),
+    },
+  });
+}
+
+async function ensureAuthPersistence() {
   try {
-    let result;
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (err) {
+    console.warn("Nao foi possivel configurar persistencia local do Firebase Auth:", err);
+  }
+}
 
-    if (mode === "redirect") {
-      await signInWithRedirect(auth, provider);
-      return; // em redirect, o retorno vem depois via getRedirectResult (se você usar)
-    }
+export async function signInWithGoogle() {
+  try {
+    await ensureAuthPersistence();
 
-    result = await signInWithPopup(auth, provider);
-
+    const result = await signInWithPopup(auth, provider);
     const user = result.user;
-    if (!user?.uid) return;
 
-    // cria/atualiza o perfil no Realtime Database
-    await update(ref(database, `users/${user.uid}`), {
-      profile: {
-        nome: user.displayName || "",
-        fotoURL: user.photoURL || "",
-        email: user.email || "",
-        atualizadoEm: serverTimestamp(),
-        criadoEm: serverTimestamp(), // ok manter; se quiser “não sobrescrever”, eu ajusto depois
-      },
-    });
+    await salvarPerfilGoogle(user);
 
     return user;
   } catch (err) {
     console.error("Google login error:", err);
     throw err;
   }
+}
+
+export async function signInAsGuest() {
+  await ensureAuthPersistence();
+
+  const result = await signInAnonymously(auth);
+  return result.user;
 }

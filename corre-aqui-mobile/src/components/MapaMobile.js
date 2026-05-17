@@ -18,6 +18,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
+const pedidosRef = ref(database, 'pedidos');
 
 export default function MapaMobile() {
   const [location, setLocation] = useState(null);

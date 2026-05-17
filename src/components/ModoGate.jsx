@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Mapadinamico from '@/components/Mapadinamico'
 import PerfilDrawer from '@/components/PerfilDrawer'
+import AnuncieAqui from '@/components/AnuncieAqui'
 import { auth } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 
@@ -11,8 +12,8 @@ export default function ModoGate() {
   const [selectedMode, setSelectedMode] = useState('cliente') // 'cliente' | 'corre'
   const [stage, setStage] = useState('select') // 'select' | 'app'
   const [openPerfilGlobal, setOpenPerfilGlobal] = useState(false)
+  const [openAnuncieAqui, setOpenAnuncieAqui] = useState(false)
   const [uid, setUid] = useState(null)
-
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -23,7 +24,6 @@ export default function ModoGate() {
   }, [])
 
   useEffect(() => {
-    // só pra lembrar a última escolha (mas SEM pular a tela)
     try {
       const saved = localStorage.getItem('modoApp')
       if (saved === 'cliente' || saved === 'corre') setSelectedMode(saved)
@@ -38,13 +38,9 @@ export default function ModoGate() {
   }
 
   const voltarParaAbas = () => {
-    // Se você quiser obrigar escolher sempre do zero, descomenta:
-    // try { localStorage.removeItem('modoApp') } catch {}
-
     setStage('select')
   }
 
-  // ✅ Depois que escolher e continuar, abre o app
   if (stage === 'app') {
     return (
       <Mapadinamico
@@ -54,7 +50,6 @@ export default function ModoGate() {
     )
   }
 
-  // ✅ SEMPRE mostrar as duas abas primeiro
   return (
     <div className="min-h-screen w-full flex items-center justify-center px-4 py-6 bg-[#0B0F1A] text-white">
       <div className="w-full max-w-md">
@@ -70,7 +65,6 @@ export default function ModoGate() {
           </p>
         </div>
 
-        {/* ✅ ABAS (Cliente / Corre) */}
         <div className="mt-3 relative flex rounded-2xl border border-white/10 bg-white/5 p-1">
           <motion.div
             layout
@@ -100,7 +94,6 @@ export default function ModoGate() {
           </button>
         </div>
 
-        {/* Conteúdo de cada modo */}
         <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
           {selectedMode === 'cliente' ? (
             <div className="flex items-start gap-3">
@@ -137,7 +130,6 @@ export default function ModoGate() {
           <button
             onClick={continuar}
             className="
-              
               mt-3 w-full rounded-[20px] py-3 font-black
               text-white tracking-[0.01em]
               bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400
@@ -152,12 +144,10 @@ export default function ModoGate() {
             Continuar como {selectedMode === 'cliente' ? 'Cliente' : 'Corre'}
           </button>
 
-
           <button
             type="button"
             onClick={() => setOpenPerfilGlobal(true)}
             className="
-              
               mt-2 w-full rounded-[18px] py-2.5 font-semibold
               bg-white/[0.035] hover:bg-white/[0.06]
               border border-white/5
@@ -168,19 +158,36 @@ export default function ModoGate() {
           >
             👤 Perfil e configurações
           </button>
+
+          <button
+            type="button"
+            onClick={() => setOpenAnuncieAqui(true)}
+            className="
+              mt-2 w-full rounded-[18px] py-2.5 font-semibold
+              bg-cyan-400/[0.08] hover:bg-cyan-400/[0.12]
+              border border-cyan-300/10
+              text-cyan-50
+              shadow-[0_10px_28px_rgba(8,145,178,0.12)]
+              transition-all duration-300
+              active:scale-[0.985]
+            "
+          >
+            📢 Anúncios em breve
+          </button>
         </div>
 
         <div className="
-w-full mt-2 rounded-[16px]
-bg-white/[0.03]
-hover:bg-white/[0.05]
-text-white/60
-font-semibold
-py-2.5
-border border-white/5
-shadow-[0_6px_18px_rgba(0,0,0,0.12)]
-transition-all duration-300
-">
+          w-full mt-2 rounded-[16px]
+          bg-white/[0.03]
+          hover:bg-white/[0.05]
+          text-white/60
+          font-semibold
+          py-2.5
+          border border-white/5
+          shadow-[0_6px_18px_rgba(0,0,0,0.12)]
+          transition-all duration-300
+          text-center
+        ">
           Dica: pra testar MVP rápido, use <b>Corre</b> primeiro.
         </div>
 
@@ -188,6 +195,11 @@ transition-all duration-300
           open={openPerfilGlobal}
           onClose={() => setOpenPerfilGlobal(false)}
           uid={uid}
+        />
+
+        <AnuncieAqui
+          open={openAnuncieAqui}
+          onClose={() => setOpenAnuncieAqui(false)}
         />
       </div>
     </div>

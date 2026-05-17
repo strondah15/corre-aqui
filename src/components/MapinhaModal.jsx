@@ -105,6 +105,11 @@ const toInt = (v, fallback) => {
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
 };
 
+// Temporary product flag: keep live-map data/markers working, but hide the
+// large online panels for a cleaner map. Flip to true to restore them.
+const SHOW_LIVE_MAP_ONLINE_PANELS = false;
+const SHOW_ONLINE_CONTROLS = false;
+
 /* =========================================================
    Avatar icons (LRU-ish cache)
 ========================================================= */
@@ -840,7 +845,8 @@ export default function MapinhaModal({
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08, duration: 0.28, ease: "easeOut" }}
       >
-        <div className="flex items-start justify-between gap-3">
+        <div className={`flex items-start gap-3 ${isMapaAoVivo && !SHOW_ONLINE_CONTROLS ? "justify-end" : "justify-between"}`}>
+          {(!isMapaAoVivo || SHOW_ONLINE_CONTROLS) && (
           <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/10 bg-[#071120]/72 p-1.5 backdrop-blur-xl shadow-[0_14px_44px_rgba(0,0,0,0.24)] backdrop-blur-2xl">
             {!isMapaAoVivo && (
               <button
@@ -853,6 +859,7 @@ export default function MapinhaModal({
               </button>
             )}
 
+            {SHOW_ONLINE_CONTROLS && (
             <button
               type="button"
               className={`${pillBase} ${showOnline ? pillOn : pillOff}`}
@@ -861,8 +868,9 @@ export default function MapinhaModal({
             >
               🟢 Online
             </button>
+            )}
 
-            {showOnline && (
+            {SHOW_ONLINE_CONTROLS && showOnline && (
               <button
                 type="button"
                 className={`${pillBase} ${liveMode ? pillOn : pillOff}`}
@@ -873,6 +881,7 @@ export default function MapinhaModal({
               </button>
             )}
           </div>
+          )}
 
           <div className="pointer-events-auto flex items-center gap-2">
             <div className="flex items-center rounded-full border border-white/10 bg-[#071120]/88 p-1.5 shadow-[0_14px_44px_rgba(0,0,0,0.24)] backdrop-blur-2xl">
@@ -915,7 +924,7 @@ export default function MapinhaModal({
         </div>
       </motion.div>
 
-      {isLiveMap && (
+      {isLiveMap && SHOW_LIVE_MAP_ONLINE_PANELS && (
         <motion.div
           className="fixed top-[86px] left-1/2 -translate-x-1/2 z-[9000] w-[min(90vw,440px)] pointer-events-none"
           initial={{ opacity: 0, y: -10 }}
@@ -957,7 +966,8 @@ export default function MapinhaModal({
       )}
 
       {/* bottom sheet premium */}
-      <motion.div
+      {(!isLiveMap || SHOW_LIVE_MAP_ONLINE_PANELS) && (
+        <motion.div
         className="fixed left-0 right-0 bottom-0 z-[8000]"
         initial={{ opacity: 0, y: 80 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1128,7 +1138,8 @@ export default function MapinhaModal({
             </div>
           )}
         </div>
-      </motion.div>
+        </motion.div>
+      )}
     </>
   );
 

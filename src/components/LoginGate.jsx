@@ -2,61 +2,79 @@
 
 import { useEffect, useState } from 'react'
 import { auth, database } from '@/lib/firebase'
-import {
-  onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signOut
-} from 'firebase/auth'
-
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { ref, set, get } from 'firebase/database'
+import {
+  signInAsGuest,
+  signInWithGoogle
+} from '@/lib/authGoogle'
 
 import TelaBoasVindas from './TelaBoasVindas'
 
 export default function LoginGate({ children }) {
   const [uid, setUid] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loginLoading, setLoginLoading] = useState(false)
+  const [guestLoading, setGuestLoading] = useState(false)
+  const [showGuestLogin, setShowGuestLogin] = useState(false)
   const [viuBoasVindas, setViuBoasVindas] = useState(false)
 
-  // 🔥 SALVAR USUÁRIO NO BANCO
   async function salvarUsuario(user) {
     try {
       const userRef = ref(database, `users/${user.uid}`)
       const snap = await get(userRef)
 
-      if (!snap.exists()) {
-        await set(userRef, {
-          nome: user.displayName || '',
-          email: user.email || '',
-          foto: user.photoURL || '',
-          criadoEm: Date.now(),
-        })
-      }
+      const nome = user.displayName || (user.isAnonymous ? 'Visitante teste' : '')
+
+      await set(userRef, {
+        nome,
+        email: user.email || '',
+        foto: user.photoURL || '',
+        anonimo: !!user.isAnonymous,
+        criadoEm: snap.exists() ? snap.val()?.criadoEm || Date.now() : Date.now(),
+        atualizadoEm: Date.now(),
+      })
     } catch (err) {
-      console.error('Erro ao salvar usuário:', err)
+      console.error('Erro ao salvar usuario:', err)
     }
+  }
+
+  async function aplicarUsuario(user) {
+    if (!user) {
+      setUid(null)
+      return
+    }
+
+    setUid(user.uid)
+
+    localStorage.setItem('meuNome', user.displayName || (user.isAnonymous ? 'Visitante teste' : ''))
+    localStorage.setItem('meuId', user.uid)
+
+    await salvarUsuario(user)
   }
 
   useEffect(() => {
     const viu = localStorage.getItem('viuBoasVindas')
     if (viu === 'true') setViuBoasVindas(true)
 
+    const ua = navigator.userAgent || ''
+    const host = window.location.hostname || ''
+    const isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(ua)
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.')
+    setShowGuestLogin(isMobile && isLocalHost)
+
+    let active = true
     const off = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setUid(user.uid)
+      if (!active) return
 
-        localStorage.setItem('meuNome', user.displayName || '')
-        localStorage.setItem('meuId', user.uid)
-
-        await salvarUsuario(user) // 🔥 salva no banco
-      } else {
-        setUid(null)
-      }
-
+      await aplicarUsuario(user)
       setLoading(false)
     })
 
-    return () => off()
+    return () => {
+      active = false
+      off()
+    }
   }, [])
 
   function entrarBoasVindas() {
@@ -65,21 +83,37 @@ export default function LoginGate({ children }) {
   }
 
   async function loginGoogle() {
+    if (loginLoading) return
+
     try {
-      const provider = new GoogleAuthProvider()
-      const result = await signInWithPopup(auth, provider)
+      setLoginLoading(true)
+      const user = await signInWithGoogle()
 
-      const user = result.user
+      if (!user) return
 
-      localStorage.setItem('meuNome', user.displayName || '')
-      localStorage.setItem('meuId', user.uid)
-
-      await salvarUsuario(user) // 🔥 salva aqui também
-
-      setUid(user.uid)
+      await aplicarUsuario(user)
     } catch (error) {
       console.error(error)
-      alert('Erro ao entrar com Google')
+      if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
+        alert('Erro ao entrar com Google')
+      }
+    } finally {
+      setLoginLoading(false)
+    }
+  }
+
+  async function loginVisitante() {
+    if (guestLoading) return
+
+    try {
+      setGuestLoading(true)
+      const user = await signInAsGuest()
+      await aplicarUsuario(user)
+    } catch (error) {
+      console.error(error)
+      alert('Erro ao entrar como visitante')
+    } finally {
+      setGuestLoading(false)
     }
   }
 
@@ -91,32 +125,38 @@ export default function LoginGate({ children }) {
 
   if (loading) return null
 
-  // 🔥 BOAS-VINDAS
   if (!viuBoasVindas) {
     return <TelaBoasVindas onEntrar={entrarBoasVindas} />
   }
 
-  // 🔐 LOGIN
   if (!uid) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black via-slate-900 to-blue-950 text-white">
         <div className="w-full max-w-sm p-6 text-center">
-
           <h1 className="text-2xl font-bold mb-6">Entrar</h1>
 
           <button
             onClick={loginGoogle}
-            className="w-full py-3 bg-white text-black rounded-xl font-semibold hover:scale-105 transition"
+            disabled={loginLoading}
+            className="w-full py-3 bg-white text-black rounded-xl font-semibold hover:scale-105 transition disabled:cursor-not-allowed disabled:opacity-70"
           >
-            Entrar com Google
+            {loginLoading ? 'Abrindo Google...' : 'Entrar com Google'}
           </button>
 
+          {showGuestLogin && (
+            <button
+              onClick={loginVisitante}
+              disabled={guestLoading}
+              className="mt-3 w-full py-3 rounded-xl border border-white/20 bg-white/10 text-white font-semibold hover:bg-white/15 transition disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {guestLoading ? 'Entrando...' : 'Entrar como visitante/teste'}
+            </button>
+          )}
         </div>
       </div>
     )
   }
 
-  // 🔥 APP
   return (
     <>
       <button

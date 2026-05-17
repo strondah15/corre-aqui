@@ -627,20 +627,35 @@ const [showXpToast, setShowXpToast] = useState(false)
 
 
   /* =======================
-     ✅ Agenda pending count
+     ✅ Agenda counters
   ======================= */
   useEffect(() => {
     if (!meuId) {
       setAgendaPendentes(0)
+      setAgendaConfirmados(0)
+      setAgendaRecusados(0)
       return
     }
 
     const off = onValue(ref(database, 'agendamentos'), (snap) => {
       const raw = snap.val() || {}
-      const total = Object.values(raw).filter((a) => {
-        return a?.profissionalId === meuId && String(a?.status || 'pendente') === 'pendente'
-      }).length
-      setAgendaPendentes(total)
+      const counts = Object.values(raw).reduce(
+        (acc, a) => {
+          if (a?.profissionalId !== meuId) return acc
+
+          const status = String(a?.status || 'pendente')
+          if (status === 'pendente') acc.pendentes += 1
+          if (status === 'aceito') acc.confirmados += 1
+          if (status === 'recusado') acc.recusados += 1
+
+          return acc
+        },
+        { pendentes: 0, confirmados: 0, recusados: 0 }
+      )
+
+      setAgendaPendentes(counts.pendentes)
+      setAgendaConfirmados(counts.confirmados)
+      setAgendaRecusados(counts.recusados)
     })
 
     return () => off()
@@ -2197,7 +2212,7 @@ const [showXpToast, setShowXpToast] = useState(false)
       
 
 
-{modoApp === 'cliente' && (
+{modoApp === 'cliente' && !isMapOpen && (
         <div className="fixed inset-x-0 bottom-4 z-[99980] flex justify-center pointer-events-none">
           <div className="
             pointer-events-auto relative

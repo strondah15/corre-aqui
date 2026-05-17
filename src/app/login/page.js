@@ -9,7 +9,7 @@ function LoginGoogleButton() {
     <button
       onClick={async () => {
         try {
-          await signInWithGoogle({ mode: 'popup' })
+          await signInWithGoogle()
           window.location.href = '/' // troque pra '/mapa' se quiser
         } catch (e) {
           console.error(e)
