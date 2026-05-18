@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
 
@@ -36,7 +36,8 @@ import AgendaProfissional from '@/components/AgendaProfissional'
 
 // ✅ NOVOS COMPONENTES
 import BottomBar from '@/components/BottomBar'
-import Patente from '@/components/Patente'
+import Patente, { calcularPatentePorServicos, getPatenteTitle } from '@/components/Patente'
+import PatenteUpModal from '@/components/PatenteUpModal'
 
 import ClienteHome from '@/components/ClienteHome'
 import ListaProfissionais from '@/components/ListaProfissionais'
@@ -124,8 +125,8 @@ const TAXA_PROF_POR_PATENTE = {
 }
 
 const BOOST_LEVELS = {
-  1: { minutos: 30, label: 'Destaque (breve)', emoji: '🚀', preco: 2.99 },
-  2: { minutos: 20, label: 'Emergência (breve)', emoji: '🚨', preco: 4.99 },
+  1: { minutos: 30, label: 'Destaque (em breve)', emoji: '🚀', preco: 2.99 },
+  2: { minutos: 20, label: 'Urgente (em breve)', emoji: '🚨', preco: 4.99 },
 }
 
 const nowMs = () => Date.now()
@@ -253,41 +254,55 @@ const notificarTelefone = async ({ title, body, tag }) => {
    ✅ Patente por serviços
 ======================= */
 const calcPatente = (serviços = 0) => {
-  const n = Number(serviços || 0)
-  if (n >= 60) return 5
-  if (n >= 30) return 4
-  if (n >= 15) return 3
-  if (n >= 5) return 2
-  return 1
+  return calcularPatentePorServicos(serviços)
 }
 
 async function subirPatentePorServiço({ uid, modoPedido = 'geral' }) {
   if (!uid) return
 
   const userRef = ref(database, `users/${uid}`)
+  let resultado = null
 
   await runTransaction(userRef, (current) => {
     const u = current || {}
 
-    const serviçosCorre = Number(u.serviçosCorre || 0) + 1
+    const servicosCorreAntes = Number(u.servicosCorre ?? u['serviçosCorre'] ?? 0)
+    const servicosProfAntes = Number(u.servicosProf ?? u['serviçosProf'] ?? 0)
+    const patenteCorreAntes = calcPatente(servicosCorreAntes)
+    const patenteProfAntes = calcPatente(servicosProfAntes)
+
+    const servicosCorre = servicosCorreAntes + 1
 
     const isProf = String(modoPedido || 'geral').toLowerCase() === 'profissional'
-    const serviçosProf = isProf ? Number(u.serviçosProf || 0) + 1 : Number(u.serviçosProf || 0)
+    const servicosProf = isProf ? servicosProfAntes + 1 : servicosProfAntes
 
-    const patenteCorre = calcPatente(serviçosCorre)
+    const patenteCorre = calcPatente(servicosCorre)
 
-    const isProfissionalUser = !!u.isProfissional
-    const patenteProf = isProfissionalUser ? calcPatente(serviçosProf) : 0
+    const isProfissionalUser = !!(u.isProfissional || u?.profile?.isProfissional || u?.profissional?.ativo)
+    const patenteProf = isProfissionalUser ? calcPatente(servicosProf) : 0
+
+    resultado = {
+      tipo: isProf ? 'prof' : 'corre',
+      patenteAntes: isProf ? patenteProfAntes : patenteCorreAntes,
+      patenteDepois: isProf ? patenteProf : patenteCorre,
+      servicosCorre,
+      servicosProf,
+      subiu: isProf ? patenteProf > patenteProfAntes : patenteCorre > patenteCorreAntes,
+    }
 
     return {
       ...u,
-      serviçosCorre,
-      serviçosProf,
+      servicosCorre,
+      servicosProf,
+      serviçosCorre: servicosCorre,
+      serviçosProf: servicosProf,
       patenteCorre,
       patenteProf,
       patenteAtualizadaEm: Date.now(),
     }
   })
+
+  return resultado
 }
 
 /* =======================
@@ -445,7 +460,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const [modoApp, setModoApp] = useState(initialMode === 'cliente' || initialMode === 'corre' ? initialMode : 'corre') // cliente | corre
   const [openPerfil, setOpenPerfil] = useState(false)
-const [showXpToast, setShowXpToast] = useState(false)
+  const [showXpToast, setShowXpToast] = useState(false)
+  const [xpToastInfo, setXpToastInfo] = useState({
+    xp: 10,
+    texto: 'Serviço concluído',
+  })
+  const [patenteUp, setPatenteUp] = useState(null)
 
   const [meuNome, setMeuNome] = useState('')
   const [meuId, setMeuId] = useState('')
@@ -477,8 +497,6 @@ const [showXpToast, setShowXpToast] = useState(false)
 
   const [categoriaFiltro, setCategoriaFiltro] = useState('todas')
   const [chatPedido, setChatPedido] = useState(null)
-  const [ultimoAceiteNotificado, setUltimoAceiteNotificado] = useState('')
-
   const [editItem, setEditItem] = useState(null)
   const [editTitulo, setEditTitulo] = useState('')
   const [editDescricao, setEditDescricao] = useState('')
@@ -491,6 +509,8 @@ const [showXpToast, setShowXpToast] = useState(false)
   const [usuarioSelecionado, setUsuarioSelecionado] = useState(null)
   const [agendaClienteUser, setAgendaClienteUser] = useState(null)
   const [notifPermission, setNotifPermission] = useState('default')
+  const notificacoesInicializadasRef = useRef(false)
+  const notificacoesVistasRef = useRef(new Set())
   const showToast = useCallback((t) => setToast({ ms: 2800, ...t }), [])
 
   const [loadingPedidos, setLoadingPedidos] = useState(true)
@@ -501,6 +521,15 @@ const [showXpToast, setShowXpToast] = useState(false)
   const [serviçondoId, setServiçondoId] = useState(null)
   const [excluindoId, setExcluindoId] = useState(null)
   const [salvandoEdicao, setSalvandoEdicao] = useState(false)
+  const [conclusaoPedido, setConclusaoPedido] = useState(null)
+  const [avaliacaoPedido, setAvaliacaoPedido] = useState(null)
+  const [avaliacaoNota, setAvaliacaoNota] = useState(5)
+  const [avaliacaoComentario, setAvaliacaoComentario] = useState('')
+  const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false)
+  const [problemaPedido, setProblemaPedido] = useState(null)
+  const [problemaTipo, setProblemaTipo] = useState('servico_nao_resolvido')
+  const [problemaDescricao, setProblemaDescricao] = useState('')
+  const [salvandoProblema, setSalvandoProblema] = useState(false)
 
   const [unreadInbox, setUnreadInbox] = useState(0)
   const [agendaPendentes, setAgendaPendentes] = useState(0)
@@ -548,6 +577,55 @@ const [showXpToast, setShowXpToast] = useState(false)
     }
     setNotifPermission(Notification.permission || 'default')
   }, [])
+
+  useEffect(() => {
+    notificacoesInicializadasRef.current = false
+    notificacoesVistasRef.current = new Set()
+  }, [meuId])
+
+  useEffect(() => {
+    if (!meuId) return
+
+    const nRef = query(ref(database, `notificacoes/${meuId}`), limitToLast(20))
+    const off = onValue(nRef, (snap) => {
+      const raw = snap.val() || {}
+      const lista = Object.entries(raw)
+        .map(([id, n]) => ({ id, ...(n || {}) }))
+        .sort((a, b) => Number(b?.criadoEm || 0) - Number(a?.criadoEm || 0))
+
+      if (!notificacoesInicializadasRef.current) {
+        lista.forEach((n) => notificacoesVistasRef.current.add(n.id))
+        notificacoesInicializadasRef.current = true
+        return
+      }
+
+      const nova = lista.find((n) => {
+        if (!n?.id || notificacoesVistasRef.current.has(n.id)) return false
+        if (n?.lida === true) return false
+        if (n?.tipo === 'corre_aceito') return false
+        if (n?.autor?.id && String(n.autor.id) === String(meuId)) return false
+        return true
+      })
+
+      if (!nova) return
+
+      notificacoesVistasRef.current.add(nova.id)
+
+      showToast({
+        type: nova.tipo === 'mensagem_chat' ? 'info' : 'success',
+        title: nova.titulo || 'Nova notificação',
+        message: nova.mensagem || 'Você tem uma atualização no Corre Aqui.',
+      })
+
+      notificarTelefone({
+        title: nova.titulo || 'Corre Aqui',
+        body: nova.mensagem || '',
+        tag: `corre-aqui-${nova.id}`,
+      })
+    })
+
+    return () => off()
+  }, [meuId, showToast])
 
   /* =======================
      modoApp (prioriza initialMode)
@@ -820,41 +898,6 @@ const [showXpToast, setShowXpToast] = useState(false)
     return () => off()
   }, [])
 
-  /* =======================
-     Toast quando pedido do cliente for aceito
-  ======================= */
-  useEffect(() => {
-    if (!meuId) return
-
-    const pedidoAceito = (corres || []).find((p) => {
-      const marker = `${p.id}:${p?.aceite?.id || ''}`
-
-      return (
-        p?.criador?.id === meuId &&
-        String(p?.status || '').toLowerCase() === 'aceito' &&
-        !!p?.aceite?.id &&
-        ultimoAceiteNotificado !== marker
-      )
-    })
-
-    if (!pedidoAceito) return
-
-    const marker = `${pedidoAceito.id}:${pedidoAceito?.aceite?.id || ''}`
-    setUltimoAceiteNotificado(marker)
-
-    showToast({
-      type: 'success',
-      title: 'Seu corre foi aceito! 🚀',
-      message: `${pedidoAceito?.aceite?.nome || 'Alguém'} aceitou "${pedidoAceito?.titulo || 'seu pedido'}" às ${formatDataHora(pedidoAceito?.aceite?.aceitoEm || pedidoAceito?.aceitoEm || pedidoAceito?.atualizadoEm)}.`,
-    })
-
-    notificarTelefone({
-      title: 'Seu corre foi aceito! 🚀',
-      body: `${pedidoAceito?.aceite?.nome || 'Alguém'} aceitou: ${pedidoAceito?.titulo || 'Corre aqui'}`,
-      tag: `corre-aceito-${pedidoAceito?.id || marker}`,
-    })
-  }, [corres, meuId, ultimoAceiteNotificado, showToast])
-
   const onlineUsers = useMemo(() => {
     const now = Date.now()
     return Object.entries(usersObj || {})
@@ -899,6 +942,15 @@ const [showXpToast, setShowXpToast] = useState(false)
     () => Number(meuUserNode?.patenteProf || (isProfissional ? 1 : 0)),
     [meuUserNode, isProfissional]
   )
+
+  const minhasConfiguracoesMapa = useMemo(() => {
+    const mapa = meuUserNode?.settings?.mapa || {}
+    return {
+      mostrarOnline: mapa.mostrarOnline === true,
+      aoVivo: mapa.aoVivo === true,
+      limiteOnline: Math.max(5, Math.min(120, Number(mapa.limiteOnline || 30))),
+    }
+  }, [meuUserNode])
 
   const getCatObj = (id) => {
     if (!id) return null
@@ -949,6 +1001,26 @@ const [showXpToast, setShowXpToast] = useState(false)
       showToast({ type: 'error', title: 'Sem login', message: 'Entre para aceitar.' })
       return
     }
+
+    const statusAtual = String(p?.status || 'aberto').toLowerCase()
+    if (statusAtual !== 'aberto' || p?.aceite?.id) {
+      showToast({
+        type: 'info',
+        title: 'Pedido indisponível',
+        message: p?.aceite?.nome ? `Esse pedido já foi aceito por ${p.aceite.nome}.` : 'Esse pedido não está mais aberto.',
+      })
+      return
+    }
+
+    if (p?.criador?.id && String(p.criador.id) === String(meuId)) {
+      showToast({
+        type: 'info',
+        title: 'Esse pedido é seu',
+        message: 'O criador não pode aceitar o próprio serviço.',
+      })
+      return
+    }
+
     if (aceitandoId) return
     setAceitandoId(p.id)
 
@@ -957,7 +1029,7 @@ const [showXpToast, setShowXpToast] = useState(false)
       const local = await getMyLocation()
       const aceite = {
         id: meuId,
-        nome: meuNome,
+        nome: meuNome || meuUserNode?.nome || 'Corre',
         local: local || null,
         aceitoEm: agora,
       }
@@ -1001,6 +1073,10 @@ const [showXpToast, setShowXpToast] = useState(false)
           unread: true,
           status: 'ativa',
           tipoNotificacao: 'corre_aceito',
+          lastText: `${meuNome || 'Alguém'} aceitou seu corre.`,
+          lastAt: agora,
+          lastById: meuId,
+          lastByNome: meuNome || 'Anônimo',
           mensagemPreview: `${meuNome || 'Alguém'} aceitou seu corre.`,
           updatedAt: agora,
         })
@@ -1011,6 +1087,8 @@ const [showXpToast, setShowXpToast] = useState(false)
           conversaId,
           titulo: 'Seu corre foi aceito! 🚀',
           mensagem: `${meuNome || 'Alguém'} aceitou: ${p.titulo || 'Corre aqui'}`,
+          prioridade: 'alta',
+          acao: 'abrir_chat',
           lida: false,
           criadoEm: agora,
           autor: { id: meuId, nome: meuNome || 'Anônimo' },
@@ -1025,19 +1103,26 @@ const [showXpToast, setShowXpToast] = useState(false)
         outroNome: p?.criador?.nome || 'Cliente',
         unread: false,
         status: 'ativa',
+        lastText: 'Você aceitou esse corre.',
+        lastAt: agora,
+        lastById: meuId,
+        lastByNome: meuNome || 'Anônimo',
         mensagemPreview: 'Você aceitou esse corre.',
         updatedAt: agora,
       })
 
       // ✅ mensagem automática
-      await update(ref(database, `mensagens/${conversaId}/msg_${agora}`), {
-        texto: `${meuNome} aceitou seu corre.`,
+      const mensagemSistemaAceite = {
+        texto: `${meuNome || 'Alguém'} aceitou o pedido.`,
         sistema: true,
         criadoEm: agora,
         hora: agora,
         autorId: 'sistema',
         autorNome: 'Sistema',
-      })
+      }
+
+      await set(ref(database, `chats/${conversaId}/msg_${agora}`), mensagemSistemaAceite)
+      await update(ref(database, `mensagens/${conversaId}/msg_${agora}`), mensagemSistemaAceite)
 
       // ✅ atalhos de conversa
       if (p?.criador?.id) {
@@ -1090,6 +1175,22 @@ const [showXpToast, setShowXpToast] = useState(false)
     }
   }
 
+  function abrirConclusao(p) {
+    setConclusaoPedido(p)
+  }
+
+  function abrirAvaliacao(p) {
+    setAvaliacaoPedido(p)
+    setAvaliacaoNota(Number(p?.avaliacao?.nota || 5))
+    setAvaliacaoComentario(p?.avaliacao?.comentario || '')
+  }
+
+  function abrirProblema(p) {
+    setProblemaPedido(p)
+    setProblemaTipo('servico_nao_resolvido')
+    setProblemaDescricao('')
+  }
+
   async function marcarConcluído(p) {
     if (serviçondoId) return
     setServiçondoId(p.id)
@@ -1132,23 +1233,178 @@ const [showXpToast, setShowXpToast] = useState(false)
       // ✅ QUEM GANHA A ENTREGA?
       const creditUid = aceitadorId || meuId
 
-      await subirPatentePorServiço({
-        uid: creditUid,
-        modoPedido: p?.modoPedido || 'geral',
-      })
+      try {
+        const patenteResultado = await subirPatentePorServiço({
+          uid: creditUid,
+          modoPedido: p?.modoPedido || 'geral',
+        })
 
-      await missãoIncrementar(creditUid, 'entregou')
+        await missãoIncrementar(creditUid, 'entregou')
+
+        setXpToastInfo({
+          xp: 10,
+          texto: 'Serviço concluído. XP, moedas e patente atualizados.',
+        })
+        setShowXpToast(true)
+        setTimeout(() => setShowXpToast(false), 2600)
+
+        if (patenteResultado?.subiu) {
+          setPatenteUp({
+            patente: getPatenteTitle(patenteResultado.tipo, patenteResultado.patenteDepois),
+            tipo: patenteResultado.tipo,
+            nivel: patenteResultado.patenteDepois,
+          })
+        }
+      } catch (xpError) {
+        console.warn('Serviço concluído, mas XP/patente não atualizou:', xpError)
+      }
 
       showToast({
         type: 'success',
         title: 'Fechado!',
-        message: 'ENTREGUE ✅ Patente atualizada + Missão +XP + moedas 💰',
+        message: 'Serviço concluído. Agora avalie como foi a experiência.',
       })
+
+      setConclusaoPedido(null)
+      abrirAvaliacao({ ...p, status: 'concluido', concluidoEm: concluidoAgora })
     } catch (e) {
       console.error('Erro ao marcar concluido:', e)
       showToast({ type: 'error', title: 'Falha', message: e?.message || 'Veja o console.' })
     } finally {
       setServiçondoId(null)
+    }
+  }
+
+  async function salvarAvaliacaoServico() {
+    const p = avaliacaoPedido
+    if (!p?.id || salvandoAvaliacao) return
+
+    const criadorId = p?.criador?.id
+    const avaliadoId = p?.aceite?.id
+
+    if (!meuId || meuId !== criadorId) {
+      showToast({
+        type: 'error',
+        title: 'Sem permissão',
+        message: 'Somente o cliente que criou o pedido pode avaliar este serviço.',
+      })
+      return
+    }
+
+    if (!avaliadoId) {
+      showToast({
+        type: 'error',
+        title: 'Sem profissional',
+        message: 'Este pedido ainda não tem uma pessoa aceita para receber avaliação.',
+      })
+      return
+    }
+
+    try {
+      setSalvandoAvaliacao(true)
+      const agora = Date.now()
+      const nota = Math.max(1, Math.min(5, Number(avaliacaoNota || 5)))
+      const comentario = String(avaliacaoComentario || '').trim().slice(0, 500)
+      const payload = {
+        pedidoId: p.id,
+        nota,
+        comentario,
+        cliente: { id: meuId, nome: meuNome || 'Cliente' },
+        avaliado: { id: avaliadoId, nome: p?.aceite?.nome || 'Corre' },
+        criadoEm: agora,
+        criadoEmServer: serverTimestamp(),
+        origem: 'pos_servico',
+      }
+
+      await update(ref(database), {
+        [`avaliacoes/${p.id}`]: payload,
+        [`pedidos/${p.id}/avaliacao`]: payload,
+        [`pedidos/${p.id}/avaliacaoPendente`]: false,
+        [`pedidos/${p.id}/atualizadoEm`]: agora,
+        [`pedidos/${p.id}/atualizadoEmServer`]: serverTimestamp(),
+      })
+
+      showToast({
+        type: 'success',
+        title: 'Avaliação enviada',
+        message: 'Obrigado. Isso ajuda a deixar o Corre Aqui mais confiável.',
+      })
+      setAvaliacaoPedido(null)
+      setAvaliacaoComentario('')
+    } catch (e) {
+      console.error('Erro ao salvar avaliação:', e)
+      showToast({ type: 'error', title: 'Falha ao avaliar', message: e?.message || 'Tente novamente.' })
+    } finally {
+      setSalvandoAvaliacao(false)
+    }
+  }
+
+  async function registrarProblemaServico() {
+    const p = problemaPedido
+    if (!p?.id || salvandoProblema) return
+
+    const participante =
+      meuId && (p?.criador?.id === meuId || p?.aceite?.id === meuId)
+
+    if (!participante) {
+      showToast({
+        type: 'error',
+        title: 'Sem permissão',
+        message: 'Somente participantes do pedido podem registrar um problema.',
+      })
+      return
+    }
+
+    try {
+      setSalvandoProblema(true)
+      const agora = Date.now()
+      const descricao = String(problemaDescricao || '').trim().slice(0, 800)
+      const denuncia = ['conduta_inadequada', 'seguranca_golpe'].includes(problemaTipo)
+      const registroId = `${p.id}_${meuId}_${agora}`
+      const payload = {
+        id: registroId,
+        pedidoId: p.id,
+        tipo: problemaTipo,
+        descricao,
+        denuncia,
+        status: 'aberto',
+        autor: { id: meuId, nome: meuNome || 'Usuário' },
+        clienteId: p?.criador?.id || null,
+        aceitadorId: p?.aceite?.id || null,
+        criadoEm: agora,
+        criadoEmServer: serverTimestamp(),
+      }
+
+      const updates = {
+        [`problemasServico/${registroId}`]: payload,
+        [`pedidos/${p.id}/problemaServico`]: {
+          tipo: problemaTipo,
+          descricao,
+          denuncia,
+          status: 'aberto',
+          autor: { id: meuId, nome: meuNome || 'Usuário' },
+          criadoEm: agora,
+        },
+        [`pedidos/${p.id}/atualizadoEm`]: agora,
+        [`pedidos/${p.id}/atualizadoEmServer`]: serverTimestamp(),
+      }
+
+      if (denuncia) updates[`denuncias/${registroId}`] = payload
+
+      await update(ref(database), updates)
+
+      showToast({
+        type: 'success',
+        title: denuncia ? 'Denúncia registrada' : 'Problema registrado',
+        message: 'O registro ficou salvo no histórico do serviço.',
+      })
+      setProblemaPedido(null)
+      setProblemaDescricao('')
+    } catch (e) {
+      console.error('Erro ao registrar problema:', e)
+      showToast({ type: 'error', title: 'Falha ao registrar', message: e?.message || 'Tente novamente.' })
+    } finally {
+      setSalvandoProblema(false)
     }
   }
 
@@ -1352,8 +1608,8 @@ const [showXpToast, setShowXpToast] = useState(false)
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#020617] text-slate-900 corre-aqui-no-select">
-      <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.20),transparent_34%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_32%),linear-gradient(180deg,#071120_0%,#020617_55%,#020617_100%)]" />
+    <div className="relative min-h-screen overflow-hidden bg-[#050b12] text-slate-900 corre-aqui-no-select">
+      <div className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(135deg,#06111a_0%,#071724_46%,#050812_100%)]" />
       <style>{`
         .corre-aqui-no-select,
         .corre-aqui-no-select * {
@@ -1368,19 +1624,19 @@ const [showXpToast, setShowXpToast] = useState(false)
           color: inherit;
         }
         .corre-card-clean {
-          background-color: rgba(255,255,255,0.97);
+          background-color: rgba(255,255,255,0.985);
         }
         .corre-card-clean:active,
         .corre-card-clean:focus,
         .corre-card-clean:focus-within {
-          background-color: rgba(255,255,255,0.97);
+          background-color: rgba(255,255,255,0.985);
           filter: none;
           transform: none;
         }
       `}</style>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="relative z-10 w-full max-w-[1320px] mx-auto px-4 sm:px-5 lg:px-6 py-4 pb-[220px]">
+      <div className="relative z-10 w-full max-w-[1280px] mx-auto px-4 sm:px-5 lg:px-6 py-5 pb-28 md:pb-32">
         {/* ✅ TROCAR MODO DENTRO DO LAYOUT (não cobre mais os cards) */}
         {typeof onBackToMode === 'function' && (
           <div className="mb-4 flex justify-start">
@@ -1388,11 +1644,12 @@ const [showXpToast, setShowXpToast] = useState(false)
               onClick={voltarModoLimpo}
               className="
                 inline-flex items-center gap-2
-                rounded-3xl px-4 py-2.5
-                bg-white hover:bg-slate-50
-                border border-slate-200
-                text-slate-900 text-sm font-extrabold
-                shadow-[0_10px_30px_rgba(15,23,42,0.16)]
+                rounded-2xl px-4 py-2.5
+                bg-white/10 hover:bg-white/14
+                border border-white/12
+                text-white text-sm font-extrabold
+                shadow-[0_14px_38px_rgba(0,0,0,0.22)]
+                backdrop-blur-xl
                 transition
               "
               type="button"
@@ -1407,25 +1664,25 @@ const [showXpToast, setShowXpToast] = useState(false)
         {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
-            <div className="relative mb-4 rounded-[32px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)] text-slate-900">
-              <div className="absolute inset-0 bg-gradient-to-br from-white via-slate-50 to-white pointer-events-none" />
+            <div className="relative mb-4 rounded-[28px] overflow-hidden bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.24)] text-white backdrop-blur-xl">
+              <div className="absolute inset-x-0 top-0 h-px bg-white/25 pointer-events-none" />
 
-              <div className="relative p-5">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="relative p-4 md:p-5">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-12 rounded-3xl bg-slate-900 text-white flex items-center justify-center font-extrabold shadow-lg shadow-slate-900/15">
+                    <div className="w-12 h-12 rounded-2xl bg-white text-slate-950 flex items-center justify-center font-extrabold shadow-lg shadow-black/20">
                       CA
                     </div>
 
                     <div className="leading-tight min-w-0">
-                      <div className="text-base font-extrabold text-slate-950 truncate">
+                      <div className="text-base md:text-lg font-extrabold text-white truncate">
                         Bem-vindo, {meuNome || '...'}
                       </div>
-                      <div className="mt-1 text-sm text-slate-500">
-                        Aceite pedidos próximos, concluido e suba sua patente ⭐
+                      <div className="mt-1 text-sm text-slate-300">
+                        Aceite pedidos próximos, conclua com clareza e suba sua reputação.
                       </div>
 
-                      <div className="mt-3 flex gap-2 flex-wrap">
+                      <div className="mt-2 flex gap-2 flex-wrap">
                         <Patente tipo="corre" nivel={minhaPatenteCorre} size="sm" showLabel={false} />
                         {isProfissional && <Patente tipo="prof" nivel={minhaPatenteProf} size="sm" />}
                       </div>
@@ -1436,7 +1693,7 @@ const [showXpToast, setShowXpToast] = useState(false)
                     <button
                       type="button"
                       onClick={() => setTab('corre')}
-                      className="px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-extrabold shadow-lg shadow-blue-500/25 transition"
+                      className="px-4 py-2.5 rounded-2xl bg-white text-slate-950 hover:bg-slate-100 text-sm font-extrabold shadow-lg shadow-black/20 transition"
                     >
                       📋 Pedidos
                     </button>
@@ -1444,7 +1701,7 @@ const [showXpToast, setShowXpToast] = useState(false)
                     <button
                       type="button"
                       onClick={() => setOpenMapaAoVivo(true)}
-                      className="px-4 py-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-extrabold shadow-sm transition"
+                      className="px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/14 border border-white/12 text-white text-sm font-extrabold shadow-sm transition"
                     >
                       🗺️ Mapa ao vivo
                     </button>
@@ -1545,14 +1802,14 @@ const [showXpToast, setShowXpToast] = useState(false)
         {modoApp === 'corre' && tab === 'corre' && (
           <>
             {/* Painel de filtros do Corre */}
-            <div className="mb-4 rounded-[32px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)] text-slate-900">
-              <div className="p-4">
+            <div className="mb-4 rounded-[28px] overflow-hidden bg-white/96 border border-white/70 shadow-[0_18px_58px_rgba(0,0,0,0.18)] text-slate-900 backdrop-blur-xl">
+              <div className="p-3 md:p-4">
                 {/* filtros status */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5 md:gap-2">
                   <button
-                    className={`px-3 py-3 rounded-2xl border text-sm font-extrabold transition ${
+                    className={`px-3 py-2.5 rounded-2xl border text-sm font-extrabold transition ${
                       filtro === 'abertos'
-                        ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/25'
+                        ? 'bg-slate-950 text-white border-slate-950 shadow-lg shadow-slate-900/20'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                     }`}
                     onClick={() => setFiltro('abertos')}
@@ -1562,9 +1819,9 @@ const [showXpToast, setShowXpToast] = useState(false)
                   </button>
 
                   <button
-                    className={`px-3 py-3 rounded-2xl border text-sm font-extrabold transition ${
+                    className={`px-3 py-2.5 rounded-2xl border text-sm font-extrabold transition ${
                       filtro === 'meus'
-                        ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/25'
+                        ? 'bg-slate-950 text-white border-slate-950 shadow-lg shadow-slate-900/20'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                     }`}
                     onClick={() => setFiltro('meus')}
@@ -1574,9 +1831,9 @@ const [showXpToast, setShowXpToast] = useState(false)
                   </button>
 
                   <button
-                    className={`px-3 py-3 rounded-2xl border text-sm font-extrabold transition ${
+                    className={`px-3 py-2.5 rounded-2xl border text-sm font-extrabold transition ${
                       filtro === 'todos'
-                        ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/25'
+                        ? 'bg-slate-950 text-white border-slate-950 shadow-lg shadow-slate-900/20'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                     }`}
                     onClick={() => setFiltro('todos')}
@@ -1586,22 +1843,9 @@ const [showXpToast, setShowXpToast] = useState(false)
                   </button>
                 </div>
 
-                {/* Online agora */}
-                <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3 bg-emerald-50 border border-emerald-200">
-                  <div className="flex items-center gap-2 text-sm text-slate-800">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_0_4px_rgba(16,185,129,0.15)]" />
-                    <span className="font-bold">Online agora:</span>
-                    <b className="text-emerald-700">{onlineUsers.length}</b>
-                  </div>
-
-                  <div className="text-xs text-slate-500">
-                    expira em {Math.floor(ONLINE_TTL_MS / 1000)}s
-                  </div>
-                </div>
-
                 {/* Busca + categoria */}
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-2">
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm">
                     <span className="text-lg">🔍</span>
                     <input
                       value={busca}
@@ -1653,7 +1897,7 @@ const [showXpToast, setShowXpToast] = useState(false)
             )}
 
             {/* Lista */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start pb-44 md:pb-36">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start pb-28 md:pb-24">
               {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
                 <div className="text-sm text-slate-500">Nenhum corre aqui para mostrar.</div>
               )}
@@ -1692,12 +1936,12 @@ const [showXpToast, setShowXpToast] = useState(false)
                     whileHover={{ y: -3, scale: 1.008 }}
                     whileTap={{ scale: 0.985 }}
                     className={[
-                      "corre-card-clean relative overflow-hidden rounded-[22px] md:rounded-[26px] p-2.5 md:p-3 text-slate-950 flex flex-col gap-1.5 md:gap-2 select-none cursor-default",
-                      "bg-white border border-white/80 shadow-[0_16px_44px_rgba(15,23,42,0.14)]",
-                      "ring-1 ring-slate-900/5 transition",
-                      status === 'aberto' ? "border-emerald-300/70 ring-2 ring-emerald-300/35 shadow-[0_18px_55px_rgba(16,185,129,0.20)]" : "",
-                      b.destaque ? "border-fuchsia-300/90 ring-2 ring-fuchsia-300/40 shadow-[0_18px_60px_rgba(217,70,239,0.22)]" : "",
-                      b.emergencia ? "border-red-400 ring-2 ring-red-400/60 shadow-[0_20px_70px_rgba(239,68,68,0.32)] animate-pulse" : "",
+                      "corre-card-clean relative overflow-hidden rounded-[24px] p-3 md:p-3.5 text-slate-950 flex flex-col gap-2 select-none cursor-default",
+                      "bg-white border border-slate-200/80 shadow-[0_16px_42px_rgba(15,23,42,0.12)]",
+                      "ring-1 ring-slate-900/[0.03] transition",
+                      status === 'aberto' ? "border-emerald-200/90 shadow-[0_18px_44px_rgba(16,185,129,0.13)]" : "",
+                      b.destaque ? "border-fuchsia-300/80 ring-2 ring-fuchsia-300/30 shadow-[0_18px_54px_rgba(217,70,239,0.18)]" : "",
+                      b.emergencia ? "border-red-400 ring-2 ring-red-400/55 shadow-[0_20px_64px_rgba(239,68,68,0.26)] animate-pulse" : "",
                     ].join(" ")}
                   >
                     {b.emergencia ? (
@@ -1705,32 +1949,32 @@ const [showXpToast, setShowXpToast] = useState(false)
                     ) : b.destaque ? (
                       <div className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-fuchsia-500 via-amber-300 to-blue-500 shadow-[0_0_32px_rgba(217,70,239,0.75)]" />
                     ) : status === 'aberto' ? (
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-emerald-300 via-lime-200 to-emerald-400 shadow-[0_0_28px_rgba(16,185,129,0.95)] animate-pulse" />
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-300" />
                     ) : null}
                     {b.emergencia ? (
                       <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-red-400/35 blur-2xl animate-pulse" />
                     ) : b.destaque ? (
                       <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-fuchsia-400/30 blur-2xl" />
                     ) : status === 'aberto' ? (
-                      <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-emerald-300/25 blur-2xl animate-pulse" />
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-emerald-50/80 to-transparent" />
                     ) : null}
-                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(59,130,246,0.12),transparent_34%),radial-gradient(circle_at_90%_15%,rgba(16,185,129,0.16),transparent_28%)]" />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/70 via-transparent to-transparent" />
                     <div className="relative z-10 flex items-start justify-between gap-2 md:gap-3">
                       <div className="min-w-0">
-                        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 border border-emerald-200 px-2 md:px-2.5 py-0.5 md:py-1 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 shadow-[0_0_18px_rgba(16,185,129,0.18)]">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
-                          Pedido disponível
+                          Disponível
                         </div>
-                        <div className="mt-2 font-black text-slate-950 text-base md:text-xl leading-tight line-clamp-1 drop-shadow-[0_1px_0_rgba(255,255,255,0.65)]">🏁 {p.titulo || '(sem título)'}</div>
+                        <div className="mt-2 font-black text-slate-950 text-lg md:text-xl leading-tight line-clamp-1">{p.titulo || '(sem título)'}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         {b.emergencia ? (
                           <span className="text-[11px] px-2.5 py-1 rounded-full bg-red-100 border border-red-300 text-red-800 font-black shadow-sm animate-pulse">
-                            🚨 URGENTE ANTIGO
+                            🚨 URGENTE (EM BREVE)
                           </span>
                         ) : b.destaque ? (
                           <span className="text-[11px] px-2.5 py-1 rounded-full bg-fuchsia-100 border border-fuchsia-300 text-fuchsia-800 font-black shadow-sm">
-                            🚀 DESTAQUE ANTIGO
+                            🚀 DESTAQUE (EM BREVE)
                           </span>
                         ) : null}
                         <BadgeStatus status={status} />
@@ -1762,7 +2006,7 @@ const [showXpToast, setShowXpToast] = useState(false)
                       )}
                     </div>
 
-                    <div className="relative z-10 flex items-center justify-between gap-2 rounded-2xl bg-white/75 border border-slate-200/70 px-2.5 md:px-3 py-2">
+                    <div className="relative z-10 flex items-center justify-between gap-2 rounded-2xl bg-slate-50/90 border border-slate-200 px-3 py-2">
                       <div className="min-w-0 text-[11px] md:text-xs font-black uppercase tracking-wide">
                         {b.emergencia ? (
                           <span className="text-red-700">🚨 Resposta rápida</span>
@@ -1863,6 +2107,16 @@ const [showXpToast, setShowXpToast] = useState(false)
                         💬 Chat
                       </button>
 
+                      {(status === 'aceito' || status === 'concluido') && (souCriador(p) || souAceitador(p)) && (
+                        <button
+                          className="px-2.5 py-1.5 rounded-xl bg-white border border-red-200 text-red-700 font-black hover:bg-red-50 shadow-sm transition"
+                          onClick={() => abrirProblema(p)}
+                          type="button"
+                        >
+                          Problema com serviço
+                        </button>
+                      )}
+
                       {status === 'aberto' && (
                         <button
                           className={`${btnPrimary} disabled:opacity-60`}
@@ -1888,13 +2142,23 @@ const [showXpToast, setShowXpToast] = useState(false)
                       {status === 'aceito' && souCriador(p) && (
                         <button
                           className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/20 disabled:opacity-60 transition"
-                          onClick={() => marcarConcluído(p)}
+                          onClick={() => abrirConclusao(p)}
                           disabled={serviçondoId === p.id}
                           type="button"
                         >
-                          {serviçondoId === p.id ? 'Confirmando…' : 'Confirmar serviço feito'}
+                          {serviçondoId === p.id ? 'Confirmando…' : 'Concluir serviço'}
                         </button>
                       )}
+
+                      {status === 'concluido' && souCriador(p) && !p?.avaliacao ? (
+                        <button
+                          className="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/20 transition"
+                          onClick={() => abrirAvaliacao(p)}
+                          type="button"
+                        >
+                          Avaliar
+                        </button>
+                      ) : null}
 
                       {/* Alcance/urgência fica somente em MeusPedidosCliente (área do cliente). */}
 
@@ -1925,6 +2189,9 @@ const [showXpToast, setShowXpToast] = useState(false)
                           meuNome={meuNome}
                           pedidoTitulo={p.titulo || 'Corre aqui'}
                           outroUser={getOutroUser(p)}
+                          planoAtual={meuUserNode?.plano || 'free'}
+                          mostrarAnuncio={false}
+                          onToast={showToast}
                         />
                       </div>
                     )}
@@ -1952,8 +2219,9 @@ const [showXpToast, setShowXpToast] = useState(false)
               aceitador: mapItem?.aceite?.nome || null,
             }}
             onlineUsers={onlineUsersParaPerfil}
-            limitOnlineMarkers={30}
+            limitOnlineMarkers={minhasConfiguracoesMapa.limiteOnline}
             myUid={meuId}
+            mapSettings={minhasConfiguracoesMapa}
             onClickUser={(u) => setUsuarioSelecionado(u)}
           />
         )}
@@ -2004,8 +2272,9 @@ const [showXpToast, setShowXpToast] = useState(false)
                 aceitador: null,
               }}
               onlineUsers={onlineUsersFiltrados}
-              limitOnlineMarkers={30}
+              limitOnlineMarkers={minhasConfiguracoesMapa.limiteOnline}
               myUid={meuId}
+              mapSettings={minhasConfiguracoesMapa}
             />
           </>
         )}
@@ -2041,6 +2310,9 @@ const [showXpToast, setShowXpToast] = useState(false)
                   meuNome={meuNome}
                   pedidoTitulo={chatPedido.titulo || 'Corre aqui'}
                   outroUser={getOutroUser(chatPedido)}
+                  planoAtual={meuUserNode?.plano || 'free'}
+                  mostrarAnuncio={false}
+                  onToast={showToast}
                 />
               </div>
             </div>
@@ -2212,73 +2484,37 @@ const [showXpToast, setShowXpToast] = useState(false)
       
 
 
-{modoApp === 'cliente' && !isMapOpen && (
-        <div className="fixed inset-x-0 bottom-4 z-[99980] flex justify-center pointer-events-none">
-          <div className="
-            pointer-events-auto relative
-            flex items-center gap-1.5
-            rounded-[34px]
-            border border-blue-400/25
-            bg-[#0b1220]/95
-            px-2 py-2
-            shadow-[0_18px_50px_rgba(0,0,0,0.50),0_0_36px_rgba(59,130,246,0.22)]
-            backdrop-blur-xl
-            overflow-hidden
-          ">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_50%,rgba(59,130,246,0.22),transparent_35%),radial-gradient(circle_at_82%_50%,rgba(168,85,247,0.20),transparent_35%)]" />
-
+      {modoApp === 'cliente' && !isMapOpen && (
+        <div className="fixed inset-x-0 bottom-3 z-[99980] px-3 pointer-events-none md:inset-x-auto md:right-6 md:bottom-6 md:px-0">
+          <div className="pointer-events-auto mx-auto flex w-full max-w-[360px] items-center gap-2 rounded-[24px] border border-slate-200 bg-white/94 p-2 shadow-[0_24px_80px_rgba(15,23,42,0.26)] backdrop-blur-xl md:max-w-none">
             <button
               type="button"
               onClick={() => setClientePainelBaixo('meusPedidos')}
-              className={`relative h-13 min-w-[148px] rounded-[26px]
-                flex items-center justify-center gap-3
-                text-[15px] font-black
-                transition-all duration-300 active:scale-[0.96]
-                ${
-                  clientePainelBaixo === 'meusPedidos'
-                    ? 'bg-gradient-to-r from-blue-600 to-cyan-400 text-white shadow-[0_10px_26px_rgba(37,99,235,0.42),inset_0_0_20px_rgba(255,255,255,0.12)]'
-                    : 'bg-white/[0.055] text-white/82 hover:text-white hover:bg-white/[0.09]'
-                }`}
-            >
-              <span className={`grid h-9 w-9 place-items-center rounded-2xl border text-[22px] ${
+              className={[
+                'relative h-12 min-w-0 flex-1 rounded-2xl px-3 text-sm font-black transition-all duration-200 active:scale-[0.96]',
+                'flex items-center justify-center gap-2 border',
                 clientePainelBaixo === 'meusPedidos'
-                  ? 'border-cyan-200/35 bg-white/12 shadow-[0_0_18px_rgba(103,232,249,0.50)]'
-                  : 'border-white/10 bg-white/[0.07]'
-              }`}>
-                📦
-              </span>
+                  ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              <span className="text-base">📦</span>
               <span>Pedidos</span>
-              {clientePainelBaixo === 'meusPedidos' ? (
-                <span className="absolute bottom-1.5 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-cyan-200 shadow-[0_0_16px_rgba(103,232,249,0.85)]" />
-              ) : null}
             </button>
-
-            <div className="relative h-9 w-px bg-white/15" />
 
             <button
               type="button"
               onClick={() => setClientePainelBaixo('conversas')}
-              className={`relative h-13 min-w-[148px] rounded-[26px]
-                flex items-center justify-center gap-3
-                text-[15px] font-black
-                transition-all duration-300 active:scale-[0.96]
-                ${
-                  clientePainelBaixo === 'conversas'
-                    ? 'bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-[0_10px_26px_rgba(168,85,247,0.42),inset_0_0_20px_rgba(255,255,255,0.12)]'
-                    : 'bg-white/[0.055] text-white/82 hover:text-white hover:bg-white/[0.09]'
-                }`}
-            >
-              <span className={`grid h-9 w-9 place-items-center rounded-2xl border text-[22px] ${
+              className={[
+                'relative h-12 min-w-0 flex-1 rounded-2xl px-3 text-sm font-black transition-all duration-200 active:scale-[0.96]',
+                'flex items-center justify-center gap-2 border',
                 clientePainelBaixo === 'conversas'
-                  ? 'border-fuchsia-200/35 bg-white/12 shadow-[0_0_18px_rgba(240,171,252,0.50)]'
-                  : 'border-white/10 bg-white/[0.07]'
-              }`}>
-                💬
-              </span>
+                  ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              <span className="text-base">💬</span>
               <span>Conversas</span>
-              {clientePainelBaixo === 'conversas' ? (
-                <span className="absolute bottom-1.5 left-1/2 h-1 w-10 -translate-x-1/2 rounded-full bg-fuchsia-200 shadow-[0_0_16px_rgba(240,171,252,0.85)]" />
-              ) : null}
             </button>
           </div>
         </div>
@@ -2294,7 +2530,7 @@ const [showXpToast, setShowXpToast] = useState(false)
                     Corre Aqui
                   </div>
                   <div className="mt-1 text-xl font-black text-white truncate">
-                    {clientePainelBaixo === 'meusPedidos' ? '📦 Meus pedidos' : clientePainelBaixo === 'chat' ? '💬 Conversa' : '💬 Caixa de conversas'}
+                    {clientePainelBaixo === 'meusPedidos' ? 'Histórico de serviços' : clientePainelBaixo === 'chat' ? '💬 Conversa' : '💬 Caixa de conversas'}
                   </div>
                 </div>
 
@@ -2325,8 +2561,10 @@ const [showXpToast, setShowXpToast] = useState(false)
                     setMapItem(pedido)
                   }}
                   onConfirmarServicoFeito={(pedido) => {
-                    marcarConcluído(pedido)
+                    abrirConclusao(pedido)
                   }}
+                  onProblemaServico={abrirProblema}
+                  onAvaliarServico={abrirAvaliacao}
                   onToast={showToast}
                 />
               )}
@@ -2381,6 +2619,9 @@ const [showXpToast, setShowXpToast] = useState(false)
                       meuNome={meuNome}
                       pedidoTitulo={chatPedido.titulo || 'Corre aqui'}
                       outroUser={getOutroUser(chatPedido)}
+                      planoAtual={meuUserNode?.plano || 'free'}
+                      mostrarAnuncio={false}
+                      onToast={showToast}
                     />
                   </div>
                 </div>
@@ -2390,12 +2631,223 @@ const [showXpToast, setShowXpToast] = useState(false)
         </div>
       )}
 
+      {conclusaoPedido ? (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="w-full max-w-lg rounded-[30px] border border-white/10 bg-[#07111f] p-5 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">
+                  Conclusão do serviço
+                </div>
+                <h2 className="mt-1 text-2xl font-black">Está tudo certo?</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                  Confirme somente depois que o combinado foi entregue. Depois disso você poderá avaliar quem fez o serviço.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConclusaoPedido(null)}
+                className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/10 font-black hover:bg-white/15"
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="text-sm font-black text-white">{conclusaoPedido?.titulo || 'Serviço'}</div>
+              <div className="mt-1 text-xs text-slate-400">
+                {conclusaoPedido?.aceite?.nome ? `Feito por ${conclusaoPedido.aceite.nome}` : 'Aguardando dados de quem aceitou'}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              <button
+                type="button"
+                disabled={serviçondoId === conclusaoPedido.id}
+                onClick={() => marcarConcluído(conclusaoPedido)}
+                className="w-full rounded-3xl bg-emerald-600 px-4 py-4 font-black text-white shadow-[0_18px_60px_rgba(16,185,129,0.24)] hover:bg-emerald-500 disabled:opacity-60"
+              >
+                {serviçondoId === conclusaoPedido.id ? 'Confirmando...' : 'Concluir e avaliar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  abrirProblema(conclusaoPedido)
+                  setConclusaoPedido(null)
+                }}
+                className="w-full rounded-3xl border border-red-400/25 bg-red-500/12 px-4 py-4 font-black text-red-100 hover:bg-red-500/18"
+              >
+                Problema com serviço
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
+
+      {avaliacaoPedido ? (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="w-full max-w-lg rounded-[30px] border border-white/10 bg-[#07111f] p-5 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
+                  Avaliação pós-serviço
+                </div>
+                <h2 className="mt-1 text-2xl font-black">Como foi a experiência?</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                  Sua avaliação fica ligada ao histórico do serviço e ajuda a comunidade a confiar em bons perfis.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAvaliacaoPedido(null)}
+                className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/10 font-black hover:bg-white/15"
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-5 flex justify-center gap-2">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setAvaliacaoNota(n)}
+                  className={[
+                    'grid h-12 w-12 place-items-center rounded-2xl border text-2xl transition',
+                    n <= avaliacaoNota
+                      ? 'border-amber-300 bg-amber-400 text-slate-950 shadow-[0_0_28px_rgba(251,191,36,0.28)]'
+                      : 'border-white/10 bg-white/[0.06] text-slate-500 hover:bg-white/10',
+                  ].join(' ')}
+                  aria-label={`${n} estrela${n === 1 ? '' : 's'}`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+
+            <label className="mt-5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+              Comentário opcional
+              <textarea
+                value={avaliacaoComentario}
+                onChange={(e) => setAvaliacaoComentario(e.target.value)}
+                maxLength={500}
+                placeholder="Ex: chegou no horário, resolveu bem e combinou tudo pelo chat."
+                className="mt-2 min-h-[110px] w-full resize-y rounded-3xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500"
+              />
+            </label>
+
+            <button
+              type="button"
+              disabled={salvandoAvaliacao}
+              onClick={salvarAvaliacaoServico}
+              className="mt-5 w-full rounded-3xl bg-amber-400 px-4 py-4 font-black text-slate-950 hover:bg-amber-300 disabled:opacity-60"
+            >
+              {salvandoAvaliacao ? 'Enviando...' : 'Enviar avaliação'}
+            </button>
+          </motion.div>
+        </div>
+      ) : null}
+
+      {problemaPedido ? (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="w-full max-w-lg rounded-[30px] border border-white/10 bg-[#07111f] p-5 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.18em] text-red-300">
+                  Segurança do serviço
+                </div>
+                <h2 className="mt-1 text-2xl font-black">Problema com serviço</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                  Registre o que aconteceu. Casos de conduta inadequada ou segurança também ficam salvos como denúncia.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProblemaPedido(null)}
+                className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/10 font-black hover:bg-white/15"
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-2">
+              {[
+                ['servico_nao_resolvido', 'Serviço não resolvido'],
+                ['valor_combinado', 'Valor ou combinado'],
+                ['atraso_cancelamento', 'Atraso ou cancelamento'],
+                ['conduta_inadequada', 'Conduta inadequada'],
+                ['seguranca_golpe', 'Segurança ou golpe'],
+                ['outro', 'Outro'],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setProblemaTipo(id)}
+                  className={[
+                    'rounded-2xl border px-4 py-3 text-left text-sm font-black transition',
+                    problemaTipo === id
+                      ? 'border-red-300 bg-red-500/18 text-red-100'
+                      : 'border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <label className="mt-5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+              Conte o que aconteceu
+              <textarea
+                value={problemaDescricao}
+                onChange={(e) => setProblemaDescricao(e.target.value)}
+                maxLength={800}
+                placeholder="Descreva o problema com clareza para ficar registrado no histórico."
+                className="mt-2 min-h-[120px] w-full resize-y rounded-3xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500"
+              />
+            </label>
+
+            <button
+              type="button"
+              disabled={salvandoProblema}
+              onClick={registrarProblemaServico}
+              className="mt-5 w-full rounded-3xl bg-red-600 px-4 py-4 font-black text-white hover:bg-red-500 disabled:opacity-60"
+            >
+              {salvandoProblema ? 'Registrando...' : 'Registrar problema'}
+            </button>
+          </motion.div>
+        </div>
+      ) : null}
+
       {/* ✅ ClienteHome agora controla Corre/Profissionais e mostra a lista rica direto no centro.
           Removido bloco duplicado de busca/filtros e qualquer botão flutuante extra. */}
 
       <XpToast
         open={showXpToast}
-        xp={10}
+        xp={xpToastInfo.xp}
+        texto={xpToastInfo.texto}
+      />
+
+      <PatenteUpModal
+        open={!!patenteUp}
+        patente={patenteUp?.patente}
+        tipo={patenteUp?.tipo}
+        nivel={patenteUp?.nivel}
+        onClose={() => setPatenteUp(null)}
       />
 
       <PerfilDrawer open={openPerfil} onClose={() => setOpenPerfil(false)} uid={meuId} />

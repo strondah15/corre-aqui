@@ -14,10 +14,16 @@ export default function XpToast({
           initial={{ opacity: 0, y: 40, scale: 0.92 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 40, scale: 0.92 }}
-          transition={{ duration: 0.28 }}
+          transition={{ type: 'spring', stiffness: 220, damping: 20 }}
           className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[99999]"
         >
-          <div className="rounded-[28px] border border-cyan-300/20 bg-[#071120]/95 px-6 py-5 shadow-[0_20px_70px_rgba(34,211,238,0.24)] backdrop-blur-2xl">
+          <div className="relative overflow-hidden rounded-[28px] border border-cyan-300/20 bg-[#071120]/95 px-6 py-5 shadow-[0_20px_70px_rgba(34,211,238,0.24)] backdrop-blur-2xl">
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: '120%' }}
+              transition={{ duration: 1.4, ease: 'easeInOut' }}
+              className="pointer-events-none absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/12 to-transparent"
+            />
             <div className="flex items-center gap-4">
               <motion.div
                 animate={{
@@ -33,7 +39,7 @@ export default function XpToast({
                 }}
                 className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 text-2xl"
               >
-                ⚡
+                ✨
               </motion.div>
 
               <div>

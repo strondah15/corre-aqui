@@ -6,11 +6,7 @@ import { motion } from 'framer-motion'
 function safeUrl(u) {
   const s = String(u || '').trim()
   if (!s) return ''
-
-  // Aceita fotos do Firebase Storage/Google, links normais, blob local e base64.
-  // Antes só aceitava http(s), então alguns uploads viravam emoji no card do cliente.
   if (/^(https?:\/\/|data:image\/|blob:)/i.test(s)) return s
-
   return ''
 }
 
@@ -38,6 +34,9 @@ function getFotoURL(item) {
   )
 }
 
+function pickText(...values) {
+  return values.map((v) => String(v || '').trim()).find(Boolean) || ''
+}
 
 function formatOcupadoAte(v) {
   if (!v) return ''
@@ -46,8 +45,23 @@ function formatOcupadoAte(v) {
   return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })
 }
 
+function formatMoney(v) {
+  const s = String(v || '').trim()
+  if (!s) return ''
+  if (/r\$/i.test(s)) return s
+  const n = Number(s.replace(/[^\d,.]/g, '').replace(',', '.'))
+  if (Number.isFinite(n) && n > 0) {
+    return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  }
+  return `R$ ${s}`
+}
+
 function getAgendaStatus(item) {
-  const status = item?.statusProfissional || item?.profile?.statusProfissional || item?.profissional?.statusProfissional || 'disponivel'
+  const status =
+    item?.statusProfissional ||
+    item?.profile?.statusProfissional ||
+    item?.profissional?.statusProfissional ||
+    'disponivel'
   const ocupadoAte = item?.ocupadoAte || item?.profile?.ocupadoAte || item?.profissional?.ocupadoAte || null
   const agendaAberta = item?.agendaAberta ?? item?.profile?.agendaAberta ?? item?.profissional?.agendaAberta ?? true
   const emServico = status === 'em_servico' || (!!ocupadoAte && Date.now() < Number(ocupadoAte))
@@ -55,233 +69,242 @@ function getAgendaStatus(item) {
 }
 
 export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
-  const nome = item?.nome || item?.profile?.nome || 'Profissional'
+  const profile = item?.profile || {}
+  const prof = item?.profissional || profile?.profissional || {}
+  const corre = item?.corre || profile?.corre || {}
+
+  const nome = pickText(item?.nome, profile?.nome, 'Profissional')
   const fotoURL = getFotoURL(item)
-  const emoji = String(item?.avatarEmoji || item?.profile?.avatarEmoji || item?.perfil?.avatarEmoji || '🙂')
-  const isProf = !!(item?.isProfissional || item?.profile?.isProfissional || item?.profissional)
-  const isCorre = !!(item?.isCorre || item?.profile?.isCorre)
+  const emoji = pickText(item?.avatarEmoji, profile?.avatarEmoji, item?.perfil?.avatarEmoji, '🙂')
+  const cidade = pickText(item?.profCidadeAtende, prof?.regiao, corre?.regiao, item?.cidade, profile?.cidade, 'Cidade não informada')
+
+  const isProf = !!(item?.isProfissional || profile?.isProfissional || prof?.ativo || item?.profissional)
+  const isCorre = !!(item?.isCorre || profile?.isCorre || corre?.ativo || item?.corre)
   const agendaStatus = getAgendaStatus(item)
 
-  const tags = useMemo(() => {
+  const tituloProf = pickText(prof?.titulo, item?.profTitulo, profile?.titulo, item?.titulo, 'Profissional local')
+  const resumoProf = pickText(item?.profResumo, prof?.descricao, profile?.descricao, prof?.especialidade)
+  const profExperiencia = pickText(item?.profExperiencia, prof?.experiencia)
+  const preco = pickText(item?.profPrecoBase, prof?.preco, profile?.preco)
+
+  const tituloCorre = pickText(item?.correTitulo, corre?.titulo, 'Corre rápido')
+  const resumoCorre = pickText(item?.correResumo, corre?.bio, profile?.bio)
+  const transporte = pickText(item?.correTransporte, corre?.transporte)
+  const dispCorre = pickText(item?.correDisponibilidade, corre?.disponibilidade)
+  const expCorre = pickText(item?.correExperiencia, corre?.experiencia)
+  const whats = pickText(item?.profWhats, prof?.whatsapp, profile?.whatsapp)
+
+  const servicosFeitos = Number(
+    item?.servicosCorre ||
+      item?.['serviçosCorre'] ||
+      item?.servicosProf ||
+      item?.['serviçosProf'] ||
+      profile?.servicosCorre ||
+      profile?.['serviçosCorre'] ||
+      0
+  )
+  const notaMedia = Number(
+    item?.avaliacaoMedia ||
+      item?.notaMedia ||
+      item?.trustStats?.notaMedia ||
+      profile?.avaliacaoMedia ||
+      profile?.notaMedia ||
+      0
+  )
+  const perfilVerificado = !!(
+    item?.verificado ||
+    item?.verified ||
+    item?.perfilVerificado ||
+    item?.trust?.verificado ||
+    profile?.verificado ||
+    profile?.verified ||
+    (nome && cidade && (fotoURL || emoji) && (servicosFeitos > 0 || isProf || isCorre))
+  )
+
+  const servicos = useMemo(() => {
     const out = []
-    if (isProf) out.push({ t: 'Profissional', cls: 'bg-blue-50 border-blue-200 text-blue-700' })
-    if (isCorre) out.push({ t: 'Bico / Corre', cls: 'bg-amber-50 border-amber-200 text-amber-700' })
+
+    if (isCorre) {
+      out.push({
+        id: 'corre',
+        label: 'Corre',
+        title: tituloCorre,
+        body: resumoCorre || transporte || dispCorre || 'Disponível para bicos, entregas e serviços rápidos.',
+        accent: 'amber',
+      })
+    }
+
+    if (isProf) {
+      out.push({
+        id: 'profissional',
+        label: 'Profissional',
+        title: tituloProf,
+        body: resumoProf || profExperiencia || 'Atendimento profissional na região.',
+        accent: 'blue',
+      })
+    }
+
+    if (!out.length) {
+      out.push({
+        id: 'geral',
+        label: 'Atendimento',
+        title: tituloProf,
+        body: resumoProf || resumoCorre || 'Perfil disponível para atendimento local.',
+        accent: 'slate',
+      })
+    }
+
     return out
-  }, [isProf, isCorre])
+  }, [isCorre, isProf, tituloCorre, resumoCorre, transporte, dispCorre, tituloProf, resumoProf, profExperiencia])
 
-  const prof = item?.profissional || item?.profile?.profissional || {}
-  const corre = item?.corre || item?.profile?.corre || {}
+  const detalhes = [
+    preco ? { label: 'Preço', value: formatMoney(preco) } : null,
+    transporte ? { label: 'Transporte', value: transporte } : null,
+    dispCorre ? { label: 'Disponibilidade', value: dispCorre } : null,
+    profExperiencia || expCorre ? { label: 'Experiência', value: profExperiencia || expCorre } : null,
+  ].filter(Boolean)
 
-  const tituloProf = String(prof?.titulo || item?.profile?.titulo || item?.titulo || '').trim()
-  const resumoProf = String(item?.profResumo || prof?.descricao || item?.profile?.descricao || '').trim()
-  const preco = String(item?.profPrecoBase || prof?.preco || item?.profile?.preco || '').trim()
-  const cidade = String(item?.profCidadeAtende || prof?.regiao || item?.cidade || item?.profile?.cidade || '').trim()
-  const profExperiencia = String(item?.profExperiencia || prof?.experiencia || '').trim()
-
-  const tituloCorre = String(item?.correTitulo || corre?.titulo || 'Corre rápido').trim()
-  const resumoCorre = String(item?.correResumo || corre?.bio || item?.profile?.bio || '').trim()
-  const transporte = String(item?.correTransporte || corre?.transporte || '').trim()
-  const regiaoCorre = String(item?.correRegiao || corre?.regiao || cidade || '').trim()
-  const dispCorre = String(item?.correDisponibilidade || corre?.disponibilidade || '').trim()
-  const expCorre = String(item?.correExperiencia || corre?.experiencia || '').trim()
-
-  const resumo = isProf ? resumoProf : resumoCorre
-  const whats = String(item?.profWhats || prof?.whatsapp || item?.profile?.whatsapp || '').trim()
+  const statusLabel = agendaStatus.emServico ? 'Em serviço' : agendaStatus.agendaAberta ? 'Disponível' : 'Agenda fechada'
+  const statusTone = agendaStatus.emServico ? 'amber' : agendaStatus.agendaAberta ? 'emerald' : 'slate'
 
   return (
-    <>
-      <style>{`
-        .corre-card-clean,
-        .corre-card-clean * {
-          -webkit-user-select: none;
-          -moz-user-select: none;
-          -ms-user-select: none;
-          user-select: none;
-          -webkit-tap-highlight-color: transparent;
-        }
-        .corre-card-clean ::selection {
-          background: transparent;
-          color: inherit;
-        }
-        .corre-card-clean:active,
-        .corre-card-clean:focus,
-        .corre-card-clean:focus-within {
-          background-color: #ffffff;
-          filter: none;
-          transform: none;
-        }
-      `}</style>
-      <motion.div
-        initial={{ opacity: 0, y: 22, scale: 0.985 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-        whileHover={{ y: -3, scale: 1.01 }}
-        whileTap={{ scale: 0.985 }}
-        className="corre-card-clean relative overflow-hidden h-full rounded-[28px] md:rounded-[26px] border border-slate-200 bg-white transition-shadow duration-200 hover:shadow-[0_22px_54px_rgba(15,23,42,0.16)] p-3 md:p-3.5 shadow-[0_14px_42px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/5 select-none cursor-default"
-      >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(59,130,246,0.12),transparent_32%),radial-gradient(circle_at_88%_12%,rgba(16,185,129,0.12),transparent_28%)]" />
-      <div className="relative z-10 flex items-start gap-2.5">
-        <div className="w-10 h-10 md:w-12 md:h-12 rounded-[1.35rem] bg-slate-100 border border-white overflow-hidden flex items-center justify-center shrink-0 shadow-[0_12px_30px_rgba(15,23,42,0.18)] ring-4 ring-slate-100">
-          {fotoURL ? (
-            <img
-              src={fotoURL}
-              alt={nome}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <span className="text-xl md:text-2xl">{emoji}</span>
-          )}
+    <motion.article
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -4 }}
+      className="group relative flex h-full min-h-[360px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white p-4 text-slate-950 shadow-[0_18px_48px_rgba(15,23,42,0.14)] ring-1 ring-slate-900/[0.03]"
+    >
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-slate-50 via-emerald-50/70 to-transparent" />
+
+      <div className="relative flex items-start gap-3">
+        <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-[22px] border border-white bg-slate-100 text-3xl shadow-[0_14px_34px_rgba(15,23,42,0.16)] ring-4 ring-slate-100">
+          {fotoURL ? <img src={fotoURL} alt={nome} className="h-full w-full object-cover" loading="lazy" /> : emoji}
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-600">Disponível</div>
-              <div className="mt-0.5 font-black text-slate-950 text-sm md:text-base leading-tight truncate">
-                {nome}
-              </div>
-
-              <div className="mt-1 text-[11px] text-slate-600">
-                {cidade ? <>📍 <b className="text-slate-800">{cidade}</b></> : 'Cidade não informada'}
-              </div>
-            </div>
-
-            <div className="flex gap-1 flex-wrap justify-end">
-              {tags.map((x) => (
-                <span
-                  key={x.t}
-                  className={`text-[10px] px-2.5 py-1 rounded-full border font-black shadow-sm ${x.cls}`}
-                >
-                  {x.t}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {isCorre && (
-            <div className="mt-2 rounded-[1.35rem] bg-amber-50/95 border border-amber-200 p-2 md:p-2.5 shadow-sm">
-              <div className="text-xs font-black text-amber-800">
-                ⚡ {tituloCorre}
-              </div>
-
-              {resumoCorre ? (
-                <div className="mt-1 text-xs text-slate-700 font-medium line-clamp-1">
-                  {resumoCorre}
-                </div>
-              ) : null}
-
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {transporte ? (
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-amber-200 text-amber-800 font-bold">
-                    🚚 {transporte}
-                  </span>
-                ) : null}
-                {regiaoCorre ? (
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-amber-200 text-amber-800 font-bold">
-                    📍 {regiaoCorre}
-                  </span>
-                ) : null}
-                {dispCorre ? (
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-amber-200 text-amber-800 font-bold">
-                    🕒 {dispCorre}
-                  </span>
-                ) : null}
-                {expCorre ? (
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-amber-200 text-amber-800 font-bold">
-                    ⭐ {expCorre}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          )}
-
-          {isProf && (
-            <div className="mt-2 rounded-[1.35rem] bg-blue-50/95 border border-blue-200 p-2 md:p-2.5 shadow-sm">
-              <div className="text-xs font-black text-blue-800">
-                🧑‍🔧 {tituloProf || 'Profissional'}
-              </div>
-
-              {resumoProf ? (
-                <div className="mt-1 text-xs text-slate-700 font-medium line-clamp-1">
-                  {resumoProf}
-                </div>
-              ) : null}
-
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {preco ? (
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-blue-200 text-blue-800 font-bold">
-                    💰 R$ {preco}
-                  </span>
-                ) : null}
-                {profExperiencia ? (
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-white border border-blue-200 text-blue-800 font-bold">
-                    ⭐ {profExperiencia}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          )}
-
-          {!isCorre && !isProf && resumo ? (
-            <div className="mt-2 text-xs text-slate-700 font-medium line-clamp-1">
-              {resumo}
-            </div>
-          ) : null}
-
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {agendaStatus.emServico ? (
-              <span className="text-[10px] px-2 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 font-black">
-                🟡 Em serviço {agendaStatus.ocupadoAte ? `até ${formatOcupadoAte(agendaStatus.ocupadoAte)}` : ''}
-              </span>
-            ) : (
-              <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-black">
-                🟢 Disponível agora
-              </span>
-            )}
-            {agendaStatus.agendaAberta ? (
-              <span className="text-[10px] px-2 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 font-black">
-                📅 Agenda aberta
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-2 md:mt-2.5 flex gap-1.5 md:gap-2 flex-wrap">
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.96 }}
-              onClick={() => onAbrir?.(item)}
-              className="flex-1 min-w-[96px] h-[34px] md:h-[38px] rounded-xl bg-slate-950 hover:bg-black border border-slate-900 text-white text-xs font-black transition-all duration-300 hover:-translate-y-[3px] duration-200 active:scale-[0.98] shadow-lg shadow-slate-900/20"
-            >
-              Ver currículo
-            </motion.button>
-
-            {agendaStatus?.agendaAberta ? (
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.96 }}
-                onClick={() => onAgendar?.(item)}
-                className="h-[34px] md:h-[38px] px-3 rounded-xl bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-black transition-all duration-300 hover:-translate-y-[3px] active:scale-[0.98] shadow-sm"
-                title="Agendar serviço"
+              <div
+                className={[
+                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ring-1',
+                  statusTone === 'emerald' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : '',
+                  statusTone === 'amber' ? 'bg-amber-50 text-amber-800 ring-amber-200' : '',
+                  statusTone === 'slate' ? 'bg-slate-100 text-slate-600 ring-slate-200' : '',
+                ].join(' ')}
               >
-                📅 Agendar
-              </motion.button>
-            ) : null}
+                <span className={statusTone === 'emerald' ? 'h-1.5 w-1.5 rounded-full bg-emerald-500' : statusTone === 'amber' ? 'h-1.5 w-1.5 rounded-full bg-amber-500' : 'h-1.5 w-1.5 rounded-full bg-slate-400'} />
+                {statusLabel}
+              </div>
+              <h3 className="mt-2 truncate text-lg font-black leading-tight text-slate-950">{nome}</h3>
+              <p className="mt-1 truncate text-xs font-semibold text-slate-500">{cidade}</p>
+            </div>
 
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.96 }}
-              onClick={() => onWhatsapp?.(item)}
-              disabled={!whats}
-              className="h-[34px] md:h-[38px] px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-black disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 hover:-translate-y-[3px] duration-200 active:scale-[0.98] shadow-sm"
-              title={whats ? 'Chamar no WhatsApp' : 'WhatsApp não informado'}
-            >
-              WhatsApp
-            </motion.button>
+            {perfilVerificado ? (
+              <span className="shrink-0 rounded-full bg-cyan-50 px-2.5 py-1 text-[10px] font-black text-cyan-800 ring-1 ring-cyan-200">
+                ✓ Verificado
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
-      </motion.div>
-    </>
+
+      <div className="relative mt-4 grid grid-cols-3 gap-2">
+        <div className="rounded-2xl bg-slate-50 px-2 py-2.5 text-center ring-1 ring-slate-200">
+          <div className="text-base font-black">{Number.isFinite(notaMedia) && notaMedia > 0 ? notaMedia.toFixed(1) : '--'}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Nota</div>
+        </div>
+        <div className="rounded-2xl bg-slate-50 px-2 py-2.5 text-center ring-1 ring-slate-200">
+          <div className="text-base font-black">{servicosFeitos || 0}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Serviços</div>
+        </div>
+        <div className="rounded-2xl bg-slate-50 px-2 py-2.5 text-center ring-1 ring-slate-200">
+          <div className="truncate text-base font-black">{agendaStatus.agendaAberta ? 'Aberta' : 'Fechada'}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Agenda</div>
+        </div>
+      </div>
+
+      <div className="relative mt-4 space-y-2">
+        {servicos.map((servico) => (
+          <div
+            key={servico.id}
+            className={[
+              'rounded-2xl border p-3',
+              servico.accent === 'amber' ? 'border-amber-200 bg-amber-50/85' : '',
+              servico.accent === 'blue' ? 'border-blue-200 bg-blue-50/85' : '',
+              servico.accent === 'slate' ? 'border-slate-200 bg-slate-50' : '',
+            ].join(' ')}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div
+                className={[
+                  'text-xs font-black uppercase tracking-[0.08em]',
+                  servico.accent === 'amber' ? 'text-amber-800' : '',
+                  servico.accent === 'blue' ? 'text-blue-800' : '',
+                  servico.accent === 'slate' ? 'text-slate-600' : '',
+                ].join(' ')}
+              >
+                {servico.label}
+              </div>
+              {servico.id === 'profissional' && preco ? (
+                <span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-blue-800 ring-1 ring-blue-200">
+                  {formatMoney(preco)}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-1 truncate text-sm font-black text-slate-950">{servico.title}</div>
+            <p className="mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-slate-600">{servico.body}</p>
+          </div>
+        ))}
+      </div>
+
+      {detalhes.length ? (
+        <div className="relative mt-3 grid gap-1.5">
+          {detalhes.slice(0, 3).map((d) => (
+            <div key={`${d.label}-${d.value}`} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px]">
+              <span className="font-bold text-slate-400">{d.label}</span>
+              <span className="truncate font-black text-slate-800">{d.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="relative mt-auto flex flex-col gap-2 pt-4">
+        {agendaStatus.emServico ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800">
+            Em serviço {agendaStatus.ocupadoAte ? `até ${formatOcupadoAte(agendaStatus.ocupadoAte)}` : ''}
+          </div>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => onAbrir?.(item)}
+          className="h-11 rounded-2xl bg-slate-950 px-4 text-sm font-black text-white shadow-[0_12px_28px_rgba(15,23,42,0.18)] transition hover:bg-black active:scale-[0.98]"
+        >
+          Ver ficha técnica
+        </button>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onAgendar?.(item)}
+            disabled={!agendaStatus.agendaAberta}
+            className="h-10 rounded-2xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-700 transition hover:bg-violet-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
+            title={agendaStatus.agendaAberta ? 'Agendar serviço' : 'Agenda fechada'}
+          >
+            Agendar
+          </button>
+          <button
+            type="button"
+            onClick={() => onWhatsapp?.(item)}
+            disabled={!whats}
+            className="h-10 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
+            title={whats ? 'Chamar no WhatsApp' : 'WhatsApp não informado'}
+          >
+            WhatsApp
+          </button>
+        </div>
+      </div>
+    </motion.article>
   )
 }

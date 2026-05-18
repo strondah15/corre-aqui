@@ -5,10 +5,10 @@ import { CATEGORIES } from '@/constants/categories'
 import ListaProfissionais from './ListaProfissionais'
 
 const glass =
-  'bg-white border border-slate-200 shadow-[0_18px_55px_rgba(15,23,42,0.12)] text-slate-900 select-none'
+  'bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.24)] text-white backdrop-blur-xl select-none'
 
 const floatingSection =
-  'bg-white border border-slate-200 shadow-[0_18px_55px_rgba(15,23,42,0.12)] text-slate-900 select-none'
+  'bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.22)] text-white backdrop-blur-xl select-none'
 
 const safeStr = (v) => String(v || '').trim()
 
@@ -160,25 +160,46 @@ export default function ClienteHome({
   }, [providers, modo, busca, catId])
 
   return (
-    <div className="mt-3 space-y-5 px-3 sm:px-0 pb-36 select-none bg-transparent">
-      <div className={`rounded-[2.25rem] p-4 sm:p-5 lg:p-6 ${glass}`}>
-        <div className="text-sm sm:text-base font-black text-slate-900">
-          👋 Olá, {meuNome || 'Anônimo'}
-        </div>
-        <div className="mt-1 text-xs sm:text-sm text-slate-600 leading-snug">
-          Crie um pedido e encontre quem está disponível.
+    <div className="mt-3 space-y-4 px-3 sm:px-0 pb-28 select-none bg-transparent">
+      <div className={`rounded-[28px] p-4 md:p-5 ${glass}`}>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <div className="text-base md:text-lg font-black text-white truncate">
+              Olá, {meuNome || 'Anônimo'}
+            </div>
+            <div className="mt-1 text-sm text-slate-300 leading-snug">
+              Crie um pedido ou escolha alguém disponível perto de você.
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onCriarPedido?.()}
+              className="h-11 rounded-2xl bg-white px-4 text-sm font-black text-slate-950 shadow-lg shadow-black/20 transition hover:bg-slate-100 active:scale-[0.98]"
+            >
+              Criar pedido
+            </button>
+            <button
+              type="button"
+              onClick={() => onIrAoVivo?.()}
+              className="h-11 rounded-2xl border border-white/12 bg-white/10 px-4 text-sm font-black text-white transition hover:bg-white/14 active:scale-[0.98]"
+            >
+              Mapa
+            </button>
+          </div>
         </div>
 
         {/* ✅ CONTROLE ÚNICO: Corre / Profissionais */}
-        <div className="mt-4 grid grid-cols-2 gap-2 rounded-[1.7rem] bg-slate-100 p-1.5 border border-slate-200">
+        <div className="mt-4 grid grid-cols-2 gap-2 rounded-[22px] bg-black/20 p-1.5 border border-white/10">
           <button
             type="button"
             onClick={() => setModo('corre')}
             className={[
-              'w-full h-12 rounded-[1.35rem] text-sm font-black border transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2',
+              'w-full h-11 rounded-2xl text-sm font-black border transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2',
               modo === 'corre'
-                ? 'bg-amber-300 text-black border-yellow-300 shadow-[0_10px_25px_rgba(245,158,11,0.20)]'
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-950',
+                ? 'bg-white text-slate-950 border-white shadow-[0_12px_28px_rgba(255,255,255,0.12)]'
+                : 'bg-transparent text-slate-300 border-transparent hover:bg-white/8 hover:text-white',
             ].join(' ')}
           >
             <span>⚡</span>
@@ -189,50 +210,27 @@ export default function ClienteHome({
             type="button"
             onClick={() => setModo('profissional')}
             className={[
-              'w-full h-12 rounded-[1.35rem] text-sm font-black border transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2',
+              'w-full h-11 rounded-2xl text-sm font-black border transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2',
               modo === 'profissional'
-                ? 'bg-blue-500 text-white border-blue-500 shadow-[0_10px_25px_rgba(59,130,246,0.22)]'
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-slate-950',
+                ? 'bg-white text-slate-950 border-white shadow-[0_12px_28px_rgba(255,255,255,0.12)]'
+                : 'bg-transparent text-slate-300 border-transparent hover:bg-white/8 hover:text-white',
             ].join(' ')}
           >
             <span>👷</span>
             <span>Profissionais</span>
           </button>
         </div>
-
-        <div className="mt-4 grid grid-cols-1 min-[420px]:grid-cols-2 gap-2.5">
-          <button
-            type="button"
-            onClick={() => onCriarPedido?.()}
-            className="w-full px-4 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-black transition-all duration-200 active:scale-[0.98] shadow-[0_12px_30px_rgba(37,99,235,0.25)]"
-          >
-            🎯 Criar pedido
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onIrAoVivo?.()}
-            className="w-full px-4 py-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 text-sm font-black transition-all duration-200 active:scale-[0.98] shadow-sm"
-          >
-            🗺️ Ver mapa ao vivo
-          </button>
-        </div>
       </div>
 
       {/* ✅ LISTA LIMPA: sem busca duplicada, sem filtros duplicados, sem botão flutuante */}
       <div className="space-y-4">
-        <div className={[
-          'px-4 sm:px-5 py-4 rounded-[2rem] border border-slate-200 shadow-[0_18px_55px_rgba(15,23,42,0.12)]',
-          modo === 'corre'
-            ? 'bg-gradient-to-br from-white via-amber-50 to-orange-100/80'
-            : 'bg-gradient-to-br from-white via-slate-50 to-blue-100/80',
-        ].join(' ')}>
+        <div className={`px-4 sm:px-5 py-4 rounded-[26px] ${floatingSection}`}>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
                 Lista da região
               </div>
-              <div className="mt-1 text-base sm:text-lg font-black text-slate-950 truncate">
+              <div className="mt-1 text-base sm:text-lg font-black text-white truncate">
                 {modo === 'corre' ? '⚡ Corres disponíveis' : '👷 Profissionais disponíveis'}
               </div>
             </div>
@@ -240,8 +238,8 @@ export default function ClienteHome({
             <span className={[
               'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black border',
               modo === 'corre'
-                ? 'bg-amber-100 text-amber-800 border-amber-200'
-                : 'bg-blue-100 text-blue-800 border-blue-200',
+                ? 'bg-amber-300/15 text-amber-100 border-amber-200/25'
+                : 'bg-blue-400/15 text-blue-100 border-blue-200/25',
             ].join(' ')}>
               {list.length} ativo(s)
             </span>

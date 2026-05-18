@@ -31,9 +31,9 @@ export default function UsuariosOnline() {
 
     let nome = ''
     if (typeof window !== 'undefined') {
-      nome = localStorage.getItem('correaqui_nome') || ''
+      nome = localStorage.getItem('correaqui_nome') || localStorage.getItem('meuNome') || ''
       if (!nome) {
-        nome = prompt('Digite seu nome para aparecer online:') || 'Anônimo'
+        nome = 'Visitante'
         localStorage.setItem('correaqui_nome', nome)
       }
     }
@@ -123,20 +123,8 @@ export default function UsuariosOnline() {
   }, [usersObj])
 
   return (
-    <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-xl p-4 border border-blue-500 text-sm z-[7000]">
-      <p>✅ Online como: <strong>{meuNome || '...'}</strong></p>
-      <p>👥 Usuários online: <strong>{onlineUsers.length}</strong></p>
-
-      {/* opcional: mini lista */}
-      {onlineUsers.length > 0 && (
-        <div className="mt-2 max-h-40 overflow-auto pr-1">
-          {onlineUsers.slice(0, 12).map((u) => (
-            <div key={u.id} className="text-xs text-gray-700">
-              • {u.nome || 'Anônimo'}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <span className="sr-only" aria-hidden="true">
+      Presença online ativa: {onlineUsers.length}
+    </span>
   )
 }

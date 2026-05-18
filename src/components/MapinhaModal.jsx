@@ -386,8 +386,8 @@ export default function MapinhaModal({
 
     if (isMapaAoVivo) {
       setShowPedido(false);
-      setShowOnline(true);
-      setLiveMode(true);
+      setShowOnline(defaultShowOnline);
+      setLiveMode(defaultLiveMode);
       snapTo("mid");
     } else {
       setShowPedido(true);

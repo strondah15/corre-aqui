@@ -1,0 +1,95 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      ".indexOn": ["online", "lastSeen", "isCorre", "isProfissional"],
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "usuariosOnline": {
+      ".indexOn": ["online", "lastSeen", "isCorre", "isProfissional"],
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "pedidos": {
+      ".read": "auth != null",
+      ".indexOn": ["status", "categoriaId", "criadoEm", "atualizadoEm", "concluidoEm"],
+      "$pedidoId": {
+        ".write": "auth != null && ((!data.exists() && newData.child('criador/id').val() === auth.uid) || (data.exists() && (data.child('criador/id').val() === auth.uid || data.child('aceite/id').val() === auth.uid || (!data.child('aceite/id').exists() && newData.child('aceite/id').val() === auth.uid))))",
+        ".validate": "!newData.exists() || (newData.hasChildren(['criador', 'status']) && newData.child('criador/id').isString() && newData.child('status').isString())"
+      }
+    },
+    "avaliacoes": {
+      ".read": "auth != null",
+      "$pedidoId": {
+        ".write": "auth != null && newData.child('cliente/id').val() === auth.uid",
+        ".validate": "!newData.exists() || (newData.child('pedidoId').isString() && newData.child('nota').isNumber() && newData.child('nota').val() >= 1 && newData.child('nota').val() <= 5 && newData.child('cliente/id').isString() && newData.child('avaliado/id').isString())"
+      }
+    },
+    "problemasServico": {
+      ".read": "auth != null",
+      ".indexOn": ["pedidoId", "status", "criadoEm"],
+      "$registroId": {
+        ".write": "auth != null && newData.child('autor/id').val() === auth.uid",
+        ".validate": "!newData.exists() || (newData.child('pedidoId').isString() && newData.child('tipo').isString() && newData.child('status').isString() && newData.child('autor/id').isString())"
+      }
+    },
+    "denuncias": {
+      ".read": "auth != null",
+      ".indexOn": ["pedidoId", "status", "criadoEm"],
+      "$registroId": {
+        ".write": "auth != null && newData.child('autor/id').val() === auth.uid",
+        ".validate": "!newData.exists() || (newData.child('pedidoId').isString() && newData.child('tipo').isString() && newData.child('status').isString() && newData.child('autor/id').isString())"
+      }
+    },
+    "missoes": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "conversas": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
+      }
+    },
+    "usersChats": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
+      }
+    },
+    "notificacoes": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
+      }
+    },
+    "agendamentos": {
+      ".read": "auth != null",
+      ".indexOn": ["profissionalId", "clienteId", "status", "data"],
+      "$agendamentoId": {
+        ".write": "auth != null && ((!data.exists() && (newData.child('clienteId').val() === auth.uid || newData.child('profissionalId').val() === auth.uid)) || (data.exists() && (data.child('clienteId').val() === auth.uid || data.child('profissionalId').val() === auth.uid)))",
+        ".validate": "!newData.exists() || (newData.child('clienteId').isString() && newData.child('profissionalId').isString() && newData.child('status').isString())"
+      }
+    },
+    "chats": {
+      "$pedidoId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "mensagens": {
+      "$conversaId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}

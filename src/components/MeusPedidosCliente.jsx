@@ -45,6 +45,8 @@ export default function MeusPedidosCliente({
   onAbrirChat,
   onVerMapa,
   onConfirmarServicoFeito,
+  onProblemaServico,
+  onAvaliarServico,
   onToast,
 }) {
   const [pedidoAlcance, setPedidoAlcance] = useState(null)
@@ -114,6 +116,17 @@ export default function MeusPedidosCliente({
       return tb - ta
     })
 
+  const totalConcluidos = meusPedidos.filter((p) => String(p?.status || '').toLowerCase() === 'concluido').length
+  const totalAceitos = meusPedidos.filter((p) => String(p?.status || '').toLowerCase() === 'aceito').length
+  const totalAbertos = meusPedidos.filter((p) => String(p?.status || 'aberto').toLowerCase() === 'aberto').length
+  const totalProblemas = meusPedidos.filter((p) => !!p?.problemaServico).length
+  const totalAvaliacoesPendentes = meusPedidos.filter(
+    (p) => String(p?.status || '').toLowerCase() === 'concluido' && !p?.avaliacao
+  ).length
+
+  const podeRelatarProblema = (p) => ['aceito', 'concluido'].includes(String(p?.status || '').toLowerCase())
+  const podeAvaliar = (p) => String(p?.status || '').toLowerCase() === 'concluido' && !p?.avaliacao
+
   const badgeStatus = (status) => {
     const s = String(status || 'aberto').toLowerCase()
 
@@ -157,10 +170,33 @@ export default function MeusPedidosCliente({
     <div className="mt-4 rounded-[1.8rem] p-4 bg-[#0f172a] border border-slate-700 shadow-2xl shadow-black/40">
       <div className="flex items-center justify-between mb-4 rounded-2xl bg-[#1e293b] border border-slate-600 px-3 py-2.5 shadow-lg shadow-black/20">
         <div className="text-sm font-semibold text-white">
-          📦 Meus pedidos
+          Histórico de serviços
         </div>
         <div className="text-xs text-slate-400">
           {meusPedidos.length} pedido{meusPedidos.length === 1 ? '' : 's'}
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
+          <div className="text-lg font-black text-white">{totalAbertos}</div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Abertos</div>
+        </div>
+        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
+          <div className="text-lg font-black text-amber-300">{totalAceitos}</div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Em andamento</div>
+        </div>
+        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
+          <div className="text-lg font-black text-sky-300">{totalConcluidos}</div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Concluídos</div>
+        </div>
+        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
+          <div className="text-lg font-black text-amber-200">{totalAvaliacoesPendentes}</div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">A avaliar</div>
+        </div>
+        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
+          <div className="text-lg font-black text-red-300">{totalProblemas}</div>
+          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Problemas</div>
         </div>
       </div>
 
@@ -212,11 +248,20 @@ export default function MeusPedidosCliente({
                     {p?.concluidoEm ? (
                       <span>📦 Concluído: <b className="text-sky-300">{formatDataHora(p?.concluidoEm)}</b></span>
                     ) : null}
+                    {p?.avaliacao?.nota ? (
+                      <span>★ Avaliação: <b className="text-amber-300">{Number(p.avaliacao.nota).toFixed(1)}</b></span>
+                    ) : null}
                   </div>
                 </div>
 
                 {badgeStatus(p?.status)}
               </div>
+
+              {p?.problemaServico ? (
+                <div className="mt-3 rounded-2xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">
+                  Problema registrado: {p.problemaServico?.status || 'aberto'}
+                </div>
+              ) : null}
 
               <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-200">
                 {p?.valor != null && Number.isFinite(Number(p.valor)) ? (
@@ -280,7 +325,27 @@ export default function MeusPedidosCliente({
                     }}
                     type="button"
                   >
-                    Confirmar serviço feito
+                    Concluir serviço
+                  </motion.button>
+                ) : null}
+
+                {podeAvaliar(p) ? (
+                  <motion.button
+                    className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-sm font-black shadow-md shadow-amber-500/20 transition active:scale-[0.98]"
+                    onClick={() => onAvaliarServico?.(p)}
+                    type="button"
+                  >
+                    Avaliar serviço
+                  </motion.button>
+                ) : null}
+
+                {podeRelatarProblema(p) ? (
+                  <motion.button
+                    className="px-3 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/20 border border-red-400/25 text-red-100 text-sm font-black transition active:scale-[0.98]"
+                    onClick={() => onProblemaServico?.(p)}
+                    type="button"
+                  >
+                    Problema com serviço
                   </motion.button>
                 ) : null}
 
@@ -361,4 +426,3 @@ export default function MeusPedidosCliente({
     </div>
   )
 }
-

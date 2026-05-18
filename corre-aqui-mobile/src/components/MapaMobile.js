@@ -2,23 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Dimensions, Alert } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { getDatabase, ref, onValue } from 'firebase/database';
-import { initializeApp } from 'firebase/app';
-
-// 🔥 Config Firebase (substitua pela sua se precisar)
-const firebaseConfig = {
-  apiKey: "AIzaSyB00EWcGeFFa00do2FAbujENb5quVyUPgo",
-  authDomain: "corre-aqui-3f9ec.firebaseapp.com",
-  databaseURL: "https://corre-aqui-3f9ec-default-rtdb.firebaseio.com",
-  projectId: "corre-aqui-3f9ec",
-  storageBucket: "corre-aqui-3f9ec.firebasestorage.app",
-  messagingSenderId: "43953100978",
-  appId: "1:43953100978:web:a85f649cf0ca09140f11ab"
-};
-
-const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
-const pedidosRef = ref(database, 'pedidos');
+import { ref, onValue } from 'firebase/database';
+import { database, firebaseConfigReady } from '../lib/firebase';
 
 export default function MapaMobile() {
   const [location, setLocation] = useState(null);
@@ -26,36 +11,49 @@ export default function MapaMobile() {
 
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permissão negada', 'Ative a localização para usar o app');
+        Alert.alert('Permissão negada', 'Ative a localização para usar o app.');
         return;
       }
 
-      let loc = await Location.getCurrentPositionAsync({});
+      const loc = await Location.getCurrentPositionAsync({});
       setLocation(loc.coords);
     })();
   }, []);
 
   useEffect(() => {
-    onValue(pedidosRef, (snapshot) => {
-  try {
-    const data = snapshot.val() || {};
-    const lista = Object.entries(data).map(([id, pedido]) => {
-      const { local } = pedido;
-      return {
-        id,
-        ...pedido,
-        latitude: local?.lat,
-        longitude: local?.lng,
-      };
-    });
-    setPedidos(lista);
-  } catch (err) {
-    console.error('Erro ao carregar pedidos:', err);
-  }
-});
+    if (!firebaseConfigReady || !database) {
+      Alert.alert(
+        'Configuração pendente',
+        'Defina as variáveis EXPO_PUBLIC_FIREBASE_* para carregar o mapa mobile.'
+      );
+      return undefined;
+    }
 
+    const pedidosRef = ref(database, 'pedidos');
+    const off = onValue(pedidosRef, (snapshot) => {
+      try {
+        const data = snapshot.val() || {};
+        const lista = Object.entries(data)
+          .map(([id, pedido]) => {
+            const { local } = pedido || {};
+            return {
+              id,
+              ...pedido,
+              latitude: local?.lat,
+              longitude: local?.lng,
+            };
+          })
+          .filter((pedido) => pedido.latitude && pedido.longitude);
+
+        setPedidos(lista);
+      } catch (err) {
+        console.error('Erro ao carregar pedidos:', err);
+      }
+    });
+
+    return () => off();
   }, []);
 
   return (
@@ -75,20 +73,17 @@ export default function MapaMobile() {
           showsUserLocation
         >
           {pedidos.map((pedido) => (
-            pedido.latitude && pedido.longitude && (
-              <Marker
-                key={pedido.id}
-                coordinate={{
-                  latitude: pedido.latitude,
-                  longitude: pedido.longitude,
-                }}
-                title={pedido.texto || 'Pedido'}
-                description={`Status: ${pedido.status}`}
-              />
-            )
+            <Marker
+              key={pedido.id}
+              coordinate={{
+                latitude: pedido.latitude,
+                longitude: pedido.longitude,
+              }}
+              title={pedido.titulo || pedido.texto || 'Pedido'}
+              description={`Status: ${pedido.status || 'aberto'}`}
+            />
           ))}
 
-          {/* Linha azul para o primeiro pedido, só como exemplo */}
           {pedidos[0]?.latitude && (
             <Polyline
               coordinates={[
@@ -101,7 +96,7 @@ export default function MapaMobile() {
                   longitude: pedidos[0].longitude,
                 },
               ]}
-              strokeColor="#0000FF"
+              strokeColor="#2563eb"
               strokeWidth={4}
             />
           )}

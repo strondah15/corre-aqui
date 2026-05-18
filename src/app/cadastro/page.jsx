@@ -1,7 +1,14 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { v4 as uuidv4 } from 'uuid'
+
+function gerarIdCurto() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+  }
+
+  return Math.random().toString(36).slice(2, 10)
+}
 
 export default function CadastroPage() {
   const router = useRouter()
@@ -22,7 +29,7 @@ export default function CadastroPage() {
       return
     }
 
-    const idUnico = uuidv4().slice(0, 6)
+    const idUnico = gerarIdCurto()
     localStorage.setItem('meuNome', nome.trim())
     localStorage.setItem('meuId', idUnico)
     localStorage.setItem('visivel', visivel ? 'true' : 'false')

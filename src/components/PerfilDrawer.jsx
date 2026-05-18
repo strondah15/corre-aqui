@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ref, onValue, update, serverTimestamp } from "firebase/database";
 import { database } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import PainelPatentes from "./PainelPatentes";
+import Patente, { calcularPatentePorServicos } from "./Patente";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
   ssr: false,
@@ -37,6 +38,10 @@ const initialProfile = {
   statusProfissional: "disponivel",
   ocupadoAte: "",
   agendaAberta: true,
+  mapMostrarOnline: false,
+  mapAoVivo: false,
+  mapLimiteOnline: 30,
+  animacoes: true,
 };
 
 const tabLabel = {
@@ -133,8 +138,66 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   const [profile, setProfile] = useState(initialProfile);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  const [serviceStats, setServiceStats] = useState({
+    total: 0,
+    comoCorre: 0,
+    comoCliente: 0,
+    comoProfissional: 0,
+    problemas: 0,
+    notaMedia: null,
+    avaliacoes: 0,
+  });
+  const [accountStats, setAccountStats] = useState({
+    xp: 0,
+    moedas: 0,
+    servicosCorre: 0,
+    servicosProf: 0,
+    patenteCorre: 1,
+    patenteProf: 0,
+  });
+  const settingsLoadedRef = useRef(false);
 
   const userBasePath = useMemo(() => (uid ? `users/${uid}` : ""), [uid]);
+
+  useEffect(() => {
+    settingsLoadedRef.current = false;
+  }, [open, uid]);
+
+  useEffect(() => {
+    if (!open || !uid) return;
+
+    const userRef = ref(database, userBasePath);
+    return onValue(userRef, (snap) => {
+      const data = snap.val() || {};
+      const settings = data.settings || {};
+      const settingsMapa = settings.mapa || {};
+      const settingsUi = settings.ui || {};
+
+      const servicosCorre = Number(data.servicosCorre ?? data["serviçosCorre"] ?? 0);
+      const servicosProf = Number(data.servicosProf ?? data["serviçosProf"] ?? 0);
+      const isProfissionalUser = !!(data.isProfissional || data.profile?.isProfissional || data.profissional?.ativo);
+
+      setAccountStats({
+        xp: Number(data.xp || 0),
+        moedas: Number(data.moedas || 0),
+        servicosCorre,
+        servicosProf,
+        patenteCorre: Number(data.patenteCorre || calcularPatentePorServicos(servicosCorre)),
+        patenteProf: Number(data.patenteProf || (isProfissionalUser ? calcularPatentePorServicos(servicosProf) : 0)),
+      });
+
+      if (!settingsLoadedRef.current) {
+        setProfile((prev) => ({
+          ...prev,
+          mapMostrarOnline: settingsMapa.mostrarOnline ?? prev.mapMostrarOnline,
+          mapAoVivo: settingsMapa.aoVivo ?? prev.mapAoVivo,
+          mapLimiteOnline: settingsMapa.limiteOnline ?? prev.mapLimiteOnline,
+          animacoes: settingsUi.animacoes ?? prev.animacoes,
+        }));
+        settingsLoadedRef.current = true;
+      }
+    });
+  }, [open, uid, userBasePath]);
 
   useEffect(() => {
     if (!open || !uid) return;
@@ -192,6 +255,52 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     });
   }, [open, uid, userBasePath]);
 
+  useEffect(() => {
+    if (!open || !uid) return;
+
+    const pedidosRef = ref(database, "pedidos");
+    return onValue(pedidosRef, (snap) => {
+      const data = snap.val() || {};
+      const pedidos = Object.values(data);
+      let total = 0;
+      let comoCorre = 0;
+      let comoCliente = 0;
+      let comoProfissional = 0;
+      let problemas = 0;
+      let notaSoma = 0;
+      let avaliacoes = 0;
+
+      pedidos.forEach((p) => {
+        const souCliente = p?.criador?.id === uid;
+        const souCorre = p?.aceite?.id === uid;
+        const concluido = String(p?.status || "").toLowerCase() === "concluido";
+        const modoProfissional = String(p?.modoPedido || "").toLowerCase() === "profissional";
+
+        if (concluido && (souCliente || souCorre)) total += 1;
+        if (concluido && souCorre) comoCorre += 1;
+        if (concluido && souCorre && modoProfissional) comoProfissional += 1;
+        if (concluido && souCliente) comoCliente += 1;
+        if ((souCliente || souCorre) && p?.problemaServico) problemas += 1;
+
+        const nota = Number(p?.avaliacao?.nota);
+        if (souCorre && Number.isFinite(nota) && nota > 0) {
+          notaSoma += nota;
+          avaliacoes += 1;
+        }
+      });
+
+      setServiceStats({
+        total,
+        comoCorre,
+        comoCliente,
+        comoProfissional,
+        problemas,
+        notaMedia: avaliacoes ? notaSoma / avaliacoes : null,
+        avaliacoes,
+      });
+    });
+  }, [open, uid]);
+
   const salvar = async () => {
     if (!uid) return;
 
@@ -222,6 +331,18 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         agendaAberta: profile.agendaAberta !== false,
       };
 
+      const mapSettings = {
+        mostrarOnline: !!profile.mapMostrarOnline,
+        aoVivo: !!profile.mapAoVivo,
+        limiteOnline: Math.max(5, Math.min(120, Number(profile.mapLimiteOnline || 30))),
+        atualizadoEm: serverTimestamp(),
+      };
+
+      const uiSettings = {
+        animacoes: profile.animacoes !== false,
+        atualizadoEm: serverTimestamp(),
+      };
+
       const fotoPrincipal =
         profile.fotoURL || profile.photoURL || profile.avatar || "";
 
@@ -242,6 +363,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         },
         atualizadoEm: serverTimestamp(),
       });
+
+      await update(ref(database, `${userBasePath}/settings/mapa`), mapSettings);
+      await update(ref(database, `${userBasePath}/settings/ui`), uiSettings);
 
       await update(ref(database, `${userBasePath}`), {
         nome: profile.nome,
@@ -301,6 +425,24 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
   if (!open) return null;
   if (!uid) return null;
+
+  const fotoPrincipal = profile.fotoURL || profile.photoURL || profile.avatar || "";
+  const perfilVerificadoOficial = !!(
+    profile.verificado ||
+    profile.verified ||
+    profile.perfilVerificado ||
+    profile.trust?.verificado
+  );
+  const perfilVerificadoBasico = !!(
+    !perfilVerificadoOficial &&
+    profile.nome &&
+    profile.cidade &&
+    (fotoPrincipal || profile.avatarEmoji) &&
+    (serviceStats.total > 0 || profile.isCorre || profile.isProfissional)
+  );
+  const perfilVerificado = perfilVerificadoOficial || perfilVerificadoBasico;
+  const nivelCorreAtual = Number(accountStats.patenteCorre || calcularPatentePorServicos(accountStats.servicosCorre));
+  const nivelProfAtual = Number(accountStats.patenteProf || (profile.isProfissional ? calcularPatentePorServicos(accountStats.servicosProf) : 0));
 
   return (
     <div className="fixed inset-0 z-[100000] bg-[#020617]">
@@ -406,6 +548,16 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   {profile.visivel ? "🟢 Visível" : "⚫ Oculto"}
                 </span>
 
+                {perfilVerificado ? (
+                  <span className="px-3 py-1.5 rounded-full text-xs font-black bg-cyan-500/15 border border-cyan-300/25 text-cyan-200">
+                    {perfilVerificadoOficial ? "✓ Perfil verificado" : "✓ Básico verificado"}
+                  </span>
+                ) : (
+                  <span className="px-3 py-1.5 rounded-full text-xs font-black bg-slate-500/10 border border-slate-400/15 text-slate-300">
+                    Verificação pendente
+                  </span>
+                )}
+
                 <span className="px-3 py-1.5 rounded-full text-xs font-black bg-amber-500/10 border border-amber-300/20 text-amber-200">
                   ⚡ Corre rápido
                 </span>
@@ -415,26 +567,44 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     🧑‍🔧 Profissional
                   </span>
                 )}
+
+                <Patente tipo="corre" nivel={nivelCorreAtual} size="sm" />
+                {profile.isProfissional && nivelProfAtual > 0 ? (
+                  <Patente tipo="prof" nivel={nivelProfAtual} size="sm" />
+                ) : null}
               </div>
 
               <div className="mt-5 grid grid-cols-3 gap-2 w-full">
                 <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
-                  <div className="text-lg font-black text-white">0</div>
+                  <div className="text-lg font-black text-white">{serviceStats.total}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                    Serviços
+                    Histórico
                   </div>
                 </div>
                 <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
-                  <div className="text-lg font-black text-white">⭐ 5.0</div>
+                  <div className="text-lg font-black text-white">
+                    {serviceStats.notaMedia ? `★ ${serviceStats.notaMedia.toFixed(1)}` : "Sem nota"}
+                  </div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                     Nota
                   </div>
                 </div>
                 <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
-                  <div className="text-lg font-black text-white">📍</div>
+                  <div className="text-lg font-black text-white">{serviceStats.problemas}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">
-                    {profile.cidade || "Região"}
+                    Problemas
                   </div>
+                </div>
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-2 w-full text-left">
+                <div className="rounded-2xl bg-white/[0.04] border border-white/10 px-3 py-2">
+                  <div className="text-sm font-black text-cyan-100">{serviceStats.comoCorre}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Como corre</div>
+                </div>
+                <div className="rounded-2xl bg-white/[0.04] border border-white/10 px-3 py-2">
+                  <div className="text-sm font-black text-cyan-100">{serviceStats.comoCliente}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Como cliente</div>
                 </div>
               </div>
 
@@ -527,74 +697,124 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           {/* CONFIG */}
           {tab === "config" && (
             <div className="mt-5 space-y-4">
-              <div className="rounded-[28px] bg-gradient-to-br from-[#0b1628] via-[#081426] to-[#050b16] border border-cyan-300/10 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.24)]">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-white/8 border border-white/10 flex items-center justify-center text-xl shadow-lg">
-                    ⚙️
+              <div className="rounded-[30px] bg-gradient-to-br from-[#0b1628] via-[#081426] to-[#050b16] border border-cyan-300/10 p-5 shadow-[0_20px_70px_rgba(0,0,0,0.24)]">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-xl shadow-lg">
+                      ⚙️
+                    </div>
+                    <div>
+                      <div className="text-lg font-black text-white">Configurações</div>
+                      <div className="text-sm text-slate-400">
+                        Ajuste presença, mapa e experiência visual.
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-base font-black text-white">
-                      Ajustes rápidos
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      Controle como você aparece no Corre Aqui.
-                    </div>
+
+                  <div className="rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-4 py-3 text-sm font-black text-cyan-100">
+                    Mapa limpo por padrão
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3">
-                <label className="flex items-center justify-between gap-4 rounded-[26px] bg-slate-900/75 border border-white/10 px-4 py-4 shadow-[0_14px_45px_rgba(0,0,0,0.18)]">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-300/20 flex items-center justify-center text-lg">
-                      🟢
-                    </div>
-                    <div>
-                      <div className="text-sm font-extrabold text-white">
-                        Visível no mapa
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        Clientes e corres podem encontrar você em tempo real.
-                      </div>
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={profile.visivel}
-                    onChange={(e) =>
-                      setProfile((p) => ({ ...p, visivel: e.target.checked }))
-                    }
-                    className="w-5 h-5 accent-emerald-500"
-                  />
-                </label>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <section className="rounded-[28px] border border-white/10 bg-[#0b1628] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)]">
+                  <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">Presença</div>
 
-                <label className="flex items-center justify-between gap-4 rounded-[26px] bg-slate-900/75 border border-white/10 px-4 py-4 shadow-[0_14px_45px_rgba(0,0,0,0.18)]">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-blue-500/15 border border-blue-300/20 flex items-center justify-center text-lg">
-                      🔔
-                    </div>
+                  <label className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
                     <div>
-                      <div className="text-sm font-extrabold text-white">
-                        Notificações
+                      <div className="text-sm font-extrabold text-white">Visível no mapa</div>
+                      <div className="text-xs text-slate-400">Permite aparecer como disponível para clientes próximos.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={profile.visivel}
+                      onChange={(e) => setProfile((p) => ({ ...p, visivel: e.target.checked }))}
+                      className="h-5 w-5 accent-emerald-500"
+                    />
+                  </label>
+
+                  <label className="mt-3 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                    <div>
+                      <div className="text-sm font-extrabold text-white">Notificações</div>
+                      <div className="text-xs text-slate-400">Pedidos, chat, aceite, conclusão e avaliações.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={profile.notificacoes}
+                      onChange={(e) => setProfile((p) => ({ ...p, notificacoes: e.target.checked }))}
+                      className="h-5 w-5 accent-blue-600"
+                    />
+                  </label>
+                </section>
+
+                <section className="rounded-[28px] border border-white/10 bg-[#0b1628] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)]">
+                  <div className="text-xs font-black uppercase tracking-[0.16em] text-cyan-300">Mapa ao vivo</div>
+
+                  <label className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                    <div>
+                      <div className="text-sm font-extrabold text-white">Mostrar pessoas online</div>
+                      <div className="text-xs text-slate-400">Mantido desligado para o mapa ficar mais limpo.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={profile.mapMostrarOnline}
+                      onChange={(e) => setProfile((p) => ({ ...p, mapMostrarOnline: e.target.checked }))}
+                      className="h-5 w-5 accent-cyan-500"
+                    />
+                  </label>
+
+                  <label className="mt-3 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                    <div>
+                      <div className="text-sm font-extrabold text-white">Atualização ao vivo</div>
+                      <div className="text-xs text-slate-400">Atualiza marcadores automaticamente quando ativado.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={profile.mapAoVivo}
+                      onChange={(e) => setProfile((p) => ({ ...p, mapAoVivo: e.target.checked }))}
+                      className="h-5 w-5 accent-cyan-500"
+                    />
+                  </label>
+
+                  <label className="mt-4 block rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-extrabold text-white">Limite de marcadores</div>
+                        <div className="text-xs text-slate-400">Use pouco para manter o mapa leve.</div>
                       </div>
-                      <div className="text-xs text-slate-400">
-                        Receba avisos de pedidos, chat, aceite e conclusão.
+                      <div className="rounded-full bg-white/10 px-3 py-1 text-sm font-black text-white">
+                        {profile.mapLimiteOnline}
                       </div>
                     </div>
+                    <input
+                      type="range"
+                      min="5"
+                      max="120"
+                      step="5"
+                      value={profile.mapLimiteOnline}
+                      onChange={(e) => setProfile((p) => ({ ...p, mapLimiteOnline: Number(e.target.value) }))}
+                      className="mt-4 w-full accent-cyan-400"
+                    />
+                  </label>
+                </section>
+              </div>
+
+              <section className="rounded-[28px] border border-white/10 bg-[#0b1628] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)]">
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-violet-300">Experiência</div>
+                <label className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                  <div>
+                    <div className="text-sm font-extrabold text-white">Animações da interface</div>
+                    <div className="text-xs text-slate-400">Mantém transições e feedbacks de XP/patente mais vivos.</div>
                   </div>
                   <input
                     type="checkbox"
-                    checked={profile.notificacoes}
-                    onChange={(e) =>
-                      setProfile((p) => ({
-                        ...p,
-                        notificacoes: e.target.checked,
-                      }))
-                    }
-                    className="w-5 h-5 accent-blue-600"
+                    checked={profile.animacoes}
+                    onChange={(e) => setProfile((p) => ({ ...p, animacoes: e.target.checked }))}
+                    className="h-5 w-5 accent-violet-500"
                   />
                 </label>
-              </div>
+              </section>
             </div>
           )}
 
@@ -902,7 +1122,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           {/* PATENTES */}
           {tab === "patentes" && (
             <div className="mt-5">
-              <PainelPatentes />
+              <PainelPatentes
+                accountStats={accountStats}
+                serviceStats={serviceStats}
+                isProfissional={profile.isProfissional}
+              />
             </div>
           )}
         </div>

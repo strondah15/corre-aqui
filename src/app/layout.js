@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 
 export const metadata = {
   title: "Corre Aqui",
-  description: "Corre Aqui – resolva rápido com IA",
+  description: "Corre Aqui - encontre alguém perto para resolver hoje",
 };
 
 export default function RootLayout({ children }) {
@@ -30,8 +30,6 @@ export default function RootLayout({ children }) {
         `}
       >
         {children}
-
-        {/* ✅ ROOT FIXO PARA MODAIS (Portal) */}
         <div id="modal-root" />
       </body>
     </html>

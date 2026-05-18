@@ -4,15 +4,30 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Mapadinamico from '@/components/Mapadinamico'
 import PerfilDrawer from '@/components/PerfilDrawer'
-import AnuncieAqui from '@/components/AnuncieAqui'
 import { auth } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 
+const modes = {
+  cliente: {
+    title: 'Preciso de ajuda',
+    label: 'Cliente',
+    icon: '🎯',
+    description: 'Crie um pedido e encontre alguém perto para resolver.',
+    bullets: ['Pedido rápido', 'Chat direto', 'Mapa limpo'],
+  },
+  corre: {
+    title: 'Quero trabalhar',
+    label: 'Corre',
+    icon: '⚡',
+    description: 'Fique disponível, aceite pedidos e combine o serviço.',
+    bullets: ['Disponibilidade', 'Pedidos perto', '100% do combinado'],
+  },
+}
+
 export default function ModoGate() {
-  const [selectedMode, setSelectedMode] = useState('cliente') // 'cliente' | 'corre'
-  const [stage, setStage] = useState('select') // 'select' | 'app'
+  const [selectedMode, setSelectedMode] = useState('cliente')
+  const [stage, setStage] = useState('select')
   const [openPerfilGlobal, setOpenPerfilGlobal] = useState(false)
-  const [openAnuncieAqui, setOpenAnuncieAqui] = useState(false)
   const [uid, setUid] = useState(null)
 
   useEffect(() => {
@@ -42,166 +57,95 @@ export default function ModoGate() {
   }
 
   if (stage === 'app') {
-    return (
-      <Mapadinamico
-        initialMode={selectedMode}
-        onBackToMode={voltarParaAbas}
-      />
-    )
+    return <Mapadinamico initialMode={selectedMode} onBackToMode={voltarParaAbas} />
   }
 
+  const current = modes[selectedMode]
+
   return (
-    <div className="min-h-screen w-full flex items-center justify-center px-4 py-6 bg-[#0B0F1A] text-white">
-      <div className="w-full max-w-md">
-        <div className="text-center">
-          <div className="mx-auto w-14 h-14 rounded-[24px] bg-white/10 border border-white/10 flex items-center justify-center text-2xl">
-            ⚡
+    <main className="min-h-screen w-full bg-[#050914] px-4 py-6 text-white">
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col justify-center">
+        <div className="mb-5">
+          <div className="inline-flex rounded-full border border-cyan-300/15 bg-cyan-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
+            Corre Aqui
           </div>
-          <h1 className="mt-4 text-2xl font-extrabold tracking-tight">
-            Escolha o modo
+          <h1 className="mt-4 text-3xl font-black tracking-tight">
+            O que você precisa agora?
           </h1>
-          <p className="mt-2 text-sm text-white/70">
-            Escolha seu modo.
+          <p className="mt-2 text-sm leading-relaxed text-slate-400">
+            Escolha um caminho. Você pode trocar depois quando quiser.
           </p>
         </div>
 
-        <div className="mt-3 relative flex rounded-2xl border border-white/10 bg-white/5 p-1">
+        <div className="relative grid grid-cols-2 rounded-[24px] border border-white/10 bg-white/[0.045] p-1.5">
           <motion.div
             layout
-            className="absolute top-1 bottom-1 w-1/2 rounded-xl bg-white/10"
-            style={{ left: selectedMode === 'cliente' ? 4 : '50%' }}
-            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+            className="absolute bottom-1.5 top-1.5 w-[calc(50%-6px)] rounded-[18px] bg-white/10"
+            style={{ left: selectedMode === 'cliente' ? 6 : 'calc(50% + 0px)' }}
+            transition={{ type: 'spring', stiffness: 320, damping: 28 }}
           />
 
-          <button
-            type="button"
-            onClick={() => setSelectedMode('cliente')}
-            className={`relative z-10 w-1/2 py-3 rounded-xl text-sm font-semibold ${
-              selectedMode === 'cliente' ? 'text-white' : 'text-white/60'
-            }`}
-          >
-            Cliente
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSelectedMode('corre')}
-            className={`relative z-10 w-1/2 py-3 rounded-xl text-sm font-semibold ${
-              selectedMode === 'corre' ? 'text-white' : 'text-white/60'
-            }`}
-          >
-            Corre
-          </button>
+          {Object.entries(modes).map(([id, mode]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setSelectedMode(id)}
+              className={`relative z-10 h-14 rounded-[18px] text-sm font-black transition ${
+                selectedMode === id ? 'text-white' : 'text-white/55'
+              }`}
+            >
+              {mode.label}
+            </button>
+          ))}
         </div>
 
-        <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.035] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
-          {selectedMode === 'cliente' ? (
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-400/20 flex items-center justify-center text-2xl">
-                🧑
-              </div>
-              <div className="min-w-0">
-                <div className="text-base font-bold">Modo Cliente</div>
-                <div className="text-sm text-white/70 mt-0.5">
-                  Você cria pedidos e encontra quem vai resolver.
-                </div>
-                <div className="mt-2 text-[11px] text-white/55">
-                  • Criar missão • Chat • Mapa
-                </div>
-              </div>
+        <section className="mt-4 rounded-[30px] border border-white/10 bg-white/[0.045] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+          <div className="flex items-start gap-4">
+            <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[22px] border border-white/10 bg-white/[0.065] text-2xl">
+              {current.icon}
             </div>
-          ) : (
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-yellow-300/15 border border-yellow-300/20 flex items-center justify-center text-2xl">
-                ⚡
-              </div>
-              <div className="min-w-0">
-                <div className="text-base font-bold">Modo Corre</div>
-                <div className="text-sm text-white/70 mt-0.5">
-                  Você trabalha: aparece disponível e aceita missões.
-                </div>
-                <div className="mt-2 text-[11px] text-white/55">
-                  • Online • Mensagens • Pedidos
-                </div>
-              </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-black text-white">{current.title}</h2>
+              <p className="mt-1 text-sm leading-relaxed text-slate-400">
+                {current.description}
+              </p>
             </div>
-          )}
+          </div>
+
+          <div className="mt-4 grid gap-2">
+            {current.bullets.map((item) => (
+              <div
+                key={item}
+                className="rounded-2xl border border-white/8 bg-white/[0.035] px-3 py-2 text-xs font-bold text-slate-300"
+              >
+                {item}
+              </div>
+            ))}
+          </div>
 
           <button
+            type="button"
             onClick={continuar}
-            className="
-              mt-3 w-full rounded-[20px] py-3 font-black
-              text-white tracking-[0.01em]
-              bg-gradient-to-r from-sky-500 via-blue-500 to-cyan-400
-              hover:from-sky-400 hover:via-blue-400 hover:to-cyan-300
-              border border-cyan-300/20
-              shadow-[0_0_18px_rgba(56,189,248,0.28),0_14px_40px_rgba(37,99,235,0.30)]
-              hover:shadow-[0_0_26px_rgba(56,189,248,0.40),0_18px_50px_rgba(37,99,235,0.40)]
-              transition-all duration-300
-              active:scale-[0.985]
-            "
+            className="mt-5 h-14 w-full rounded-[22px] bg-gradient-to-r from-blue-600 to-cyan-500 text-sm font-black text-white shadow-[0_18px_48px_rgba(37,99,235,0.35)] transition active:scale-[0.98]"
           >
-            Continuar como {selectedMode === 'cliente' ? 'Cliente' : 'Corre'}
+            Entrar como {current.label}
           </button>
 
           <button
             type="button"
             onClick={() => setOpenPerfilGlobal(true)}
-            className="
-              mt-2 w-full rounded-[18px] py-2.5 font-semibold
-              bg-white/[0.035] hover:bg-white/[0.06]
-              border border-white/5
-              text-white/60
-              shadow-[0_6px_18px_rgba(0,0,0,0.10)]
-              transition-all duration-300
-            "
+            className="mt-3 h-12 w-full rounded-[20px] border border-white/10 bg-white/[0.035] text-sm font-bold text-white/70 transition hover:bg-white/[0.06]"
           >
-            👤 Perfil e configurações
+            Perfil e configurações
           </button>
-
-          <button
-            type="button"
-            onClick={() => setOpenAnuncieAqui(true)}
-            className="
-              mt-2 w-full rounded-[18px] py-2.5 font-semibold
-              bg-cyan-400/[0.08] hover:bg-cyan-400/[0.12]
-              border border-cyan-300/10
-              text-cyan-50
-              shadow-[0_10px_28px_rgba(8,145,178,0.12)]
-              transition-all duration-300
-              active:scale-[0.985]
-            "
-          >
-            📢 Anúncios em breve
-          </button>
-        </div>
-
-        <div className="
-          w-full mt-2 rounded-[16px]
-          bg-white/[0.03]
-          hover:bg-white/[0.05]
-          text-white/60
-          font-semibold
-          py-2.5
-          border border-white/5
-          shadow-[0_6px_18px_rgba(0,0,0,0.12)]
-          transition-all duration-300
-          text-center
-        ">
-          Dica: pra testar MVP rápido, use <b>Corre</b> primeiro.
-        </div>
+        </section>
 
         <PerfilDrawer
           open={openPerfilGlobal}
           onClose={() => setOpenPerfilGlobal(false)}
           uid={uid}
         />
-
-        <AnuncieAqui
-          open={openAnuncieAqui}
-          onClose={() => setOpenAnuncieAqui(false)}
-        />
       </div>
-    </div>
+    </main>
   )
 }

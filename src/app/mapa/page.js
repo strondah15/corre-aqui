@@ -2,14 +2,14 @@
 import dynamic from 'next/dynamic'
 import UsuariosOnline from '@/components/UsuariosOnline'
 
-const MapaPedidos = dynamic(() => import('@/lib/mapapedidos'), {
+const Mapadinamico = dynamic(() => import('@/components/Mapadinamico'), {
   ssr: false,
 })
 
 export default function Page() {
   return (
     <>
-      <MapaPedidos />
+      <Mapadinamico initialMode="cliente" />
       <UsuariosOnline />
     </>
   )
