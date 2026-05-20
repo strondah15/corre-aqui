@@ -1,69 +1,97 @@
 'use client'
-import { useState, useEffect } from 'react'
+
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { get, ref } from 'firebase/database'
+import CadastroPerfilInicial from '@/components/CadastroPerfilInicial'
+import { auth, database } from '@/lib/firebase'
+import { perfilMinimoCompleto } from '@/lib/perfilCadastro'
 
-function gerarIdCurto() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID().replace(/-/g, '').slice(0, 8)
-  }
-
-  return Math.random().toString(36).slice(2, 10)
+function esperar(ms, valor = null) {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(valor), ms)
+  })
 }
 
 export default function CadastroPage() {
   const router = useRouter()
-  const [nome, setNome] = useState('')
-  const [visivel, setVisivel] = useState(true)
+  const [uid, setUid] = useState('')
+  const [authUser, setAuthUser] = useState(null)
+  const [userData, setUserData] = useState(null)
 
   useEffect(() => {
-    const nomeSalvo = localStorage.getItem('meuNome')
-    const idSalvo = localStorage.getItem('meuId')
-    if (nomeSalvo && idSalvo) {
-      router.push('/')
+    let active = true
+
+    const off = onAuthStateChanged(auth, async (user) => {
+      if (!active) return
+      if (!user?.uid) {
+        setUid('')
+        setAuthUser(null)
+        setUserData(null)
+        return
+      }
+
+      const snap = await Promise.race([
+        get(ref(database, `users/${user.uid}`)).catch(() => null),
+        esperar(3500),
+      ])
+      const data = snap?.val?.() || {}
+
+      if (!active) return
+
+      if (perfilMinimoCompleto(data)) {
+        router.replace('/')
+        return
+      }
+
+      setUid(user.uid)
+      setAuthUser(user)
+      setUserData(data)
+    })
+
+    return () => {
+      active = false
+      off()
     }
-  }, [])
+  }, [router])
 
-  const handleCadastrar = () => {
-    if (nome.trim().length < 2) {
-      alert('Digite um nome válido!')
-      return
-    }
+  async function sair() {
+    await signOut(auth).catch(() => {})
+    router.replace('/')
+  }
 
-    const idUnico = gerarIdCurto()
-    localStorage.setItem('meuNome', nome.trim())
-    localStorage.setItem('meuId', idUnico)
-    localStorage.setItem('visivel', visivel ? 'true' : 'false')
-
-    router.push('/')
+  if (!uid) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#050914] px-4 text-white">
+        <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-white/[0.055] p-6 text-center shadow-[0_30px_100px_rgba(0,0,0,0.45)]">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">
+            Corre Aqui
+          </div>
+          <h1 className="mt-3 text-2xl font-black">Entre antes de cadastrar o perfil</h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-400">
+            O cadastro agora fica ligado a uma conta real para salvar pedidos, chat,
+            notificacoes e historico.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.replace('/')}
+            className="mt-5 h-12 w-full rounded-2xl bg-white text-sm font-black text-slate-950 transition active:scale-[0.98]"
+          >
+            Voltar para entrada
+          </button>
+        </div>
+      </main>
+    )
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-200 p-6">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm text-center">
-        <h1 className="text-2xl font-bold text-gray-800 mb-4">Bem-vindo ao Corre Aqui 🚀</h1>
-        <input
-          value={nome}
-          onChange={(e) => setNome(e.target.value)}
-          placeholder="Seu nome"
-          className="w-full p-2 border border-gray-300 rounded-lg mb-4 outline-none focus:ring-2 focus:ring-blue-300"
-        />
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <input
-            type="checkbox"
-            checked={visivel}
-            onChange={() => setVisivel(!visivel)}
-            id="visivel"
-            className="h-4 w-4"
-          />
-          <label htmlFor="visivel" className="text-sm text-gray-700">Quero aparecer no mapa</label>
-        </div>
-        <button
-          onClick={handleCadastrar}
-          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
-        >
-          Entrar no Mapa
-        </button>
-      </div>
-    </main>
+    <CadastroPerfilInicial
+      uid={uid}
+      authUser={authUser}
+      userData={userData}
+      onSaved={() => router.replace('/')}
+      onSair={sair}
+    />
   )
 }

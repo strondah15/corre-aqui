@@ -1,10 +1,12 @@
 import { auth, database } from "@/lib/firebase";
 import {
   browserLocalPersistence,
+  getRedirectResult,
   GoogleAuthProvider,
   setPersistence,
   signInAnonymously,
   signInWithPopup,
+  signInWithRedirect,
 } from "firebase/auth";
 import { ref, update, serverTimestamp } from "firebase/database";
 
@@ -14,13 +16,19 @@ async function salvarPerfilGoogle(user) {
   if (!user?.uid) return;
 
   await update(ref(database, `users/${user.uid}`), {
-    profile: {
-      nome: user.displayName || "",
-      fotoURL: user.photoURL || "",
-      email: user.email || "",
-      atualizadoEm: serverTimestamp(),
-      criadoEm: serverTimestamp(),
-    },
+    email: user.email || "",
+    authProvider: "google",
+    anonimo: false,
+    atualizadoEm: serverTimestamp(),
+  });
+
+  await update(ref(database, `users/${user.uid}/auth`), {
+    nome: user.displayName || "",
+    fotoURL: user.photoURL || null,
+    photoURL: user.photoURL || null,
+    email: user.email || "",
+    provider: "google",
+    atualizadoEm: serverTimestamp(),
   });
 }
 
@@ -32,10 +40,34 @@ async function ensureAuthPersistence() {
   }
 }
 
+function deveUsarRedirect() {
+  if (typeof window === "undefined") return false;
+
+  const ua = window.navigator?.userAgent || "";
+  const mobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(ua);
+  const narrow = window.matchMedia?.("(max-width: 768px)")?.matches;
+
+  console.log("[authGoogle] estrategia Google", {
+    mobile,
+    narrow,
+    redirect: Boolean(mobile || narrow),
+    host: window.location?.host || "",
+  });
+
+  return Boolean(mobile || narrow);
+}
+
 export async function signInWithGoogle() {
   try {
     await ensureAuthPersistence();
 
+    if (deveUsarRedirect()) {
+      console.log("[authGoogle] usando signInWithRedirect");
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+
+    console.log("[authGoogle] usando signInWithPopup");
     const result = await signInWithPopup(auth, provider);
     const user = result.user;
 
@@ -46,6 +78,27 @@ export async function signInWithGoogle() {
     console.error("Google login error:", err);
     throw err;
   }
+}
+
+export async function getGoogleRedirectUser() {
+  await ensureAuthPersistence();
+
+  console.log("[authGoogle] checando getRedirectResult");
+  const result = await getRedirectResult(auth).catch((err) => {
+    console.error("Google redirect result error:", err);
+    return null;
+  });
+
+  if (result?.user) {
+    console.log("[authGoogle] getRedirectResult retornou usuario", {
+      uid: result.user.uid,
+    });
+    await salvarPerfilGoogle(result.user);
+    return result.user;
+  }
+
+  console.log("[authGoogle] getRedirectResult sem usuario");
+  return null;
 }
 
 export async function signInAsGuest() {

@@ -1,11 +1,17 @@
 import { dirname } from "path";
 import { fileURLToPath } from "url";
+import { networkInterfaces } from "os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const localNetworkHosts = Object.values(networkInterfaces())
+  .flat()
+  .filter((iface) => iface?.family === "IPv4" && !iface.internal)
+  .map((iface) => iface.address);
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: localNetworkHosts,
   turbopack: {
     root: __dirname,
   },
