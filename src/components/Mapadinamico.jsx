@@ -33,6 +33,10 @@ import ListaConversas from './ListaConversas'
 import AvisoCorreAceito from '@/components/AvisoCorreAceito'
 import MeusPedidosCliente from '@/components/MeusPedidosCliente'
 import AgendaProfissional from '@/components/AgendaProfissional'
+import CentralNotificacoes from '@/components/CentralNotificacoes'
+import PainelProblemasDenuncias from '@/components/PainelProblemasDenuncias'
+import StatusFluxoServico from '@/components/StatusFluxoServico'
+import LogoCorreAqui from '@/components/LogoCorreAqui'
 
 // ✅ NOVOS COMPONENTES
 import BottomBar from '@/components/BottomBar'
@@ -55,6 +59,10 @@ const toNum = (v) => {
   const n = Number(v)
   return Number.isFinite(n) ? n : null
 }
+
+const isFotoValor = (v) => /^(https?:\/\/|data:image\/|blob:|\/)/i.test(String(v || '').trim())
+
+const pickFoto = (...vals) => vals.map((v) => String(v || '').trim()).find(isFotoValor) || ''
 
 const normalizeLocal = (p) => {
   if (!p || typeof p !== 'object') return p
@@ -165,6 +173,23 @@ const boostInfo = (p) => {
   return { lvl, cfg, until, ativo, emergencia, destaque }
 }
 
+const getProximoPassoPedido = (p, meuId) => {
+  const status = String(p?.status || 'aberto').toLowerCase()
+  const souCliente = !!meuId && String(p?.criador?.id || '') === String(meuId)
+  const souAceitador = !!meuId && String(p?.aceite?.id || '') === String(meuId)
+
+  if (p?.problemaServico) return 'Problema registrado. Acompanhe pelo chat até resolver.'
+  if (status === 'aberto') return 'Aguardando alguém aceitar.'
+  if (status === 'aceito' && souCliente) return 'Combine no chat e confirme quando o serviço terminar.'
+  if (status === 'aceito' && souAceitador) return 'Combine no chat e aguarde o cliente confirmar a conclusão.'
+  if (status === 'aceito') return 'Serviço em andamento.'
+  if (status === 'concluido' && !p?.avaliacao && souCliente) return 'Avalie o serviço para fechar o ciclo.'
+  if (status === 'concluido' && !p?.avaliacao && souAceitador) return 'Serviço confirmado. Aguardando avaliação do cliente.'
+  if (status === 'concluido') return 'Serviço finalizado e avaliado.'
+  if (status === 'cancelado') return 'Pedido cancelado.'
+  return 'Acompanhe os próximos passos pelo chat.'
+}
+
 const calcTaxaServiço = ({ modoPedido, isProfissionalUser, patenteProf }) => {
   const modo = String(modoPedido || 'geral').toLowerCase()
   if (modo === 'profissional' && isProfissionalUser) {
@@ -270,15 +295,13 @@ async function subirPatentePorServiço({ uid, modoPedido = 'geral' }) {
     const servicosProfAntes = Number(u.servicosProf ?? u['serviçosProf'] ?? 0)
     const patenteCorreAntes = calcPatente(servicosCorreAntes)
     const patenteProfAntes = calcPatente(servicosProfAntes)
+    const isProfissionalUser = !!(u.isProfissional || u?.profile?.isProfissional || u?.profissional?.ativo)
+    const isProf = String(modoPedido || 'geral').toLowerCase() === 'profissional' && isProfissionalUser
 
-    const servicosCorre = servicosCorreAntes + 1
-
-    const isProf = String(modoPedido || 'geral').toLowerCase() === 'profissional'
+    const servicosCorre = isProf ? servicosCorreAntes : servicosCorreAntes + 1
     const servicosProf = isProf ? servicosProfAntes + 1 : servicosProfAntes
 
     const patenteCorre = calcPatente(servicosCorre)
-
-    const isProfissionalUser = !!(u.isProfissional || u?.profile?.isProfissional || u?.profissional?.ativo)
     const patenteProf = isProfissionalUser ? calcPatente(servicosProf) : 0
 
     resultado = {
@@ -585,6 +608,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   useEffect(() => {
     if (!meuId) return
+    const userAtual = usersObj?.[meuId] || {}
+    const notificacoesAtivas = userAtual?.profile?.notificacoes !== false
+    if (!notificacoesAtivas) return
 
     const nRef = query(ref(database, `notificacoes/${meuId}`), limitToLast(20))
     const off = onValue(nRef, (snap) => {
@@ -625,7 +651,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
 
     return () => off()
-  }, [meuId, showToast])
+  }, [meuId, showToast, usersObj])
 
   /* =======================
      modoApp (prioriza initialMode)
@@ -930,6 +956,39 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return usersObj?.[meuId] || null
   }, [usersObj, meuId])
 
+  useEffect(() => {
+    if (!meuUserNode) return
+
+    const profile = meuUserNode.profile || {}
+    const foto = pickFoto(
+      meuUserNode.fotoURL,
+      meuUserNode.photoURL,
+      profile.fotoURL,
+      profile.photoURL,
+      meuUserNode.avatar,
+      profile.avatar
+    )
+    const emoji =
+      meuUserNode.avatarEmoji ||
+      profile.avatarEmoji ||
+      (!isFotoValor(meuUserNode.avatar) ? meuUserNode.avatar : '') ||
+      ''
+
+    if (foto) {
+      setFotoURL(foto)
+      try {
+        localStorage.setItem('fotoURL', foto)
+      } catch {}
+    }
+
+    if (emoji) {
+      setAvatarEmoji(emoji)
+      try {
+        localStorage.setItem('avatarEmoji', emoji)
+      } catch {}
+    }
+  }, [meuUserNode])
+
   const isProfissional = useMemo(() => !!meuUserNode?.isProfissional, [meuUserNode])
 
   const minhasCategoriasProf = useMemo(() => {
@@ -951,6 +1010,23 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       limiteOnline: Math.max(5, Math.min(120, Number(mapa.limiteOnline || 30))),
     }
   }, [meuUserNode])
+
+  const minhasConfiguracoesUi = useMemo(() => {
+    const ui = meuUserNode?.settings?.ui || {}
+    const profileSettings = meuUserNode?.profile || {}
+    return {
+      animacoes: ui.animacoes !== false,
+      notificacoes: profileSettings.notificacoes !== false,
+    }
+  }, [meuUserNode])
+
+  const problemasVisiveisCount = useMemo(() => {
+    if (!meuId) return 0
+    return (corres || []).filter((p) => {
+      if (!p?.problemaServico) return false
+      return p?.criador?.id === meuId || p?.aceite?.id === meuId
+    }).length
+  }, [corres, meuId])
 
   const getCatObj = (id) => {
     if (!id) return null
@@ -1226,9 +1302,27 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         status: 'concluido',
         concluidoEm: concluidoAgora,
         concluidoPor: { id: meuId, nome: meuNome || 'Anônimo' },
+        avaliacaoPendente: true,
         atualizadoEm: concluidoAgora,
         atualizadoEmServer: serverTimestamp(),
       })
+
+      if (aceitadorId && aceitadorId !== meuId) {
+        await update(ref(database, `notificacoes/${aceitadorId}/notif_concluido_${concluidoAgora}`), {
+          tipo: 'servico_concluido',
+          pedidoId: p.id,
+          conversaId: p?.conversaId || p.id,
+          titulo: 'Serviço confirmado',
+          mensagem: `${meuNome || 'Cliente'} confirmou a conclusão: ${p.titulo || 'Corre aqui'}`,
+          prioridade: 'media',
+          acao: 'abrir_chat',
+          lida: false,
+          criadoEm: concluidoAgora,
+          autor: { id: meuId, nome: meuNome || 'Cliente' },
+        }).catch((notifyError) => {
+          console.warn('Serviço concluído, mas a notificação não foi enviada:', notifyError)
+        })
+      }
 
       // ✅ QUEM GANHA A ENTREGA?
       const creditUid = aceitadorId || meuId
@@ -1323,6 +1417,23 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         [`pedidos/${p.id}/atualizadoEm`]: agora,
         [`pedidos/${p.id}/atualizadoEmServer`]: serverTimestamp(),
       })
+
+      if (avaliadoId && avaliadoId !== meuId) {
+        await update(ref(database, `notificacoes/${avaliadoId}/notif_avaliacao_${agora}`), {
+          tipo: 'avaliacao_recebida',
+          pedidoId: p.id,
+          conversaId: p?.conversaId || p.id,
+          titulo: 'Você recebeu uma avaliação',
+          mensagem: `Nota ${nota.toFixed(1)} em ${p.titulo || 'Corre aqui'}.`,
+          prioridade: 'media',
+          acao: 'ver_historico',
+          lida: false,
+          criadoEm: agora,
+          autor: { id: meuId, nome: meuNome || 'Cliente' },
+        }).catch((notifyError) => {
+          console.warn('Avaliação salva, mas a notificação não foi enviada:', notifyError)
+        })
+      }
 
       showToast({
         type: 'success',
@@ -1530,6 +1641,29 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const souCriador = (p) => !!meuId && p?.criador?.id === meuId
   const souAceitador = (p) => !!meuId && p?.aceite?.id === meuId
 
+  const abrirPedidoFocado = (pedido) => {
+    if (!pedido?.id) return
+    setFiltro('todos')
+    setCardAbertoId(pedido.id)
+    if (modoApp === 'cliente') {
+      setClientePainelBaixo('meusPedidos')
+      return
+    }
+    setTab('corre')
+  }
+
+  const abrirChatFocado = (pedido) => {
+    if (!pedido?.id) return
+    setChatPedido(pedido)
+    if (modoApp === 'cliente') {
+      setClientePainelBaixo('chat')
+      return
+    }
+    setFiltro('todos')
+    setCardAbertoId(pedido.id)
+    setTab('corre')
+  }
+
   const glassCard = 'bg-white/10  border border-white/10 shadow-xl shadow-black/30'
 
   const btnGhost =
@@ -1670,9 +1804,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               <div className="relative p-4 md:p-5">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-12 rounded-2xl bg-white text-slate-950 flex items-center justify-center font-extrabold shadow-lg shadow-black/20">
-                      CA
-                    </div>
+                    <LogoCorreAqui className="h-20 w-20 rounded-2xl border-0 shadow-none md:h-24 md:w-24" />
 
                     <div className="leading-tight min-w-0">
                       <div className="text-base md:text-lg font-extrabold text-white truncate">
@@ -1714,17 +1846,24 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               <div className="mb-4 rounded-[32px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)]">
                 <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-br from-white to-slate-50">
                   <div className="text-base font-extrabold text-slate-950">💬 Inbox</div>
-                  <div className="mt-1 text-xs text-slate-500">Conversas dos pedidos aceitos e enviados.</div>
+                  <div className="mt-1 text-xs text-slate-500">Notificações, conversas dos pedidos aceitos e histórico rápido.</div>
                 </div>
 
-                <div className="p-3 bg-slate-50">
+                <div className="space-y-3 p-3 bg-slate-50">
+                  <CentralNotificacoes
+                    meuId={meuId}
+                    corres={corres}
+                    onAbrirChat={abrirChatFocado}
+                    onAbrirPedido={abrirPedidoFocado}
+                    onToast={showToast}
+                  />
+
                   <ListaConversas
                     meuId={meuId}
                     onAbrirChat={(pedidoId) => {
                       const p = corres.find((x) => x.id === pedidoId)
                       if (p) {
-                        setChatPedido(p)
-                        setTab('corre')
+                        abrirChatFocado(p)
                       } else {
                         showToast({ type: 'info', title: 'Aguarde', message: 'Esse pedido ainda não carregou.' })
                       }
@@ -1749,6 +1888,17 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 <div className="p-3 bg-[#020617]">
                   <AgendaProfissional uid={meuId} modo="profissional" />
                 </div>
+              </div>
+            )}
+
+            {tab === 'seguranca' && (
+              <div className="mb-4">
+                <PainelProblemasDenuncias
+                  meuId={meuId}
+                  corres={corres}
+                  onAbrirChat={abrirChatFocado}
+                  onAbrirPedido={abrirPedidoFocado}
+                />
               </div>
             )}
 
@@ -1783,6 +1933,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             <AvisoCorreAceito
               meuId={meuId}
               corres={corres}
+              enabled={minhasConfiguracoesUi.notificacoes}
               onAbrirChat={(pedido) => {
                 setChatPedido(pedido)
               }}
@@ -1897,7 +2048,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             )}
 
             {/* Lista */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start pb-28 md:pb-24">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start pb-44 sm:pb-36 md:pb-24">
               {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
                 <div className="text-sm text-slate-500">Nenhum corre aqui para mostrar.</div>
               )}
@@ -2027,6 +2178,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       )}
                     </div>
 
+                    <div className="relative z-10 rounded-2xl bg-sky-50/90 border border-sky-200 px-3 py-2 text-[11px] md:text-xs text-slate-700 shadow-sm">
+                      <span className="font-black uppercase tracking-[0.12em] text-sky-700">Próximo passo</span>
+                      <span className="ml-2 font-semibold">{getProximoPassoPedido(p, meuId)}</span>
+                    </div>
+
+                    <StatusFluxoServico pedido={p} compact className="relative z-10" />
+
                     {cardAberto && (
                       <>
                     {p.descricao && String(p.descricao).trim().toLowerCase() !== String(p.titulo || '').trim().toLowerCase() && (
@@ -2146,7 +2304,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                           disabled={serviçondoId === p.id}
                           type="button"
                         >
-                          {serviçondoId === p.id ? 'Confirmando…' : 'Concluir serviço'}
+                          {serviçondoId === p.id ? 'Confirmando…' : 'Confirmar serviço feito'}
                         </button>
                       )}
 
@@ -2370,112 +2528,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         )}
       </div>
 
-      {/* ✅ PERFIL RÁPIDO DO PROFISSIONAL SELECIONADO */}
       {usuarioSelecionado && (
-        <div className="fixed inset-0 z-[100000] bg-black/55  flex items-end sm:items-center justify-center p-3">
-          <div className="w-full max-w-md rounded-3xl bg-white text-slate-900 border border-slate-200 shadow-[0_30px_90px_rgba(0,0,0,0.35)] overflow-hidden">
-            <div className="p-4 bg-gradient-to-br from-white to-slate-50 border-b border-slate-200">
-              <div className="flex items-start gap-3">
-                <div className="w-16 h-16 rounded-3xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center text-3xl shrink-0">
-                  {usuarioSelecionado?.fotoURL || usuarioSelecionado?.profile?.fotoURL ? (
-                    <img
-                      src={usuarioSelecionado?.fotoURL || usuarioSelecionado?.profile?.fotoURL}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span>{usuarioSelecionado?.avatarEmoji || usuarioSelecionado?.profile?.avatarEmoji || '🙂'}</span>
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="text-lg font-extrabold text-slate-950 truncate">
-                    {usuarioSelecionado?.nome || usuarioSelecionado?.profile?.nome || 'Profissional'}
-                  </div>
-                  <div className="mt-1 text-sm text-slate-600">
-                    {usuarioSelecionado?.profissional?.titulo ||
-                      usuarioSelecionado?.profile?.titulo ||
-                      usuarioSelecionado?.profResumo ||
-                      'Profissional do Corre Aqui'}
-                  </div>
-                  <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
-                    🟢 Disponível
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setUsuarioSelecionado(null)}
-                  className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4 space-y-3">
-              <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">Especialidade</div>
-                <div className="mt-1 text-sm text-slate-800">
-                  {usuarioSelecionado?.profissional?.descricao ||
-                    usuarioSelecionado?.profile?.descricao ||
-                    usuarioSelecionado?.profResumo ||
-                    'Ainda sem descrição cadastrada.'}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-1.5 md:gap-2 text-sm">
-                <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-                  <div className="text-xs text-slate-500">Cidade</div>
-                  <div className="font-bold text-slate-800">
-                    {usuarioSelecionado?.profCidadeAtende || usuarioSelecionado?.cidade || usuarioSelecionado?.profile?.cidade || '—'}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-                  <div className="text-xs text-slate-500">Base</div>
-                  <div className="font-bold text-slate-800">
-                    {usuarioSelecionado?.profPrecoBase || usuarioSelecionado?.profissional?.preco || usuarioSelecionado?.profile?.preco
-                      ? `R$ ${usuarioSelecionado?.profPrecoBase || usuarioSelecionado?.profissional?.preco || usuarioSelecionado?.profile?.preco}`
-                      : 'A combinar'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUsuarioSelecionado(null)
-                    setOpenIA(true)
-                  }}
-                  className="flex-1 h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-extrabold shadow-lg shadow-blue-500/25"
-                >
-                  Pedir serviço
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setAgendaClienteUser(usuarioSelecionado)}
-                  className="h-12 px-4 rounded-2xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-extrabold flex items-center justify-center shadow-lg shadow-violet-500/20"
-                >
-                  📅 Agendar
-                </button>
-
-                {(usuarioSelecionado?.profWhats || usuarioSelecionado?.profissional?.whatsapp || usuarioSelecionado?.profile?.whatsapp) && (
-                  <a
-                    href={`https://wa.me/55${String(usuarioSelecionado?.profWhats || usuarioSelecionado?.profissional?.whatsapp || usuarioSelecionado?.profile?.whatsapp).replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="h-12 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold flex items-center justify-center shadow-lg shadow-emerald-500/20"
-                  >
-                    WhatsApp
-                  </a>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <PerfilPublico
+          user={usuarioSelecionado}
+          onClose={() => setUsuarioSelecionado(null)}
+          onPedirServico={() => {
+            setUsuarioSelecionado(null)
+            setOpenIA(true)
+          }}
+          onAgendar={(u) => {
+            setUsuarioSelecionado(null)
+            setAgendaClienteUser(u)
+          }}
+        />
       )}
 
       {/* ✅ BARRA INFERIOR REAL DO CLIENTE
@@ -2485,36 +2550,70 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
 
       {modoApp === 'cliente' && !isMapOpen && (
-        <div className="fixed inset-x-0 bottom-3 z-[99980] px-3 pointer-events-none md:inset-x-auto md:right-6 md:bottom-6 md:px-0">
-          <div className="pointer-events-auto mx-auto flex w-full max-w-[360px] items-center gap-2 rounded-[24px] border border-slate-200 bg-white/94 p-2 shadow-[0_24px_80px_rgba(15,23,42,0.26)] backdrop-blur-xl md:max-w-none">
+        <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-[99980] px-2 pointer-events-none md:inset-x-auto md:right-6 md:bottom-6 md:px-0">
+          <div className="pointer-events-auto mx-auto grid w-full max-w-[430px] grid-cols-4 items-center gap-1.5 rounded-[24px] border border-slate-200 bg-white/94 p-1.5 shadow-[0_24px_80px_rgba(15,23,42,0.26)] backdrop-blur-xl md:max-w-none">
             <button
               type="button"
               onClick={() => setClientePainelBaixo('meusPedidos')}
+              title="Pedidos"
               className={[
-                'relative h-12 min-w-0 flex-1 rounded-2xl px-3 text-sm font-black transition-all duration-200 active:scale-[0.96]',
-                'flex items-center justify-center gap-2 border',
+                'relative h-12 min-w-0 rounded-2xl px-2 text-xs font-black transition-all duration-200 active:scale-[0.96]',
+                'flex items-center justify-center gap-1.5 border',
                 clientePainelBaixo === 'meusPedidos'
                   ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
               ].join(' ')}
             >
               <span className="text-base">📦</span>
-              <span>Pedidos</span>
+              <span className="hidden min-[390px]:inline">Pedidos</span>
             </button>
 
             <button
               type="button"
               onClick={() => setClientePainelBaixo('conversas')}
+              title="Conversas"
               className={[
-                'relative h-12 min-w-0 flex-1 rounded-2xl px-3 text-sm font-black transition-all duration-200 active:scale-[0.96]',
-                'flex items-center justify-center gap-2 border',
+                'relative h-12 min-w-0 rounded-2xl px-2 text-xs font-black transition-all duration-200 active:scale-[0.96]',
+                'flex items-center justify-center gap-1.5 border',
                 clientePainelBaixo === 'conversas'
                   ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
               ].join(' ')}
             >
               <span className="text-base">💬</span>
-              <span>Conversas</span>
+              <span className="hidden min-[390px]:inline">Conversas</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setClientePainelBaixo('notificacoes')}
+              title="Avisos"
+              className={[
+                'relative h-12 min-w-0 rounded-2xl px-2 text-xs font-black transition-all duration-200 active:scale-[0.96]',
+                'flex items-center justify-center gap-1.5 border',
+                clientePainelBaixo === 'notificacoes'
+                  ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              <span className="text-base">🔔</span>
+              <span className="hidden min-[390px]:inline">Avisos</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setClientePainelBaixo('seguranca')}
+              title="Segurança"
+              className={[
+                'relative h-12 min-w-0 rounded-2xl px-2 text-xs font-black transition-all duration-200 active:scale-[0.96]',
+                'flex items-center justify-center gap-1.5 border',
+                clientePainelBaixo === 'seguranca'
+                  ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              <span className="text-base">🛡️</span>
+              <span className="hidden min-[390px]:inline">Segurança</span>
             </button>
           </div>
         </div>
@@ -2530,7 +2629,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     Corre Aqui
                   </div>
                   <div className="mt-1 text-xl font-black text-white truncate">
-                    {clientePainelBaixo === 'meusPedidos' ? 'Histórico de serviços' : clientePainelBaixo === 'chat' ? '💬 Conversa' : '💬 Caixa de conversas'}
+                    {clientePainelBaixo === 'meusPedidos'
+                      ? 'Histórico de serviços'
+                      : clientePainelBaixo === 'chat'
+                        ? '💬 Conversa'
+                        : clientePainelBaixo === 'notificacoes'
+                          ? '🔔 Notificações'
+                          : clientePainelBaixo === 'seguranca'
+                            ? '🛡️ Segurança'
+                            : '💬 Caixa de conversas'}
                   </div>
                 </div>
 
@@ -2589,6 +2696,25 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     }}
                   />
                 </div>
+              )}
+
+              {clientePainelBaixo === 'notificacoes' && (
+                <CentralNotificacoes
+                  meuId={meuId}
+                  corres={corres}
+                  onAbrirChat={abrirChatFocado}
+                  onAbrirPedido={abrirPedidoFocado}
+                  onToast={showToast}
+                />
+              )}
+
+              {clientePainelBaixo === 'seguranca' && (
+                <PainelProblemasDenuncias
+                  meuId={meuId}
+                  corres={corres}
+                  onAbrirChat={abrirChatFocado}
+                  onAbrirPedido={abrirPedidoFocado}
+                />
               )}
 
               {clientePainelBaixo === 'chat' && chatPedido && (
@@ -2665,6 +2791,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </div>
             </div>
 
+            <StatusFluxoServico pedido={conclusaoPedido} tone="dark" className="mt-4" />
+
             <div className="mt-5 grid gap-3">
               <button
                 type="button"
@@ -2672,7 +2800,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 onClick={() => marcarConcluído(conclusaoPedido)}
                 className="w-full rounded-3xl bg-emerald-600 px-4 py-4 font-black text-white shadow-[0_18px_60px_rgba(16,185,129,0.24)] hover:bg-emerald-500 disabled:opacity-60"
               >
-                {serviçondoId === conclusaoPedido.id ? 'Confirmando...' : 'Concluir e avaliar'}
+                {serviçondoId === conclusaoPedido.id ? 'Confirmando...' : 'Confirmar serviço feito'}
               </button>
               <button
                 type="button"
@@ -2715,6 +2843,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 ×
               </button>
             </div>
+
+            <StatusFluxoServico
+              pedido={{ ...avaliacaoPedido, status: 'concluido' }}
+              tone="dark"
+              className="mt-5"
+            />
 
             <div className="mt-5 flex justify-center gap-2">
               {[1, 2, 3, 4, 5].map((n) => (
@@ -2847,6 +2981,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         patente={patenteUp?.patente}
         tipo={patenteUp?.tipo}
         nivel={patenteUp?.nivel}
+        animado={minhasConfiguracoesUi.animacoes}
         onClose={() => setPatenteUp(null)}
       />
 
@@ -2859,7 +2994,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       />
 
       {modoApp === 'corre' && (
-        <BottomBar active={tab} onTab={onBottomTab} unreadCount={unreadInbox} agendaCount={agendaPendentes} agendaConfirmados={agendaConfirmados} agendaRecusados={agendaRecusados} modoApp={modoApp} hidden={isMapOpen} disponivel={correDisponivel} />
+        <BottomBar
+          active={tab}
+          onTab={onBottomTab}
+          unreadCount={unreadInbox}
+          agendaCount={agendaPendentes}
+          agendaConfirmados={agendaConfirmados}
+          agendaRecusados={agendaRecusados}
+          problemasCount={problemasVisiveisCount}
+          modoApp={modoApp}
+          hidden={isMapOpen}
+          disponivel={correDisponivel}
+        />
       )}
     </div>
   )

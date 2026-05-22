@@ -71,7 +71,7 @@ export default function CadastroPage() {
           <h1 className="mt-3 text-2xl font-black">Entre antes de cadastrar o perfil</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-400">
             O cadastro agora fica ligado a uma conta real para salvar pedidos, chat,
-            notificacoes e historico.
+            notificações e histórico.
           </p>
           <button
             type="button"

@@ -294,6 +294,7 @@ export default function MapinhaModal({
   const [durMin, setDurMin] = useState(null);
   const [startLocal, setStartLocal] = useState(null);
   const [loadingStart, setLoadingStart] = useState(false);
+  const [locationError, setLocationError] = useState("");
 
   const isMapaAoVivo = useMemo(() => !isValidLoc(pedidoLocal), [pedidoLocal]);
 
@@ -328,9 +329,7 @@ export default function MapinhaModal({
   const [onlineLimit, setOnlineLimit] = useState(30);
 
   // online freeze/live
-  const frozenOnlineRef = useRef([]);
-  const liveTickRef = useRef(0);
-  const [liveTick, setLiveTick] = useState(0);
+  const [onlineSnapshot, setOnlineSnapshot] = useState([]);
 
   // bottom sheet
   const SHEET_MIN = 80;
@@ -380,6 +379,7 @@ export default function MapinhaModal({
     setDurMin(null);
     setStartLocal(null);
     setLoadingStart(false);
+    setLocationError("");
 
     // ✅ defaults vindos das configs do perfil
     setOnlineLimit(defaultLimitOnline);
@@ -396,9 +396,7 @@ export default function MapinhaModal({
       snapTo("mid");
     }
 
-    frozenOnlineRef.current = Array.isArray(onlineUsers) ? onlineUsers : [];
-    liveTickRef.current = 0;
-    setLiveTick(0);
+    setOnlineSnapshot(Array.isArray(onlineUsers) ? onlineUsers : []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     open,
@@ -499,9 +497,7 @@ export default function MapinhaModal({
     if (!liveMode) return;
 
     const id = setInterval(() => {
-      frozenOnlineRef.current = Array.isArray(onlineUsers) ? onlineUsers : [];
-      liveTickRef.current += 1;
-      setLiveTick(liveTickRef.current);
+      setOnlineSnapshot(Array.isArray(onlineUsers) ? onlineUsers : []);
     }, 2200);
 
     return () => clearInterval(id);
@@ -513,9 +509,7 @@ export default function MapinhaModal({
     if (!showOnline) return;
     if (liveMode) return;
 
-    frozenOnlineRef.current = Array.isArray(onlineUsers) ? onlineUsers : [];
-    liveTickRef.current += 1;
-    setLiveTick(liveTickRef.current);
+    setOnlineSnapshot(Array.isArray(onlineUsers) ? onlineUsers : []);
   }, [open, showOnline, liveMode, onlineUsers]);
 
   const pedidoOk = isValidLoc(pedidoLocal);
@@ -545,8 +539,7 @@ export default function MapinhaModal({
   const onlineMarkers = useMemo(() => {
     if (!showOnline) return [];
 
-    const source = frozenOnlineRef.current || [];
-    const list = Array.isArray(source) ? source : [];
+    const list = Array.isArray(onlineSnapshot) ? onlineSnapshot : [];
 
     let out = list
       .map((u) => {
@@ -591,7 +584,7 @@ export default function MapinhaModal({
 
     out.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
     return out.slice(0, clamp(toInt(onlineLimit, 30), 5, 120));
-  }, [showOnline, onlineLimit, liveTick, myUid]);
+  }, [showOnline, onlineLimit, onlineSnapshot, myUid]);
 
   /* =========================================================
      OSRM route (only if start + dest)
@@ -621,7 +614,7 @@ export default function MapinhaModal({
         if (typeof r?.duration === "number") setDurMin(r.duration / 60);
       } catch (e) {
         if (e?.name === "AbortError") return;
-        console.log("Falha ao buscar rota OSRM:", e);
+        console.warn("Falha ao buscar rota OSRM:", e);
       }
     }
 
@@ -634,9 +627,10 @@ export default function MapinhaModal({
   ========================================================= */
   async function usarMinhaLocalizacao() {
     setLoadingStart(true);
+    setLocationError("");
     try {
       if (!navigator.geolocation) {
-        alert("Seu navegador não suporta localização.");
+        setLocationError("Seu navegador não suporta localização.");
         return;
       }
 
@@ -654,9 +648,7 @@ export default function MapinhaModal({
         );
       });
     } catch {
-      alert(
-        "Não consegui pegar sua localização. Verifique as permissões do navegador.",
-      );
+      setLocationError("Não consegui pegar sua localização. Verifique as permissões do navegador.");
     } finally {
       setLoadingStart(false);
     }
@@ -1109,6 +1101,12 @@ export default function MapinhaModal({
                       : "Traçar rota usando minha localização"}
                   </button>
                 )}
+
+                {locationError ? (
+                  <div className="w-full rounded-2xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-100">
+                    {locationError}
+                  </div>
+                ) : null}
 
                 {googleMapsUrl && (
                   <a

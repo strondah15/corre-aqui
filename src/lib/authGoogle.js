@@ -47,13 +47,6 @@ function deveUsarRedirect() {
   const mobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(ua);
   const narrow = window.matchMedia?.("(max-width: 768px)")?.matches;
 
-  console.log("[authGoogle] estrategia Google", {
-    mobile,
-    narrow,
-    redirect: Boolean(mobile || narrow),
-    host: window.location?.host || "",
-  });
-
   return Boolean(mobile || narrow);
 }
 
@@ -62,12 +55,10 @@ export async function signInWithGoogle() {
     await ensureAuthPersistence();
 
     if (deveUsarRedirect()) {
-      console.log("[authGoogle] usando signInWithRedirect");
       await signInWithRedirect(auth, provider);
       return null;
     }
 
-    console.log("[authGoogle] usando signInWithPopup");
     const result = await signInWithPopup(auth, provider);
     const user = result.user;
 
@@ -83,21 +74,16 @@ export async function signInWithGoogle() {
 export async function getGoogleRedirectUser() {
   await ensureAuthPersistence();
 
-  console.log("[authGoogle] checando getRedirectResult");
   const result = await getRedirectResult(auth).catch((err) => {
     console.error("Google redirect result error:", err);
     return null;
   });
 
   if (result?.user) {
-    console.log("[authGoogle] getRedirectResult retornou usuario", {
-      uid: result.user.uid,
-    });
     await salvarPerfilGoogle(result.user);
     return result.user;
   }
 
-  console.log("[authGoogle] getRedirectResult sem usuario");
   return null;
 }
 

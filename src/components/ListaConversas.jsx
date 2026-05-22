@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ref, onValue, update, query, limitToLast } from 'firebase/database'
 import { database } from '@/lib/firebase'
 import { motion } from 'framer-motion'
+import LogoCorreAqui from '@/components/LogoCorreAqui'
 
 function getMs(v) {
   if (!v) return 0
@@ -126,9 +127,10 @@ export default function ListaConversas({
       <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-4 py-4">
         <div className="flex items-center justify-between gap-3.5">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] text-sm font-black text-white">
-              {logoUrl ? <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" /> : 'CA'}
-            </div>
+            <LogoCorreAqui
+              className="h-14 w-14 rounded-2xl border-0 shadow-none"
+              imageClassName={logoUrl ? '' : ''}
+            />
 
             <div className="min-w-0 leading-tight">
               <div className="text-base font-black text-white">Conversas</div>
@@ -164,7 +166,7 @@ export default function ListaConversas({
         </div>
       </div>
 
-      <div className="p-3">
+      <div className="max-h-[calc(100dvh-14rem)] overflow-y-auto p-3">
         {conversasFiltradas.length === 0 ? (
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 text-slate-200">
             <div className="font-black text-white">Nenhuma conversa ainda</div>
@@ -222,7 +224,7 @@ export default function ListaConversas({
                     <div className="shrink-0 text-[11px] font-bold text-slate-500">{hora}</div>
                   </div>
 
-                  <div className="mt-2 truncate pl-5 text-sm text-slate-300">
+                  <div className="mt-2 line-clamp-2 pl-5 text-sm leading-relaxed text-slate-300">
                     {preview ? (
                       <>
                         {enviadaPorMim ? <span className="text-slate-500">Você: </span> : null}

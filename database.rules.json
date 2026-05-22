@@ -20,8 +20,8 @@
       ".read": "auth != null",
       ".indexOn": ["status", "categoriaId", "criadoEm", "atualizadoEm", "concluidoEm"],
       "$pedidoId": {
-        ".write": "auth != null && ((!data.exists() && newData.child('criador/id').val() === auth.uid) || (data.exists() && (data.child('criador/id').val() === auth.uid || data.child('aceite/id').val() === auth.uid || (!data.child('aceite/id').exists() && newData.child('aceite/id').val() === auth.uid))))",
-        ".validate": "!newData.exists() || (newData.hasChildren(['criador', 'status']) && newData.child('criador/id').isString() && newData.child('status').isString())"
+        ".write": "auth != null && ((!data.exists() && newData.exists() && newData.child('criador/id').val() === auth.uid) || (data.exists() && !newData.exists() && data.child('criador/id').val() === auth.uid) || (data.exists() && newData.exists() && (data.child('criador/id').val() === auth.uid || data.child('aceite/id').val() === auth.uid || (!data.child('aceite/id').exists() && newData.child('aceite/id').val() === auth.uid))))",
+        ".validate": "!newData.exists() || (newData.hasChildren(['criador', 'status']) && newData.child('criador/id').isString() && newData.child('status').isString() && (newData.child('status').val() === 'aberto' || newData.child('status').val() === 'aceito' || newData.child('status').val() === 'concluido' || newData.child('status').val() === 'cancelado'))"
       }
     },
     "avaliacoes": {
@@ -56,19 +56,28 @@
     "conversas": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null"
+        "$conversaId": {
+          ".write": "auth != null && (auth.uid === $uid || (newData.exists() && ((root.child('pedidos').child($conversaId).child('criador/id').val() === auth.uid && root.child('pedidos').child($conversaId).child('aceite/id').val() === $uid) || (root.child('pedidos').child($conversaId).child('aceite/id').val() === auth.uid && root.child('pedidos').child($conversaId).child('criador/id').val() === $uid))))",
+          ".validate": "!newData.exists() || newData.child('pedidoId').val() === $conversaId"
+        }
       }
     },
     "usersChats": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null"
+        "$conversaId": {
+          ".write": "auth != null && (auth.uid === $uid || (newData.exists() && ((root.child('pedidos').child($conversaId).child('criador/id').val() === auth.uid && root.child('pedidos').child($conversaId).child('aceite/id').val() === $uid) || (root.child('pedidos').child($conversaId).child('aceite/id').val() === auth.uid && root.child('pedidos').child($conversaId).child('criador/id').val() === $uid))))",
+          ".validate": "newData.isBoolean()"
+        }
       }
     },
     "notificacoes": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null"
+        "$notificacaoId": {
+          ".write": "auth != null && (auth.uid === $uid || (newData.exists() && newData.child('autor/id').val() === auth.uid && newData.child('pedidoId').isString() && ((root.child('pedidos').child(newData.child('pedidoId').val()).child('criador/id').val() === auth.uid && root.child('pedidos').child(newData.child('pedidoId').val()).child('aceite/id').val() === $uid) || (root.child('pedidos').child(newData.child('pedidoId').val()).child('aceite/id').val() === auth.uid && root.child('pedidos').child(newData.child('pedidoId').val()).child('criador/id').val() === $uid))))",
+          ".validate": "!newData.exists() || (newData.child('tipo').isString() && newData.child('pedidoId').isString())"
+        }
       }
     },
     "agendamentos": {
@@ -81,14 +90,20 @@
     },
     "chats": {
       "$pedidoId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
+        ".read": "auth != null && (root.child('pedidos').child($pedidoId).child('criador/id').val() === auth.uid || root.child('pedidos').child($pedidoId).child('aceite/id').val() === auth.uid)",
+        "$msgId": {
+          ".write": "auth != null && newData.exists() && (root.child('pedidos').child($pedidoId).child('criador/id').val() === auth.uid || root.child('pedidos').child($pedidoId).child('aceite/id').val() === auth.uid) && (newData.child('userId').val() === auth.uid || newData.child('autorId').val() === 'sistema')",
+          ".validate": "newData.child('criadoEm').exists() && (newData.child('texto').isString() || newData.child('audio').exists() || newData.child('anexo/url').isString() || newData.child('sistema').val() === true)"
+        }
       }
     },
     "mensagens": {
       "$conversaId": {
-        ".read": "auth != null",
-        ".write": "auth != null"
+        ".read": "auth != null && (root.child('pedidos').child($conversaId).child('criador/id').val() === auth.uid || root.child('pedidos').child($conversaId).child('aceite/id').val() === auth.uid)",
+        "$msgId": {
+          ".write": "auth != null && newData.exists() && (root.child('pedidos').child($conversaId).child('criador/id').val() === auth.uid || root.child('pedidos').child($conversaId).child('aceite/id').val() === auth.uid) && (newData.child('userId').val() === auth.uid || newData.child('autorId').val() === 'sistema')",
+          ".validate": "newData.child('criadoEm').exists() && (newData.child('texto').isString() || newData.child('audio').exists() || newData.child('anexo/url').isString() || newData.child('sistema').val() === true)"
+        }
       }
     }
   }

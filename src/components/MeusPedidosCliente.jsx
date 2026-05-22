@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { database } from '@/lib/firebase'
 import { ref, update, serverTimestamp } from 'firebase/database'
+import StatusFluxoServico from '@/components/StatusFluxoServico'
 
 function getMs(v) {
   if (!v) return 0
@@ -126,6 +127,18 @@ export default function MeusPedidosCliente({
 
   const podeRelatarProblema = (p) => ['aceito', 'concluido'].includes(String(p?.status || '').toLowerCase())
   const podeAvaliar = (p) => String(p?.status || '').toLowerCase() === 'concluido' && !p?.avaliacao
+
+  const proximoPassoPedido = (p) => {
+    const status = String(p?.status || 'aberto').toLowerCase()
+
+    if (p?.problemaServico) return 'Problema registrado. Acompanhe pelo chat até resolver.'
+    if (status === 'aberto') return 'Aguardando alguém aceitar o pedido.'
+    if (status === 'aceito') return 'Combine no chat e confirme quando o serviço terminar.'
+    if (status === 'concluido' && !p?.avaliacao) return 'Avalie o serviço para fechar o ciclo.'
+    if (status === 'concluido') return 'Serviço finalizado e avaliado.'
+    if (status === 'cancelado') return 'Pedido cancelado.'
+    return 'Acompanhe os próximos passos pelo chat.'
+  }
 
   const badgeStatus = (status) => {
     const s = String(status || 'aberto').toLowerCase()
@@ -263,6 +276,13 @@ export default function MeusPedidosCliente({
                 </div>
               ) : null}
 
+              <div className="mt-3 rounded-2xl border border-sky-400/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+                <span className="font-black uppercase tracking-[0.14em] text-sky-300">Próximo passo</span>
+                <span className="ml-2 font-semibold text-slate-100">{proximoPassoPedido(p)}</span>
+              </div>
+
+              <StatusFluxoServico pedido={p} tone="dark" className="mt-3" />
+
               <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-200">
                 {p?.valor != null && Number.isFinite(Number(p.valor)) ? (
                   <span>
@@ -325,7 +345,7 @@ export default function MeusPedidosCliente({
                     }}
                     type="button"
                   >
-                    Concluir serviço
+                    Confirmar serviço feito
                   </motion.button>
                 ) : null}
 

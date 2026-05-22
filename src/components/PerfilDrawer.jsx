@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ref, onValue, update, serverTimestamp } from "firebase/database";
-import { database } from "@/lib/firebase";
+import { getDownloadURL, ref as storageRef, uploadBytesResumable } from "firebase/storage";
+import { database, storage } from "@/lib/firebase";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import PainelPatentes from "./PainelPatentes";
@@ -132,12 +133,143 @@ function inputClass(extra = "") {
   ].join(" ");
 }
 
+const FOTO_MAX_ORIGINAL_BYTES = 8 * 1024 * 1024;
+const FOTO_MAX_DIMENSION = 520;
+
+function isFotoValor(v) {
+  const s = String(v || "").trim();
+  return /^(https?:\/\/|data:image\/|blob:|\/)/i.test(s);
+}
+
+function pickFoto(...vals) {
+  return vals.map((v) => String(v || "").trim()).find(isFotoValor) || "";
+}
+
+function fileToDataUrl(fileOrBlob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(fileOrBlob);
+  });
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+}
+
+async function loadImage(file) {
+  if (typeof createImageBitmap === "function") {
+    try {
+      return await createImageBitmap(file, { imageOrientation: "from-image" });
+    } catch {}
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("foto_invalida"));
+    };
+    img.src = url;
+  });
+}
+
+async function prepararFotoPerfil(file) {
+  if (!file?.type?.startsWith("image/")) {
+    throw new Error("tipo_invalido");
+  }
+  if (file.size > FOTO_MAX_ORIGINAL_BYTES) {
+    throw new Error("foto_grande");
+  }
+
+  const img = await loadImage(file);
+  const width = img.width || img.naturalWidth || 0;
+  const height = img.height || img.naturalHeight || 0;
+  if (!width || !height) throw new Error("foto_invalida");
+
+  const scale = Math.min(1, FOTO_MAX_DIMENSION / Math.max(width, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  img.close?.();
+
+  let blob = await canvasToBlob(canvas, "image/webp", 0.84);
+  let mime = "image/webp";
+  if (!blob) {
+    blob = await canvasToBlob(canvas, "image/jpeg", 0.86);
+    mime = "image/jpeg";
+  }
+  if (!blob) throw new Error("foto_invalida");
+
+  return {
+    blob,
+    dataUrl: await fileToDataUrl(blob),
+    mime,
+    ext: mime.includes("webp") ? "webp" : "jpg",
+  };
+}
+
+function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timer));
+  });
+}
+
+function uploadFotoComTimeout(refArquivo, blob, metadata, ms = 7000) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const task = uploadBytesResumable(refArquivo, blob, metadata);
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      fn(value);
+    };
+
+    const timer = window.setTimeout(() => {
+      const error = new Error("storage_timeout");
+      error.code = "storage_timeout";
+      try {
+        task.cancel();
+      } catch {}
+      finish(reject, error);
+    }, ms);
+
+    task.on(
+      "state_changed",
+      null,
+      (error) => finish(reject, error),
+      () => finish(resolve, task.snapshot),
+    );
+  });
+}
+
 export default function PerfilDrawer({ open, onClose, uid }) {
   const [tab, setTab] = useState("perfil");
 
   const [profile, setProfile] = useState(initialProfile);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  const [fotoSalvando, setFotoSalvando] = useState(false);
+  const [fotoAviso, setFotoAviso] = useState("");
   const [serviceStats, setServiceStats] = useState({
     total: 0,
     comoCorre: 0,
@@ -210,6 +342,14 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           const data = snap.val() || {};
           const corre = data.corre || {};
           const profissional = data.profissional || {};
+          const fotoPrincipal = pickFoto(
+            data.fotoURL,
+            data.photoURL,
+            data.avatar,
+            prev.fotoURL,
+            prev.photoURL,
+          );
+          const avatarEmoji = data.avatarEmoji || (!isFotoValor(data.avatar) ? data.avatar : "") || prev.avatarEmoji || "";
 
           return {
             ...prev,
@@ -231,20 +371,10 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             profRegiao: data.profRegiao || profissional.regiao || "",
             profExperiencia:
               data.profExperiencia || profissional.experiencia || "",
-            fotoURL:
-              data.fotoURL ||
-              data.photoURL ||
-              data.avatar ||
-              prev.fotoURL ||
-              "",
-            photoURL:
-              data.photoURL ||
-              data.fotoURL ||
-              data.avatar ||
-              prev.photoURL ||
-              "",
-            avatar:
-              data.avatar || data.fotoURL || data.photoURL || prev.avatar || "",
+            fotoURL: fotoPrincipal,
+            photoURL: fotoPrincipal,
+            avatar: fotoPrincipal || avatarEmoji || "",
+            avatarEmoji,
             plano: data.plano || data.assinatura?.plano || prev.plano || "Free",
             statusProfissional: data.statusProfissional || data.profissional?.statusProfissional || prev.statusProfissional || "disponivel",
             ocupadoAte: data.ocupadoAte || data.profissional?.ocupadoAte || prev.ocupadoAte || "",
@@ -277,8 +407,8 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         const modoProfissional = String(p?.modoPedido || "").toLowerCase() === "profissional";
 
         if (concluido && (souCliente || souCorre)) total += 1;
-        if (concluido && souCorre) comoCorre += 1;
         if (concluido && souCorre && modoProfissional) comoProfissional += 1;
+        if (concluido && souCorre && !modoProfissional) comoCorre += 1;
         if (concluido && souCliente) comoCliente += 1;
         if ((souCliente || souCorre) && p?.problemaServico) problemas += 1;
 
@@ -300,6 +430,119 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       });
     });
   }, [open, uid]);
+
+  async function salvarFotoNosPerfis(fotoFinal, storagePath = "", storageModo = "database_fallback") {
+    const avatarEmoji = profile.avatarEmoji || "";
+    const payload = {
+      fotoURL: fotoFinal || null,
+      photoURL: fotoFinal || null,
+      avatar: fotoFinal || avatarEmoji || "",
+      avatarEmoji,
+      fotoStoragePath: storagePath || null,
+      fotoStorage: storageModo,
+      fotoAtualizadaEm: serverTimestamp(),
+    };
+
+    try {
+      if (fotoFinal) window.localStorage.setItem("fotoURL", fotoFinal);
+      if (avatarEmoji) window.localStorage.setItem("avatarEmoji", avatarEmoji);
+    } catch {}
+
+    await update(ref(database, `${userBasePath}/profile`), {
+      ...payload,
+      "corre/fotoURL": fotoFinal || null,
+      "corre/photoURL": fotoFinal || null,
+      "profissional/fotoURL": fotoFinal || null,
+      "profissional/photoURL": fotoFinal || null,
+      atualizadoEm: serverTimestamp(),
+    });
+
+    await update(ref(database, userBasePath), {
+      ...payload,
+      "profile/fotoURL": fotoFinal || null,
+      "profile/photoURL": fotoFinal || null,
+      "profile/avatar": fotoFinal || avatarEmoji || "",
+      "corre/fotoURL": fotoFinal || null,
+      "corre/photoURL": fotoFinal || null,
+      "profissional/fotoURL": fotoFinal || null,
+      "profissional/photoURL": fotoFinal || null,
+      atualizadoEm: serverTimestamp(),
+    });
+
+    await update(ref(database, `usuariosOnline/${uid}`), {
+      ...payload,
+      atualizadoEm: serverTimestamp(),
+    });
+  }
+
+  async function alterarFotoPerfil(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !uid) return;
+
+    setFotoSalvando(true);
+    setFotoAviso("Preparando foto...");
+
+    try {
+      const preparada = await prepararFotoPerfil(file);
+
+      setProfile((p) => ({
+        ...p,
+        fotoURL: preparada.dataUrl,
+        photoURL: preparada.dataUrl,
+        avatar: preparada.dataUrl,
+      }));
+      setFotoAviso("Enviando foto...");
+
+      try {
+        const agora = Date.now();
+        const caminho = `profilePhotos/${uid}/${uid}_${agora}.${preparada.ext}`;
+        const fotoRef = storageRef(storage, caminho);
+
+        await uploadFotoComTimeout(fotoRef, preparada.blob, {
+          contentType: preparada.mime,
+          customMetadata: {
+            userId: String(uid),
+            tipo: "foto_perfil",
+          },
+        });
+
+        const url = await promiseComTimeout(getDownloadURL(fotoRef), 5000, "foto_url_timeout");
+
+        setProfile((p) => ({
+          ...p,
+          fotoURL: url,
+          photoURL: url,
+          avatar: url,
+          fotoStoragePath: caminho,
+          fotoStorage: "firebase",
+        }));
+        await salvarFotoNosPerfis(url, caminho, "firebase");
+        setFotoAviso("Foto salva.");
+        setSalvo(true);
+        setTimeout(() => setSalvo(false), 2200);
+      } catch {
+        try {
+          await salvarFotoNosPerfis(preparada.dataUrl, "", "database_fallback");
+          setFotoAviso("Storage indisponível. Salvei uma versão leve da foto.");
+        } catch {
+          throw new Error("foto_salvar");
+        }
+      }
+    } catch (error) {
+      const msg =
+        error?.message === "foto_grande"
+          ? "Escolha uma imagem de até 8 MB."
+          : error?.message === "tipo_invalido"
+            ? "Escolha um arquivo de imagem."
+            : error?.message === "foto_salvar"
+              ? "Não consegui salvar a foto. Verifique login e regras do Firebase."
+            : "Não consegui ler essa foto.";
+      setFotoAviso(msg);
+    } finally {
+      setFotoSalvando(false);
+    }
+  }
 
   const salvar = async () => {
     if (!uid) return;
@@ -343,8 +586,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         atualizadoEm: serverTimestamp(),
       };
 
-      const fotoPrincipal =
-        profile.fotoURL || profile.photoURL || profile.avatar || "";
+      const fotoPrincipal = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
 
       await update(ref(database, `${userBasePath}/profile`), {
         ...profile,
@@ -426,7 +668,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   if (!open) return null;
   if (!uid) return null;
 
-  const fotoPrincipal = profile.fotoURL || profile.photoURL || profile.avatar || "";
+  const fotoPrincipal = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
   const perfilVerificadoOficial = !!(
     profile.verificado ||
     profile.verified ||
@@ -489,34 +731,20 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           {/* FOTO + HEADER */}
           <div className="rounded-[32px] bg-gradient-to-br from-[#0b1730] via-[#0a1428] to-[#050b16] border border-cyan-300/10 p-5 md:p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
             <div className="flex flex-col items-center text-center">
-              <label className="cursor-pointer relative group">
+              <label className={["cursor-pointer relative group", fotoSalvando ? "pointer-events-none opacity-80" : ""].join(" ")}>
                 <input
                   type="file"
                   accept="image/*"
+                  disabled={fotoSalvando}
                   className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                      const fotoBase64 = reader.result || "";
-                      setProfile((p) => ({
-                        ...p,
-                        fotoURL: fotoBase64,
-                        photoURL: fotoBase64,
-                        avatar: fotoBase64,
-                      }));
-                    };
-                    reader.readAsDataURL(file);
-                  }}
+                  onChange={alterarFotoPerfil}
                 />
 
-                {profile.fotoURL ? (
-                  <img
-                    src={profile.fotoURL}
-                    className="w-28 h-28 rounded-full object-cover border-4 border-cyan-300/80 ring-4 ring-cyan-400/15 shadow-[0_0_45px_rgba(34,211,238,0.28)]"
-                    alt="Foto do perfil"
+                {fotoPrincipal ? (
+                  <div
+                    className="w-28 h-28 rounded-full bg-cover bg-center border-4 border-cyan-300/80 ring-4 ring-cyan-400/15 shadow-[0_0_45px_rgba(34,211,238,0.28)]"
+                    style={{ backgroundImage: `url(${JSON.stringify(fotoPrincipal)})` }}
+                    aria-label="Foto do perfil"
                   />
                 ) : (
                   <div className="w-28 h-28 rounded-full bg-white/10 flex items-center justify-center text-4xl border border-white/20 shadow-2xl">
@@ -525,9 +753,15 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 )}
 
                 <div className="absolute inset-0 rounded-full bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs font-bold">
-                  Trocar foto
+                  {fotoSalvando ? "Salvando..." : "Trocar foto"}
                 </div>
               </label>
+
+              {fotoAviso ? (
+                <div className="mt-3 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-100">
+                  {fotoAviso}
+                </div>
+              ) : null}
 
               <div className="mt-4 text-2xl font-extrabold text-white">
                 {profile.nome || "Seu nome"}
@@ -1102,7 +1336,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           <button
             onClick={salvar}
-            disabled={salvando}
+            disabled={salvando || fotoSalvando}
             className="
               w-full mt-5 py-4 rounded-3xl
               bg-gradient-to-r from-blue-600 to-indigo-600
@@ -1114,7 +1348,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             "
             type="button"
           >
-            {salvando ? "Salvando…" : salvo ? "Salvo ✅" : "Salvar"}
+            {fotoSalvando ? "Salvando foto…" : salvando ? "Salvando…" : salvo ? "Salvo ✅" : "Salvar"}
           </button>
 
           <div className="h-8" />

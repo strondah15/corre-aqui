@@ -1,3 +1,12 @@
-export default function Corre() {
-  return <div className="min-h-screen bg-black text-white p-8">Área do CORRE</div>
+'use client'
+
+import LoginGate from '@/components/LoginGate'
+import Mapadinamico from '@/components/Mapadinamico'
+
+export default function CorrePage() {
+  return (
+    <LoginGate>
+      <Mapadinamico initialMode="corre" />
+    </LoginGate>
+  )
 }

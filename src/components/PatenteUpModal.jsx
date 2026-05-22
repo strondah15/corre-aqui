@@ -1,15 +1,18 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import Patente from './Patente'
+import Patente, { getPatenteVisual } from './Patente'
 
 export default function PatenteUpModal({
   open = false,
   patente = 'Corredor',
   tipo = 'corre',
   nivel = 2,
+  animado = true,
   onClose,
 }) {
+  const visual = getPatenteVisual(tipo, nivel)
+
   return (
     <AnimatePresence>
       {open && (
@@ -30,14 +33,14 @@ export default function PatenteUpModal({
               initial={{ opacity: 0, scale: 0.6 }}
               animate={{ opacity: 0.35, scale: 1 }}
               transition={{ duration: 0.5 }}
-              className="pointer-events-none absolute -top-24 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-yellow-300/25 blur-3xl"
+              className={`pointer-events-none absolute -top-24 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-gradient-to-br ${visual.cor} opacity-40 blur-3xl`}
             />
             <motion.div
-              animate={{ rotate: [0, -6, 6, 0], scale: [1, 1.05, 1] }}
+              animate={animado ? { rotate: [0, -6, 6, 0], scale: [1, 1.05, 1] } : {}}
               transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-              className="relative mx-auto grid h-24 w-24 place-items-center rounded-[30px] bg-gradient-to-br from-yellow-300 to-orange-500 text-5xl shadow-[0_20px_70px_rgba(250,204,21,0.28)]"
+              className={`relative mx-auto grid h-24 w-24 place-items-center rounded-[30px] bg-gradient-to-br ${visual.cor} text-5xl shadow-[0_20px_70px_rgba(250,204,21,0.28)]`}
             >
-              🏆
+              {visual.icon}
             </motion.div>
 
             <div className="relative mt-6 text-xs font-black uppercase tracking-[0.28em] text-yellow-300">

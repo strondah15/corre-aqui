@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import LogoCorreAqui from '@/components/LogoCorreAqui'
 
 /**
  * MissionCardExpandable
@@ -139,9 +140,7 @@ export default function MissionCardExpandable({ item, onAccept, onChat }) {
                 {/* header */}
                 <div className="flex items-center justify-between p-5 border-b border-white/10">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-white/10 flex items-center justify-center">
-                      <span className="text-sm text-white/80">CA</span>
-                    </div>
+                    <LogoCorreAqui className="h-14 w-14 rounded-full border-0 shadow-none" />
                     <div>
                       <div className="text-base font-semibold text-white/90">
                         {item?.title || 'Ajuda com compras no mercado'}

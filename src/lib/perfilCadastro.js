@@ -5,17 +5,17 @@ export const TIPOS_CONTA = {
   cliente: {
     id: 'cliente',
     titulo: 'Cliente',
-    subtitulo: 'Quero pedir ajuda e contratar alguem perto.',
+    subtitulo: 'Quero pedir ajuda e contratar alguém perto.',
   },
   corre: {
     id: 'corre',
     titulo: 'Corre',
-    subtitulo: 'Quero aparecer disponivel e aceitar servicos rapidos.',
+    subtitulo: 'Quero aparecer disponível e aceitar serviços rápidos.',
   },
   profissional: {
     id: 'profissional',
     titulo: 'Profissional',
-    subtitulo: 'Quero oferecer servicos com perfil mais completo.',
+    subtitulo: 'Quero oferecer serviços com perfil mais completo.',
   },
 }
 
@@ -84,11 +84,11 @@ export async function salvarCadastroPerfil({ uid, authUser, form }) {
 
   const corre = {
     ativo: isCorre,
-    titulo: 'Corre rapido',
+    titulo: 'Corre rápido',
     bio: bio || '',
     transporte: '',
     regiao: cidade,
-    disponibilidade: isCorre ? 'Disponivel para servicos proximos.' : '',
+    disponibilidade: isCorre ? 'Disponível para serviços próximos.' : '',
     experiencia: '',
     fotoURL: fotoURL || null,
     photoURL: fotoURL || null,

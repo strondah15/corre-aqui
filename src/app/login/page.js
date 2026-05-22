@@ -9,7 +9,7 @@ import { getGoogleRedirectUser, signInAsGuest, signInWithGoogle } from '@/lib/au
 
 function mensagemErroGoogle(err) {
   if (err?.code === 'auth/unauthorized-domain') {
-    return 'Este endereco do celular ainda nao esta autorizado no Firebase. Use Visitante/teste agora ou adicione o IP/domino em Authentication > Authorized domains.'
+    return 'Este endereço do celular ainda não está autorizado no Firebase. Use visitante agora ou adicione o IP/domínio em Authentication > Authorized domains.'
   }
 
   if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/popup-closed-by-user') {
@@ -20,34 +20,7 @@ function mensagemErroGoogle(err) {
     return 'Falha de rede ao abrir o Google. Confira a internet do celular.'
   }
 
-  return 'Nao foi possivel abrir o Google agora. Tente novamente ou entre como visitante/teste.'
-}
-
-function isMobileLoginDevice() {
-  if (typeof window === 'undefined') return false
-
-  const ua = window.navigator?.userAgent || ''
-  return (
-    /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(ua) ||
-    window.matchMedia?.('(max-width: 768px)')?.matches
-  )
-}
-
-function criarVisitanteLocal() {
-  const id = `visitante_${Date.now()}`
-  const nome = 'Visitante'
-
-  try {
-    localStorage.setItem('meuId', id)
-    localStorage.setItem('meuNome', nome)
-    localStorage.setItem('cadastroCompleto', 'true')
-    localStorage.setItem(`cadastroCompleto:${id}`, 'true')
-    localStorage.setItem('viuBoasVindas', 'true')
-  } catch (err) {
-    console.warn('[LoginPage] falha ao salvar visitante local', err)
-  }
-
-  return { id, nome }
+  return 'Não foi possível abrir o Google agora. Tente novamente ou entre como visitante.'
 }
 
 export default function LoginPage() {
@@ -69,31 +42,20 @@ export default function LoginPage() {
   }, [router])
 
   async function entrarGoogle() {
-    alert('clicou google')
-    console.log('[LoginPage] toque Entrar com Google', {
-      mobile: isMobileLoginDevice(),
-      disabled: loading,
-    })
     if (loading) return
 
     try {
       setErro('')
       setLoading(true)
-      console.log('[LoginPage] Google: chamando signInWithGoogle')
       const user = await signInWithGoogle()
-      console.log('[LoginPage] Google: retorno signInWithGoogle', {
-        temUser: !!user,
-        uid: user?.uid || null,
-      })
       if (user?.uid) {
-        console.log('[LoginPage] Google: redirecionando para home')
         router.replace('/')
         return
       }
 
       window.setTimeout(() => {
         setLoading(false)
-        setErro('Se o Google nao abriu, seu navegador pode ter bloqueado o redirecionamento ou o dominio local ainda nao esta autorizado no Firebase. Use Visitante/teste para continuar.')
+        setErro('Se o Google não abriu, seu navegador pode ter bloqueado o redirecionamento ou o domínio local ainda não está autorizado no Firebase. Use visitante para continuar.')
       }, 1800)
     } catch (err) {
       console.error(err)
@@ -105,38 +67,16 @@ export default function LoginPage() {
   }
 
   async function entrarVisitante() {
-    alert('clicou visitante')
-    console.log('[LoginPage] toque Entrar como visitante/teste', {
-      mobile: isMobileLoginDevice(),
-      disabled: guestLoading,
-    })
     if (guestLoading) return
 
     try {
       setErro('')
       setGuestLoading(true)
-      console.log('[LoginPage] visitante local: criando entrada direta')
-      const visitante = criarVisitanteLocal()
-      console.log('[LoginPage] visitante local criado', visitante)
-      router.replace('/')
-
-      signInAsGuest()
-        .then((user) => {
-          console.log('[LoginPage] visitante Firebase: retorno anonimo', {
-            uid: user?.uid || null,
-          })
-          if (!user?.uid) return
-          localStorage.setItem('meuId', user.uid)
-          localStorage.setItem('meuNome', user.displayName || 'Visitante')
-          localStorage.setItem('cadastroCompleto', 'true')
-          localStorage.setItem(`cadastroCompleto:${user.uid}`, 'true')
-        })
-        .catch((err) => {
-          console.error('[LoginPage] visitante Firebase: erro, mantendo visitante local', err)
-        })
+      const user = await signInAsGuest()
+      if (user?.uid) router.replace('/')
     } catch (err) {
       console.error(err)
-      setErro('Nao foi possivel entrar como visitante agora. Verifique se login anonimo esta ativo no Firebase.')
+      setErro('Não foi possível entrar como visitante agora. Verifique se login anônimo está ativo no Firebase.')
     } finally {
       setGuestLoading(false)
     }
@@ -158,7 +98,7 @@ export default function LoginPage() {
         </div>
         <h1 className="mt-3 text-2xl font-black">Entrar no app</h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-400">
-          Use uma conta para manter seu perfil, pedidos, conversas e notificacoes juntos.
+          Use uma conta para manter seu perfil, pedidos, conversas e notificações juntos.
         </p>
 
         <button
@@ -176,7 +116,7 @@ export default function LoginPage() {
           disabled={guestLoading}
           className="relative z-50 mt-3 h-12 w-full rounded-[20px] border border-white/10 bg-white/[0.045] text-sm font-black text-white/80 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 pointer-events-auto"
         >
-          {guestLoading ? 'Entrando...' : 'Entrar como visitante/teste'}
+          {guestLoading ? 'Entrando...' : 'Entrar como visitante'}
         </button>
 
         {erro ? (
@@ -188,10 +128,6 @@ export default function LoginPage() {
         <button
           type="button"
           onClick={() => {
-            alert('clicou voltar')
-            console.log('[LoginPage] toque Voltar', {
-              mobile: isMobileLoginDevice(),
-            })
             router.replace('/')
           }}
           className="relative z-50 mt-3 h-12 w-full rounded-[20px] border border-white/10 bg-white/[0.04] text-sm font-bold text-white/70 transition hover:bg-white/[0.07] pointer-events-auto"

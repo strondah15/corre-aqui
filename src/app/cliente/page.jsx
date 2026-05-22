@@ -1,3 +1,12 @@
-export default function Cliente() {
-  return <div className="min-h-screen bg-black text-white p-8">Área do CLIENTE</div>
+'use client'
+
+import LoginGate from '@/components/LoginGate'
+import Mapadinamico from '@/components/Mapadinamico'
+
+export default function ClientePage() {
+  return (
+    <LoginGate>
+      <Mapadinamico initialMode="cliente" />
+    </LoginGate>
+  )
 }

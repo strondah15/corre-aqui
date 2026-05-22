@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { motion } from 'framer-motion'
+import { CATEGORIES } from '@/constants/categories'
 
 function safeUrl(u) {
   const s = String(u || '').trim()
@@ -54,6 +55,23 @@ function formatMoney(v) {
     return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   }
   return `R$ ${s}`
+}
+
+function normalizeCategoryIds(...values) {
+  const ids = values.flatMap((value) => {
+    if (!value) return []
+    if (Array.isArray(value)) return value
+    if (typeof value === 'string') return value.split(',')
+    return []
+  })
+
+  return Array.from(
+    new Set(
+      ids
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+    )
+  )
 }
 
 function getAgendaStatus(item) {
@@ -157,6 +175,24 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
     return out
   }, [isCorre, isProf, tituloCorre, resumoCorre, transporte, dispCorre, tituloProf, resumoProf, profExperiencia])
 
+  const categorias = useMemo(() => {
+    const ids = normalizeCategoryIds(
+      item?.profCategorias,
+      profile?.profCategorias,
+      prof?.profCategorias,
+      prof?.categorias,
+      item?.correCategorias,
+      profile?.correCategorias,
+      corre?.categorias,
+      item?.servicos,
+      profile?.servicos
+    )
+
+    return ids
+      .map((id) => CATEGORIES.find((cat) => cat.id === id) || { id, label: id.replace(/_/g, ' '), emoji: '' })
+      .slice(0, 3)
+  }, [corre?.categorias, item?.correCategorias, item?.profCategorias, item?.servicos, prof?.categorias, prof?.profCategorias, profile?.correCategorias, profile?.profCategorias, profile?.servicos])
+
   const detalhes = [
     preco ? { label: 'Preço', value: formatMoney(preco) } : null,
     transporte ? { label: 'Transporte', value: transporte } : null,
@@ -178,8 +214,12 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
       <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-slate-50 via-emerald-50/70 to-transparent" />
 
       <div className="relative flex items-start gap-3">
-        <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-[22px] border border-white bg-slate-100 text-3xl shadow-[0_14px_34px_rgba(15,23,42,0.16)] ring-4 ring-slate-100">
-          {fotoURL ? <img src={fotoURL} alt={nome} className="h-full w-full object-cover" loading="lazy" /> : emoji}
+        <div
+          className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-[22px] border border-white bg-slate-100 bg-cover bg-center text-3xl shadow-[0_14px_34px_rgba(15,23,42,0.16)] ring-4 ring-slate-100"
+          style={fotoURL ? { backgroundImage: `url(${JSON.stringify(fotoURL)})` } : undefined}
+          aria-label={nome}
+        >
+          {fotoURL ? <span className="sr-only">{nome}</span> : emoji}
         </div>
 
         <div className="min-w-0 flex-1">
@@ -223,6 +263,19 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
           <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Agenda</div>
         </div>
       </div>
+
+      {categorias.length ? (
+        <div className="relative mt-3 flex flex-wrap gap-1.5">
+          {categorias.map((cat) => (
+            <span
+              key={cat.id}
+              className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black text-slate-600"
+            >
+              {cat.emoji ? `${cat.emoji} ` : ''}{cat.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <div className="relative mt-4 space-y-2">
         {servicos.map((servico) => (

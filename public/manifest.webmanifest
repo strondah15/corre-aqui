@@ -1,0 +1,45 @@
+{
+  "name": "Corre Aqui",
+  "short_name": "Corre Aqui",
+  "description": "Encontre alguém perto para resolver hoje.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "orientation": "portrait",
+  "lang": "pt-BR",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/corre-aqui-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-corre-aqui.png.png",
+      "sizes": "471x628",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Criar pedido",
+      "short_name": "Pedido",
+      "description": "Abrir a criação de pedidos.",
+      "url": "/criar-pedido",
+      "icons": [{ "src": "/corre-aqui-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Mapa ao vivo",
+      "short_name": "Mapa",
+      "description": "Ver o mapa ao vivo.",
+      "url": "/mapa",
+      "icons": [{ "src": "/corre-aqui-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

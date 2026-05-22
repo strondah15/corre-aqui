@@ -126,6 +126,7 @@ function vibrarAceite() {
 export default function AvisoCorreAceito({
   meuId,
   corres = [],
+  enabled = true,
   onAbrirChat,
   onVerMapa,
   showToast,
@@ -154,6 +155,7 @@ export default function AvisoCorreAceito({
   }, [meuId])
 
   const pedidoAceito = useMemo(() => {
+    if (!enabled) return null
     if (!meuId) return null
     if (!Array.isArray(corres)) return null
 
@@ -181,7 +183,7 @@ export default function AvisoCorreAceito({
     })
 
     return lista[0]
-  }, [corres, meuId, fechados])
+  }, [corres, meuId, fechados, enabled])
 
   const markerAtual = useMemo(() => {
     if (!pedidoAceito) return ''
@@ -245,11 +247,11 @@ export default function AvisoCorreAceito({
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, y: 28, scale: 0.96 }}
+        initial={{ opacity: 0, y: -22, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 18, scale: 0.96 }}
+        exit={{ opacity: 0, y: -16, scale: 0.96 }}
         transition={{ type: 'spring', stiffness: 220, damping: 22 }}
-        className="pointer-events-none fixed inset-x-3 bottom-[6.75rem] z-[99985] mx-auto max-w-[430px] md:bottom-28 md:left-auto md:right-7 md:mx-0 md:w-[430px]"
+        className="pointer-events-none fixed inset-x-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[99985] mx-auto max-w-[430px] sm:top-4 md:top-24 md:left-auto md:right-7 md:mx-0 md:w-[430px]"
       >
         <div className="pointer-events-auto relative overflow-hidden rounded-[28px] border border-emerald-300/20 bg-[#07111f]/96 p-4 text-white shadow-[0_28px_90px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-cyan-300 to-blue-500" />

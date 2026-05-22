@@ -61,7 +61,7 @@ export default function CadastroPerfilInicial({
       onSaved?.(perfil)
     } catch (err) {
       console.error(err)
-      setErro(err?.message || 'Nao foi possivel concluir o cadastro agora.')
+      setErro(err?.message || 'Não foi possível concluir o cadastro agora.')
     } finally {
       setSalvando(false)
     }
@@ -88,7 +88,7 @@ export default function CadastroPerfilInicial({
             </h1>
             <p className="mt-3 text-sm leading-relaxed text-slate-400">
               O Corre Aqui usa esse cadastro para mostrar seu nome, sua cidade, suas conversas,
-              pedidos, patentes e notificacoes no mesmo perfil.
+              pedidos, patentes e notificações no mesmo perfil.
             </p>
 
             <div className="mt-6 hidden gap-3 text-sm text-slate-300 sm:grid">
@@ -101,7 +101,7 @@ export default function CadastroPerfilInicial({
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                 <b className="text-white">Perfil reativavel</b>
                 <div className="mt-1 text-xs leading-relaxed text-slate-400">
-                  Depois voce ajusta foto, patentes, servicos e configuracoes pelo perfil.
+                  Depois você ajusta foto, patentes, serviços e configurações pelo perfil.
                 </div>
               </div>
             </div>
@@ -145,7 +145,7 @@ export default function CadastroPerfilInicial({
                   value={form.avatarEmoji}
                   onChange={(e) => setCampo('avatarEmoji', e.target.value)}
                   className={inputClass}
-                  placeholder="CA"
+                  placeholder="🙂"
                   maxLength={4}
                 />
               </Field>
@@ -153,7 +153,7 @@ export default function CadastroPerfilInicial({
 
             <div className="mt-5">
               <div className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
-                Como voce quer comecar?
+                Como você quer começar?
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
                 {Object.values(TIPOS_CONTA).map((tipo) => {
@@ -188,7 +188,7 @@ export default function CadastroPerfilInicial({
               </div>
             </div>
 
-            <Field label="Resumo curto" hint="Opcional. Aparece na ficha quando voce trabalha pelo app.">
+            <Field label="Resumo curto" hint="Opcional. Aparece na ficha quando você trabalha pelo app.">
               <textarea
                 value={form.bio}
                 onChange={(e) => setCampo('bio', e.target.value)}

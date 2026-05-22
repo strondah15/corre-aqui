@@ -95,6 +95,7 @@ function buildBoost({ alcance, agora, meuId, meuNome }) {
 }
 
 export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: meuNomeProp, meuId: meuIdProp }) {
+  const [tituloManual, setTituloManual] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [valorDigitado, setValorDigitado] = useState('')
   const [resposta, setResposta] = useState('')
@@ -124,6 +125,7 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
 
   useEffect(() => {
     if (!open) return
+    setTituloManual('')
     setMensagem('')
     setValorDigitado('')
     setResposta('')
@@ -138,6 +140,7 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
   const valorManual = useMemo(() => parseValorDigitado(valorDigitado), [valorDigitado])
   const valorFinal = valorManual != null ? valorManual : valorAuto
   const tituloPreview = guessTitulo(mensagem) || 'Descreva o serviço que você precisa'
+  const tituloFinal = (tituloManual.trim() || tituloPreview).slice(0, 80)
   const tipoPreview = guessTipo(mensagem)
 
   const sugestoes = useMemo(() => {
@@ -175,7 +178,7 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
       id: novo.key,
       tipo: tipoPreview,
       modoPedido,
-      titulo: tituloPreview,
+      titulo: tituloFinal,
       descricao: mensagem.trim(),
       valor: valorFinal != null ? Number(valorFinal) : null,
       categoriaId: String(categoriaId || 'servicos_gerais'),
@@ -220,6 +223,7 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
       const local = usarLocal ? await getLoc() : null
       const payload = await criarNoFirebase({ local })
       setResposta(`Pedido publicado: ${getCategoryLabel(payload.categoriaId)}${payload.valor != null ? ` · ${formatMoney(payload.valor)}` : ''}`)
+      setTituloManual('')
       setMensagem('')
       setValorDigitado('')
       setCategoriaId('servicos_gerais')
@@ -288,6 +292,16 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
               </label>
             </div>
 
+            <label>
+              <div className="mb-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Título curto</div>
+              <input
+                value={tituloManual}
+                onChange={(e) => setTituloManual(e.target.value.slice(0, 80))}
+                placeholder="Ex: trocar torneira hoje"
+                className="h-12 w-full rounded-2xl border border-white/12 bg-slate-950 px-4 text-white placeholder:text-slate-600 outline-none focus:ring-2 focus:ring-blue-500/45"
+              />
+            </label>
+
             <div>
               <div className="mb-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Descrição do pedido</div>
               <div className="relative">
@@ -348,7 +362,7 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
             <div className="sticky top-5 space-y-4">
               <section className="rounded-[26px] border border-white/10 bg-slate-950/80 p-4">
                 <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Prévia</div>
-                <h3 className="mt-3 text-xl font-black leading-tight text-white">{tituloPreview}</h3>
+                <h3 className="mt-3 text-xl font-black leading-tight text-white">{tituloFinal}</h3>
                 <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-slate-400">{mensagem.trim() || 'Seu pedido aparece aqui antes de publicar.'}</p>
 
                 <div className="mt-4 grid gap-2">
