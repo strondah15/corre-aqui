@@ -8,6 +8,7 @@ import {
   clearGoogleRedirectPending,
   getGoogleRedirectUser,
   isGoogleRedirectPending,
+  mensagemErroAuthGoogle,
   signInAsGuest,
   signInWithGoogle
 } from '@/lib/authGoogle'
@@ -259,7 +260,7 @@ export default function LoginGate({ children }) {
     } catch (error) {
       console.error('[LoginGate] Google: erro', error)
       if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
-        setLoginError('Não consegui entrar com Google agora. Verifique a conexão e tente novamente.')
+        setLoginError(mensagemErroAuthGoogle(error))
       }
     } finally {
       setLoginLoading(false)

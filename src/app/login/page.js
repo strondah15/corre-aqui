@@ -9,11 +9,15 @@ import {
   clearGoogleRedirectPending,
   getGoogleRedirectUser,
   isGoogleRedirectPending,
+  mensagemErroAuthGoogle,
   signInAsGuest,
   signInWithGoogle,
 } from '@/lib/authGoogle'
 
 function mensagemErroGoogle(err) {
+  const msg = mensagemErroAuthGoogle(err)
+  if (msg) return msg
+
   if (err?.code === 'auth/unauthorized-domain') {
     return 'Este endereço do celular ainda não está autorizado no Firebase. Use visitante agora ou adicione o IP/domínio em Authentication > Authorized domains.'
   }

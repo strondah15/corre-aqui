@@ -11,6 +11,7 @@ import {
 import { ref, update, serverTimestamp } from "firebase/database";
 
 const provider = new GoogleAuthProvider();
+provider.setCustomParameters({ prompt: "select_account" });
 const REDIRECT_PENDING_KEY = "correaqui:googleRedirectPending";
 
 function esperar(ms, valor = null) {
@@ -84,13 +85,64 @@ async function ensureAuthPersistence() {
 }
 
 function deveUsarRedirect() {
+  return false;
+}
+
+function deveTentarRedirectDepoisDoPopup(err) {
   if (typeof window === "undefined") return false;
 
+  const code = err?.code || "";
   const ua = window.navigator?.userAgent || "";
   const mobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(ua);
-  const narrow = window.matchMedia?.("(max-width: 768px)")?.matches;
 
-  return Boolean(mobile || narrow);
+  return (
+    mobile &&
+    (code === "auth/popup-blocked" ||
+      code === "auth/cancelled-popup-request" ||
+      code === "auth/operation-not-supported-in-this-environment")
+  );
+}
+
+function dominioAtual() {
+  if (typeof window === "undefined") return "";
+  return window.location.hostname || "";
+}
+
+export function mensagemErroAuthGoogle(err) {
+  const code = err?.code || "";
+  const host = dominioAtual();
+
+  if (code === "auth/unauthorized-domain") {
+    return `Domínio não autorizado no Firebase: ${host}. Adicione esse domínio em Firebase Authentication > Settings > Authorized domains.`;
+  }
+
+  if (code === "auth/operation-not-allowed") {
+    return "Login Google ainda não está habilitado no Firebase Authentication > Sign-in method.";
+  }
+
+  if (code === "auth/invalid-api-key" || code === "auth/api-key-not-valid.-please-pass-a-valid-api-key.") {
+    return "A chave NEXT_PUBLIC_FIREBASE_API_KEY está inválida ou não bate com o projeto Firebase.";
+  }
+
+  if (code === "auth/network-request-failed") {
+    return "Falha de rede ao abrir o Google. Confira a internet e tente novamente.";
+  }
+
+  if (code === "auth/popup-blocked") {
+    return "O navegador bloqueou a janela do Google. Toque novamente e permita pop-ups para este site.";
+  }
+
+  if (code === "auth/popup-closed-by-user") {
+    return "A janela do Google foi fechada antes de concluir a entrada.";
+  }
+
+  if (code === "auth/operation-not-supported-in-this-environment") {
+    return "Este navegador não permitiu o login Google por popup. Tente abrir no Chrome ou instale o app pela tela inicial.";
+  }
+
+  return code
+    ? `Não consegui entrar com Google agora. Código Firebase: ${code}.`
+    : "Não consegui entrar com Google agora. Verifique a conexão e tente novamente.";
 }
 
 export async function signInWithGoogle() {
@@ -103,7 +155,17 @@ export async function signInWithGoogle() {
       return null;
     }
 
-    const result = await signInWithPopup(auth, provider);
+    let result;
+    try {
+      result = await signInWithPopup(auth, provider);
+    } catch (popupErr) {
+      if (!deveTentarRedirectDepoisDoPopup(popupErr)) throw popupErr;
+
+      setRedirectPending();
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+
     const user = result.user;
 
     clearRedirectPending();
