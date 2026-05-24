@@ -90,11 +90,11 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400 })
   }
 
-  const toUid = text(body.toUid, '', 128)
+  const toUid = text(body.toUid || body.userId, '', 128)
   const pedidoId = text(body.pedidoId, '', 128)
 
-  if (!toUid || !pedidoId) {
-    return NextResponse.json({ ok: false, error: 'missing_target_or_pedido' }, { status: 400 })
+  if (!toUid) {
+    return NextResponse.json({ ok: false, error: 'missing_target' }, { status: 400 })
   }
 
   const auth = getFirebaseAdminAuth()
@@ -109,11 +109,19 @@ export async function POST(request) {
   }
 
   const actorUid = String(decoded.uid || '')
-  const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).get()
-  const pedido = pedidoSnap.val()
+  const isSelfTest = !pedidoId && toUid === actorUid && (body.test === true || body.tipo === 'push_teste' || body.type === 'push_teste')
 
-  if (!pedido || !canSendForPedido({ actorUid, toUid, pedido })) {
-    return NextResponse.json({ ok: false, error: 'forbidden_push_context' }, { status: 403 })
+  if (!isSelfTest) {
+    if (!pedidoId) {
+      return NextResponse.json({ ok: false, error: 'missing_pedido' }, { status: 400 })
+    }
+
+    const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).get()
+    const pedido = pedidoSnap.val()
+
+    if (!pedido || !canSendForPedido({ actorUid, toUid, pedido })) {
+      return NextResponse.json({ ok: false, error: 'forbidden_push_context' }, { status: 403 })
+    }
   }
 
   const userSnap = await db.ref(`users/${toUid}`).get()
@@ -135,6 +143,7 @@ export async function POST(request) {
   const title = text(body.titulo || body.title, 'Corre Aqui', 80)
   const message = text(body.mensagem || body.body || body.message, 'Voce tem uma nova atualizacao.', 180)
   const url = resolveClickUrl(body)
+  const tag = text(body.tag, `corre-aqui-${pedidoId || `teste-${actorUid}`}-${body.tipo || body.type || 'push'}`, 120)
   const data = stringData({
     tipo: body.tipo || body.type || 'notificacao',
     pedidoId,
@@ -145,7 +154,7 @@ export async function POST(request) {
     body: message,
     icon: '/corre-aqui-icon.svg',
     badge: '/corre-aqui-icon.svg',
-    tag: `corre-aqui-${pedidoId}-${body.tipo || body.type || 'push'}`,
+    tag,
     requireInteraction: body.prioridade === 'alta',
   })
 

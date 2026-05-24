@@ -1,6 +1,6 @@
 'use client'
 
-import app, { database } from '@/lib/firebase'
+import app, { auth, database } from '@/lib/firebase'
 import { ref, serverTimestamp, update } from 'firebase/database'
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 
@@ -145,6 +145,65 @@ export async function ativarPushNotifications(uid) {
   })
 
   return { token, tokenKey: key, permission, swPath: MESSAGING_SW_PATH }
+}
+
+function mensagemErroPushApi(data, fallback = 'Nao consegui enviar o push de teste agora.') {
+  const reason = data?.reason || data?.error || ''
+
+  if (reason === 'firebase_admin_not_configured') {
+    return 'Firebase Admin nao esta configurado no servidor da Vercel.'
+  }
+
+  if (reason === 'no_push_tokens') {
+    return 'Token ainda nao apareceu no Firebase para este usuario.'
+  }
+
+  if (reason === 'user_notifications_disabled') {
+    return 'Notificacoes estao desativadas neste perfil.'
+  }
+
+  if (reason === 'missing_auth_token' || reason === 'invalid_auth_token') {
+    return 'Sessao expirada. Entre novamente para testar.'
+  }
+
+  if (reason === 'forbidden_push_context') {
+    return 'A rota recusou o teste para este usuario.'
+  }
+
+  return reason ? `${fallback} (${reason})` : fallback
+}
+
+export async function testarPushNotification(uid) {
+  if (!uid) throw new Error('Faça login para testar.')
+
+  const currentUser = auth.currentUser
+  if (!currentUser?.getIdToken) throw new Error('Faça login para testar.')
+  if (currentUser.uid !== uid) throw new Error('Usuario atual nao bate com o perfil aberto.')
+
+  const idToken = await currentUser.getIdToken()
+  const response = await fetch('/api/push/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      userId: uid,
+      title: '🔔 Teste Corre Aqui',
+      body: 'Sua notificação push está funcionando!',
+      url: '/',
+      tipo: 'push_teste',
+      test: true,
+      prioridade: 'alta',
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok || data?.ok === false) {
+    throw new Error(mensagemErroPushApi(data))
+  }
+
+  return data
 }
 
 export async function desativarPushNotifications(uid) {
