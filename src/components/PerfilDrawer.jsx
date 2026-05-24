@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ref, onValue, update, serverTimestamp } from "firebase/database";
 import { getDownloadURL, ref as storageRef, uploadBytesResumable } from "firebase/storage";
 import { database, storage } from "@/lib/firebase";
+import {
+  ativarPushNotifications,
+  desativarPushNotifications,
+  getPushCapabilities,
+} from "@/lib/pushNotifications";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import PainelPatentes from "./PainelPatentes";
@@ -270,6 +275,13 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   const [salvo, setSalvo] = useState(false);
   const [fotoSalvando, setFotoSalvando] = useState(false);
   const [fotoAviso, setFotoAviso] = useState("");
+  const [pushInfo, setPushInfo] = useState({
+    supported: false,
+    permission: "default",
+    reason: "Verificando push...",
+  });
+  const [pushSalvando, setPushSalvando] = useState(false);
+  const [pushAviso, setPushAviso] = useState("");
   const [serviceStats, setServiceStats] = useState({
     total: 0,
     comoCorre: 0,
@@ -430,6 +442,76 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       });
     });
   }, [open, uid]);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    getPushCapabilities()
+      .then((info) => {
+        if (!active) return;
+        setPushInfo(info);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setPushInfo({
+          supported: false,
+          permission: typeof Notification !== "undefined" ? Notification.permission : "unsupported",
+          reason: error?.message || "Push indisponivel neste navegador.",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [open]);
+
+  async function ativarPush() {
+    if (!uid || pushSalvando) return;
+
+    try {
+      setPushSalvando(true);
+      setPushAviso("Abrindo permissao do celular...");
+      const result = await ativarPushNotifications(uid);
+      setProfile((p) => ({
+        ...p,
+        notificacoes: true,
+        pushNotifications: {
+          enabled: true,
+          permission: result.permission,
+          tokenKey: result.tokenKey,
+        },
+      }));
+      setPushInfo((p) => ({ ...p, supported: true, permission: result.permission }));
+      setPushAviso("Push ativado neste aparelho.");
+    } catch (error) {
+      setPushAviso(error?.message || "Nao consegui ativar push agora.");
+      const info = await getPushCapabilities().catch(() => null);
+      if (info) setPushInfo(info);
+    } finally {
+      setPushSalvando(false);
+    }
+  }
+
+  async function desativarPush() {
+    if (!uid || pushSalvando) return;
+
+    try {
+      setPushSalvando(true);
+      await desativarPushNotifications(uid);
+      setProfile((p) => ({
+        ...p,
+        pushNotifications: {
+          ...(p.pushNotifications || {}),
+          enabled: false,
+        },
+      }));
+      setPushAviso("Push desativado neste perfil.");
+    } catch (error) {
+      setPushAviso(error?.message || "Nao consegui desativar push agora.");
+    } finally {
+      setPushSalvando(false);
+    }
+  }
 
   async function salvarFotoNosPerfis(fotoFinal, storagePath = "", storageModo = "database_fallback") {
     const avatarEmoji = profile.avatarEmoji || "";
@@ -685,6 +767,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   const perfilVerificado = perfilVerificadoOficial || perfilVerificadoBasico;
   const nivelCorreAtual = Number(accountStats.patenteCorre || calcularPatentePorServicos(accountStats.servicosCorre));
   const nivelProfAtual = Number(accountStats.patenteProf || (profile.isProfissional ? calcularPatentePorServicos(accountStats.servicosProf) : 0));
+  const pushAtivo = profile.pushNotifications?.enabled === true;
 
   return (
     <div className="fixed inset-0 z-[100000] bg-[#020617]">
@@ -980,6 +1063,47 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                       className="h-5 w-5 accent-blue-600"
                     />
                   </label>
+
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-sm font-extrabold text-white">Push real no celular</div>
+                        <div className="mt-1 text-xs leading-relaxed text-slate-400">
+                          Receba alertas fora do app quando o Firebase Messaging estiver configurado.
+                        </div>
+                        <div className="mt-2 rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-[11px] font-bold text-slate-300">
+                          Permissao: {pushInfo.permission || "default"}
+                          {!pushInfo.supported && pushInfo.reason ? ` · ${pushInfo.reason}` : ""}
+                        </div>
+                        {pushAviso ? (
+                          <div className="mt-2 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-2 text-[11px] font-bold text-cyan-100">
+                            {pushAviso}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="flex shrink-0 gap-2 sm:flex-col">
+                        <button
+                          type="button"
+                          onClick={ativarPush}
+                          disabled={pushSalvando || !pushInfo.supported}
+                          className="h-11 rounded-2xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {pushSalvando ? "Aguarde..." : pushAtivo ? "Reativar notificações" : "Ativar notificações"}
+                        </button>
+                        {pushAtivo ? (
+                          <button
+                            type="button"
+                            onClick={desativarPush}
+                            disabled={pushSalvando}
+                            className="h-11 rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-slate-200 transition hover:bg-white/[0.1] disabled:opacity-50"
+                          >
+                            Desativar
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                 </section>
 
                 <section className="rounded-[28px] border border-white/10 bg-[#0b1628] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)]">

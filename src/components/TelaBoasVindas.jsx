@@ -46,7 +46,13 @@ export default function TelaBoasVindas({ onEntrar }) {
         </a>
 
         <div className="mt-4 text-center text-xs font-semibold text-slate-500">
-          Você continua no controle dos seus dados e da sua localização.
+          Voce continua no controle dos seus dados e da sua localizacao.
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-500">
+          <a href="/termos" className="transition hover:text-slate-300">Termos</a>
+          <a href="/privacidade" className="transition hover:text-slate-300">Privacidade</a>
+          <a href="/seguranca" className="transition hover:text-slate-300">Seguranca</a>
         </div>
       </div>
     </main>

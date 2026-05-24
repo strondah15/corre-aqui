@@ -5,7 +5,13 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
-import { getGoogleRedirectUser, signInAsGuest, signInWithGoogle } from '@/lib/authGoogle'
+import {
+  clearGoogleRedirectPending,
+  getGoogleRedirectUser,
+  isGoogleRedirectPending,
+  signInAsGuest,
+  signInWithGoogle,
+} from '@/lib/authGoogle'
 
 function mensagemErroGoogle(err) {
   if (err?.code === 'auth/unauthorized-domain') {
@@ -25,20 +31,48 @@ function mensagemErroGoogle(err) {
 
 export default function LoginPage() {
   const router = useRouter()
+  const [checking, setChecking] = useState(true)
   const [loading, setLoading] = useState(false)
   const [guestLoading, setGuestLoading] = useState(false)
+  const [redirecting, setRedirecting] = useState(false)
   const [erro, setErro] = useState('')
 
   useEffect(() => {
+    let active = true
+    const redirectPendente = isGoogleRedirectPending()
+    setRedirecting(redirectPendente)
+    setChecking(true)
+
+    const fallback = window.setTimeout(() => {
+      if (!active) return
+      setChecking(false)
+      setRedirecting(false)
+    }, redirectPendente ? 10000 : 4500)
+
     getGoogleRedirectUser().then((user) => {
+      if (!active) return
       if (user?.uid) router.replace('/')
+    }).finally(() => {
+      if (!active) return
+      setRedirecting(false)
     })
 
     const off = onAuthStateChanged(auth, (user) => {
-      if (user?.uid) router.replace('/')
+      if (!active) return
+      window.clearTimeout(fallback)
+      if (user?.uid) {
+        router.replace('/')
+        return
+      }
+      setChecking(false)
+      setRedirecting(false)
     })
 
-    return () => off()
+    return () => {
+      active = false
+      window.clearTimeout(fallback)
+      off()
+    }
   }, [router])
 
   async function entrarGoogle() {
@@ -53,12 +87,17 @@ export default function LoginPage() {
         return
       }
 
+      setRedirecting(true)
       window.setTimeout(() => {
+        clearGoogleRedirectPending()
+        setRedirecting(false)
         setLoading(false)
         setErro('Se o Google não abriu, seu navegador pode ter bloqueado o redirecionamento ou o domínio local ainda não está autorizado no Firebase. Use visitante para continuar.')
       }, 1800)
     } catch (err) {
       console.error(err)
+      clearGoogleRedirectPending()
+      setRedirecting(false)
       setLoading(false)
       if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
         setErro(mensagemErroGoogle(err))
@@ -80,6 +119,30 @@ export default function LoginPage() {
     } finally {
       setGuestLoading(false)
     }
+  }
+
+  if (checking || redirecting) {
+    return (
+      <main className="grid min-h-[100dvh] place-items-center bg-[#050914] px-4 py-5 text-white">
+        <div className="w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-5 text-center shadow-[0_22px_70px_rgba(0,0,0,0.34)]">
+          <Image
+            src="/logo-corre-aqui.png.png"
+            alt="Corre Aqui"
+            width={72}
+            height={72}
+            className="mx-auto h-16 w-16 object-contain"
+            priority
+            unoptimized
+          />
+          <h1 className="mt-4 text-xl font-black">
+            {redirecting ? 'Voltando do Google...' : 'Abrindo Corre Aqui...'}
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-400">
+            {redirecting ? 'Confirmando sua conta no celular. Não precisa tocar de novo.' : 'Verificando se sua sessão já está ativa.'}
+          </p>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -124,6 +187,12 @@ export default function LoginPage() {
             {erro}
           </div>
         ) : null}
+
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-500">
+          <a href="/termos" className="transition hover:text-slate-300">Termos</a>
+          <a href="/privacidade" className="transition hover:text-slate-300">Privacidade</a>
+          <a href="/seguranca" className="transition hover:text-slate-300">Seguranca</a>
+        </div>
 
         <button
           type="button"

@@ -10,6 +10,8 @@ import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
 
 import { auth, database } from '@/lib/firebase'
+import { onForegroundPush } from '@/lib/pushNotifications'
+import { enviarPushParaUsuario } from '@/lib/pushSender'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
   ref,
@@ -241,30 +243,17 @@ const formatDataHora = (v) => {
   }) + ` às ${hora}`
 }
 
-const solicitarPermissaoNotificacao = async () => {
-  if (typeof window === 'undefined') return false
-  if (!('Notification' in window)) return false
-
-  if (Notification.permission === 'granted') return true
-  if (Notification.permission === 'denied') return false
-
-  const permission = await Notification.requestPermission()
-  return permission === 'granted'
-}
-
 const notificarTelefone = async ({ title, body, tag }) => {
   try {
     if (typeof window === 'undefined') return false
     if (!('Notification' in window)) return false
-
-    const ok = await solicitarPermissaoNotificacao()
-    if (!ok) return false
+    if (Notification.permission !== 'granted') return false
 
     new Notification(title || 'Corre Aqui', {
       body: body || '',
       tag: tag || `corre-aqui-${Date.now()}`,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      icon: '/corre-aqui-icon.svg',
+      badge: '/corre-aqui-icon.svg',
     })
 
     return true
@@ -600,6 +589,32 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
     setNotifPermission(Notification.permission || 'default')
   }, [])
+
+  useEffect(() => {
+    let active = true
+    let unsubscribe = () => {}
+
+    onForegroundPush((payload) => {
+      const notification = payload?.notification || {}
+      const data = payload?.data || {}
+      showToast({
+        type: 'info',
+        title: notification.title || data.title || 'Corre Aqui',
+        message: notification.body || data.body || data.message || 'Voce tem uma nova atualizacao.',
+      })
+    }).then((off) => {
+      if (!active) {
+        off?.()
+        return
+      }
+      unsubscribe = off || (() => {})
+    })
+
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [showToast])
 
   useEffect(() => {
     notificacoesInicializadasRef.current = false
@@ -1169,6 +1184,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           criadoEm: agora,
           autor: { id: meuId, nome: meuNome || 'Anônimo' },
         })
+
+        enviarPushParaUsuario(p.criador.id, {
+          tipo: 'corre_aceito',
+          pedidoId: p.id,
+          conversaId,
+          titulo: 'Seu corre foi aceito!',
+          mensagem: `${meuNome || 'Alguem'} aceitou: ${p.titulo || 'Corre aqui'}`,
+          prioridade: 'alta',
+          acao: 'abrir_chat',
+        })
       }
 
       // ✅ conversa de quem aceitou
@@ -1322,6 +1347,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         }).catch((notifyError) => {
           console.warn('Serviço concluído, mas a notificação não foi enviada:', notifyError)
         })
+
+        enviarPushParaUsuario(aceitadorId, {
+          tipo: 'servico_concluido',
+          pedidoId: p.id,
+          conversaId: p?.conversaId || p.id,
+          titulo: 'Servico confirmado',
+          mensagem: `${meuNome || 'Cliente'} confirmou a conclusao: ${p.titulo || 'Corre aqui'}`,
+          prioridade: 'media',
+          acao: 'abrir_chat',
+        })
       }
 
       // ✅ QUEM GANHA A ENTREGA?
@@ -1432,6 +1467,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           autor: { id: meuId, nome: meuNome || 'Cliente' },
         }).catch((notifyError) => {
           console.warn('Avaliação salva, mas a notificação não foi enviada:', notifyError)
+        })
+
+        enviarPushParaUsuario(avaliadoId, {
+          tipo: 'avaliacao_recebida',
+          pedidoId: p.id,
+          conversaId: p?.conversaId || p.id,
+          titulo: 'Voce recebeu uma avaliacao',
+          mensagem: `Nota ${nota.toFixed(1)} em ${p.titulo || 'Corre aqui'}.`,
+          prioridade: 'media',
+          acao: 'ver_historico',
         })
       }
 

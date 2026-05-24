@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { database, storage } from '@/lib/firebase'
+import { enviarPushParaUsuario } from '@/lib/pushSender'
 import { ref, push, onValue, query, limitToLast, update, serverTimestamp } from 'firebase/database'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { motion } from 'framer-motion'
@@ -436,6 +437,16 @@ export default function ChatMensagens({
         criadoEm: agora,
         autor: { id: meuId, nome: nomeMeu },
       }).catch(() => {})
+
+      enviarPushParaUsuario(outroId, {
+        tipo: 'mensagem_chat',
+        pedidoId,
+        conversaId: pedidoId,
+        titulo: `Nova mensagem de ${nomeMeu}`,
+        mensagem: preview,
+        prioridade: 'normal',
+        acao: 'abrir_chat',
+      })
     }
   }
 

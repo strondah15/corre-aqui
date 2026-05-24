@@ -5,7 +5,9 @@ import { auth, database } from '@/lib/firebase'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { ref, update, get, serverTimestamp } from 'firebase/database'
 import {
+  clearGoogleRedirectPending,
   getGoogleRedirectUser,
+  isGoogleRedirectPending,
   signInAsGuest,
   signInWithGoogle
 } from '@/lib/authGoogle'
@@ -130,7 +132,8 @@ export default function LoginGate({ children }) {
   const [userData, setUserData] = useState(null)
   const [cadastroCompleto, setCadastroCompleto] = useState(false)
   const [checandoPerfil, setChecandoPerfil] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [resolvendoRedirect, setResolvendoRedirect] = useState(false)
   const [loginLoading, setLoginLoading] = useState(false)
   const [guestLoading, setGuestLoading] = useState(false)
   const [showGuestLogin, setShowGuestLogin] = useState(false)
@@ -181,25 +184,40 @@ export default function LoginGate({ children }) {
       /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
     setShowGuestLogin(isPrivateHost)
 
+    const redirectPendente = isGoogleRedirectPending()
+    setResolvendoRedirect(redirectPendente)
+    setLoading(true)
+
     let active = true
     let resolved = false
     const fallback = window.setTimeout(() => {
       if (!active || resolved) return
       setLoading(false)
-    }, 4500)
+      setResolvendoRedirect(false)
+    }, redirectPendente ? 10000 : 5500)
 
     const off = onAuthStateChanged(auth, async (user) => {
       if (!active) return
 
-      aplicarUsuario(user)
       resolved = true
       window.clearTimeout(fallback)
+      await aplicarUsuario(user)
+      if (!active) return
       setLoading(false)
+      setResolvendoRedirect(false)
     })
 
-    getGoogleRedirectUser().then((user) => {
+    getGoogleRedirectUser().then(async (user) => {
       if (!active || !user?.uid) return
-      aplicarUsuario(user)
+      resolved = true
+      window.clearTimeout(fallback)
+      await aplicarUsuario(user)
+      if (!active) return
+      setLoading(false)
+      setResolvendoRedirect(false)
+    }).catch(() => {
+      if (!active) return
+      setResolvendoRedirect(false)
     })
 
     return () => {
@@ -224,7 +242,18 @@ export default function LoginGate({ children }) {
       setLoginError('')
       const user = await signInWithGoogle()
 
-      if (!user) return
+      if (!user) {
+        setResolvendoRedirect(true)
+        setLoading(true)
+        window.setTimeout(() => {
+          if (!isGoogleRedirectPending()) return
+          clearGoogleRedirectPending()
+          setLoading(false)
+          setResolvendoRedirect(false)
+          setLoginError('O Google não terminou a entrada. Toque novamente ou use visitante se estiver testando por IP local.')
+        }, 8000)
+        return
+      }
 
       await aplicarUsuario(user)
     } catch (error) {
@@ -279,7 +308,12 @@ export default function LoginGate({ children }) {
   }
 
   if (loading) {
-    return <StatusEntrada />
+    return (
+      <StatusEntrada
+        title={resolvendoRedirect ? 'Voltando do Google...' : 'Abrindo Corre Aqui...'}
+        message={resolvendoRedirect ? 'Confirmando sua conta no celular. Não precisa tocar de novo.' : 'Restaurando sua sessão para entrar direto.'}
+      />
+    )
   }
 
   if (!viuBoasVindas) {
@@ -321,6 +355,12 @@ export default function LoginGate({ children }) {
               {guestLoading ? 'Entrando...' : 'Entrar como visitante'}
             </button>
           )}
+
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-500">
+            <a href="/termos" className="transition hover:text-slate-300">Termos</a>
+            <a href="/privacidade" className="transition hover:text-slate-300">Privacidade</a>
+            <a href="/seguranca" className="transition hover:text-slate-300">Seguranca</a>
+          </div>
         </div>
       </main>
     )

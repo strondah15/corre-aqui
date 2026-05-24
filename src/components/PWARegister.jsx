@@ -1,15 +1,18 @@
 'use client'
 
 import { useEffect } from 'react'
+import { getServiceWorkerRegistration } from '@/lib/pushClient'
 
 export default function PWARegister() {
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'production') return
     if (typeof window === 'undefined') return
     if (!('serviceWorker' in navigator)) return
+    if (!window.isSecureContext) return
 
     const register = () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {})
+      getServiceWorkerRegistration().catch((error) => {
+        console.debug('[Corre Aqui] Service worker push nao registrou:', error?.message || error)
+      })
     }
 
     if (document.readyState === 'complete') {

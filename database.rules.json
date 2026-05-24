@@ -9,6 +9,13 @@
         ".write": "auth != null && auth.uid === $uid"
       }
     },
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
+        ".validate": "newData.isBoolean()"
+      }
+    },
     "usuariosOnline": {
       ".indexOn": ["online", "lastSeen", "isCorre", "isProfissional"],
       "$uid": {
@@ -20,7 +27,7 @@
       ".read": "auth != null",
       ".indexOn": ["status", "categoriaId", "criadoEm", "atualizadoEm", "concluidoEm"],
       "$pedidoId": {
-        ".write": "auth != null && ((!data.exists() && newData.exists() && newData.child('criador/id').val() === auth.uid) || (data.exists() && !newData.exists() && data.child('criador/id').val() === auth.uid) || (data.exists() && newData.exists() && (data.child('criador/id').val() === auth.uid || data.child('aceite/id').val() === auth.uid || (!data.child('aceite/id').exists() && newData.child('aceite/id').val() === auth.uid))))",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('users').child(auth.uid).child('admin').val() === true || root.child('users').child(auth.uid).child('role').val() === 'admin' || ((!data.exists() && newData.exists() && newData.child('criador/id').val() === auth.uid) || (data.exists() && !newData.exists() && data.child('criador/id').val() === auth.uid) || (data.exists() && newData.exists() && (data.child('criador/id').val() === auth.uid || data.child('aceite/id').val() === auth.uid || (!data.child('aceite/id').exists() && newData.child('aceite/id').val() === auth.uid)))))",
         ".validate": "!newData.exists() || (newData.hasChildren(['criador', 'status']) && newData.child('criador/id').isString() && newData.child('status').isString() && (newData.child('status').val() === 'aberto' || newData.child('status').val() === 'aceito' || newData.child('status').val() === 'concluido' || newData.child('status').val() === 'cancelado'))"
       }
     },
@@ -35,7 +42,7 @@
       ".read": "auth != null",
       ".indexOn": ["pedidoId", "status", "criadoEm"],
       "$registroId": {
-        ".write": "auth != null && newData.child('autor/id').val() === auth.uid",
+        ".write": "auth != null && (newData.child('autor/id').val() === auth.uid || root.child('admins').child(auth.uid).val() === true || root.child('users').child(auth.uid).child('admin').val() === true || root.child('users').child(auth.uid).child('role').val() === 'admin')",
         ".validate": "!newData.exists() || (newData.child('pedidoId').isString() && newData.child('tipo').isString() && newData.child('status').isString() && newData.child('autor/id').isString())"
       }
     },
@@ -43,7 +50,7 @@
       ".read": "auth != null",
       ".indexOn": ["pedidoId", "status", "criadoEm"],
       "$registroId": {
-        ".write": "auth != null && newData.child('autor/id').val() === auth.uid",
+        ".write": "auth != null && (newData.child('autor/id').val() === auth.uid || root.child('admins').child(auth.uid).val() === true || root.child('users').child(auth.uid).child('admin').val() === true || root.child('users').child(auth.uid).child('role').val() === 'admin')",
         ".validate": "!newData.exists() || (newData.child('pedidoId').isString() && newData.child('tipo').isString() && newData.child('status').isString() && newData.child('autor/id').isString())"
       }
     },
