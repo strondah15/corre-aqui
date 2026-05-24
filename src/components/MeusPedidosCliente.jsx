@@ -180,8 +180,8 @@ export default function MeusPedidosCliente({
   }
 
   return (
-    <div className="mt-4 rounded-[1.8rem] p-4 bg-[#0f172a] border border-slate-700 shadow-2xl shadow-black/40">
-      <div className="flex items-center justify-between mb-4 rounded-2xl bg-[#1e293b] border border-slate-600 px-3 py-2.5 shadow-lg shadow-black/20">
+    <div className="mt-3 rounded-[22px] p-3 bg-[#0f172a] border border-slate-700 shadow-2xl shadow-black/40 md:mt-4 md:rounded-[1.8rem] md:p-4">
+      <div className="mb-3 flex items-center justify-between rounded-xl bg-[#1e293b] border border-slate-600 px-3 py-2 shadow-lg shadow-black/20 md:mb-4 md:rounded-2xl md:py-2.5">
         <div className="text-sm font-semibold text-white">
           Histórico de serviços
         </div>
@@ -190,35 +190,35 @@ export default function MeusPedidosCliente({
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
-          <div className="text-lg font-black text-white">{totalAbertos}</div>
+      <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-5 md:mb-4 md:gap-2">
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-base font-black text-white md:text-lg">{totalAbertos}</div>
           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Abertos</div>
         </div>
-        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
-          <div className="text-lg font-black text-amber-300">{totalAceitos}</div>
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-base font-black text-amber-300 md:text-lg">{totalAceitos}</div>
           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Em andamento</div>
         </div>
-        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
-          <div className="text-lg font-black text-sky-300">{totalConcluidos}</div>
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-base font-black text-sky-300 md:text-lg">{totalConcluidos}</div>
           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Concluídos</div>
         </div>
-        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
-          <div className="text-lg font-black text-amber-200">{totalAvaliacoesPendentes}</div>
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-base font-black text-amber-200 md:text-lg">{totalAvaliacoesPendentes}</div>
           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">A avaliar</div>
         </div>
-        <div className="rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3">
-          <div className="text-lg font-black text-red-300">{totalProblemas}</div>
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-base font-black text-red-300 md:text-lg">{totalProblemas}</div>
           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Problemas</div>
         </div>
       </div>
 
       {meusPedidos.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-600 bg-[#1e293b] p-4 text-sm font-semibold text-slate-200">
+        <div className="rounded-xl border border-dashed border-slate-600 bg-[#1e293b] p-3 text-sm font-semibold text-slate-200 md:rounded-2xl md:p-4">
           Você ainda não criou pedidos.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2.5 md:space-y-3">
           {meusPedidos.map((p, index) => (
             <motion.div
               key={p.id}
@@ -228,7 +228,7 @@ export default function MeusPedidosCliente({
               whileHover={{ scale: 1.01, y: -2 }}
               whileTap={{ scale: 0.985 }}
               className={[
-                "relative overflow-hidden rounded-2xl p-4 bg-[#1e293b] border border-slate-600 transition-colors duration-200 hover:bg-[#263449] select-none shadow-lg shadow-black/30",
+                "relative overflow-hidden rounded-xl p-3 bg-[#1e293b] border border-slate-600 transition-colors duration-200 hover:bg-[#263449] select-none shadow-lg shadow-black/30 md:rounded-2xl md:p-4",
                 String(p?.status || 'aberto').toLowerCase() === 'aberto'
                   ? "border-emerald-500/50 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-900/30"
                   : "",
@@ -238,22 +238,22 @@ export default function MeusPedidosCliente({
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-lime-300 to-emerald-500" />
               )}
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300 mb-2">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-emerald-300 md:mb-2 md:gap-2 md:text-[10px] md:tracking-[0.18em]">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
                     Pedido ativo
                   </div>
-                  <div className="text-lg font-black text-white truncate">
+                  <div className="line-clamp-2 break-words text-base font-black leading-tight text-white md:line-clamp-1 md:text-lg">
                     {p?.titulo || 'Pedido sem título'}
                   </div>
 
                   {p?.descricao && String(p.descricao).trim().toLowerCase() !== String(p?.titulo || '').trim().toLowerCase() ? (
-                    <div className="text-sm text-slate-200 mt-1 line-clamp-2 select-text">
+                    <div className="mt-1 line-clamp-2 select-text text-xs text-slate-200 md:text-sm">
                       {p.descricao}
                     </div>
                   ) : null}
 
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-200">
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-200 md:mt-3 md:gap-2 md:text-xs">
                     <span>🕒 Criado: <b className="text-white">{formatDataHora(p?.criadoEm || p?.createdAt || p?.atualizadoEm)}</b></span>
                     {p?.aceite?.aceitoEm || p?.aceitoEm ? (
                       <span>✅ Aceito: <b className="text-amber-300">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></span>
@@ -271,19 +271,19 @@ export default function MeusPedidosCliente({
               </div>
 
               {p?.problemaServico ? (
-                <div className="mt-3 rounded-2xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">
+                <div className="mt-2.5 rounded-xl border border-red-400/25 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-red-100 md:mt-3 md:rounded-2xl md:px-3 md:py-2 md:text-xs">
                   Problema registrado: {p.problemaServico?.status || 'aberto'}
                 </div>
               ) : null}
 
-              <div className="mt-3 rounded-2xl border border-sky-400/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+              <div className="mt-2.5 rounded-xl border border-sky-400/20 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-100 md:mt-3 md:rounded-2xl md:px-3 md:py-2 md:text-xs">
                 <span className="font-black uppercase tracking-[0.14em] text-sky-300">Próximo passo</span>
                 <span className="ml-2 font-semibold text-slate-100">{proximoPassoPedido(p)}</span>
               </div>
 
               <StatusFluxoServico pedido={p} tone="dark" className="mt-3" />
 
-              <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-200">
+              <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs text-slate-200 md:mt-3 md:gap-2 md:text-sm">
                 {p?.valor != null && Number.isFinite(Number(p.valor)) ? (
                   <span>
                     💰 <b className="text-white">R$ {Number(p.valor).toFixed(2)}</b>
@@ -302,10 +302,10 @@ export default function MeusPedidosCliente({
                 )}
               </div>
 
-              <div className="mt-3 flex gap-2 flex-wrap">
+              <div className="mt-2.5 flex flex-wrap gap-1.5 md:mt-3 md:gap-2">
                 {p?.aceite?.id ? (
                   <motion.button
-                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition active:scale-[0.98]"
+                    className="rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 active:scale-[0.98] md:px-3 md:text-sm"
                     onClick={() => {
                       setPedidoAlcance(null)
                       onAbrirChat?.(p)
@@ -318,7 +318,7 @@ export default function MeusPedidosCliente({
 
                 {String(p?.status || 'aberto').toLowerCase() === 'aberto' && !p?.aceite?.id ? (
                   <motion.button
-                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-fuchsia-600 to-blue-600 hover:brightness-110 text-white text-sm font-black shadow-md shadow-blue-500/25 transition active:scale-[0.98]"
+                    className="rounded-xl bg-gradient-to-r from-fuchsia-600 to-blue-600 px-2.5 py-1.5 text-xs font-black text-white shadow-md shadow-blue-500/25 transition hover:brightness-110 active:scale-[0.98] md:px-3 md:text-sm"
                     onClick={() =>
                       avisar({
                         type: 'info',
@@ -335,7 +335,7 @@ export default function MeusPedidosCliente({
 
                 {String(p?.status || '').toLowerCase() === 'aceito' && p?.criador?.id === meuId ? (
                   <motion.button
-                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 transition active:scale-[0.98]"
+                    className="rounded-xl bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 active:scale-[0.98] md:px-3 md:text-sm"
                     onClick={() => {
                       if (typeof onConfirmarServicoFeito === 'function') {
                         onConfirmarServicoFeito(p)
@@ -351,7 +351,7 @@ export default function MeusPedidosCliente({
 
                 {podeAvaliar(p) ? (
                   <motion.button
-                    className="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-sm font-black shadow-md shadow-amber-500/20 transition active:scale-[0.98]"
+                    className="rounded-xl bg-amber-400 px-2.5 py-1.5 text-xs font-black text-slate-950 shadow-md shadow-amber-500/20 transition hover:bg-amber-300 active:scale-[0.98] md:px-3 md:text-sm"
                     onClick={() => onAvaliarServico?.(p)}
                     type="button"
                   >
@@ -361,7 +361,7 @@ export default function MeusPedidosCliente({
 
                 {podeRelatarProblema(p) ? (
                   <motion.button
-                    className="px-3 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/20 border border-red-400/25 text-red-100 text-sm font-black transition active:scale-[0.98]"
+                    className="rounded-xl border border-red-400/25 bg-red-500/15 px-2.5 py-1.5 text-xs font-black text-red-100 transition hover:bg-red-500/20 active:scale-[0.98] md:px-3 md:text-sm"
                     onClick={() => onProblemaServico?.(p)}
                     type="button"
                   >
@@ -371,7 +371,7 @@ export default function MeusPedidosCliente({
 
                 {p?.local?.lat != null && p?.local?.lng != null ? (
                   <motion.button
-                    className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white text-sm font-semibold transition active:scale-[0.98]"
+                    className="rounded-xl border border-slate-600 bg-slate-700 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-600 active:scale-[0.98] md:px-3 md:text-sm"
                     onClick={() => onVerMapa?.(p)}
                     type="button"
                   >
@@ -389,7 +389,7 @@ export default function MeusPedidosCliente({
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 18 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="w-full max-w-md overflow-hidden rounded-[30px] border border-white/12 bg-[#07111f]/95 p-5 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+            className="w-full max-w-md overflow-hidden rounded-[22px] border border-white/12 bg-[#07111f]/95 p-4 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)] md:rounded-[30px] md:p-5"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -408,7 +408,7 @@ export default function MeusPedidosCliente({
             </div>
 
             <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.04] p-4">
-              <div className="text-sm font-black text-white truncate">{pedidoAlcance?.titulo || 'Pedido'}</div>
+              <div className="line-clamp-2 break-words text-sm font-black leading-tight text-white md:line-clamp-1">{pedidoAlcance?.titulo || 'Pedido'}</div>
               <div className="mt-1 text-xs text-slate-400 line-clamp-2">{pedidoAlcance?.descricao || 'Sem descrição'}</div>
             </div>
 

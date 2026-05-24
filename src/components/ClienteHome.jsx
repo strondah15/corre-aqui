@@ -164,30 +164,30 @@ export default function ClienteHome({
   }, [providers, modo, busca, catId])
 
   return (
-    <div className="mt-3 space-y-4 px-3 sm:px-0 pb-28 select-none bg-transparent">
-      <div className={`rounded-[28px] p-4 md:p-5 ${glass}`}>
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div className="mt-2.5 space-y-3 px-2.5 pb-24 select-none bg-transparent md:mt-3 md:space-y-4 md:px-3 md:pb-28 sm:px-0">
+      <div className={`rounded-[22px] p-3 md:rounded-[28px] md:p-5 ${glass}`}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
           <div className="min-w-0">
-            <div className="text-base md:text-lg font-black text-white truncate">
+            <div className="truncate text-sm font-black text-white md:text-lg">
               Olá, {meuNome || 'Anônimo'}
             </div>
-            <div className="mt-1 text-sm text-slate-300 leading-snug">
+            <div className="mt-1 text-xs leading-snug text-slate-300 md:text-sm">
               Crie um pedido ou escolha alguém disponível perto de você.
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 md:gap-2">
             <button
               type="button"
               onClick={() => onCriarPedido?.()}
-              className="h-11 rounded-2xl bg-white px-4 text-sm font-black text-slate-950 shadow-lg shadow-black/20 transition hover:bg-slate-100 active:scale-[0.98]"
+              className="h-10 rounded-xl bg-white px-3 text-xs font-black text-slate-950 shadow-lg shadow-black/20 transition hover:bg-slate-100 active:scale-[0.98] md:h-11 md:rounded-2xl md:px-4 md:text-sm"
             >
               Criar pedido
             </button>
             <button
               type="button"
               onClick={() => onIrAoVivo?.()}
-              className="h-11 rounded-2xl border border-white/12 bg-white/10 px-4 text-sm font-black text-white transition hover:bg-white/14 active:scale-[0.98]"
+              className="h-10 rounded-xl border border-white/12 bg-white/10 px-3 text-xs font-black text-white transition hover:bg-white/14 active:scale-[0.98] md:h-11 md:rounded-2xl md:px-4 md:text-sm"
             >
               Mapa
             </button>
@@ -195,12 +195,12 @@ export default function ClienteHome({
         </div>
 
         {/* ✅ CONTROLE ÚNICO: Corre / Profissionais */}
-        <div className="mt-4 grid grid-cols-2 gap-2 rounded-[22px] bg-black/20 p-1.5 border border-white/10">
+        <div className="mt-3 grid grid-cols-2 gap-1.5 rounded-[18px] bg-black/20 p-1 border border-white/10 md:mt-4 md:gap-2 md:rounded-[22px] md:p-1.5">
           <button
             type="button"
             onClick={() => setModo('corre')}
             className={[
-              'w-full h-11 rounded-2xl text-sm font-black border transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2',
+              'flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border text-xs font-black transition-all duration-200 active:scale-[0.98] md:h-11 md:gap-2 md:rounded-2xl md:text-sm',
               modo === 'corre'
                 ? 'bg-white text-slate-950 border-white shadow-[0_12px_28px_rgba(255,255,255,0.12)]'
                 : 'bg-transparent text-slate-300 border-transparent hover:bg-white/8 hover:text-white',
@@ -214,7 +214,7 @@ export default function ClienteHome({
             type="button"
             onClick={() => setModo('profissional')}
             className={[
-              'w-full h-11 rounded-2xl text-sm font-black border transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2',
+              'flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border text-xs font-black transition-all duration-200 active:scale-[0.98] md:h-11 md:gap-2 md:rounded-2xl md:text-sm',
               modo === 'profissional'
                 ? 'bg-white text-slate-950 border-white shadow-[0_12px_28px_rgba(255,255,255,0.12)]'
                 : 'bg-transparent text-slate-300 border-transparent hover:bg-white/8 hover:text-white',
@@ -227,14 +227,14 @@ export default function ClienteHome({
       </div>
 
       {/* ✅ LISTA LIMPA: sem busca duplicada, sem filtros duplicados, sem botão flutuante */}
-      <div className="space-y-4">
-        <div className={`px-4 sm:px-5 py-4 rounded-[26px] ${floatingSection}`}>
+      <div className="space-y-3 md:space-y-4">
+        <div className={`rounded-[20px] px-3 py-3 md:rounded-[26px] md:px-4 md:py-4 sm:px-5 ${floatingSection}`}>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
                 Lista da região
               </div>
-              <div className="mt-1 text-base sm:text-lg font-black text-white truncate">
+              <div className="mt-1 truncate text-sm font-black text-white sm:text-lg">
                 {modo === 'corre' ? '⚡ Corres disponíveis' : '👷 Profissionais disponíveis'}
               </div>
             </div>

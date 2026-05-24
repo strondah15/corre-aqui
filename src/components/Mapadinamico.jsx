@@ -1827,18 +1827,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       `}</style>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="relative z-10 w-full max-w-[1280px] mx-auto px-4 sm:px-5 lg:px-6 py-5 pb-28 md:pb-32">
+      <div className="relative z-10 w-full max-w-[1280px] mx-auto px-3 py-3 pb-24 md:px-4 md:py-5 md:pb-32 sm:px-5 lg:px-6">
         {/* ✅ TROCAR MODO DENTRO DO LAYOUT (não cobre mais os cards) */}
         {typeof onBackToMode === 'function' && (
-          <div className="mb-4 flex justify-start">
+          <div className="mb-3 flex justify-start md:mb-4">
             <button
               onClick={voltarModoLimpo}
               className="
                 inline-flex items-center gap-2
-                rounded-2xl px-4 py-2.5
+                rounded-xl px-3 py-2 md:rounded-2xl md:px-4 md:py-2.5
                 bg-white/10 hover:bg-white/14
                 border border-white/12
-                text-white text-sm font-extrabold
+                text-white text-xs font-extrabold md:text-sm
                 shadow-[0_14px_38px_rgba(0,0,0,0.22)]
                 backdrop-blur-xl
                 transition
@@ -1855,34 +1855,34 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
-            <div className="relative mb-4 rounded-[28px] overflow-hidden bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.24)] text-white backdrop-blur-xl">
+            <div className="relative mb-3 overflow-hidden rounded-[22px] bg-white/[0.08] border border-white/10 shadow-[0_18px_58px_rgba(0,0,0,0.22)] text-white backdrop-blur-xl md:mb-4 md:rounded-[28px] md:shadow-[0_22px_80px_rgba(0,0,0,0.24)]">
               <div className="absolute inset-x-0 top-0 h-px bg-white/25 pointer-events-none" />
 
-              <div className="relative p-4 md:p-5">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <LogoCorreAqui className="h-20 w-20 rounded-2xl border-0 shadow-none md:h-24 md:w-24" />
+              <div className="relative p-3 md:p-5">
+                <div className="flex items-center justify-between gap-3 flex-wrap md:gap-4">
+                  <div className="flex items-center gap-2.5 min-w-0 md:gap-3">
+                    <LogoCorreAqui className="h-14 w-14 rounded-xl border-0 shadow-none md:h-24 md:w-24 md:rounded-2xl" />
 
                     <div className="leading-tight min-w-0">
-                      <div className="text-base md:text-lg font-extrabold text-white truncate">
+                      <div className="truncate text-sm font-extrabold text-white md:text-lg">
                         Bem-vindo, {meuNome || '...'}
                       </div>
-                      <div className="mt-1 text-sm text-slate-300">
+                      <div className="mt-1 text-xs text-slate-300 md:text-sm">
                         Aceite pedidos próximos, conclua com clareza e suba sua reputação.
                       </div>
 
-                      <div className="mt-2 flex gap-2 flex-wrap">
+                      <div className="mt-1.5 flex gap-1.5 flex-wrap md:mt-2 md:gap-2">
                         <Patente tipo="corre" nivel={minhaPatenteCorre} size="sm" showLabel={false} />
                         {isProfissional && <Patente tipo="prof" nivel={minhaPatenteProf} size="sm" />}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-1.5 flex-wrap md:gap-2">
                     <button
                       type="button"
                       onClick={() => setTab('corre')}
-                      className="px-4 py-2.5 rounded-2xl bg-white text-slate-950 hover:bg-slate-100 text-sm font-extrabold shadow-lg shadow-black/20 transition"
+                      className="rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-slate-950 shadow-lg shadow-black/20 transition hover:bg-slate-100 md:rounded-2xl md:px-4 md:py-2.5 md:text-sm"
                     >
                       📋 Pedidos
                     </button>
@@ -1890,7 +1890,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     <button
                       type="button"
                       onClick={() => setOpenMapaAoVivo(true)}
-                      className="px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/14 border border-white/12 text-white text-sm font-extrabold shadow-sm transition"
+                      className="rounded-xl border border-white/12 bg-white/10 px-3 py-2 text-xs font-extrabold text-white shadow-sm transition hover:bg-white/14 md:rounded-2xl md:px-4 md:py-2.5 md:text-sm"
                     >
                       🗺️ Mapa ao vivo
                     </button>
@@ -1900,7 +1900,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             </div>
 
             {tab === 'inbox' && (
-              <div className="mb-4 rounded-[32px] overflow-hidden bg-white border border-slate-200 shadow-[0_18px_60px_rgba(15,23,42,0.14)]">
+              <div className="mb-3 overflow-hidden rounded-[24px] bg-white border border-slate-200 shadow-[0_14px_44px_rgba(15,23,42,0.12)] md:mb-4 md:rounded-[32px] md:shadow-[0_18px_60px_rgba(15,23,42,0.14)]">
                 <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-br from-white to-slate-50">
                   <div className="text-base font-extrabold text-slate-950">💬 Inbox</div>
                   <div className="mt-1 text-xs text-slate-500">Notificações, conversas dos pedidos aceitos e histórico rápido.</div>
@@ -2010,12 +2010,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {modoApp === 'corre' && tab === 'corre' && (
           <>
             {/* Painel de filtros do Corre */}
-            <div className="mb-4 rounded-[28px] overflow-hidden bg-white/96 border border-white/70 shadow-[0_18px_58px_rgba(0,0,0,0.18)] text-slate-900 backdrop-blur-xl">
-              <div className="p-3 md:p-4">
+            <div className="mb-3 overflow-hidden rounded-[22px] bg-white/96 border border-white/70 shadow-[0_14px_44px_rgba(0,0,0,0.14)] text-slate-900 backdrop-blur-xl md:mb-4 md:rounded-[28px] md:shadow-[0_18px_58px_rgba(0,0,0,0.18)]">
+              <div className="p-2.5 md:p-4">
                 {/* filtros status */}
                 <div className="grid grid-cols-3 gap-1.5 md:gap-2">
                   <button
-                    className={`px-3 py-2.5 rounded-2xl border text-sm font-extrabold transition ${
+                    className={`rounded-xl border px-2.5 py-2 text-xs font-extrabold transition md:rounded-2xl md:px-3 md:py-2.5 md:text-sm ${
                       filtro === 'abertos'
                         ? 'bg-slate-950 text-white border-slate-950 shadow-lg shadow-slate-900/20'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -2027,7 +2027,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   </button>
 
                   <button
-                    className={`px-3 py-2.5 rounded-2xl border text-sm font-extrabold transition ${
+                    className={`rounded-xl border px-2.5 py-2 text-xs font-extrabold transition md:rounded-2xl md:px-3 md:py-2.5 md:text-sm ${
                       filtro === 'meus'
                         ? 'bg-slate-950 text-white border-slate-950 shadow-lg shadow-slate-900/20'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -2039,7 +2039,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   </button>
 
                   <button
-                    className={`px-3 py-2.5 rounded-2xl border text-sm font-extrabold transition ${
+                    className={`rounded-xl border px-2.5 py-2 text-xs font-extrabold transition md:rounded-2xl md:px-3 md:py-2.5 md:text-sm ${
                       filtro === 'todos'
                         ? 'bg-slate-950 text-white border-slate-950 shadow-lg shadow-slate-900/20'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -2052,9 +2052,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 </div>
 
                 {/* Busca + categoria */}
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-2">
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm">
-                    <span className="text-lg">🔍</span>
+                <div className="mt-2.5 grid grid-cols-1 gap-1.5 md:mt-3 md:grid-cols-[1fr_260px] md:gap-2">
+                  <div className="flex items-center gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 shadow-sm md:rounded-2xl md:px-4 md:py-3">
+                    <span className="text-base md:text-lg">🔍</span>
                     <input
                       value={busca}
                       onChange={(e) => setBusca(e.target.value)}
@@ -2066,7 +2066,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   <select
                     value={categoriaFiltro}
                     onChange={(e) => setCategoriaFiltro(e.target.value)}
-                    className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    className="rounded-xl bg-white border border-slate-200 px-3 py-2.5 text-sm font-bold text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 md:rounded-2xl md:px-4 md:py-3"
                     title="Filtrar por categoria"
                   >
                     <option value="todas">📦 Todas categorias</option>
@@ -2105,7 +2105,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             )}
 
             {/* Lista */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start pb-44 sm:pb-36 md:pb-24">
+            <div className="grid grid-cols-1 items-start gap-2.5 pb-36 md:gap-3 md:pb-24 xl:grid-cols-2 sm:pb-36">
               {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
                 <div className="text-sm text-slate-500">Nenhum corre aqui para mostrar.</div>
               )}
@@ -2144,7 +2144,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     whileHover={{ y: -3, scale: 1.008 }}
                     whileTap={{ scale: 0.985 }}
                     className={[
-                      "corre-card-clean relative overflow-hidden rounded-[24px] p-3 md:p-3.5 text-slate-950 flex flex-col gap-2 select-none cursor-default",
+                      "corre-card-clean relative overflow-hidden rounded-[20px] p-2.5 md:rounded-[24px] md:p-3.5 text-slate-950 flex flex-col gap-1.5 md:gap-2 select-none cursor-default",
                       "bg-white border border-slate-200/80 shadow-[0_16px_42px_rgba(15,23,42,0.12)]",
                       "ring-1 ring-slate-900/[0.03] transition",
                       status === 'aberto' ? "border-emerald-200/90 shadow-[0_18px_44px_rgba(16,185,129,0.13)]" : "",
@@ -2160,20 +2160,20 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-300" />
                     ) : null}
                     {b.emergencia ? (
-                      <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-red-400/35 blur-2xl animate-pulse" />
+                      <div className="pointer-events-none absolute -right-12 -top-12 h-24 w-24 rounded-full bg-red-400/35 blur-2xl animate-pulse md:h-36 md:w-36" />
                     ) : b.destaque ? (
-                      <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-fuchsia-400/30 blur-2xl" />
+                      <div className="pointer-events-none absolute -right-12 -top-12 h-24 w-24 rounded-full bg-fuchsia-400/30 blur-2xl md:h-36 md:w-36" />
                     ) : status === 'aberto' ? (
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-emerald-50/80 to-transparent" />
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-emerald-50/80 to-transparent md:h-16" />
                     ) : null}
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/70 via-transparent to-transparent" />
                     <div className="relative z-10 flex items-start justify-between gap-2 md:gap-3">
-                      <div className="min-w-0">
-                        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700">
+                      <div className="min-w-0 flex-1">
+                        <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-700 md:gap-2 md:px-2.5 md:py-1 md:text-[10px] md:tracking-[0.16em]">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
                           Disponível
                         </div>
-                        <div className="mt-2 font-black text-slate-950 text-lg md:text-xl leading-tight line-clamp-1">{p.titulo || '(sem título)'}</div>
+                        <div className="mt-1.5 line-clamp-2 break-words text-base font-black leading-tight text-slate-950 md:mt-2 md:line-clamp-1 md:text-xl">{p.titulo || '(sem título)'}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         {b.emergencia ? (
@@ -2214,7 +2214,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       )}
                     </div>
 
-                    <div className="relative z-10 flex items-center justify-between gap-2 rounded-2xl bg-slate-50/90 border border-slate-200 px-3 py-2">
+                    <div className="relative z-10 flex items-center justify-between gap-2 rounded-xl bg-slate-50/90 border border-slate-200 px-2.5 py-1.5 md:rounded-2xl md:px-3 md:py-2">
                       <div className="min-w-0 text-[11px] md:text-xs font-black uppercase tracking-wide">
                         {b.emergencia ? (
                           <span className="text-red-700">🚨 Resposta rápida</span>
@@ -2225,17 +2225,17 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         )}
                       </div>
                       {p.valor != null && Number.isFinite(Number(p.valor)) ? (
-                        <div className="shrink-0 rounded-xl bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-sm md:text-base font-black text-emerald-700">
+                        <div className="shrink-0 rounded-lg bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-xs font-black text-emerald-700 md:rounded-xl md:px-2.5 md:py-1 md:text-base">
                           R$ {Number(p.valor).toFixed(2)}
                         </div>
                       ) : (
-                        <div className="shrink-0 rounded-xl bg-slate-50 border border-slate-200 px-2.5 py-1 text-xs font-black text-slate-600">
+                        <div className="shrink-0 rounded-lg bg-slate-50 border border-slate-200 px-2 py-0.5 text-[11px] font-black text-slate-600 md:rounded-xl md:px-2.5 md:py-1 md:text-xs">
                           combinar
                         </div>
                       )}
                     </div>
 
-                    <div className="relative z-10 rounded-2xl bg-sky-50/90 border border-sky-200 px-3 py-2 text-[11px] md:text-xs text-slate-700 shadow-sm">
+                    <div className="relative z-10 rounded-xl bg-sky-50/90 border border-sky-200 px-2.5 py-1.5 text-[11px] md:rounded-2xl md:px-3 md:py-2 md:text-xs text-slate-700 shadow-sm">
                       <span className="font-black uppercase tracking-[0.12em] text-sky-700">Próximo passo</span>
                       <span className="ml-2 font-semibold">{getProximoPassoPedido(p, meuId)}</span>
                     </div>
@@ -2287,9 +2287,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       </>
                     )}
 
-                    <div className="relative z-10 grid grid-cols-2 sm:flex gap-1.5 md:gap-2 flex-wrap mt-1">
+                    <div className="relative z-10 grid grid-cols-2 sm:flex gap-1.5 md:gap-2 flex-wrap mt-0.5 md:mt-1">
                       <button
-                        className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-800 font-black hover:bg-slate-50 shadow-sm transition"
+                        className="rounded-lg bg-white border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-800 shadow-sm transition hover:bg-slate-50 md:rounded-xl md:px-2.5"
                         onClick={() => setCardAbertoId(cardAberto ? null : p.id)}
                         type="button"
                       >
@@ -2607,21 +2607,21 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
 
       {modoApp === 'cliente' && !isMapOpen && (
-        <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-[99980] px-2 pointer-events-none md:inset-x-auto md:right-6 md:bottom-6 md:px-0">
-          <div className="pointer-events-auto mx-auto grid w-full max-w-[430px] grid-cols-4 items-center gap-1.5 rounded-[24px] border border-slate-200 bg-white/94 p-1.5 shadow-[0_24px_80px_rgba(15,23,42,0.26)] backdrop-blur-xl md:max-w-none">
+        <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[99980] px-2 pointer-events-none md:inset-x-auto md:right-6 md:bottom-6 md:px-0">
+          <div className="pointer-events-auto mx-auto grid w-full max-w-[390px] grid-cols-4 items-center gap-1 rounded-[18px] border border-slate-200 bg-white/94 p-1 shadow-[0_18px_54px_rgba(15,23,42,0.22)] backdrop-blur-xl md:max-w-[430px] md:gap-1.5 md:rounded-[24px] md:p-1.5">
             <button
               type="button"
               onClick={() => setClientePainelBaixo('meusPedidos')}
               title="Pedidos"
               className={[
-                'relative h-12 min-w-0 rounded-2xl px-2 text-xs font-black transition-all duration-200 active:scale-[0.96]',
-                'flex items-center justify-center gap-1.5 border',
+                'relative h-10 min-w-0 rounded-xl px-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:rounded-2xl md:px-2 md:text-xs',
+                'flex items-center justify-center gap-1 border md:gap-1.5',
                 clientePainelBaixo === 'meusPedidos'
                   ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
               ].join(' ')}
             >
-              <span className="text-base">📦</span>
+              <span className="text-sm md:text-base">📦</span>
               <span className="hidden min-[390px]:inline">Pedidos</span>
             </button>
 
@@ -2630,14 +2630,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onClick={() => setClientePainelBaixo('conversas')}
               title="Conversas"
               className={[
-                'relative h-12 min-w-0 rounded-2xl px-2 text-xs font-black transition-all duration-200 active:scale-[0.96]',
-                'flex items-center justify-center gap-1.5 border',
+                'relative h-10 min-w-0 rounded-xl px-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:rounded-2xl md:px-2 md:text-xs',
+                'flex items-center justify-center gap-1 border md:gap-1.5',
                 clientePainelBaixo === 'conversas'
                   ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
               ].join(' ')}
             >
-              <span className="text-base">💬</span>
+              <span className="text-sm md:text-base">💬</span>
               <span className="hidden min-[390px]:inline">Conversas</span>
             </button>
 
@@ -2646,14 +2646,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onClick={() => setClientePainelBaixo('notificacoes')}
               title="Avisos"
               className={[
-                'relative h-12 min-w-0 rounded-2xl px-2 text-xs font-black transition-all duration-200 active:scale-[0.96]',
-                'flex items-center justify-center gap-1.5 border',
+                'relative h-10 min-w-0 rounded-xl px-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:rounded-2xl md:px-2 md:text-xs',
+                'flex items-center justify-center gap-1 border md:gap-1.5',
                 clientePainelBaixo === 'notificacoes'
                   ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
               ].join(' ')}
             >
-              <span className="text-base">🔔</span>
+              <span className="text-sm md:text-base">🔔</span>
               <span className="hidden min-[390px]:inline">Avisos</span>
             </button>
 
@@ -2662,14 +2662,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onClick={() => setClientePainelBaixo('seguranca')}
               title="Segurança"
               className={[
-                'relative h-12 min-w-0 rounded-2xl px-2 text-xs font-black transition-all duration-200 active:scale-[0.96]',
-                'flex items-center justify-center gap-1.5 border',
+                'relative h-10 min-w-0 rounded-xl px-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:rounded-2xl md:px-2 md:text-xs',
+                'flex items-center justify-center gap-1 border md:gap-1.5',
                 clientePainelBaixo === 'seguranca'
                   ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
               ].join(' ')}
             >
-              <span className="text-base">🛡️</span>
+              <span className="text-sm md:text-base">🛡️</span>
               <span className="hidden min-[390px]:inline">Segurança</span>
             </button>
           </div>
@@ -2815,33 +2815,33 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       )}
 
       {conclusaoPedido ? (
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 md:p-4">
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="w-full max-w-lg rounded-[30px] border border-white/10 bg-[#07111f] p-5 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+            className="w-full max-w-lg rounded-[22px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)] md:rounded-[30px] md:p-5"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">
                   Conclusão do serviço
                 </div>
-                <h2 className="mt-1 text-2xl font-black">Está tudo certo?</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                <h2 className="mt-1 text-xl font-black md:text-2xl">Está tudo certo?</h2>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-300 md:mt-2 md:text-sm">
                   Confirme somente depois que o combinado foi entregue. Depois disso você poderá avaliar quem fez o serviço.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setConclusaoPedido(null)}
-                className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/10 font-black hover:bg-white/15"
+                className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
                 aria-label="Fechar"
               >
                 ×
               </button>
             </div>
 
-            <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 md:mt-5 md:rounded-3xl md:p-4">
               <div className="text-sm font-black text-white">{conclusaoPedido?.titulo || 'Serviço'}</div>
               <div className="mt-1 text-xs text-slate-400">
                 {conclusaoPedido?.aceite?.nome ? `Feito por ${conclusaoPedido.aceite.nome}` : 'Aguardando dados de quem aceitou'}
@@ -2850,12 +2850,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
             <StatusFluxoServico pedido={conclusaoPedido} tone="dark" className="mt-4" />
 
-            <div className="mt-5 grid gap-3">
+            <div className="mt-4 grid gap-2 md:mt-5 md:gap-3">
               <button
                 type="button"
                 disabled={serviçondoId === conclusaoPedido.id}
                 onClick={() => marcarConcluído(conclusaoPedido)}
-                className="w-full rounded-3xl bg-emerald-600 px-4 py-4 font-black text-white shadow-[0_18px_60px_rgba(16,185,129,0.24)] hover:bg-emerald-500 disabled:opacity-60"
+                className="w-full rounded-2xl bg-emerald-600 px-3 py-3 text-sm font-black text-white shadow-[0_14px_44px_rgba(16,185,129,0.2)] hover:bg-emerald-500 disabled:opacity-60 md:rounded-3xl md:px-4 md:py-4 md:text-base md:shadow-[0_18px_60px_rgba(16,185,129,0.24)]"
               >
                 {serviçondoId === conclusaoPedido.id ? 'Confirmando...' : 'Confirmar serviço feito'}
               </button>
@@ -2865,7 +2865,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   abrirProblema(conclusaoPedido)
                   setConclusaoPedido(null)
                 }}
-                className="w-full rounded-3xl border border-red-400/25 bg-red-500/12 px-4 py-4 font-black text-red-100 hover:bg-red-500/18"
+                className="w-full rounded-2xl border border-red-400/25 bg-red-500/12 px-3 py-3 text-sm font-black text-red-100 hover:bg-red-500/18 md:rounded-3xl md:px-4 md:py-4 md:text-base"
               >
                 Problema com serviço
               </button>
@@ -2875,26 +2875,26 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       ) : null}
 
       {avaliacaoPedido ? (
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 md:p-4">
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="w-full max-w-lg rounded-[30px] border border-white/10 bg-[#07111f] p-5 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+            className="w-full max-w-lg rounded-[22px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)] md:rounded-[30px] md:p-5"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
                   Avaliação pós-serviço
                 </div>
-                <h2 className="mt-1 text-2xl font-black">Como foi a experiência?</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                <h2 className="mt-1 text-xl font-black md:text-2xl">Como foi a experiência?</h2>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-300 md:mt-2 md:text-sm">
                   Sua avaliação fica ligada ao histórico do serviço e ajuda a comunidade a confiar em bons perfis.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setAvaliacaoPedido(null)}
-                className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/10 font-black hover:bg-white/15"
+                className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
                 aria-label="Fechar"
               >
                 ×
@@ -2904,17 +2904,17 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             <StatusFluxoServico
               pedido={{ ...avaliacaoPedido, status: 'concluido' }}
               tone="dark"
-              className="mt-5"
+              className="mt-4 md:mt-5"
             />
 
-            <div className="mt-5 flex justify-center gap-2">
+            <div className="mt-4 flex justify-center gap-1.5 md:mt-5 md:gap-2">
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
                   type="button"
                   onClick={() => setAvaliacaoNota(n)}
                   className={[
-                    'grid h-12 w-12 place-items-center rounded-2xl border text-2xl transition',
+                    'grid h-10 w-10 place-items-center rounded-xl border text-xl transition md:h-12 md:w-12 md:rounded-2xl md:text-2xl',
                     n <= avaliacaoNota
                       ? 'border-amber-300 bg-amber-400 text-slate-950 shadow-[0_0_28px_rgba(251,191,36,0.28)]'
                       : 'border-white/10 bg-white/[0.06] text-slate-500 hover:bg-white/10',
@@ -2933,7 +2933,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 onChange={(e) => setAvaliacaoComentario(e.target.value)}
                 maxLength={500}
                 placeholder="Ex: chegou no horário, resolveu bem e combinou tudo pelo chat."
-                className="mt-2 min-h-[110px] w-full resize-y rounded-3xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500"
+                className="mt-2 min-h-[86px] w-full resize-y rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 md:min-h-[110px] md:rounded-3xl md:px-4 md:py-3"
               />
             </label>
 
@@ -2941,7 +2941,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               type="button"
               disabled={salvandoAvaliacao}
               onClick={salvarAvaliacaoServico}
-              className="mt-5 w-full rounded-3xl bg-amber-400 px-4 py-4 font-black text-slate-950 hover:bg-amber-300 disabled:opacity-60"
+              className="mt-4 w-full rounded-2xl bg-amber-400 px-3 py-3 text-sm font-black text-slate-950 hover:bg-amber-300 disabled:opacity-60 md:mt-5 md:rounded-3xl md:px-4 md:py-4 md:text-base"
             >
               {salvandoAvaliacao ? 'Enviando...' : 'Enviar avaliação'}
             </button>
@@ -2950,33 +2950,33 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       ) : null}
 
       {problemaPedido ? (
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 md:p-4">
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="w-full max-w-lg rounded-[30px] border border-white/10 bg-[#07111f] p-5 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+            className="w-full max-w-lg rounded-[22px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)] md:rounded-[30px] md:p-5"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-red-300">
                   Segurança do serviço
                 </div>
-                <h2 className="mt-1 text-2xl font-black">Problema com serviço</h2>
-                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                <h2 className="mt-1 text-xl font-black md:text-2xl">Problema com serviço</h2>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-300 md:mt-2 md:text-sm">
                   Registre o que aconteceu. Casos de conduta inadequada ou segurança também ficam salvos como denúncia.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setProblemaPedido(null)}
-                className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/10 font-black hover:bg-white/15"
+                className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
                 aria-label="Fechar"
               >
                 ×
               </button>
             </div>
 
-            <div className="mt-5 grid gap-2">
+            <div className="mt-4 grid gap-1.5 md:mt-5 md:gap-2">
               {[
                 ['servico_nao_resolvido', 'Serviço não resolvido'],
                 ['valor_combinado', 'Valor ou combinado'],
@@ -2990,7 +2990,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   type="button"
                   onClick={() => setProblemaTipo(id)}
                   className={[
-                    'rounded-2xl border px-4 py-3 text-left text-sm font-black transition',
+                    'rounded-xl border px-3 py-2.5 text-left text-xs font-black transition md:rounded-2xl md:px-4 md:py-3 md:text-sm',
                     problemaTipo === id
                       ? 'border-red-300 bg-red-500/18 text-red-100'
                       : 'border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]',
@@ -3001,14 +3001,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               ))}
             </div>
 
-            <label className="mt-5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+            <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-300 md:mt-5">
               Conte o que aconteceu
               <textarea
                 value={problemaDescricao}
                 onChange={(e) => setProblemaDescricao(e.target.value)}
                 maxLength={800}
                 placeholder="Descreva o problema com clareza para ficar registrado no histórico."
-                className="mt-2 min-h-[120px] w-full resize-y rounded-3xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500"
+                className="mt-2 min-h-[92px] w-full resize-y rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 md:min-h-[120px] md:rounded-3xl md:px-4 md:py-3"
               />
             </label>
 
@@ -3016,7 +3016,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               type="button"
               disabled={salvandoProblema}
               onClick={registrarProblemaServico}
-              className="mt-5 w-full rounded-3xl bg-red-600 px-4 py-4 font-black text-white hover:bg-red-500 disabled:opacity-60"
+              className="mt-4 w-full rounded-2xl bg-red-600 px-3 py-3 text-sm font-black text-white hover:bg-red-500 disabled:opacity-60 md:mt-5 md:rounded-3xl md:px-4 md:py-4 md:text-base"
             >
               {salvandoProblema ? 'Registrando...' : 'Registrar problema'}
             </button>

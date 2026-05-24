@@ -63,14 +63,14 @@ export default function StatusFluxoServico({
       : 'bg-emerald-400'
 
   return (
-    <div className={[`rounded-2xl border ${shell}`, compact ? 'px-3 py-2' : 'p-4', className].join(' ')}>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-400">
+    <div className={[`rounded-xl border md:rounded-2xl ${shell}`, compact ? 'px-2.5 py-1.5 md:px-3 md:py-2' : 'p-3 md:p-4', className].join(' ')}>
+      <div className="mb-2 flex items-center justify-between gap-2 md:mb-3 md:gap-3">
+        <div className="text-[9px] font-black uppercase tracking-[0.14em] text-sky-400 md:text-[10px] md:tracking-[0.16em]">
           Status do serviço
         </div>
         <div
           className={[
-            'rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em]',
+            'rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] md:px-2.5 md:py-1 md:text-[10px] md:tracking-[0.12em]',
             problema
               ? 'border border-red-300/35 bg-red-500/15 text-red-300'
               : cancelado
@@ -82,17 +82,17 @@ export default function StatusFluxoServico({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-4 gap-1.5 md:gap-2">
         {STEP_LABELS.map((label, index) => {
           const done = !cancelado && index <= activeStep
           const current = !cancelado && index === activeStep
 
           return (
             <div key={label} className="min-w-0">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 md:gap-1.5">
                 <div
                   className={[
-                    'grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-black shadow-sm',
+                    'grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-black shadow-sm md:h-6 md:w-6 md:text-[11px]',
                     done
                       ? problema
                         ? 'bg-red-500 text-white'
@@ -111,7 +111,7 @@ export default function StatusFluxoServico({
               </div>
               <div
                 className={[
-                  'mt-1 truncate text-[10px] font-black uppercase tracking-[0.08em]',
+                  'mt-1 truncate text-[9px] font-black uppercase tracking-[0.06em] md:text-[10px] md:tracking-[0.08em]',
                   current ? (problema ? 'text-red-300' : 'text-emerald-300') : muted,
                 ].join(' ')}
               >

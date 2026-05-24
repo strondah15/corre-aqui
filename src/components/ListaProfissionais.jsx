@@ -264,21 +264,21 @@ export default function ListaProfissionais({
     'bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.22)] ring-1 ring-white/5 backdrop-blur-xl'
 
   return (
-    <div className={`rounded-[28px] overflow-hidden ${glass}`}>
-      <div className="px-4 sm:px-5 py-4 border-b border-white/10 bg-white/[0.03]">
+    <div className={`overflow-hidden rounded-[22px] md:rounded-[28px] ${glass}`}>
+      <div className="border-b border-white/10 bg-white/[0.03] px-3 py-3 md:px-4 md:py-4 sm:px-5">
         <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Busca inteligente</div>
-        <div className="mt-1 text-base font-black text-white">
+        <div className="mt-1 text-sm font-black text-white md:text-base">
           {mode === 'corre' ? '🧍 Corres / Bicos disponíveis' : mode === 'ambos' ? '🧭 Corres + Profissionais' : '🧑‍🔧 Profissionais'}
         </div>
 
-        <div className="mt-3 space-y-2.5">
+        <div className="mt-2.5 space-y-2 md:mt-3 md:space-y-2.5">
           <div className="relative">
             <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
             <input
               value={buscaLocal}
               onChange={(e) => setBuscaLocal(e.target.value)}
               placeholder={mode === 'corre' ? 'Buscar corre, cidade ou serviço rápido...' : 'Buscar profissional, cidade ou serviço...'}
-              className="w-full rounded-2xl border border-white/10 bg-white px-11 py-3 text-sm font-semibold text-slate-800 shadow-[0_12px_32px_rgba(0,0,0,0.12)] outline-none transition placeholder:text-slate-500 focus:border-blue-300 focus:ring-4 focus:ring-blue-500/15"
+              className="w-full rounded-xl border border-white/10 bg-white px-10 py-2.5 text-sm font-semibold text-slate-800 shadow-[0_10px_26px_rgba(0,0,0,0.1)] outline-none transition placeholder:text-slate-500 focus:border-blue-300 focus:ring-4 focus:ring-blue-500/15 md:rounded-2xl md:px-11 md:py-3 md:shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
             />
             {buscaLocal ? (
               <button
@@ -301,7 +301,7 @@ export default function ListaProfissionais({
                   type="button"
                   onClick={() => setCategoriaLocal(cat.id)}
                   className={[
-                    'shrink-0 rounded-full border px-3.5 py-2 text-xs font-black transition-all duration-200 active:scale-[0.96]',
+                    'shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:px-3.5 md:py-2 md:text-xs',
                     ativo
                       ? 'border-white bg-white text-slate-950 shadow-lg shadow-black/15'
                       : 'border-white/12 bg-white/8 text-slate-200 hover:bg-white/12 hover:text-white',
@@ -321,18 +321,18 @@ export default function ListaProfissionais({
         </div>
       </div>
 
-      <div className="p-3 sm:p-4 bg-white/[0.03]">
+      <div className="bg-white/[0.03] p-2.5 md:p-3 sm:p-4">
         {loading ? (
           <div className="text-sm text-slate-300">Carregando profissionais…</div>
         ) : filtrados.length === 0 ? (
-          <div className="rounded-2xl p-4 bg-white/[0.06] border border-white/10 text-slate-300">
+          <div className="rounded-xl bg-white/[0.06] border border-white/10 p-3 text-slate-300 md:rounded-2xl md:p-4">
             <div className="font-semibold text-white">Nada encontrado</div>
             <div className="text-xs text-slate-400 mt-1">
               Tente trocar a categoria ou procurar por cidade/nome.
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 md:gap-4 items-stretch">
+          <div className="grid grid-cols-1 items-stretch gap-2.5 md:grid-cols-2 md:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
             {filtrados.map((u) => (
               <CardProfissional
                 key={u.uid}

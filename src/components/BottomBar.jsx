@@ -37,15 +37,15 @@ export default function BottomBar({
         onClick={() => onTab?.(item.id)}
         title={item.label}
         className={[
-          'relative h-12 min-w-0 rounded-2xl px-2 text-xs font-black transition border sm:px-3',
-          'flex items-center justify-center gap-1.5 sm:gap-2',
+          'relative h-10 min-w-0 rounded-xl px-1.5 text-[11px] font-black transition border md:h-12 md:rounded-2xl md:px-2 md:text-xs sm:px-3',
+          'flex items-center justify-center gap-1 sm:gap-2',
           selected
             ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
             : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
         ].join(' ')}
         aria-pressed={selected}
       >
-        <span className="text-base leading-none">{item.icon}</span>
+        <span className="text-sm leading-none md:text-base">{item.icon}</span>
         <span className="hidden sm:inline">{item.label}</span>
         {item.count > 0 ? (
           <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white ring-2 ring-white">
@@ -57,14 +57,14 @@ export default function BottomBar({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-[9998] px-2 md:inset-x-auto md:right-6 md:bottom-6 md:px-0">
-      <div className="mx-auto flex w-full max-w-[430px] items-center gap-1.5 rounded-[24px] border border-slate-200 bg-white/94 p-1.5 shadow-[0_24px_80px_rgba(15,23,42,0.26)] backdrop-blur-xl sm:gap-2 sm:rounded-[26px] sm:p-2 md:max-w-none">
+    <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[9998] px-2 md:inset-x-auto md:right-6 md:bottom-6 md:px-0">
+      <div className="mx-auto flex w-full max-w-[390px] items-center gap-1 rounded-[18px] border border-slate-200 bg-white/94 p-1 shadow-[0_18px_54px_rgba(15,23,42,0.22)] backdrop-blur-xl md:max-w-[430px] md:gap-1.5 md:rounded-[24px] md:p-1.5 sm:gap-2 sm:rounded-[26px] sm:p-2">
         <motion.button
           type="button"
           whileTap={{ scale: 0.97 }}
           onClick={() => onTab?.('disponivel')}
           className={[
-            'h-12 min-w-[104px] rounded-2xl px-2.5 text-left text-white transition border shadow-[0_14px_34px_rgba(16,185,129,0.22)] sm:min-w-[132px] sm:px-4',
+            'h-10 min-w-[86px] rounded-xl px-2 text-left text-white transition border shadow-[0_12px_28px_rgba(16,185,129,0.18)] md:h-12 md:min-w-[104px] md:rounded-2xl md:px-2.5 sm:min-w-[132px] sm:px-4',
             disponivel
               ? 'bg-gradient-to-r from-emerald-500 to-teal-600 border-emerald-300/70'
               : 'bg-gradient-to-r from-rose-500 to-red-700 border-rose-300/70',
@@ -75,18 +75,18 @@ export default function BottomBar({
           <div className="flex items-center gap-1.5 sm:gap-2">
             <span
               className={[
-                'h-2.5 w-2.5 rounded-full ring-4 ring-white/18',
+                'h-2 w-2 rounded-full ring-[3px] ring-white/18 md:h-2.5 md:w-2.5 md:ring-4',
                 disponivel ? 'bg-emerald-100 animate-pulse' : 'bg-rose-100',
               ].join(' ')}
             />
-            <span className="text-xs font-black sm:text-sm">{disponivel ? 'Disponível' : 'Indisponível'}</span>
+            <span className="text-[11px] font-black md:text-xs sm:text-sm">{disponivel ? 'Disponível' : 'Indisponível'}</span>
           </div>
           <div className="mt-0.5 hidden text-[10px] font-bold text-white/75 sm:block">
             {disponivel ? 'visível para clientes' : 'oculto agora'}
           </div>
         </motion.button>
 
-        <div className="grid flex-1 grid-cols-4 gap-1.5">
+        <div className="grid flex-1 grid-cols-4 gap-1 md:gap-1.5">
           {navItems.map(navButton)}
         </div>
       </div>

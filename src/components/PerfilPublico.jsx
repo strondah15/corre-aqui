@@ -317,12 +317,12 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
     <div className="fixed inset-0 z-[99999]">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="absolute inset-x-2 bottom-2 mx-auto max-h-[96vh] max-w-5xl overflow-y-auto rounded-[30px] border border-white/10 bg-[#07111f] text-white shadow-[0_30px_120px_rgba(0,0,0,0.6)] sm:inset-x-3 md:bottom-auto md:top-1/2 md:-translate-y-1/2">
-        <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.22),transparent_34%),linear-gradient(135deg,#020617,#0f172a_58%,#07111f)] p-5 md:p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-4">
+      <div className="absolute inset-x-2 bottom-2 mx-auto max-h-[96vh] max-w-5xl overflow-y-auto rounded-[22px] border border-white/10 bg-[#07111f] text-white shadow-[0_30px_120px_rgba(0,0,0,0.6)] md:rounded-[30px] sm:inset-x-3 md:bottom-auto md:top-1/2 md:-translate-y-1/2">
+        <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.22),transparent_34%),linear-gradient(135deg,#020617,#0f172a_58%,#07111f)] p-4 md:p-6">
+          <div className="flex items-start justify-between gap-3 md:gap-4">
+            <div className="flex min-w-0 items-start gap-3 md:gap-4">
               <div
-                className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-[26px] border border-white/10 bg-white/8 bg-cover bg-center text-4xl shadow-[0_18px_45px_rgba(0,0,0,0.35)]"
+                className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[18px] border border-white/10 bg-white/8 bg-cover bg-center text-2xl shadow-[0_14px_34px_rgba(0,0,0,0.3)] md:h-20 md:w-20 md:rounded-[26px] md:text-4xl md:shadow-[0_18px_45px_rgba(0,0,0,0.35)]"
                 style={dados.fotoURL ? { backgroundImage: `url(${JSON.stringify(dados.fotoURL)})` } : undefined}
                 aria-label={dados.nome}
               >
@@ -331,43 +331,43 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="max-w-full truncate text-2xl font-black leading-tight md:text-3xl">{dados.nome}</h2>
+                    <h2 className="max-w-full truncate text-xl font-black leading-tight md:text-3xl">{dados.nome}</h2>
                   {dados.perfilVerificado ? (
                     <span className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-black text-cyan-100">
                       ✓ Verificado
                     </span>
                   ) : null}
                 </div>
-                <p className="mt-1 text-sm font-semibold text-slate-400">{dados.cidade}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-400 md:text-sm">{dados.cidade}</p>
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <span className={dados.emServico ? 'rounded-full border border-amber-300/25 bg-amber-400/10 px-3 py-1 text-xs font-black text-amber-100' : 'rounded-full border border-emerald-300/25 bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-100'}>
+                  <span className={dados.emServico ? 'rounded-full border border-amber-300/25 bg-amber-400/10 px-2.5 py-0.5 text-[11px] font-black text-amber-100 md:px-3 md:py-1 md:text-xs' : 'rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2.5 py-0.5 text-[11px] font-black text-emerald-100 md:px-3 md:py-1 md:text-xs'}>
                     {dados.emServico ? `Em serviço ${dados.ocupadoAte ? `até ${formatOcupadoAte(dados.ocupadoAte)}` : ''}` : 'Disponível agora'}
                   </span>
-                  <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-xs font-black text-slate-200">
+                  <span className="rounded-full border border-white/10 bg-white/8 px-2.5 py-0.5 text-[11px] font-black text-slate-200 md:px-3 md:py-1 md:text-xs">
                     {dados.agendaAberta ? 'Agenda aberta' : 'Agenda fechada'}
                   </span>
-                  {dados.isCorre ? <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs font-black text-amber-100">Corre rápido</span> : null}
-                  {dados.isProfissional ? <span className="rounded-full border border-blue-300/20 bg-blue-300/10 px-3 py-1 text-xs font-black text-blue-100">Profissional</span> : null}
+                  {dados.isCorre ? <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2.5 py-0.5 text-[11px] font-black text-amber-100 md:px-3 md:py-1 md:text-xs">Corre rápido</span> : null}
+                  {dados.isProfissional ? <span className="rounded-full border border-blue-300/20 bg-blue-300/10 px-2.5 py-0.5 text-[11px] font-black text-blue-100 md:px-3 md:py-1 md:text-xs">Profissional</span> : null}
                 </div>
               </div>
             </div>
 
-            <button onClick={onClose} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/8 text-xl font-black text-white hover:bg-white/15" type="button" title="Fechar">
+            <button onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/8 text-lg font-black text-white hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl md:text-xl" type="button" title="Fechar">
               ×
             </button>
           </div>
         </div>
 
-        <div className="grid gap-5 p-5 md:grid-cols-[1.15fr_0.85fr] md:p-6">
-          <main className="space-y-4">
+        <div className="grid gap-3 p-3 md:grid-cols-[1.15fr_0.85fr] md:gap-5 md:p-6">
+          <main className="space-y-3 md:space-y-4">
             <div className="grid grid-cols-3 gap-2">
               <StatCard value={notaLabel} label="Nota" tone="amber" />
               <StatCard value={dados.servicosFeitos || 0} label="Serviços" tone="emerald" />
               <StatCard value={dados.totalAvaliacoes || 0} label="Avaliações" tone="cyan" />
             </div>
 
-            <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+            <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Confiança</div>
@@ -382,22 +382,22 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
                   {dados.perfilVerificado ? 'Perfil verificado' : 'Em validação'}
                 </span>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-black">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-2 py-3 text-slate-200">Chat</div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-2 py-3 text-slate-200">Histórico</div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-2 py-3 text-slate-200">Denúncia</div>
+              <div className="mt-3 grid grid-cols-3 gap-1.5 text-center text-[11px] font-black md:mt-4 md:gap-2 md:text-xs">
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-slate-200 md:rounded-2xl md:py-3">Chat</div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-slate-200 md:rounded-2xl md:py-3">Histórico</div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-slate-200 md:rounded-2xl md:py-3">Denúncia</div>
               </div>
             </section>
 
             {dados.bio ? (
-              <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+              <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
                 <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Resumo</div>
                 <p className="mt-2 text-sm leading-relaxed text-slate-200">{dados.bio}</p>
               </section>
             ) : null}
 
             {dados.categorias.length ? (
-              <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+              <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
                 <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Atua com</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {dados.categorias.map((cat) => (
@@ -409,7 +409,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
               </section>
             ) : null}
 
-            <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+              <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
               <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Ficha técnica</div>
               <div className="mt-3">
                 <InfoLine label="Região" value={dados.cidade} />
@@ -439,13 +439,13 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
           </main>
 
           <aside className="space-y-3">
-            <section className="rounded-[26px] border border-white/10 bg-white/[0.05] p-4">
+            <section className="rounded-[20px] border border-white/10 bg-white/[0.05] p-3 md:rounded-[26px] md:p-4">
               <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Ações</div>
               <div className="mt-3 grid gap-2">
                 <button
                   type="button"
                   onClick={() => onPedirServico?.(user)}
-                  className="h-12 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-[0_16px_45px_rgba(37,99,235,0.28)] transition hover:bg-blue-500 active:scale-[0.98]"
+                  className="h-10 rounded-xl bg-blue-600 px-3 text-xs font-black text-white shadow-[0_12px_34px_rgba(37,99,235,0.24)] transition hover:bg-blue-500 active:scale-[0.98] md:h-12 md:rounded-2xl md:px-4 md:text-sm md:shadow-[0_16px_45px_rgba(37,99,235,0.28)]"
                 >
                   Criar pedido para este perfil
                 </button>
@@ -454,7 +454,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
                   type="button"
                   onClick={abrirAgenda}
                   disabled={!dados.agendaAberta}
-                  className="h-12 rounded-2xl border border-violet-300/25 bg-violet-400/12 px-4 text-sm font-black text-violet-100 transition hover:bg-violet-400/18 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-10 rounded-xl border border-violet-300/25 bg-violet-400/12 px-3 text-xs font-black text-violet-100 transition hover:bg-violet-400/18 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 md:h-12 md:rounded-2xl md:px-4 md:text-sm"
                 >
                   Solicitar agendamento
                 </button>
@@ -464,7 +464,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
                     href={`https://wa.me/${dados.whatsappLimpo}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="grid h-12 place-items-center rounded-2xl border border-emerald-300/25 bg-emerald-400/10 px-4 text-sm font-black text-emerald-100 transition hover:bg-emerald-400/15 active:scale-[0.98]"
+                    className="grid h-10 place-items-center rounded-xl border border-emerald-300/25 bg-emerald-400/10 px-3 text-xs font-black text-emerald-100 transition hover:bg-emerald-400/15 active:scale-[0.98] md:h-12 md:rounded-2xl md:px-4 md:text-sm"
                   >
                     Chamar no WhatsApp
                   </a>
@@ -476,7 +476,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
               </div>
             </section>
 
-            <section className="rounded-[26px] border border-white/10 bg-white/[0.04] p-4">
+            <section className="rounded-[20px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[26px] md:p-4">
               <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Avaliações recentes</div>
               <div className="mt-3 space-y-2">
                 {dados.avaliacoes.length ? (
@@ -497,7 +497,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
               </div>
             </section>
 
-            <section className="rounded-[26px] border border-white/10 bg-white/[0.04] p-4">
+            <section className="rounded-[20px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[26px] md:p-4">
               <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Histórico</div>
               <div className="mt-3 space-y-2">
                 {dados.historico.length ? (

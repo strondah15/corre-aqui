@@ -239,19 +239,14 @@ async function prepararFotoPerfil(file) {
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   img.close?.();
 
-  let blob = await canvasToBlob(canvas, "image/webp", 0.84);
-  let mime = "image/webp";
-  if (!blob) {
-    blob = await canvasToBlob(canvas, "image/jpeg", 0.86);
-    mime = "image/jpeg";
-  }
+  const blob = await canvasToBlob(canvas, "image/jpeg", 0.88);
   if (!blob) throw new Error("foto_invalida");
 
   return {
     blob,
     dataUrl: await fileToDataUrl(blob),
-    mime,
-    ext: mime.includes("webp") ? "webp" : "jpg",
+    mime: "image/jpeg",
+    ext: "jpg",
   };
 }
 
@@ -265,7 +260,7 @@ function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
   });
 }
 
-function uploadFotoComTimeout(refArquivo, blob, metadata, ms = 7000) {
+function uploadFotoComTimeout(refArquivo, blob, metadata, ms = 45000) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const task = uploadBytesResumable(refArquivo, blob, metadata);
@@ -615,7 +610,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     }
   }
 
-  async function salvarFotoNosPerfis(fotoFinal, storagePath = "", storageModo = "database_fallback") {
+  async function salvarFotoNosPerfis(fotoFinal, storagePath = "", storageModo = "firebase") {
     const avatarEmoji = profile.avatarEmoji || "";
     const payload = {
       fotoURL: fotoFinal || null,
@@ -669,6 +664,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     event.target.value = "";
     if (!file || !uid) return;
 
+    const fotoAnterior = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
+    const avatarAnterior = profile.avatar || profile.avatarEmoji || "";
+
     setFotoSalvando(true);
     setFotoAviso("Preparando foto...");
 
@@ -684,8 +682,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       setFotoAviso("Enviando foto...");
 
       try {
+        const storageBucket = String(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "").trim();
+        if (!storageBucket) throw new Error("storage_bucket_missing");
+
         const agora = Date.now();
-        const caminho = `profilePhotos/${uid}/${uid}_${agora}.${preparada.ext}`;
+        const caminho = `profilePhotos/${uid}.jpg`;
         const fotoRef = storageRef(storage, caminho);
 
         await uploadFotoComTimeout(fotoRef, preparada.blob, {
@@ -697,26 +698,23 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         });
 
         const url = await promiseComTimeout(getDownloadURL(fotoRef), 5000, "foto_url_timeout");
+        const urlFinal = `${url}${url.includes("?") ? "&" : "?"}v=${agora}`;
 
         setProfile((p) => ({
           ...p,
-          fotoURL: url,
-          photoURL: url,
-          avatar: url,
+          fotoURL: urlFinal,
+          photoURL: urlFinal,
+          avatar: urlFinal,
           fotoStoragePath: caminho,
           fotoStorage: "firebase",
         }));
-        await salvarFotoNosPerfis(url, caminho, "firebase");
+        await salvarFotoNosPerfis(urlFinal, caminho, "firebase");
         setFotoAviso("Foto salva.");
         setSalvo(true);
         setTimeout(() => setSalvo(false), 2200);
-      } catch {
-        try {
-          await salvarFotoNosPerfis(preparada.dataUrl, "", "database_fallback");
-          setFotoAviso("Storage indisponível. Salvei uma versão leve da foto.");
-        } catch {
-          throw new Error("foto_salvar");
-        }
+      } catch (error) {
+        console.error("[PerfilDrawer] upload foto:", error);
+        throw new Error(error?.message === "storage_bucket_missing" ? "storage_bucket_missing" : "foto_upload");
       }
     } catch (error) {
       const msg =
@@ -724,9 +722,17 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           ? "Escolha uma imagem de até 8 MB."
           : error?.message === "tipo_invalido"
             ? "Escolha um arquivo de imagem."
-            : error?.message === "foto_salvar"
-              ? "Não consegui salvar a foto. Verifique login e regras do Firebase."
+            : error?.message === "storage_bucket_missing"
+              ? "Firebase Storage não está configurado."
+            : error?.message === "foto_upload"
+              ? "Não foi possível enviar a foto."
             : "Não consegui ler essa foto.";
+      setProfile((p) => ({
+        ...p,
+        fotoURL: fotoAnterior,
+        photoURL: fotoAnterior,
+        avatar: fotoAnterior || avatarAnterior,
+      }));
       setFotoAviso(msg);
     } finally {
       setFotoSalvando(false);
