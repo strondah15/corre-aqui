@@ -9,6 +9,12 @@
         ".write": "auth != null && auth.uid === $uid"
       }
     },
+    "userPrivate": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
     "admins": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

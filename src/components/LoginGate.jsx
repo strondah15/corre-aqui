@@ -9,7 +9,6 @@ import {
   getGoogleRedirectUser,
   isGoogleRedirectPending,
   mensagemErroAuthGoogle,
-  signInAsGuest,
   signInWithGoogle
 } from '@/lib/authGoogle'
 
@@ -136,8 +135,6 @@ export default function LoginGate({ children }) {
   const [loading, setLoading] = useState(true)
   const [resolvendoRedirect, setResolvendoRedirect] = useState(false)
   const [loginLoading, setLoginLoading] = useState(false)
-  const [guestLoading, setGuestLoading] = useState(false)
-  const [showGuestLogin, setShowGuestLogin] = useState(false)
   const [viuBoasVindas, setViuBoasVindas] = useState(false)
   const [loginError, setLoginError] = useState('')
 
@@ -175,15 +172,6 @@ export default function LoginGate({ children }) {
     } catch {
       setViuBoasVindas(false)
     }
-
-    const host = window.location.hostname || ''
-    const isPrivateHost =
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host.startsWith('192.168.') ||
-      host.startsWith('10.') ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
-    setShowGuestLogin(isPrivateHost)
 
     const redirectPendente = isGoogleRedirectPending()
     setResolvendoRedirect(redirectPendente)
@@ -251,7 +239,7 @@ export default function LoginGate({ children }) {
           clearGoogleRedirectPending()
           setLoading(false)
           setResolvendoRedirect(false)
-          setLoginError('O Google não terminou a entrada. Toque novamente ou use visitante se estiver testando por IP local.')
+          setLoginError('O Google não terminou a entrada. Toque novamente ou confira se o domínio está autorizado no Firebase.')
         }, 8000)
         return
       }
@@ -264,22 +252,6 @@ export default function LoginGate({ children }) {
       }
     } finally {
       setLoginLoading(false)
-    }
-  }
-
-  async function loginVisitante() {
-    if (guestLoading) return
-
-    try {
-      setGuestLoading(true)
-      setLoginError('')
-      const user = await signInAsGuest()
-      await aplicarUsuario(user)
-    } catch (error) {
-      console.error('[LoginGate] visitante Firebase: erro', error)
-      setLoginError('Não consegui entrar como visitante agora. Tente novamente em instantes.')
-    } finally {
-      setGuestLoading(false)
     }
   }
 
@@ -324,12 +296,35 @@ export default function LoginGate({ children }) {
   if (!uid) {
     return (
       <main className="grid min-h-[100dvh] place-items-center bg-[#050914] px-4 py-5 text-white">
-        <div className="w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-5 text-center shadow-[0_22px_70px_rgba(0,0,0,0.32)]">
+        <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-white/[0.055] p-5 text-center shadow-[0_24px_80px_rgba(0,0,0,0.34)] sm:p-6">
           <LogoCorreAqui className="mx-auto h-20 w-20 rounded-[22px]" />
-          <h1 className="mt-3 text-2xl font-black">Entrar no app</h1>
+          <div className="mt-4 inline-flex rounded-full border border-cyan-300/15 bg-cyan-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">
+            Conta segura
+          </div>
+          <h1 className="mt-3 text-2xl font-black">Entrar no Corre Aqui</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-400">
-            Seu perfil, pedidos, chat e notificações ficam juntos na mesma conta.
+            Use sua conta Google para manter perfil, pedidos, chat, avaliações e notificações no mesmo lugar.
           </p>
+
+          <div className="mt-5 grid gap-2 text-left">
+            {[
+              ['🔒', 'Perfil protegido', 'Histórico e configurações ficam ligados à sua conta.'],
+              ['💬', 'Conversas salvas', 'Combine serviços com mais segurança pelo chat.'],
+              ['⭐', 'Reputação', 'Patentes e avaliações acompanham sua evolução.'],
+            ].map(([icon, title, text]) => (
+              <div key={title} className="rounded-2xl border border-white/10 bg-slate-950/45 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white/[0.06] text-base">
+                    {icon}
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-white">{title}</div>
+                    <div className="mt-0.5 text-xs leading-relaxed text-slate-400">{text}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
 
           {loginError ? (
             <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-left text-xs font-semibold leading-relaxed text-rose-100">
@@ -341,21 +336,14 @@ export default function LoginGate({ children }) {
             type="button"
             onClick={loginGoogle}
             disabled={loginLoading}
-            className="relative z-50 mt-5 h-12 w-full rounded-[20px] bg-white px-4 text-sm font-black text-slate-950 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 pointer-events-auto"
+            className="relative z-50 mt-5 h-13 w-full rounded-[22px] bg-white px-4 py-4 text-sm font-black text-slate-950 shadow-[0_16px_44px_rgba(255,255,255,0.12)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 pointer-events-auto"
           >
             {loginLoading ? 'Abrindo...' : 'Entrar com Google'}
           </button>
 
-          {showGuestLogin && (
-            <button
-              type="button"
-              onClick={loginVisitante}
-              disabled={guestLoading}
-              className="relative z-50 mt-3 h-12 w-full rounded-[20px] border border-white/10 bg-white/[0.055] px-4 text-sm font-black text-white/80 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 pointer-events-auto"
-            >
-              {guestLoading ? 'Entrando...' : 'Entrar como visitante'}
-            </button>
-          )}
+          <div className="mt-3 rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-xs font-bold leading-relaxed text-emerald-100">
+            Entrar com conta ajuda a proteger conversas, reputação e notificações.
+          </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-500">
             <a href="/termos" className="transition hover:text-slate-300">Termos</a>

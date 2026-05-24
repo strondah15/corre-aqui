@@ -10,7 +10,6 @@ import {
   getGoogleRedirectUser,
   isGoogleRedirectPending,
   mensagemErroAuthGoogle,
-  signInAsGuest,
   signInWithGoogle,
 } from '@/lib/authGoogle'
 
@@ -19,7 +18,7 @@ function mensagemErroGoogle(err) {
   if (msg) return msg
 
   if (err?.code === 'auth/unauthorized-domain') {
-    return 'Este endereço do celular ainda não está autorizado no Firebase. Use visitante agora ou adicione o IP/domínio em Authentication > Authorized domains.'
+    return 'Este endereço do celular ainda não está autorizado no Firebase. Adicione o domínio em Authentication > Authorized domains.'
   }
 
   if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/popup-closed-by-user') {
@@ -30,14 +29,13 @@ function mensagemErroGoogle(err) {
     return 'Falha de rede ao abrir o Google. Confira a internet do celular.'
   }
 
-  return 'Não foi possível abrir o Google agora. Tente novamente ou entre como visitante.'
+  return 'Não foi possível abrir o Google agora. Tente novamente em instantes.'
 }
 
 export default function LoginPage() {
   const router = useRouter()
   const [checking, setChecking] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [guestLoading, setGuestLoading] = useState(false)
   const [redirecting, setRedirecting] = useState(false)
   const [erro, setErro] = useState('')
 
@@ -96,7 +94,7 @@ export default function LoginPage() {
         clearGoogleRedirectPending()
         setRedirecting(false)
         setLoading(false)
-        setErro('Se o Google não abriu, seu navegador pode ter bloqueado o redirecionamento ou o domínio local ainda não está autorizado no Firebase. Use visitante para continuar.')
+        setErro('Se o Google não abriu, seu navegador pode ter bloqueado o redirecionamento ou o domínio ainda não está autorizado no Firebase.')
       }, 1800)
     } catch (err) {
       console.error(err)
@@ -106,22 +104,6 @@ export default function LoginPage() {
       if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
         setErro(mensagemErroGoogle(err))
       }
-    }
-  }
-
-  async function entrarVisitante() {
-    if (guestLoading) return
-
-    try {
-      setErro('')
-      setGuestLoading(true)
-      const user = await signInAsGuest()
-      if (user?.uid) router.replace('/')
-    } catch (err) {
-      console.error(err)
-      setErro('Não foi possível entrar como visitante agora. Verifique se login anônimo está ativo no Firebase.')
-    } finally {
-      setGuestLoading(false)
     }
   }
 
@@ -151,7 +133,7 @@ export default function LoginPage() {
 
   return (
     <main className="grid min-h-[100dvh] place-items-center bg-[#050914] px-4 py-5 text-white">
-      <div className="w-full max-w-md rounded-[28px] border border-white/10 bg-white/[0.055] p-5 text-center shadow-[0_22px_70px_rgba(0,0,0,0.34)] sm:rounded-[30px] sm:p-6">
+      <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-white/[0.055] p-5 text-center shadow-[0_22px_70px_rgba(0,0,0,0.34)] sm:p-6">
         <div className="mx-auto grid h-20 w-20 place-items-center rounded-[26px] border border-cyan-300/15 bg-white/[0.06] shadow-[0_18px_55px_rgba(0,0,0,0.25)]">
           <Image
             src="/logo-corre-aqui.png.png"
@@ -165,8 +147,28 @@ export default function LoginPage() {
         </div>
         <h1 className="mt-3 text-2xl font-black">Entrar no app</h1>
         <p className="mt-2 text-sm leading-relaxed text-slate-400">
-          Use uma conta para manter seu perfil, pedidos, conversas e notificações juntos.
+          Sua conta mantém perfil, pedidos, conversas, avaliações e notificações sempre juntos.
         </p>
+
+        <div className="mt-5 grid gap-2 text-left">
+          {[
+            ['🔒', 'Mais segurança', 'Sem entrada anônima na experiência principal.'],
+            ['💬', 'Chat confiável', 'As conversas ficam conectadas ao mesmo perfil.'],
+            ['⭐', 'Reputação real', 'Patentes, avaliações e histórico ganham valor.'],
+          ].map(([icon, title, text]) => (
+            <div key={title} className="rounded-2xl border border-white/10 bg-slate-950/45 px-3 py-3">
+              <div className="flex items-start gap-3">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white/[0.06] text-base">
+                  {icon}
+                </div>
+                <div>
+                  <div className="text-sm font-black text-white">{title}</div>
+                  <div className="mt-0.5 text-xs leading-relaxed text-slate-400">{text}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
 
         <button
           type="button"
@@ -177,14 +179,9 @@ export default function LoginPage() {
           {loading ? 'Abrindo Google...' : 'Entrar com Google'}
         </button>
 
-        <button
-          type="button"
-          onClick={entrarVisitante}
-          disabled={guestLoading}
-          className="relative z-50 mt-3 h-12 w-full rounded-[20px] border border-white/10 bg-white/[0.045] text-sm font-black text-white/80 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 pointer-events-auto"
-        >
-          {guestLoading ? 'Entrando...' : 'Entrar como visitante'}
-        </button>
+        <div className="mt-3 rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-xs font-bold leading-relaxed text-emerald-100">
+          Entrada por conta ajuda a proteger histórico, reputação e notificações.
+        </div>
 
         {erro ? (
           <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-3 py-3 text-left text-xs font-bold leading-relaxed text-amber-100">

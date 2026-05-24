@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import Mapadinamico from '@/components/Mapadinamico'
 import PerfilDrawer from '@/components/PerfilDrawer'
-import PushNotificationButton from '@/components/PushNotificationButton'
 import { auth } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 
@@ -139,8 +138,6 @@ export default function ModoGate() {
           >
             Perfil e configurações
           </button>
-
-          <PushNotificationButton uid={uid} className="mt-3" />
         </section>
 
         <PerfilDrawer

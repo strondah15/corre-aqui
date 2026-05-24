@@ -8,6 +8,7 @@ import {
   ativarPushNotifications,
   desativarPushNotifications,
   getPushCapabilities,
+  testarPushNotification,
 } from "@/lib/pushNotifications";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
@@ -77,6 +78,14 @@ const planoInfo = {
   },
 };
 
+const trustItems = [
+  { icon: "⭐", title: "Sistema de patentes", text: "Evolução por experiência e serviços concluídos." },
+  { icon: "💬", title: "Histórico de conversas", text: "Combinações ficam registradas no chat do pedido." },
+  { icon: "✅", title: "Avaliações dos serviços", text: "Reputação construída depois de cada conclusão." },
+  { icon: "🟢", title: "Perfil verificado em breve", text: "Selo de confiança planejado, sem biometria nesta etapa." },
+  { icon: "🛡️", title: "Mais segurança para clientes e profissionais", text: "Denúncias, problemas e moderação ajudam a proteger a comunidade." },
+];
+
 function PlanoResumo({ onOpenPlanos }) {
   const atual = planoInfo.EmBreve;
 
@@ -136,6 +145,25 @@ function inputClass(extra = "") {
     "transition",
     extra,
   ].join(" ");
+}
+
+function onlyDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function formatCpfInput(value) {
+  const digits = onlyDigits(value).slice(0, 11);
+  if (!digits) return "";
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function maskCpfSalvo(value) {
+  const digits = onlyDigits(value);
+  if (digits.length < 2) return "";
+  return `***.***.***-${digits.slice(-2)}`;
 }
 
 const FOTO_MAX_ORIGINAL_BYTES = 8 * 1024 * 1024;
@@ -281,7 +309,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     reason: "Verificando push...",
   });
   const [pushSalvando, setPushSalvando] = useState(false);
+  const [pushTestando, setPushTestando] = useState(false);
   const [pushAviso, setPushAviso] = useState("");
+  const [cpfDraft, setCpfDraft] = useState("");
+  const [cpfSalvoMask, setCpfSalvoMask] = useState("");
+  const [cpfAviso, setCpfAviso] = useState("");
   const [serviceStats, setServiceStats] = useState({
     total: 0,
     comoCorre: 0,
@@ -400,6 +432,18 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   useEffect(() => {
     if (!open || !uid) return;
 
+    const privateRef = ref(database, `userPrivate/${uid}/verification`);
+    return onValue(privateRef, (snap) => {
+      const data = snap.val() || {};
+      setCpfSalvoMask(maskCpfSalvo(data.cpf || data.cpfDigits || ""));
+    }, () => {
+      setCpfSalvoMask("");
+    });
+  }, [open, uid]);
+
+  useEffect(() => {
+    if (!open || !uid) return;
+
     const pedidosRef = ref(database, "pedidos");
     return onValue(pedidosRef, (snap) => {
       const data = snap.val() || {};
@@ -470,7 +514,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
     try {
       setPushSalvando(true);
-      setPushAviso("Abrindo permissao do celular...");
+      setPushAviso("Abrindo permissão do navegador...");
       const result = await ativarPushNotifications(uid);
       setProfile((p) => ({
         ...p,
@@ -482,9 +526,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         },
       }));
       setPushInfo((p) => ({ ...p, supported: true, permission: result.permission }));
-      setPushAviso("Push ativado neste aparelho.");
+      setPushAviso("Notificações ativadas neste aparelho.");
     } catch (error) {
-      setPushAviso(error?.message || "Nao consegui ativar push agora.");
+      setPushAviso(error?.message || "Não consegui ativar notificações agora.");
       const info = await getPushCapabilities().catch(() => null);
       if (info) setPushInfo(info);
     } finally {
@@ -507,9 +551,40 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       }));
       setPushAviso("Push desativado neste perfil.");
     } catch (error) {
-      setPushAviso(error?.message || "Nao consegui desativar push agora.");
+      setPushAviso(error?.message || "Não consegui desativar notificações agora.");
     } finally {
       setPushSalvando(false);
+    }
+  }
+
+  async function testarPush() {
+    if (!uid || pushTestando) return;
+
+    try {
+      setPushTestando(true);
+      setPushAviso("Enviando teste...");
+      const result = await ativarPushNotifications(uid);
+      setProfile((p) => ({
+        ...p,
+        notificacoes: true,
+        pushNotifications: {
+          enabled: true,
+          permission: result.permission,
+          tokenKey: result.tokenKey,
+        },
+      }));
+      setPushInfo((p) => ({ ...p, supported: true, permission: result.permission }));
+      await testarPushNotification(uid);
+      setPushAviso("Notificação de teste enviada.");
+    } catch (error) {
+      const info = await getPushCapabilities().catch(() => null);
+      if (info) setPushInfo(info);
+      const permissionDenied =
+        typeof Notification !== "undefined" &&
+        (Notification.permission === "denied" || /bloquead|negad|permiss/i.test(String(error?.message || "")));
+      setPushAviso(permissionDenied ? "Permissão bloqueada no navegador." : error?.message || "Não consegui enviar o teste agora.");
+    } finally {
+      setPushTestando(false);
     }
   }
 
@@ -669,9 +744,15 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       };
 
       const fotoPrincipal = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
+      const profilePublic = { ...profile };
+      delete profilePublic.cpf;
+      delete profilePublic.cpfVerificacao;
+      delete profilePublic.cpfMasked;
+      delete profilePublic.documento;
+      delete profilePublic.documentoVerificacao;
 
       await update(ref(database, `${userBasePath}/profile`), {
-        ...profile,
+        ...profilePublic,
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
         avatar: fotoPrincipal || profile.avatarEmoji || "",
@@ -687,6 +768,24 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         },
         atualizadoEm: serverTimestamp(),
       });
+
+      const cpfDigits = onlyDigits(cpfDraft).slice(0, 11);
+      if (cpfDigits.length === 11) {
+        const masked = maskCpfSalvo(cpfDigits);
+        await update(ref(database, `userPrivate/${uid}/verification`), {
+          cpf: cpfDigits,
+          cpfMasked: masked,
+          cpfStatus: "em_breve",
+          cpfAtualizadoEm: serverTimestamp(),
+        });
+        setCpfSalvoMask(masked);
+        setCpfDraft("");
+        setCpfAviso("CPF salvo para verificação futura.");
+      } else if (cpfDigits.length > 0) {
+        setCpfAviso("CPF precisa ter 11 dígitos. Perfil salvo sem alterar o CPF.");
+      } else {
+        setCpfAviso("");
+      }
 
       await update(ref(database, `${userBasePath}/settings/mapa`), mapSettings);
       await update(ref(database, `${userBasePath}/settings/ui`), uiSettings);
@@ -757,17 +856,22 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     profile.perfilVerificado ||
     profile.trust?.verificado
   );
-  const perfilVerificadoBasico = !!(
-    !perfilVerificadoOficial &&
-    profile.nome &&
-    profile.cidade &&
-    (fotoPrincipal || profile.avatarEmoji) &&
-    (serviceStats.total > 0 || profile.isCorre || profile.isProfissional)
-  );
-  const perfilVerificado = perfilVerificadoOficial || perfilVerificadoBasico;
   const nivelCorreAtual = Number(accountStats.patenteCorre || calcularPatentePorServicos(accountStats.servicosCorre));
   const nivelProfAtual = Number(accountStats.patenteProf || (profile.isProfissional ? calcularPatentePorServicos(accountStats.servicosProf) : 0));
   const pushAtivo = profile.pushNotifications?.enabled === true;
+  const pushPermission = pushInfo.permission || "default";
+  const pushStatusLabel =
+    pushPermission === "granted"
+      ? "Ativada"
+      : pushPermission === "denied"
+        ? "Bloqueada"
+        : "Não ativada";
+  const pushStatusClass =
+    pushPermission === "granted"
+      ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-100"
+      : pushPermission === "denied"
+        ? "border-rose-300/20 bg-rose-400/10 text-rose-100"
+        : "border-amber-300/20 bg-amber-400/10 text-amber-100";
 
   return (
     <div className="fixed inset-0 z-[100000] bg-[#020617]">
@@ -865,13 +969,13 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   {profile.visivel ? "🟢 Visível" : "⚫ Oculto"}
                 </span>
 
-                {perfilVerificado ? (
+                {perfilVerificadoOficial ? (
                   <span className="px-3 py-1.5 rounded-full text-xs font-black bg-cyan-500/15 border border-cyan-300/25 text-cyan-200">
-                    {perfilVerificadoOficial ? "✓ Perfil verificado" : "✓ Básico verificado"}
+                    ✓ Perfil verificado
                   </span>
                 ) : (
-                  <span className="px-3 py-1.5 rounded-full text-xs font-black bg-slate-500/10 border border-slate-400/15 text-slate-300">
-                    Verificação pendente
+                  <span className="px-3 py-1.5 rounded-full text-xs font-black bg-emerald-500/10 border border-emerald-300/20 text-emerald-200">
+                    🟢 Verificação em breve
                   </span>
                 )}
 
@@ -1008,6 +1112,91 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   className={inputClass("min-h-28 resize-y")}
                 />
               </Field>
+
+              <section className="overflow-hidden rounded-[28px] border border-emerald-300/10 bg-gradient-to-br from-slate-950 via-[#0b1628] to-[#07111f] p-4 shadow-[0_22px_70px_rgba(0,0,0,0.22)]">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">
+                      Segurança e confiança
+                    </div>
+                    <h3 className="mt-1 text-lg font-black text-white">
+                      🔒 Construindo uma comunidade confiável
+                    </h3>
+                    <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">
+                      O Corre Aqui usa reputação, histórico e avaliações para aumentar a confiança entre clientes, corres e profissionais.
+                    </p>
+                  </div>
+
+                  <div className="inline-flex w-fit rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-black text-emerald-100">
+                    🟢 Perfil verificado em breve
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {trustItems.map((item) => (
+                    <div
+                      key={item.title}
+                      className="rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_14px_38px_rgba(0,0,0,0.16)]"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-lg">
+                          {item.icon}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-black text-white">{item.title}</div>
+                          <div className="mt-1 text-xs leading-relaxed text-slate-400">{item.text}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.045] p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-black text-white">
+                        CPF para verificação de perfil
+                      </div>
+                      <div className="mt-1 text-xs leading-relaxed text-slate-400">
+                        Em breve, perfis verificados terão mais confiança e destaque.
+                      </div>
+
+                      {cpfSalvoMask ? (
+                        <div className="mt-2 inline-flex rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-[11px] font-black text-emerald-100">
+                          CPF salvo: {cpfSalvoMask}
+                        </div>
+                      ) : (
+                        <div className="mt-2 inline-flex rounded-full border border-slate-300/10 bg-slate-400/10 px-3 py-1.5 text-[11px] font-black text-slate-300">
+                          Opcional
+                        </div>
+                      )}
+
+                      {cpfAviso ? (
+                        <div className="mt-2 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-2 text-[11px] font-bold text-cyan-100">
+                          {cpfAviso}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="w-full lg:w-72">
+                      <input
+                        value={cpfDraft}
+                        onChange={(e) => {
+                          setCpfDraft(formatCpfInput(e.target.value));
+                          setCpfAviso("");
+                        }}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder={cpfSalvoMask ? "Atualizar CPF" : "000.000.000-00"}
+                        className={inputClass("bg-slate-950/70")}
+                      />
+                      <div className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                        O app não pede documento ou selfie nesta etapa.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
           )}
 
@@ -1064,17 +1253,31 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     />
                   </label>
 
-                  <div className="mt-3 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="mt-3 rounded-[26px] border border-cyan-300/10 bg-gradient-to-br from-slate-950 via-[#0b1628] to-[#08111f] px-4 py-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)]">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <div className="text-sm font-extrabold text-white">Push real no celular</div>
-                        <div className="mt-1 text-xs leading-relaxed text-slate-400">
-                          Receba alertas fora do app quando o Firebase Messaging estiver configurado.
+                        <div className="flex items-center gap-2">
+                          <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-lg">
+                            🔔
+                          </div>
+                          <div>
+                            <div className="text-sm font-extrabold text-white">Notificações</div>
+                            <div className="mt-0.5 text-xs leading-relaxed text-slate-400">
+                              Receba avisos de chat, aceite, conclusão e avaliação.
+                            </div>
+                          </div>
                         </div>
-                        <div className="mt-2 rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2 text-[11px] font-bold text-slate-300">
-                          Permissao: {pushInfo.permission || "default"}
-                          {!pushInfo.supported && pushInfo.reason ? ` · ${pushInfo.reason}` : ""}
+
+                        <div className={`mt-3 inline-flex rounded-full border px-3 py-1.5 text-xs font-black ${pushStatusClass}`}>
+                          Status da permissão: {pushStatusLabel}
                         </div>
+
+                        {!pushInfo.supported && pushInfo.reason ? (
+                          <div className="mt-2 rounded-2xl border border-amber-300/15 bg-amber-400/10 px-3 py-2 text-[11px] font-bold text-amber-100">
+                            {pushInfo.reason}
+                          </div>
+                        ) : null}
+
                         {pushAviso ? (
                           <div className="mt-2 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-2 text-[11px] font-bold text-cyan-100">
                             {pushAviso}
@@ -1082,21 +1285,31 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                         ) : null}
                       </div>
 
-                      <div className="flex shrink-0 gap-2 sm:flex-col">
+                      <div className="grid shrink-0 gap-2 sm:min-w-48">
                         <button
                           type="button"
                           onClick={ativarPush}
-                          disabled={pushSalvando || !pushInfo.supported}
+                          disabled={pushSalvando || pushTestando || !pushInfo.supported}
                           className="h-11 rounded-2xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {pushSalvando ? "Aguarde..." : pushAtivo ? "Reativar notificações" : "Ativar notificações"}
+                          {pushSalvando ? "Ativando..." : "Ativar notificações"}
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={testarPush}
+                          disabled={pushSalvando || pushTestando || !pushInfo.supported}
+                          className="h-11 rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-slate-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {pushTestando ? "Enviando..." : "Testar notificação"}
+                        </button>
+
                         {pushAtivo ? (
                           <button
                             type="button"
                             onClick={desativarPush}
-                            disabled={pushSalvando}
-                            className="h-11 rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-slate-200 transition hover:bg-white/[0.1] disabled:opacity-50"
+                            disabled={pushSalvando || pushTestando}
+                            className="h-10 rounded-2xl border border-white/10 bg-transparent px-4 text-xs font-black text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200 disabled:opacity-50"
                           >
                             Desativar
                           </button>
