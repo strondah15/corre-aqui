@@ -72,24 +72,27 @@ export default function PushNotificationButton({ uid, compact = false, className
 
     try {
       setTesting(true)
-      setStatus('Pedindo permissão...')
+      setStatus('Enviando teste...')
 
       const result = await ativarPushNotifications(uid)
       setInfo((prev) => ({ ...prev, supported: true, permission: result.permission }))
-      setStatus(`Permissão concedida\nToken salvo: ${tokenPreview(result.token)}\nEnviando notificação teste...`)
+      setStatus(`Permissão concedida\nToken salvo: ${tokenPreview(result.token)}\nEnviando teste...`)
 
       const sent = await testarPushNotification(uid)
       setStatus(
         [
           'Permissão concedida',
           `Token salvo: ${tokenPreview(result.token)}`,
-          `Notificação teste enviada (${sent.successCount || 0} entregue, ${sent.failureCount || 0} falha).`,
+          `Notificação enviada (${sent.successCount || 0} entregue, ${sent.failureCount || 0} falha).`,
         ].join('\n')
       )
     } catch (error) {
       const nextInfo = await getPushCapabilities().catch(() => null)
       if (nextInfo) setInfo(nextInfo)
-      setStatus(error?.message || 'Nao consegui testar notificacoes agora.')
+      const permissionDenied =
+        typeof Notification !== 'undefined' &&
+        (Notification.permission === 'denied' || /bloquead|negad|permiss/i.test(String(error?.message || '')))
+      setStatus(permissionDenied ? 'Permissão negada' : error?.message || 'Nao consegui testar notificacoes agora.')
     } finally {
       setTesting(false)
     }
@@ -124,7 +127,7 @@ export default function PushNotificationButton({ uid, compact = false, className
           compact ? 'h-11 px-4 text-xs' : 'h-12 px-5 text-sm',
         ].join(' ')}
       >
-        {testing ? 'Testando...' : '🔔 Testar notificação'}
+        {testing ? 'Enviando teste...' : '🔔 Testar push agora'}
       </button>
 
       <div className={compact ? 'mt-2 text-[11px] font-bold text-slate-400' : 'mt-2 text-xs font-semibold leading-relaxed text-slate-400'}>

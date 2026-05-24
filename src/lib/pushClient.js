@@ -155,7 +155,7 @@ function mensagemErroPushApi(data, fallback = 'Nao consegui enviar o push de tes
   }
 
   if (reason === 'no_push_tokens') {
-    return 'Token ainda nao apareceu no Firebase para este usuario.'
+    return 'Token não encontrado.'
   }
 
   if (reason === 'user_notifications_disabled') {
@@ -190,7 +190,7 @@ export async function testarPushNotification(uid) {
     body: JSON.stringify({
       userId: uid,
       title: '🔔 Teste Corre Aqui',
-      body: 'Sua notificação push está funcionando!',
+      body: 'Sua notificação chegou com sucesso!',
       url: '/',
       tipo: 'push_teste',
       test: true,
