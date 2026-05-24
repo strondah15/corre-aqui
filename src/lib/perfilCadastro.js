@@ -42,7 +42,7 @@ export function perfilInicialFromAuth(userData = {}, authUser = null) {
     nome: profile.nome || userData.nome || authUser?.displayName || '',
     cidade: profile.cidade || userData.cidade || '',
     avatarEmoji: profile.avatarEmoji || userData.avatarEmoji || '',
-    fotoURL: profile.fotoURL || profile.photoURL || userData.fotoURL || userData.photoURL || authUser?.photoURL || '',
+    fotoURL: profile.fotoURL || userData.fotoURL || profile.photoURL || userData.photoURL || authUser?.photoURL || '',
     whatsapp: profile.whatsapp || userData.profWhats || userData.whatsapp || '',
     bio: profile.bio || userData.bio || '',
     tipoConta: TIPOS_CONTA[tipoSalvo] ? tipoSalvo : 'cliente',

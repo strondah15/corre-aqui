@@ -23,6 +23,15 @@ function esperar(ms, valor = null) {
   })
 }
 
+function isFotoValor(v) {
+  const s = String(v || '').trim()
+  return /^(https?:\/\/|data:image\/|blob:|\/)/i.test(s)
+}
+
+function pickFoto(...vals) {
+  return vals.map((v) => String(v || '').trim()).find(isFotoValor) || ''
+}
+
 function perfilCompletoLocal(uid) {
   if (!uid || typeof window === 'undefined') return false
 
@@ -65,33 +74,54 @@ async function salvarUsuarioBasico(user) {
   try {
     const userRef = ref(database, `users/${user.uid}`)
     const snap = await Promise.race([get(userRef), esperar(1800)])
-    const atual = snap?.val?.() || {}
+    const leituraConfirmada = typeof snap?.val === 'function'
+    const atual = leituraConfirmada ? snap.val() || {} : {}
     const profileAtual = atual.profile || {}
     const nomeAuth = user.displayName || (user.isAnonymous ? 'Visitante' : '')
     const fotoAuth = user.photoURL || ''
+    const fotoSalva = pickFoto(
+      atual.fotoURL,
+      profileAtual.fotoURL,
+      atual.avatar,
+      profileAtual.avatar,
+      atual.photoURL,
+      profileAtual.photoURL
+    )
+    const avatarEmojiSalvo =
+      atual.avatarEmoji ||
+      profileAtual.avatarEmoji ||
+      (!isFotoValor(atual.avatar) ? atual.avatar : '') ||
+      (!isFotoValor(profileAtual.avatar) ? profileAtual.avatar : '') ||
+      ''
 
     const basePayload = {
+      uid: user.uid,
       email: user.email || atual.email || '',
       anonimo: !!user.isAnonymous,
       authProvider: user.isAnonymous ? 'anonimo' : 'google',
       atualizadoEm: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     }
 
-    if (!atual.criadoEm) basePayload.criadoEm = serverTimestamp()
-    if (!atual.nome && nomeAuth) basePayload.nome = nomeAuth
-    if (!atual.fotoURL && fotoAuth) basePayload.fotoURL = fotoAuth
-    if (!atual.photoURL && fotoAuth) basePayload.photoURL = fotoAuth
+    if (leituraConfirmada && !atual.criadoEm) basePayload.criadoEm = serverTimestamp()
+    if (leituraConfirmada && !atual.nome && nomeAuth) basePayload.nome = nomeAuth
+    const fotoFallback = fotoSalva || (leituraConfirmada ? fotoAuth : '')
+    if (!atual.fotoURL && fotoFallback) basePayload.fotoURL = fotoFallback
+    if (!atual.photoURL && fotoFallback) basePayload.photoURL = fotoFallback
+    if (!atual.avatarEmoji && avatarEmojiSalvo) basePayload.avatarEmoji = avatarEmojiSalvo
 
     Promise.race([update(userRef, basePayload), esperar(1800)]).catch(() => {})
 
     const profilePayload = {
       atualizadoEm: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     }
 
-    if (!profileAtual.nome && nomeAuth) profilePayload.nome = nomeAuth
-    if (!profileAtual.email && user.email) profilePayload.email = user.email
-    if (!profileAtual.fotoURL && fotoAuth) profilePayload.fotoURL = fotoAuth
-    if (!profileAtual.photoURL && fotoAuth) profilePayload.photoURL = fotoAuth
+    if (leituraConfirmada && !profileAtual.nome && nomeAuth) profilePayload.nome = nomeAuth
+    if (leituraConfirmada && !profileAtual.email && user.email) profilePayload.email = user.email
+    if (!profileAtual.fotoURL && fotoFallback) profilePayload.fotoURL = fotoFallback
+    if (!profileAtual.photoURL && fotoFallback) profilePayload.photoURL = fotoFallback
+    if (!profileAtual.avatarEmoji && avatarEmojiSalvo) profilePayload.avatarEmoji = avatarEmojiSalvo
 
     if (Object.keys(profilePayload).length > 1) {
       Promise.race([
@@ -161,8 +191,26 @@ export default function LoginGate({ children }) {
     setChecandoPerfil(false)
 
     const nomeLocal = data?.profile?.nome || data?.nome || user.displayName || (user.isAnonymous ? 'Visitante' : '')
+    const fotoCache = pickFoto(
+      data?.fotoURL,
+      data?.profile?.fotoURL,
+      data?.avatar,
+      data?.profile?.avatar,
+      data?.photoURL,
+      data?.profile?.photoURL,
+      user.photoURL
+    )
+    const avatarCache =
+      data?.avatarEmoji ||
+      data?.profile?.avatarEmoji ||
+      (!isFotoValor(data?.avatar) ? data?.avatar : '') ||
+      (!isFotoValor(data?.profile?.avatar) ? data?.profile?.avatar : '') ||
+      ''
+
     localStorage.setItem('meuNome', nomeLocal)
     localStorage.setItem('meuId', user.uid)
+    if (fotoCache) localStorage.setItem('fotoURL', fotoCache)
+    if (avatarCache) localStorage.setItem('avatarEmoji', avatarCache)
   }, [])
 
   useEffect(() => {

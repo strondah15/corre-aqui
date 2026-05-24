@@ -13,24 +13,28 @@ const floatingSection =
 const safeStr = (v) => String(v || '').trim()
 
 
-const getFotoProvider = (u) => safeStr(
+const getFotoPersonalizada = (u) => safeStr(
   u?.fotoURL ||
-    u?.photoURL ||
     u?.avatarUrl ||
     u?.avatarURL ||
     u?.imagem ||
     u?.imageUrl ||
     u?.profile?.fotoURL ||
-    u?.profile?.photoURL ||
     u?.profile?.avatarUrl ||
     u?.profile?.avatarURL ||
     u?.profile?.imagem ||
     u?.profile?.imageUrl ||
     u?.perfil?.fotoURL ||
-    u?.perfil?.photoURL ||
     u?.profissional?.fotoURL ||
-    u?.profissional?.photoURL ||
     u?.corre?.fotoURL ||
+    ''
+)
+
+const getGoogleFoto = (u) => safeStr(
+  u?.photoURL ||
+    u?.profile?.photoURL ||
+    u?.perfil?.photoURL ||
+    u?.profissional?.photoURL ||
     u?.corre?.photoURL ||
     ''
 )
@@ -45,8 +49,8 @@ const normalizeProvider = (u) => {
   if (!uid) return null
 
   const nome = u?.nome || u?.profile?.nome || 'Usuário'
-  const fotoURL = getFotoProvider(u)
   const avatarEmoji = safeStr(u?.avatarEmoji || u?.profile?.avatarEmoji || u?.perfil?.avatarEmoji || '')
+  const fotoURL = getFotoPersonalizada(u) || (!avatarEmoji ? getGoogleFoto(u) : '')
 
   const isCorre = !!(u?.isCorre || u?.profissional?.isCorre)
   const isProfissional = !!(u?.isProfissional || u?.profissional?.isProfissional)

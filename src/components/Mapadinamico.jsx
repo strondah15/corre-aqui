@@ -566,9 +566,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }
 
   /* =======================
-     0) Avatar do LocalStorage
+     0) Cache visual do avatar ate o Firebase carregar
   ======================= */
   useEffect(() => {
+    if (meuId && usersObj?.[meuId]) return
+
     try {
       const f =
         localStorage.getItem('fotoURL') ||
@@ -579,7 +581,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       setFotoURL(f || '')
       setAvatarEmoji(e || '')
     } catch {}
-  }, [openPerfil])
+  }, [openPerfil, meuId, usersObj])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -790,10 +792,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     const userRef = ref(database, `users/${meuId}`)
     const connectedRef = ref(database, '.info/connected')
 
-    const getAvatarPatch = () => ({
-      fotoURL: fotoURL || null,
-      avatarEmoji: avatarEmoji || null,
-    })
+    const getAvatarPatch = () => {
+      const patch = {}
+      const foto = pickFoto(fotoURL)
+      const emoji = String(avatarEmoji || '').trim()
+
+      if (foto) patch.fotoURL = foto
+      if (emoji) patch.avatarEmoji = emoji
+
+      return patch
+    }
 
     const writeOnline = async () => {
       const local = await getMyLocation()
@@ -975,11 +983,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     if (!meuUserNode) return
 
     const profile = meuUserNode.profile || {}
-    const foto = pickFoto(
+    const fotoPersonalizada = pickFoto(
       meuUserNode.fotoURL,
-      meuUserNode.photoURL,
       profile.fotoURL,
-      profile.photoURL,
       meuUserNode.avatar,
       profile.avatar
     )
@@ -988,20 +994,26 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       profile.avatarEmoji ||
       (!isFotoValor(meuUserNode.avatar) ? meuUserNode.avatar : '') ||
       ''
+    const fotoGoogle = pickFoto(meuUserNode.photoURL, profile.photoURL)
+    const foto = fotoPersonalizada || (!emoji ? fotoGoogle : '')
 
-    if (foto) {
-      setFotoURL(foto)
-      try {
+    setFotoURL(foto || '')
+    try {
+      if (foto) {
         localStorage.setItem('fotoURL', foto)
-      } catch {}
-    }
+      } else {
+        localStorage.removeItem('fotoURL')
+      }
+    } catch {}
 
-    if (emoji) {
-      setAvatarEmoji(emoji)
-      try {
+    setAvatarEmoji(emoji || '')
+    try {
+      if (emoji) {
         localStorage.setItem('avatarEmoji', emoji)
-      } catch {}
-    }
+      } else {
+        localStorage.removeItem('avatarEmoji')
+      }
+    } catch {}
   }, [meuUserNode])
 
   const isProfissional = useMemo(() => !!meuUserNode?.isProfissional, [meuUserNode])

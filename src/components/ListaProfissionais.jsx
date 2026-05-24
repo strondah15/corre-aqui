@@ -9,32 +9,41 @@ import { CATEGORIES } from '@/constants/categories'
 
 const safeStr = (v) => String(v || '').trim()
 
-function getFotoURL(user = {}, profile = {}, profissional = {}) {
-  // Busca a foto nos nomes mais comuns que já usamos no projeto.
-  // Isso faz a foto salva no perfil aparecer também no card do cliente.
+function getFotoPersonalizada(user = {}, profile = {}, profissional = {}) {
   return safeStr(
     user.fotoURL ||
-      user.photoURL ||
       user.avatarUrl ||
       user.avatarURL ||
       user.imagem ||
       user.imageUrl ||
       profile.fotoURL ||
-      profile.photoURL ||
       profile.avatarUrl ||
       profile.avatarURL ||
       profile.imagem ||
       profile.imageUrl ||
       user.perfil?.fotoURL ||
-      user.perfil?.photoURL ||
       profissional.fotoURL ||
-      profissional.photoURL ||
       user.corre?.fotoURL ||
-      user.corre?.photoURL ||
       profile.corre?.fotoURL ||
+      ''
+  )
+}
+
+function getGoogleFoto(user = {}, profile = {}, profissional = {}) {
+  return safeStr(
+    user.photoURL ||
+      profile.photoURL ||
+      user.perfil?.photoURL ||
+      profissional.photoURL ||
+      user.corre?.photoURL ||
       profile.corre?.photoURL ||
       ''
   )
+}
+
+function getFotoURL(user = {}, profile = {}, profissional = {}, avatarEmoji = '') {
+  // Ordem de exibicao: foto salva no app, emoji/avatar, foto do Google, iniciais.
+  return getFotoPersonalizada(user, profile, profissional) || (!avatarEmoji ? getGoogleFoto(user, profile, profissional) : '')
 }
 
 function normalizeUsers(raw) {
@@ -46,13 +55,14 @@ function normalizeUsers(raw) {
     const user = v || {}
     const profile = user.profile || {}
     const profissional = user.profissional || {}
+    const avatarEmoji = user.avatarEmoji || profile.avatarEmoji || user.perfil?.avatarEmoji || ''
 
     return {
       uid,
       ...user,
       nome: user.nome || profile.nome || 'Profissional',
-      fotoURL: getFotoURL(user, profile, profissional),
-      avatarEmoji: user.avatarEmoji || profile.avatarEmoji || user.perfil?.avatarEmoji || '',
+      fotoURL: getFotoURL(user, profile, profissional, avatarEmoji),
+      avatarEmoji,
       cidade: user.cidade || profile.cidade || '',
       isProfissional: !!(user.isProfissional || profile.isProfissional || profissional?.ativo || profissional),
       isCorre: !!(user.isCorre || profile.isCorre || profile?.corre?.ativo || user?.corre?.ativo),

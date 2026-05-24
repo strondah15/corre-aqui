@@ -11,28 +11,38 @@ function safeUrl(u) {
   return ''
 }
 
-function getFotoURL(item) {
+function getFotoPersonalizada(item) {
   return safeUrl(
     item?.fotoURL ||
-      item?.photoURL ||
       item?.avatarUrl ||
       item?.avatarURL ||
       item?.imagem ||
       item?.imageUrl ||
       item?.profile?.fotoURL ||
-      item?.profile?.photoURL ||
       item?.profile?.avatarUrl ||
       item?.profile?.avatarURL ||
       item?.profile?.imagem ||
       item?.profile?.imageUrl ||
       item?.perfil?.fotoURL ||
-      item?.perfil?.photoURL ||
       item?.profissional?.fotoURL ||
-      item?.profissional?.photoURL ||
       item?.corre?.fotoURL ||
+      ''
+  )
+}
+
+function getGoogleFoto(item) {
+  return safeUrl(
+    item?.photoURL ||
+      item?.profile?.photoURL ||
+      item?.perfil?.photoURL ||
+      item?.profissional?.photoURL ||
       item?.corre?.photoURL ||
       ''
   )
+}
+
+function getFotoURL(item, usarGoogleFallback = true) {
+  return getFotoPersonalizada(item) || (usarGoogleFallback ? getGoogleFoto(item) : '')
 }
 
 function pickText(...values) {
@@ -92,8 +102,9 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
   const corre = item?.corre || profile?.corre || {}
 
   const nome = pickText(item?.nome, profile?.nome, 'Profissional')
-  const fotoURL = getFotoURL(item)
-  const emoji = pickText(item?.avatarEmoji, profile?.avatarEmoji, item?.perfil?.avatarEmoji, '🙂')
+  const emojiSalvo = pickText(item?.avatarEmoji, profile?.avatarEmoji, item?.perfil?.avatarEmoji)
+  const fotoURL = getFotoURL(item, !emojiSalvo)
+  const emoji = emojiSalvo || '🙂'
   const cidade = pickText(item?.profCidadeAtende, prof?.regiao, corre?.regiao, item?.cidade, profile?.cidade, 'Cidade não informada')
 
   const isProf = !!(item?.isProfissional || profile?.isProfissional || prof?.ativo || item?.profissional)

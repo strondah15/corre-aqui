@@ -152,8 +152,11 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
     const profissionalId = user.uid || user.id
     const nome = pickText(user.nome, profile.nome, 'Usuário')
     const cidade = pickText(user.profCidadeAtende, user.cidade, profile.cidade, prof.regiao, corre.regiao, 'Local não informado')
-    const fotoURL = safeUrl(user.fotoURL || user.photoURL || profile.fotoURL || profile.photoURL || '')
-    const avatarEmoji = pickText(user.avatarEmoji, profile.avatarEmoji, '🙂')
+    const fotoPersonalizada = safeUrl(user.fotoURL || profile.fotoURL || user.avatarURL || profile.avatarURL || '')
+    const avatarEmojiSalvo = pickText(user.avatarEmoji, profile.avatarEmoji)
+    const fotoGoogle = safeUrl(user.photoURL || profile.photoURL || '')
+    const fotoURL = fotoPersonalizada || (!avatarEmojiSalvo ? fotoGoogle : '')
+    const avatarEmoji = avatarEmojiSalvo || '🙂'
     const bio = pickText(user.bio, profile.bio, user.profResumo, prof.descricao, corre.bio)
 
     const isCorre = !!(user.isCorre || profile.isCorre || corre?.ativo || user.corre)

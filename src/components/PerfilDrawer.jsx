@@ -362,6 +362,33 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         patenteProf: Number(data.patenteProf || (isProfissionalUser ? calcularPatentePorServicos(servicosProf) : 0)),
       });
 
+      const profileData = data.profile || {};
+      const fotoPrincipal = pickFoto(
+        data.fotoURL,
+        profileData.fotoURL,
+        data.avatar,
+        profileData.avatar,
+        data.photoURL,
+        profileData.photoURL,
+      );
+      const avatarEmoji =
+        data.avatarEmoji ||
+        profileData.avatarEmoji ||
+        (!isFotoValor(data.avatar) ? data.avatar : "") ||
+        (!isFotoValor(profileData.avatar) ? profileData.avatar : "") ||
+        "";
+
+      setProfile((prev) => ({
+        ...prev,
+        nome: prev.nome || profileData.nome || data.nome || "",
+        cidade: prev.cidade || profileData.cidade || data.cidade || "",
+        bio: prev.bio || profileData.bio || data.bio || "",
+        fotoURL: prev.fotoURL || fotoPrincipal,
+        photoURL: prev.photoURL || fotoPrincipal,
+        avatar: prev.avatar || fotoPrincipal || avatarEmoji || "",
+        avatarEmoji: prev.avatarEmoji || avatarEmoji,
+      }));
+
       if (!settingsLoadedRef.current) {
         setProfile((prev) => ({
           ...prev,
@@ -388,9 +415,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           const profissional = data.profissional || {};
           const fotoPrincipal = pickFoto(
             data.fotoURL,
-            data.photoURL,
             data.avatar,
             prev.fotoURL,
+            data.photoURL,
             prev.photoURL,
           );
           const avatarEmoji = data.avatarEmoji || (!isFotoValor(data.avatar) ? data.avatar : "") || prev.avatarEmoji || "";
@@ -598,6 +625,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       fotoStoragePath: storagePath || null,
       fotoStorage: storageModo,
       fotoAtualizadaEm: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     };
 
     try {
@@ -612,9 +640,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       "profissional/fotoURL": fotoFinal || null,
       "profissional/photoURL": fotoFinal || null,
       atualizadoEm: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
 
     await update(ref(database, userBasePath), {
+      uid,
       ...payload,
       "profile/fotoURL": fotoFinal || null,
       "profile/photoURL": fotoFinal || null,
@@ -624,11 +654,13 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       "profissional/fotoURL": fotoFinal || null,
       "profissional/photoURL": fotoFinal || null,
       atualizadoEm: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
 
     await update(ref(database, `usuariosOnline/${uid}`), {
       ...payload,
       atualizadoEm: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
   }
 
@@ -767,6 +799,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           photoURL: fotoPrincipal || null,
         },
         atualizadoEm: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
 
       const cpfDigits = onlyDigits(cpfDraft).slice(0, 11);
@@ -821,6 +854,8 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           origem: "perfil",
           atualizadoEm: serverTimestamp(),
         },
+        atualizadoEm: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
 
       await update(ref(database, `usuariosOnline/${uid}`), {
@@ -837,7 +872,13 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         ocupadoAte: profile.ocupadoAte || "",
         agendaAberta: profile.agendaAberta !== false,
         atualizadoEm: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
+
+      try {
+        if (fotoPrincipal) window.localStorage.setItem("fotoURL", fotoPrincipal);
+        if (profile.avatarEmoji) window.localStorage.setItem("avatarEmoji", profile.avatarEmoji);
+      } catch {}
 
       setSalvo(true);
       setTimeout(() => setSalvo(false), 2200);

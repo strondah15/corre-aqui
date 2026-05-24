@@ -95,7 +95,7 @@ function isValidLoc(loc) {
 function safeUrl(u) {
   const s = String(u || "").trim();
   if (!s) return "";
-  if (!/^https?:\/\//i.test(s)) return "";
+  if (!/^(https?:\/\/|data:image\/|blob:)/i.test(s)) return "";
   return s;
 }
 
@@ -552,14 +552,15 @@ export default function MapinhaModal({
         const lat = Number(loc.lat);
         const lng = Number(loc.lng);
 
+        const avatarEmoji = String(u?.avatarEmoji || u?.profile?.avatarEmoji || u?.avatar?.emoji || "");
         const fotoURLraw =
           u?.fotoURL ||
           u?.profile?.fotoURL ||
           u?.avatarURL ||
           u?.avatar?.url ||
+          (!avatarEmoji ? (u?.photoURL || u?.profile?.photoURL) : "") ||
           "";
         const fotoURL = safeUrl(fotoURLraw);
-        const avatarEmoji = String(u?.avatarEmoji || u?.avatar?.emoji || "");
 
         return {
           id: uidU || `${lat},${lng}`,
