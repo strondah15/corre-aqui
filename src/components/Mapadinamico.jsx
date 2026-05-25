@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 
 import { auth, database } from '@/lib/firebase'
@@ -467,6 +468,7 @@ function BadgeModo({ modo }) {
 }
 
 export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {}) {
+  const router = useRouter()
   const [tab, setTab] = useState('corre') // corre | inbox | agenda
   const [clientePainelBaixo, setClientePainelBaixo] = useState('') // '' | meusPedidos | conversas | chat
 
@@ -1711,14 +1713,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const abrirChatFocado = (pedido) => {
     if (!pedido?.id) return
-    setChatPedido(pedido)
-    if (modoApp === 'cliente') {
-      setClientePainelBaixo('chat')
-      return
-    }
-    setFiltro('todos')
-    setCardAbertoId(pedido.id)
-    setTab('corre')
+    setClientePainelBaixo('')
+    setChatPedido(null)
+    router.push(`/chat/${encodeURIComponent(String(pedido.id))}?voltar=${modoApp}`)
   }
 
   const glassCard = 'bg-white/10  border border-white/10 shadow-xl shadow-black/30'
@@ -1922,7 +1919,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       if (p) {
                         abrirChatFocado(p)
                       } else {
-                        showToast({ type: 'info', title: 'Aguarde', message: 'Esse pedido ainda não carregou.' })
+                        router.push(`/chat/${encodeURIComponent(String(pedidoId))}?voltar=${modoApp}`)
                       }
                     }}
                   />
@@ -1991,9 +1988,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               meuId={meuId}
               corres={corres}
               enabled={minhasConfiguracoesUi.notificacoes}
-              onAbrirChat={(pedido) => {
-                setChatPedido(pedido)
-              }}
+              onAbrirChat={abrirChatFocado}
               onVerMapa={(pedido) => {
                 setMapItem(pedido)
               }}
@@ -2318,7 +2313,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      <button className={btnDark} onClick={() => setChatPedido(p)} type="button">
+                      <button className={btnDark} onClick={() => abrirChatFocado(p)} type="button">
                         💬 Chat
                       </button>
 
@@ -2717,10 +2712,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 <MeusPedidosCliente
                   meuId={meuId}
                   corres={corres}
-                  onAbrirChat={(pedido) => {
-                    setChatPedido(pedido)
-                    setClientePainelBaixo('chat')
-                  }}
+                  onAbrirChat={abrirChatFocado}
                   onVerMapa={(pedido) => {
                     setMapItem(pedido)
                   }}
@@ -2741,14 +2733,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       const p = corres.find((x) => x.id === pedidoId)
 
                       if (p) {
-                        setChatPedido(p)
-                        setClientePainelBaixo('chat')
+                        abrirChatFocado(p)
                       } else {
-                        showToast({
-                          type: 'info',
-                          title: 'Aguarde',
-                          message: 'Esse pedido ainda não carregou.',
-                        })
+                        router.push(`/chat/${encodeURIComponent(String(pedidoId))}?voltar=${modoApp}`)
                       }
                     }}
                   />

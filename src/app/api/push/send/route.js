@@ -28,7 +28,9 @@ function stringData(payload) {
 
 function resolveClickUrl(body) {
   if (typeof body?.url === 'string' && body.url.startsWith('/')) return body.url
-  if (body?.acao === 'abrir_chat' && body?.conversaId) return '/'
+  if (body?.acao === 'abrir_chat' && body?.conversaId) {
+    return `/chat/${encodeURIComponent(String(body.conversaId))}`
+  }
   if (body?.acao === 'ver_notificacoes') return '/'
   return '/'
 }

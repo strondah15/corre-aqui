@@ -8,10 +8,13 @@ export default function SplashCorreAqui({ onFinish }) {
 
   useEffect(() => {
     const mobile = window.matchMedia?.("(max-width: 640px)")?.matches;
-    const timer = setTimeout(() => {
-      setVisivel(false);
-      onFinish?.();
-    }, mobile ? 3300 : 3800);
+    const timer = setTimeout(
+      () => {
+        setVisivel(false);
+        onFinish?.();
+      },
+      mobile ? 3300 : 3800,
+    );
 
     return () => clearTimeout(timer);
   }, [onFinish]);
@@ -70,7 +73,7 @@ export default function SplashCorreAqui({ onFinish }) {
           }}
           animate={{
             x: -10,
-            y: -6,
+            y: -60,
             opacity: 1,
             scale: 1,
           }}

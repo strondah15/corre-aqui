@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { auth, database } from '@/lib/firebase'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { ref, update, get, serverTimestamp } from 'firebase/database'
@@ -15,7 +16,10 @@ import {
 import TelaBoasVindas from './TelaBoasVindas'
 import CadastroPerfilInicial from './CadastroPerfilInicial'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
+import SplashScreen from '@/components/SplashScreen'
 import { perfilMinimoCompleto } from '@/lib/perfilCadastro'
+
+let vinhetaJaRodouNoRuntime = false
 
 function esperar(ms, valor = null) {
   return new Promise((resolve) => {
@@ -144,19 +148,9 @@ async function salvarUsuarioBasico(user) {
   }
 }
 
-function StatusEntrada({ title = 'Abrindo Corre Aqui...', message = 'Preparando uma entrada leve para o app.' }) {
-  return (
-    <main className="grid min-h-[100dvh] place-items-center bg-[#050914] px-4 text-white">
-      <div className="w-full max-w-sm rounded-[26px] border border-white/10 bg-white/[0.055] p-5 text-center shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
-        <LogoCorreAqui className="mx-auto h-16 w-16 rounded-2xl" />
-        <h1 className="mt-4 text-xl font-black">{title}</h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate-400">{message}</p>
-      </div>
-    </main>
-  )
-}
-
 export default function LoginGate({ children }) {
+  const pathname = usePathname()
+  const pularVinheta = String(pathname || '').startsWith('/chat/')
   const [uid, setUid] = useState(null)
   const [authUser, setAuthUser] = useState(null)
   const [userData, setUserData] = useState(null)
@@ -167,6 +161,41 @@ export default function LoginGate({ children }) {
   const [loginLoading, setLoginLoading] = useState(false)
   const [viuBoasVindas, setViuBoasVindas] = useState(false)
   const [loginError, setLoginError] = useState('')
+  const [splashMinDone, setSplashMinDone] = useState(false)
+  const [splashClosing, setSplashClosing] = useState(false)
+  const [splashDone, setSplashDone] = useState(pularVinheta || vinhetaJaRodouNoRuntime)
+
+  const aguardandoEntrada = loading || (checandoPerfil && !cadastroCompleto)
+  const splashReadyToClose = splashMinDone && !aguardandoEntrada
+
+  useEffect(() => {
+    if (pularVinheta || vinhetaJaRodouNoRuntime) {
+      if (pularVinheta) vinhetaJaRodouNoRuntime = true
+      setSplashMinDone(true)
+      setSplashClosing(false)
+      setSplashDone(true)
+      return undefined
+    }
+
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    const timer = window.setTimeout(() => {
+      setSplashMinDone(true)
+    }, reduceMotion ? 1250 : 1850)
+
+    return () => window.clearTimeout(timer)
+  }, [pularVinheta])
+
+  useEffect(() => {
+    if (splashDone || !splashReadyToClose) return undefined
+
+    setSplashClosing(true)
+    const timer = window.setTimeout(() => {
+      vinhetaJaRodouNoRuntime = true
+      setSplashDone(true)
+    }, 240)
+
+    return () => window.clearTimeout(timer)
+  }, [splashDone, splashReadyToClose])
 
   const aplicarUsuario = useCallback(async (user) => {
     if (!user) {
@@ -328,13 +357,25 @@ export default function LoginGate({ children }) {
     setCadastroCompleto(true)
   }
 
-  if (loading) {
+  if (!splashDone) {
     return (
-      <StatusEntrada
-        title={resolvendoRedirect ? 'Voltando do Google...' : 'Abrindo Corre Aqui...'}
-        message={resolvendoRedirect ? 'Confirmando sua conta no celular. Não precisa tocar de novo.' : 'Restaurando sua sessão para entrar direto.'}
+      <SplashScreen
+        exiting={splashClosing}
+        status={
+          resolvendoRedirect
+            ? 'Confirmando sua conta...'
+            : loading
+              ? 'Restaurando sua sessão...'
+              : splashMinDone
+                ? 'Abrindo o app...'
+                : 'Conectando perto de você...'
+        }
       />
     )
+  }
+
+  if (aguardandoEntrada) {
+    return <main className="min-h-[100dvh] bg-[#020617]" aria-busy="true" />
   }
 
   if (!viuBoasVindas) {
@@ -400,15 +441,6 @@ export default function LoginGate({ children }) {
           </div>
         </div>
       </main>
-    )
-  }
-
-  if (checandoPerfil && !cadastroCompleto) {
-    return (
-      <StatusEntrada
-        title="Preparando seu perfil..."
-        message="Carregando seus dados para abrir sem travar no celular."
-      />
     )
   }
 

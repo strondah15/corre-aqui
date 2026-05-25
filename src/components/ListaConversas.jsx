@@ -123,28 +123,28 @@ export default function ListaConversas({
   )
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#07111f] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-4 py-4">
-        <div className="flex items-center justify-between gap-3.5">
-          <div className="flex min-w-0 items-center gap-3">
+    <div className="overflow-hidden rounded-[22px] border border-white/10 bg-[#07111f] shadow-[0_18px_60px_rgba(0,0,0,0.32)] md:rounded-[28px] md:shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-3 py-3 md:px-4 md:py-4">
+        <div className="flex items-center justify-between gap-2.5 md:gap-3.5">
+          <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
             <LogoCorreAqui
-              className="h-14 w-14 rounded-2xl border-0 shadow-none"
+              className="h-10 w-10 rounded-xl border-0 shadow-none md:h-14 md:w-14 md:rounded-2xl"
               imageClassName={logoUrl ? '' : ''}
             />
 
             <div className="min-w-0 leading-tight">
-              <div className="text-base font-black text-white">Conversas</div>
-              <div className="mt-1 truncate text-xs text-slate-400">Pedidos aceitos, combinados e histórico rápido</div>
+              <div className="text-sm font-black text-white md:text-base">Conversas</div>
+              <div className="mt-0.5 truncate text-[11px] text-slate-400 md:mt-1 md:text-xs">Pedidos aceitos e histórico rápido</div>
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] font-black text-slate-200">
+          <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
+            <div className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-black text-slate-200 md:px-2.5 md:py-1 md:text-[11px]">
               {conversasFiltradas.length}
             </div>
             <div
               className={[
-                'rounded-full border px-2.5 py-1 text-[11px] font-black',
+                'rounded-full border px-2 py-0.5 text-[10px] font-black md:px-2.5 md:py-1 md:text-[11px]',
                 totalNaoLidas > 0
                   ? 'border-rose-300/30 bg-rose-500/15 text-rose-100'
                   : 'border-white/10 bg-white/[0.05] text-slate-300',
@@ -156,17 +156,17 @@ export default function ListaConversas({
           </div>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-2 md:mt-3">
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por pedido, pessoa ou mensagem..."
-            className="h-12 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 text-sm text-white outline-none placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500/35"
+            className="h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-xs text-white outline-none placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500/35 md:h-12 md:rounded-2xl md:px-4 md:text-sm"
           />
         </div>
       </div>
 
-      <div className="max-h-[calc(100dvh-14rem)] overflow-y-auto p-3">
+      <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-2 md:max-h-[calc(100dvh-14rem)] md:p-3">
         {conversasFiltradas.length === 0 ? (
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 text-slate-200">
             <div className="font-black text-white">Nenhuma conversa ainda</div>
@@ -175,7 +175,7 @@ export default function ListaConversas({
             </div>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5 md:space-y-2">
             {conversasFiltradas.map((c, index) => {
               const hora = timeShort(c.lastAt || c.updatedAt)
               const titulo = c.titulo || 'Conversa'
@@ -197,18 +197,18 @@ export default function ListaConversas({
                     onAbrirChat?.(c.pedidoId)
                   }}
                   className={[
-                    'w-full rounded-[22px] border px-3 py-3 text-left transition-all duration-200',
+                    'w-full rounded-[18px] border px-2.5 py-2.5 text-left transition-all duration-200 md:rounded-[22px] md:px-3 md:py-3',
                     c.unread
                       ? 'border-blue-300/30 bg-blue-500/14 shadow-[0_14px_42px_rgba(37,99,235,0.16)]'
                       : 'border-white/10 bg-white/[0.045] hover:bg-white/[0.07]',
                   ].join(' ')}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <div className={c.unread ? 'mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.8)]' : 'mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-700'} />
+                  <div className="flex items-start justify-between gap-2.5 md:gap-3">
+                    <div className="flex min-w-0 items-start gap-2.5 md:gap-3">
+                      <div className={c.unread ? 'mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.8)] md:h-2.5 md:w-2.5' : 'mt-1 h-2 w-2 shrink-0 rounded-full bg-slate-700 md:h-2.5 md:w-2.5'} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <div className="truncate font-black text-white">{titulo}</div>
+                          <div className="truncate text-sm font-black text-white md:text-base">{titulo}</div>
                           {c.unread ? (
                             <span className="rounded-full bg-blue-400/15 px-2 py-0.5 text-[10px] font-black text-blue-100 ring-1 ring-blue-300/20">
                               novo
@@ -221,10 +221,10 @@ export default function ListaConversas({
                       </div>
                     </div>
 
-                    <div className="shrink-0 text-[11px] font-bold text-slate-500">{hora}</div>
+                    <div className="shrink-0 text-[10px] font-bold text-slate-500 md:text-[11px]">{hora}</div>
                   </div>
 
-                  <div className="mt-2 line-clamp-2 pl-5 text-sm leading-relaxed text-slate-300">
+                  <div className="mt-1.5 line-clamp-2 pl-4 text-xs leading-snug text-slate-300 md:mt-2 md:pl-5 md:text-sm md:leading-relaxed">
                     {preview ? (
                       <>
                         {enviadaPorMim ? <span className="text-slate-500">Você: </span> : null}

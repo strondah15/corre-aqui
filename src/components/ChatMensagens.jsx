@@ -197,6 +197,7 @@ export default function ChatMensagens({
   mostrarAnuncio = false,
   onClose,
   onToast,
+  modoPagina = false,
 }) {
   const [mensagens, setMensagens] = useState([])
   const [texto, setTexto] = useState('')
@@ -602,40 +603,44 @@ export default function ChatMensagens({
 
   if (fechado) return null
 
+  const containerClass = modoPagina
+    ? 'relative z-10 flex h-[calc(100dvh-1rem)] min-h-0 w-full max-w-[920px] flex-col overflow-hidden rounded-[20px] border border-white/10 bg-[#07111f] shadow-[0_24px_80px_rgba(0,0,0,0.34)] sm:h-[calc(100dvh-2.5rem)] sm:rounded-[30px]'
+    : 'relative z-[9999] flex h-[min(82dvh,720px)] max-h-[calc(100dvh-1rem)] w-full max-w-[780px] flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#07111f] shadow-[0_30px_100px_rgba(0,0,0,0.45)] sm:rounded-[30px]'
+
   return (
-    <div className="relative z-[9999] flex h-[min(82dvh,720px)] max-h-[calc(100dvh-1rem)] w-full max-w-[780px] flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#07111f] shadow-[0_30px_100px_rgba(0,0,0,0.45)] sm:rounded-[30px]">
-      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-3 py-3 sm:px-4 sm:py-4">
-        <div className="flex items-start justify-between gap-3">
+    <div className={containerClass}>
+      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-2.5 py-2 sm:px-4 sm:py-3">
+        <div className="flex items-start justify-between gap-2.5 sm:gap-3">
           <div className="min-w-0">
-            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-300">Conversa do pedido</div>
-            <div className="mt-1 truncate text-lg font-black text-white">{pedidoTitulo}</div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            <div className="text-[9px] font-black uppercase tracking-[0.14em] text-blue-300 sm:text-[11px]">Conversa do pedido</div>
+            <div className="mt-0.5 truncate text-base font-black leading-tight text-white sm:text-lg">{pedidoTitulo}</div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400 sm:text-xs">
               <span>Você: <b className="text-slate-200">{nomeMeu}</b></span>
               <span className="h-1 w-1 rounded-full bg-slate-600" />
               <span>Outro: <b className="text-slate-200">{outroNome}</b></span>
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <div className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] font-black text-slate-200 sm:px-3 sm:py-1.5 sm:text-xs">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <div className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-black text-slate-200 sm:px-3 sm:py-1.5 sm:text-xs">
               {mensagens.length} msg
             </div>
             <button
               type="button"
               onClick={fecharChat}
-              aria-label="Fechar conversa"
-              className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-xl font-black text-white transition hover:bg-white/[0.12] active:scale-95"
+              aria-label={modoPagina ? 'Voltar' : 'Fechar conversa'}
+              className="grid h-8 w-8 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-base font-black text-white transition hover:bg-white/[0.12] active:scale-95 sm:h-10 sm:w-10 sm:rounded-2xl sm:text-xl"
             >
-              ×
+              {modoPagina ? '←' : '×'}
             </button>
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <div className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-100">
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:gap-2">
+          <div className="shrink-0 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-100 sm:px-3 sm:py-1.5 sm:text-xs">
             100% do valor combinado fica com quem faz o serviço
           </div>
-          <div className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-bold text-slate-300">
+          <div className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-bold text-slate-300 sm:px-3 sm:py-1.5 sm:text-xs">
             {statusConversa}
           </div>
         </div>
@@ -649,21 +654,21 @@ export default function ChatMensagens({
         </div>
       ) : null}
 
-      <div ref={chatRef} className="min-h-0 flex-1 overflow-y-auto bg-[#02091a] px-3 py-3 sm:px-4 sm:py-4">
+      <div ref={chatRef} className="min-h-0 flex-1 overflow-y-auto bg-[#02091a] px-2 py-2 sm:px-4 sm:py-4">
         {mensagens.length === 0 ? (
-          <div className="grid h-full min-h-[260px] place-items-center text-center">
-            <div className="max-w-sm">
-              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] text-2xl">
+          <div className="grid h-full min-h-[150px] place-items-center text-center sm:min-h-[240px]">
+            <div className="max-w-xs sm:max-w-sm">
+              <div className="mx-auto grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] text-xl sm:h-14 sm:w-14 sm:text-2xl">
                 💬
               </div>
-              <div className="mt-4 text-lg font-black text-white">Combine tudo por aqui</div>
-              <p className="mt-2 text-sm leading-relaxed text-slate-400">
+              <div className="mt-2 text-base font-black text-white sm:mt-4 sm:text-lg">Combine tudo por aqui</div>
+              <p className="mt-1 text-xs leading-relaxed text-slate-400 sm:mt-2 sm:text-sm">
                 Horário, endereço, valor final e qualquer detalhe do serviço ficam registrados na conversa.
               </p>
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {mensagens.map((msg, index) => {
               const minha =
                 (msg.userId && meuId && String(msg.userId) === String(meuId)) ||
@@ -680,7 +685,7 @@ export default function ChatMensagens({
                     transition={{ duration: 0.2 }}
                     className="flex justify-center"
                   >
-                    <div className="max-w-[88%] rounded-full border border-cyan-300/15 bg-cyan-400/10 px-3 py-1.5 text-center text-xs font-bold text-cyan-100">
+                    <div className="max-w-[90%] rounded-full border border-cyan-300/15 bg-cyan-400/10 px-2.5 py-1 text-center text-[11px] font-bold text-cyan-100 sm:px-3 sm:py-1.5 sm:text-xs">
                       {msg.texto || 'Atualização do pedido'}
                     </div>
                   </motion.div>
@@ -695,20 +700,20 @@ export default function ChatMensagens({
                   transition={{ duration: 0.22, delay: Math.min(index * 0.018, 0.14), ease: 'easeOut' }}
                   className={`flex ${minha ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`max-w-[90%] sm:max-w-[82%] ${minha ? 'text-right' : 'text-left'}`}>
-                    <div className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  <div className={`max-w-[88%] sm:max-w-[82%] ${minha ? 'text-right' : 'text-left'}`}>
+                    <div className="mb-0.5 px-1 text-[9px] font-bold uppercase tracking-wide text-slate-500 sm:mb-1 sm:text-[10px]">
                       {minha ? 'Você' : safeName(msg.autor, outroNome)}
                     </div>
                     <div
                       className={[
-                        'rounded-[22px] px-3.5 py-2.5 shadow-[0_12px_34px_rgba(0,0,0,0.22)]',
+                        'rounded-[18px] px-3 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.2)] sm:rounded-[22px] sm:px-3.5 sm:py-2.5',
                         minha
                           ? 'rounded-br-md bg-blue-600 text-white'
                           : 'rounded-bl-md border border-white/10 bg-slate-800 text-white',
                       ].join(' ')}
                     >
                       {msg.texto ? (
-                        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{msg.texto}</div>
+                        <div className="whitespace-pre-wrap break-words text-[13px] leading-snug sm:text-sm sm:leading-relaxed">{msg.texto}</div>
                       ) : null}
 
                       <MensagemAnexo anexo={msg.anexo} audioLegacy={msg.audio} duracao={msg.duracao} />
@@ -723,7 +728,7 @@ export default function ChatMensagens({
         )}
       </div>
 
-      <div className="border-t border-white/10 bg-slate-950/95 px-3 py-3 sm:px-4">
+      <div className="border-t border-white/10 bg-slate-950/95 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-3">
         <input
           ref={cameraInputRef}
           type="file"
@@ -741,14 +746,14 @@ export default function ChatMensagens({
         />
 
         {!gravando ? (
-          <div className="mb-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mb-1.5 flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-2 sm:gap-2">
             {SUGESTOES.map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => enviar(s)}
                 disabled={enviando || anexando || !!anexoSelecionado}
-                className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-50"
+                className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[11px] font-bold text-slate-200 transition hover:bg-white/[0.09] disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-xs"
               >
                 {s}
               </button>
@@ -757,31 +762,31 @@ export default function ChatMensagens({
         ) : null}
 
         {anexoSelecionado ? (
-          <div className="mb-2 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06]">
-            <div className="flex items-center gap-3 p-2.5">
+          <div className="mb-1.5 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] sm:mb-2">
+            <div className="flex items-center gap-2 p-2 sm:gap-3 sm:p-2.5">
               {anexoSelecionado.tipo === 'imagem' ? (
                 <div
-                  className="h-14 w-14 shrink-0 rounded-xl bg-slate-900 bg-cover bg-center"
+                  className="h-11 w-11 shrink-0 rounded-xl bg-slate-900 bg-cover bg-center sm:h-14 sm:w-14"
                   style={{ backgroundImage: `url(${JSON.stringify(anexoSelecionado.previewUrl)})` }}
                   aria-label={anexoSelecionado.nome}
                 />
               ) : anexoSelecionado.tipo === 'video' ? (
-                <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-slate-900 text-xl">🎥</div>
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-900 text-lg sm:h-14 sm:w-14 sm:text-xl">🎥</div>
               ) : anexoSelecionado.tipo === 'audio' ? (
-                <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-emerald-600 text-xl">🎤</div>
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-600 text-lg sm:h-14 sm:w-14 sm:text-xl">🎤</div>
               ) : (
-                <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-slate-800 text-xl">📎</div>
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-800 text-lg sm:h-14 sm:w-14 sm:text-xl">📎</div>
               )}
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-black text-white">{anexoSelecionado.nome}</div>
-                <div className="mt-0.5 text-xs font-semibold text-slate-400">
+                <div className="truncate text-xs font-black text-white sm:text-sm">{anexoSelecionado.nome}</div>
+                <div className="mt-0.5 text-[11px] font-semibold text-slate-400 sm:text-xs">
                   {previewAnexo(anexoSelecionado)} {anexoSelecionado.tamanho ? `· ${formatarTamanho(anexoSelecionado.tamanho)}` : ''}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={limparAnexoSelecionado}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.08] text-lg font-black text-white hover:bg-white/[0.14]"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.08] text-base font-black text-white hover:bg-white/[0.14] sm:h-10 sm:w-10 sm:rounded-2xl sm:text-lg"
                 aria-label="Remover anexo"
               >
                 ×
@@ -790,12 +795,12 @@ export default function ChatMensagens({
           </div>
         ) : null}
 
-        <div className="flex items-end gap-1.5 sm:gap-2">
+        <div className="flex items-end gap-1 sm:gap-2">
           <button
             type="button"
             onClick={() => cameraInputRef.current?.click()}
             disabled={!pedidoId || enviando || anexando || gravando}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.07] text-base text-white transition hover:bg-white/[0.12] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-14 sm:w-14 sm:rounded-2xl sm:text-lg"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.07] text-sm text-white transition hover:bg-white/[0.12] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-12 sm:w-12 sm:rounded-2xl sm:text-lg"
             title="Abrir câmera"
             aria-label="Abrir câmera"
           >
@@ -806,7 +811,7 @@ export default function ChatMensagens({
             type="button"
             onClick={() => arquivoInputRef.current?.click()}
             disabled={!pedidoId || enviando || anexando || gravando}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.07] text-base text-white transition hover:bg-white/[0.12] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-14 sm:w-14 sm:rounded-2xl sm:text-lg"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.07] text-sm text-white transition hover:bg-white/[0.12] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-12 sm:w-12 sm:rounded-2xl sm:text-lg"
             title="Anexar arquivo"
             aria-label="Anexar arquivo"
           >
@@ -825,7 +830,7 @@ export default function ChatMensagens({
             onPointerLeave={solicitarParadaGravacao}
             onContextMenu={(e) => e.preventDefault()}
             disabled={!pedidoId || enviando || anexando}
-            className={`grid h-10 w-10 shrink-0 touch-none select-none place-items-center rounded-xl text-base text-white transition sm:h-14 sm:w-14 sm:rounded-2xl sm:text-xl ${
+            className={`grid h-9 w-9 shrink-0 touch-none select-none place-items-center rounded-xl text-sm text-white transition sm:h-12 sm:w-12 sm:rounded-2xl sm:text-xl ${
               gravando ? 'scale-105 bg-red-600 shadow-[0_0_34px_rgba(220,38,38,0.35)]' : 'bg-emerald-600 hover:bg-emerald-500'
             } disabled:cursor-not-allowed disabled:opacity-50`}
             title="Segure para gravar"
@@ -835,7 +840,7 @@ export default function ChatMensagens({
 
           <div className="min-w-0 flex-1">
             {gravando ? (
-              <div className="flex h-10 items-center rounded-xl border border-red-500/30 bg-red-500/10 px-3 text-sm font-mono text-red-200 sm:h-14 sm:rounded-2xl sm:px-4 sm:text-base">
+              <div className="flex h-9 items-center rounded-xl border border-red-500/30 bg-red-500/10 px-3 text-xs font-mono text-red-200 sm:h-12 sm:rounded-2xl sm:px-4 sm:text-base">
                 Gravando... {formatarTempo(tempo)}
               </div>
             ) : (
@@ -845,7 +850,7 @@ export default function ChatMensagens({
                 onKeyDown={onKeyDown}
                 placeholder={anexoSelecionado ? 'Adicionar legenda...' : 'Digite uma mensagem sobre o serviço...'}
                 rows={1}
-                className="h-10 min-h-10 w-full max-h-32 resize-none rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500/40 sm:h-14 sm:min-h-14 sm:rounded-2xl sm:px-4 sm:py-3"
+                className="h-9 min-h-9 w-full max-h-28 resize-none rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-[13px] text-white outline-none placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500/40 sm:h-12 sm:min-h-12 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
               />
             )}
           </div>
@@ -854,7 +859,7 @@ export default function ChatMensagens({
             type="button"
             onClick={() => enviar()}
             disabled={enviando || anexando || (!texto.trim() && !anexoSelecionado) || gravando}
-            className="grid h-10 min-w-10 place-items-center rounded-xl bg-blue-600 px-3 text-sm font-black text-white transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-14 sm:min-w-20 sm:rounded-2xl sm:px-4"
+            className="grid h-9 min-w-9 place-items-center rounded-xl bg-blue-600 px-2.5 text-xs font-black text-white transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-12 sm:min-w-16 sm:rounded-2xl sm:px-4 sm:text-sm"
           >
             {enviando || anexando ? (
               '...'

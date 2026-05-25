@@ -121,15 +121,24 @@ export default function CentralNotificacoes({
     await marcarLida(n)
     const pedidoId = n?.pedidoId || n?.conversaId
     const pedido = (corres || []).find((p) => String(p?.id || '') === String(pedidoId || ''))
+    const acao = String(n?.acao || '').toLowerCase()
+    const tipo = String(n?.tipo || '').toLowerCase()
+    const deveAbrirChat =
+      acao === 'abrir_chat' ||
+      tipo === 'mensagem_chat' ||
+      tipo === 'corre_aceito' ||
+      tipo === 'servico_concluido'
 
     if (!pedido) {
+      if (deveAbrirChat && pedidoId) {
+        onAbrirChat?.({ id: pedidoId, titulo: n?.titulo || 'Conversa do pedido' })
+        return
+      }
       onToast?.({ type: 'info', title: 'Pedido carregando', message: 'Abra novamente em alguns segundos.' })
       return
     }
 
-    const acao = String(n?.acao || '').toLowerCase()
-    const tipo = String(n?.tipo || '').toLowerCase()
-    if (acao === 'abrir_chat' || tipo === 'mensagem_chat' || tipo === 'corre_aceito' || tipo === 'servico_concluido') {
+    if (deveAbrirChat) {
       onAbrirChat?.(pedido)
       return
     }
