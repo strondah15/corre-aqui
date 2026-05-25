@@ -1,39 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Corre Aqui">
   <defs>
-    <linearGradient id="pin" x1="142" y1="78" x2="384" y2="452" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#67e8b9"/>
-      <stop offset="0.45" stop-color="#12858f"/>
-      <stop offset="1" stop-color="#063b4b"/>
-    </linearGradient>
-    <radialGradient id="bubble" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(229 190) rotate(58) scale(179 115)">
-      <stop stop-color="#ffffff"/>
-      <stop offset="0.62" stop-color="#f6fbff"/>
-      <stop offset="1" stop-color="#dce6eb"/>
+    <radialGradient id="bg" cx="50%" cy="38%" r="68%">
+      <stop offset="0" stop-color="#0b2330"/>
+      <stop offset="0.55" stop-color="#03111f"/>
+      <stop offset="1" stop-color="#020617"/>
     </radialGradient>
-    <filter id="soft" x="-35%" y="-35%" width="170%" height="170%">
-      <feDropShadow dx="0" dy="28" stdDeviation="26" flood-color="#020617" flood-opacity="0.34"/>
-    </filter>
   </defs>
 
-  <rect width="512" height="512" rx="112" fill="#020617"/>
-  <path
-    d="M256 463c-9-15-31-45-57-82-54-77-111-162-111-242C88 59 154 26 256 26s168 33 168 113c0 80-57 165-111 242-26 37-48 67-57 82Z"
-    fill="url(#pin)"
-    filter="url(#soft)"
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="246" r="184" fill="#22d3ee" opacity="0.08"/>
+  <image
+    href="/logo-corre-aqui.png.png"
+    x="66"
+    y="22"
+    width="380"
+    height="468"
+    preserveAspectRatio="xMidYMid meet"
   />
-  <path
-    d="M95 160c0-78 64-123 161-123 93 0 158 42 161 114 3 85-73 161-179 169l-69 63c-12 11-31 0-27-16l14-55C116 286 95 232 95 160Z"
-    fill="url(#bubble)"
-  />
-  <path
-    d="M161 331 232 267c88-5 151-58 151-119 0-58-54-89-127-89-76 0-126 33-126 101 0 54 22 96 63 117l-18 66c-2 8-11 12-14-12Z"
-    fill="#ffffff"
-    opacity="0.96"
-  />
-
-  <circle cx="312" cy="127" r="29" fill="#075a6b"/>
-  <path d="M224 152h46l49 37c12 9 15 25 6 37-8 12-25 14-37 6l-32-24-31 49 54 39c11 8 15 24 7 36l-37 58c-8 12-24 15-36 7-12-8-15-24-7-36l25-39-48-35-42 56c-8 11-23 14-35 6-11-8-14-24-6-35l54-72 31-55-20 2-24 31c-9 11-25 13-36 4-11-9-13-25-4-36l38-47c5-6 13-10 21-10Z" fill="#075a6b"/>
-  <path d="M247 182 206 262l-59 41" fill="none" stroke="#075a6b" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <ellipse cx="257" cy="455" rx="86" ry="17" fill="#020617" opacity="0.28"/>
 </svg>

@@ -253,8 +253,8 @@ const notificarTelefone = async ({ title, body, tag }) => {
     new Notification(title || 'Corre Aqui', {
       body: body || '',
       tag: tag || `corre-aqui-${Date.now()}`,
-      icon: '/corre-aqui-icon.svg',
-      badge: '/corre-aqui-icon.svg',
+      icon: '/corre-aqui-icon-192.png',
+      badge: '/corre-aqui-icon-192.png',
     })
 
     return true

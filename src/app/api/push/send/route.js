@@ -154,8 +154,8 @@ export async function POST(request) {
     url,
     title,
     body: message,
-    icon: '/corre-aqui-icon.svg',
-    badge: '/corre-aqui-icon.svg',
+    icon: '/corre-aqui-icon-192.png',
+    badge: '/corre-aqui-icon-192.png',
     tag,
     requireInteraction: body.prioridade === 'alta',
   })

@@ -2,7 +2,7 @@ const CACHE_NAME = 'corre-aqui-static-v1'
 const STATIC_ASSETS = [
   '/',
   '/manifest.webmanifest',
-  '/corre-aqui-icon.svg',
+  '/corre-aqui-icon-192.png',
   '/logo-corre-aqui.png.png',
 ]
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
@@ -24,8 +24,8 @@ function showCorreNotification(payload = {}) {
 
   return self.registration.showNotification(title, {
     body,
-    icon: data.icon || '/corre-aqui-icon.svg',
-    badge: data.badge || '/corre-aqui-icon.svg',
+    icon: data.icon || '/corre-aqui-icon-192.png',
+    badge: data.badge || '/corre-aqui-icon-192.png',
     tag: data.tag || data.pedidoId || 'corre-aqui',
     renotify: true,
     requireInteraction: data.requireInteraction === 'true',

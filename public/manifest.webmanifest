@@ -14,16 +14,16 @@
   "categories": ["business", "productivity", "utilities"],
   "icons": [
     {
-      "src": "/corre-aqui-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/corre-aqui-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/logo-corre-aqui.png.png",
-      "sizes": "471x628",
+      "src": "/corre-aqui-icon-512.png",
+      "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ],
   "shortcuts": [
@@ -32,14 +32,14 @@
       "short_name": "Pedido",
       "description": "Abrir a criação de pedidos.",
       "url": "/criar-pedido",
-      "icons": [{ "src": "/corre-aqui-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/corre-aqui-icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Mapa ao vivo",
       "short_name": "Mapa",
       "description": "Ver o mapa ao vivo.",
       "url": "/mapa",
-      "icons": [{ "src": "/corre-aqui-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/corre-aqui-icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

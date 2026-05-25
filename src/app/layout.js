@@ -28,11 +28,11 @@ export const metadata = {
   },
   icons: {
     icon: [
-      { url: "/corre-aqui-icon.svg", type: "image/svg+xml" },
-      { url: "/logo-corre-aqui.png.png", type: "image/png" },
+      { url: "/corre-aqui-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/corre-aqui-icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    shortcut: "/corre-aqui-icon.svg",
-    apple: "/logo-corre-aqui.png.png",
+    shortcut: "/corre-aqui-icon-192.png",
+    apple: "/apple-touch-icon.png",
   },
 };
 

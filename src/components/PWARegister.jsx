@@ -42,8 +42,8 @@ export default function PWARegister() {
       try {
         new Notification(title, {
           body,
-          icon: data.icon || '/corre-aqui-icon.svg',
-          badge: data.badge || '/corre-aqui-icon.svg',
+          icon: data.icon || '/corre-aqui-icon-192.png',
+          badge: data.badge || '/corre-aqui-icon-192.png',
           tag: data.tag || `corre-aqui-${Date.now()}`,
         })
       } catch {}
