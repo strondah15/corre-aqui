@@ -220,13 +220,13 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
       whileHover={{ y: -4 }}
-      className="group relative flex h-full min-h-[300px] flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white p-3 text-slate-950 shadow-[0_14px_38px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/[0.03] md:min-h-[360px] md:rounded-[28px] md:p-4 md:shadow-[0_18px_48px_rgba(15,23,42,0.14)]"
+      className="group relative flex h-full min-h-[248px] flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white p-2.5 text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/[0.03] md:min-h-[360px] md:rounded-[28px] md:p-4 md:shadow-[0_18px_48px_rgba(15,23,42,0.14)]"
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[72px] bg-gradient-to-b from-slate-50 via-emerald-50/70 to-transparent md:h-24" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-slate-50 via-emerald-50/70 to-transparent md:h-24" />
 
       <div className="relative flex items-start gap-2.5 md:gap-3">
         <div
-          className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[18px] border border-white bg-slate-100 bg-cover bg-center text-2xl shadow-[0_10px_26px_rgba(15,23,42,0.14)] ring-[3px] ring-slate-100 md:h-16 md:w-16 md:rounded-[22px] md:text-3xl md:shadow-[0_14px_34px_rgba(15,23,42,0.16)] md:ring-4"
+          className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white bg-slate-100 bg-cover bg-center text-xl shadow-[0_10px_22px_rgba(15,23,42,0.14)] ring-[3px] ring-slate-100 md:h-16 md:w-16 md:rounded-[22px] md:text-3xl md:shadow-[0_14px_34px_rgba(15,23,42,0.16)] md:ring-4"
           style={fotoURL ? { backgroundImage: `url(${JSON.stringify(fotoURL)})` } : undefined}
           aria-label={nome}
         >
@@ -260,7 +260,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
         </div>
       </div>
 
-      <div className="relative mt-3 grid grid-cols-3 gap-1.5 md:mt-4 md:gap-2">
+      <div className="relative mt-2 grid grid-cols-3 gap-1.5 md:mt-4 md:gap-2">
         <div className="rounded-xl bg-slate-50 px-2 py-2 text-center ring-1 ring-slate-200 md:rounded-2xl md:py-2.5">
           <div className="text-sm font-black md:text-base">{Number.isFinite(notaMedia) && notaMedia > 0 ? notaMedia.toFixed(1) : '--'}</div>
           <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Nota</div>
@@ -288,12 +288,13 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
         </div>
       ) : null}
 
-      <div className="relative mt-3 space-y-1.5 md:mt-4 md:space-y-2">
-        {servicos.map((servico) => (
+      <div className="relative mt-2 space-y-1.5 md:mt-4 md:space-y-2">
+        {servicos.map((servico, idx) => (
           <div
             key={servico.id}
             className={[
-              'rounded-xl border p-2.5 md:rounded-2xl md:p-3',
+              idx > 0 ? 'hidden md:block' : '',
+              'rounded-xl border p-2 md:rounded-2xl md:p-3',
               servico.accent === 'amber' ? 'border-amber-200 bg-amber-50/85' : '',
               servico.accent === 'blue' ? 'border-blue-200 bg-blue-50/85' : '',
               servico.accent === 'slate' ? 'border-slate-200 bg-slate-50' : '',
@@ -323,7 +324,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
       </div>
 
       {detalhes.length ? (
-        <div className="relative mt-2.5 grid gap-1.5 md:mt-3">
+        <div className="relative mt-2.5 hidden gap-1.5 md:mt-3 md:grid">
           {detalhes.slice(0, 3).map((d) => (
             <div key={`${d.label}-${d.value}`} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] md:gap-3 md:rounded-2xl md:px-3 md:py-2 md:text-[11px]">
               <span className="font-bold text-slate-400">{d.label}</span>
@@ -333,7 +334,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
         </div>
       ) : null}
 
-      <div className="relative mt-auto flex flex-col gap-1.5 pt-3 md:gap-2 md:pt-4">
+      <div className="relative mt-auto flex flex-col gap-1.5 pt-2.5 md:gap-2 md:pt-4">
         {agendaStatus.emServico ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-black text-amber-800 md:rounded-2xl md:px-3 md:py-2 md:text-xs">
             Em serviço {agendaStatus.ocupadoAte ? `até ${formatOcupadoAte(agendaStatus.ocupadoAte)}` : ''}

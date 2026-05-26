@@ -147,13 +147,13 @@ export default function CentralNotificacoes({
   }
 
   return (
-    <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[#07111f] text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-4 py-4">
+    <div className="overflow-hidden rounded-[20px] border border-white/10 bg-[#07111f] text-white shadow-[0_20px_60px_rgba(0,0,0,0.32)] md:rounded-[28px] md:shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-3 py-3 md:px-4 md:py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-300">Central</div>
-            <div className="mt-1 text-xl font-black">Notificações</div>
-            <div className="mt-1 text-xs text-slate-400">
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-300 md:text-[11px] md:tracking-[0.18em]">Central</div>
+            <div className="mt-0.5 text-lg font-black md:mt-1 md:text-xl">Notificações</div>
+            <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-400 md:mt-1 md:text-xs">
               Aceites, mensagens, conclusões, avaliações e alertas importantes.
             </div>
           </div>
@@ -161,13 +161,13 @@ export default function CentralNotificacoes({
             type="button"
             onClick={marcarTodas}
             disabled={naoLidas === 0}
-            className="shrink-0 rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-45"
+            className="shrink-0 rounded-xl border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-black text-slate-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-45 md:rounded-2xl md:px-3 md:py-2 md:text-xs"
           >
             Marcar lidas
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-3 grid grid-cols-3 gap-1.5 md:mt-4 md:gap-2">
           {[
             ['todas', `Todas ${notificacoes.length}`],
             ['nao_lidas', `Novas ${naoLidas}`],
@@ -178,7 +178,7 @@ export default function CentralNotificacoes({
               type="button"
               onClick={() => setFiltro(id)}
               className={[
-                'h-10 rounded-2xl border text-xs font-black transition active:scale-[0.98]',
+                'h-9 rounded-xl border text-[11px] font-black transition active:scale-[0.98] md:h-10 md:rounded-2xl md:text-xs',
                 filtro === id
                   ? 'border-cyan-300/35 bg-cyan-400/14 text-cyan-100'
                   : 'border-white/10 bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]',
@@ -190,7 +190,7 @@ export default function CentralNotificacoes({
         </div>
       </div>
 
-      <div className="max-h-[calc(100dvh-15rem)] overflow-y-auto p-3">
+      <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
         {filtradas.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-white/12 bg-white/[0.035] p-5 text-center">
             <div className="text-lg font-black">Tudo em dia</div>
@@ -209,10 +209,10 @@ export default function CentralNotificacoes({
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.22, delay: Math.min(index * 0.025, 0.18) }}
-                  className={`rounded-[22px] border p-3 ${toneClass(info.tone, unread)}`}
+                  className={`rounded-[18px] border p-2.5 md:rounded-[22px] md:p-3 ${toneClass(info.tone, unread)}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.07] text-lg">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.07] text-base md:h-11 md:w-11 md:rounded-2xl md:text-lg">
                       {info.icon}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -227,18 +227,18 @@ export default function CentralNotificacoes({
                       <div className="mt-1 truncate text-sm font-black text-white">
                         {n?.titulo || 'Nova notificação'}
                       </div>
-                      <div className="mt-1 line-clamp-2 text-sm leading-relaxed text-slate-300">
+                      <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-300 md:text-sm md:leading-relaxed">
                         {n?.mensagem || 'Você tem uma atualização no Corre Aqui.'}
                       </div>
                       <div className="mt-2 text-[11px] font-bold text-slate-500">{formatData(n?.criadoEm || n?.createdAt)}</div>
                     </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-2.5 flex flex-wrap gap-1.5 md:mt-3 md:gap-2">
                     <button
                       type="button"
                       onClick={() => abrir(n)}
-                      className="rounded-2xl bg-blue-600 px-3 py-2 text-xs font-black text-white transition hover:bg-blue-500 active:scale-[0.98]"
+                      className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-black text-white transition hover:bg-blue-500 active:scale-[0.98] md:rounded-2xl md:py-2"
                     >
                       Abrir
                     </button>
@@ -246,7 +246,7 @@ export default function CentralNotificacoes({
                       <button
                         type="button"
                         onClick={() => marcarLida(n)}
-                        className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-black text-slate-200 transition hover:bg-white/[0.1]"
+                        className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-black text-slate-200 transition hover:bg-white/[0.1] md:rounded-2xl md:py-2"
                       >
                         Marcar lida
                       </button>

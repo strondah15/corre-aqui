@@ -126,7 +126,7 @@ function PlanoResumo({ onOpenPlanos }) {
 function Field({ label, children, hint }) {
   return (
     <label className="block">
-      <div className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
+      <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 md:mb-1.5 md:text-xs">
         {label}
       </div>
       {children}
@@ -139,8 +139,8 @@ function Field({ label, children, hint }) {
 
 function inputClass(extra = "") {
   return [
-    "w-full rounded-2xl bg-slate-900/70 border border-white/10",
-    "px-4 py-3 text-slate-100 placeholder:text-slate-500",
+    "w-full rounded-xl md:rounded-2xl bg-slate-900/70 border border-white/10",
+    "px-3 py-2.5 md:px-4 md:py-3 text-sm md:text-base text-slate-100 placeholder:text-slate-500",
     "outline-none focus:ring-2 focus:ring-blue-500/35 focus:border-blue-400/50",
     "transition",
     extra,
@@ -940,12 +940,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         "
       >
         <div className="sticky top-0 z-10 bg-[#06101d]/95 backdrop-blur-xl border-b border-white/10">
-          <div className="mx-auto w-full max-w-7xl px-4 md:px-8 py-4 flex items-center justify-between gap-3">
+          <div className="mx-auto w-full max-w-7xl px-3 py-2.5 md:px-8 md:py-4 flex items-center justify-between gap-3">
             <div>
-              <div className="text-lg font-extrabold text-white">
+              <div className="text-base font-extrabold text-white md:text-lg">
                 Meu perfil
               </div>
-              <div className="text-xs text-slate-400">
+              <div className="text-[11px] text-slate-400 md:text-xs">
                 Configure como você aparece no Corre Aqui.
               </div>
             </div>
@@ -953,7 +953,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             <button
               type="button"
               onClick={onClose}
-              className="w-12 h-12 rounded-3xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-white text-xl font-black active:scale-[0.96] transition shadow-lg"
+              className="h-9 w-9 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-white text-base font-black active:scale-[0.96] transition shadow-lg md:h-12 md:w-12 md:rounded-3xl md:text-xl"
               title="Fechar"
             >
               ✕
@@ -961,9 +961,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           </div>
         </div>
 
-        <div className="mx-auto w-full max-w-7xl p-4 md:p-6">
+        <div className="mx-auto w-full max-w-7xl p-2.5 md:p-6">
           {/* FOTO + HEADER */}
-          <div className="rounded-[32px] bg-gradient-to-br from-[#0b1730] via-[#0a1428] to-[#050b16] border border-cyan-300/10 p-5 md:p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
+          <div className="rounded-[22px] bg-gradient-to-br from-[#0b1730] via-[#0a1428] to-[#050b16] border border-cyan-300/10 p-3 md:rounded-[32px] md:p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
             <div className="flex flex-col items-center text-center">
               <label className={["cursor-pointer relative group", fotoSalvando ? "pointer-events-none opacity-80" : ""].join(" ")}>
                 <input
@@ -976,12 +976,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
                 {fotoPrincipal ? (
                   <div
-                    className="w-28 h-28 rounded-full bg-cover bg-center border-4 border-cyan-300/80 ring-4 ring-cyan-400/15 shadow-[0_0_45px_rgba(34,211,238,0.28)]"
+                    className="h-20 w-20 rounded-full bg-cover bg-center border-4 border-cyan-300/80 ring-4 ring-cyan-400/15 shadow-[0_0_45px_rgba(34,211,238,0.28)] md:h-28 md:w-28"
                     style={{ backgroundImage: `url(${JSON.stringify(fotoPrincipal)})` }}
                     aria-label="Foto do perfil"
                   />
                 ) : (
-                  <div className="w-28 h-28 rounded-full bg-white/10 flex items-center justify-center text-4xl border border-white/20 shadow-2xl">
+                  <div className="h-20 w-20 rounded-full bg-white/10 flex items-center justify-center text-3xl border border-white/20 shadow-2xl md:h-28 md:w-28 md:text-4xl">
                     {profile.avatarEmoji || "📷"}
                   </div>
                 )}
@@ -997,15 +997,15 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 </div>
               ) : null}
 
-              <div className="mt-4 text-2xl font-extrabold text-white">
+              <div className="mt-3 text-xl font-extrabold text-white md:mt-4 md:text-2xl">
                 {profile.nome || "Seu nome"}
               </div>
 
-              <div className="mt-1 text-sm text-slate-400">
+              <div className="mt-0.5 text-xs text-slate-400 md:mt-1 md:text-sm">
                 {profile.cidade || "Cidade não informada"}
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 md:mt-4 md:gap-2">
                 <span
                   className={`px-3 py-1.5 rounded-full text-xs font-black border ${
                     profile.visivel
@@ -1042,35 +1042,35 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 ) : null}
               </div>
 
-              <div className="mt-5 grid grid-cols-3 gap-2 w-full">
-                <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
-                  <div className="text-lg font-black text-white">{serviceStats.total}</div>
+              <div className="mt-3 grid grid-cols-3 gap-1.5 w-full md:mt-5 md:gap-2">
+                <div className="rounded-xl bg-white/[0.06] border border-white/10 px-2 py-2 md:rounded-2xl md:px-3 md:py-3">
+                  <div className="text-base font-black text-white md:text-lg">{serviceStats.total}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                     Histórico
                   </div>
                 </div>
-                <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
-                  <div className="text-lg font-black text-white">
+                <div className="rounded-xl bg-white/[0.06] border border-white/10 px-2 py-2 md:rounded-2xl md:px-3 md:py-3">
+                  <div className="text-base font-black text-white md:text-lg">
                     {serviceStats.notaMedia ? `★ ${serviceStats.notaMedia.toFixed(1)}` : "Sem nota"}
                   </div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                     Nota
                   </div>
                 </div>
-                <div className="rounded-2xl bg-white/[0.06] border border-white/10 px-3 py-3">
-                  <div className="text-lg font-black text-white">{serviceStats.problemas}</div>
+                <div className="rounded-xl bg-white/[0.06] border border-white/10 px-2 py-2 md:rounded-2xl md:px-3 md:py-3">
+                  <div className="text-base font-black text-white md:text-lg">{serviceStats.problemas}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">
                     Problemas
                   </div>
                 </div>
               </div>
 
-              <div className="mt-2 grid grid-cols-2 gap-2 w-full text-left">
-                <div className="rounded-2xl bg-white/[0.04] border border-white/10 px-3 py-2">
+              <div className="mt-1.5 grid grid-cols-2 gap-1.5 w-full text-left md:mt-2 md:gap-2">
+                <div className="rounded-xl bg-white/[0.04] border border-white/10 px-2.5 py-1.5 md:rounded-2xl md:px-3 md:py-2">
                   <div className="text-sm font-black text-cyan-100">{serviceStats.comoCorre}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Como corre</div>
                 </div>
-                <div className="rounded-2xl bg-white/[0.04] border border-white/10 px-3 py-2">
+                <div className="rounded-xl bg-white/[0.04] border border-white/10 px-2.5 py-1.5 md:rounded-2xl md:px-3 md:py-2">
                   <div className="text-sm font-black text-cyan-100">{serviceStats.comoCliente}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Como cliente</div>
                 </div>
@@ -1084,8 +1084,8 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           </div>
 
           {/* MENU DO PERFIL */}
-          <div className="mt-5 rounded-[30px] bg-slate-950/65 border border-white/10 p-2 shadow-[0_20px_70px_rgba(0,0,0,0.28)]">
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <div className="mt-3 rounded-[20px] bg-slate-950/65 border border-white/10 p-1.5 shadow-[0_20px_70px_rgba(0,0,0,0.28)] md:mt-5 md:rounded-[30px] md:p-2">
+            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6 md:gap-2">
               {["perfil", "corre", "profissional", "config", "monetizacao", "patentes"].map(
                 (t) => (
                   <button
@@ -1093,15 +1093,15 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     onClick={() => setTab(t)}
                     type="button"
                     className={[
-                      "group min-h-[72px] rounded-[24px] px-2 py-3 text-center border transition-all duration-200 active:scale-[0.96]",
+                      "group min-h-[54px] rounded-[16px] px-1.5 py-2 text-center border transition-all duration-200 active:scale-[0.96] md:min-h-[72px] md:rounded-[24px] md:px-2 md:py-3",
                       "flex flex-col items-center justify-center gap-1",
                       tab === t
                         ? "bg-gradient-to-br from-blue-600 via-cyan-500 to-emerald-400 text-white border-cyan-200/40 shadow-[0_12px_45px_rgba(34,211,238,0.22)]"
                         : "bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border-white/10 hover:border-white/20",
                     ].join(" ")}
                   >
-                    <span className="text-lg leading-none">{tabIcon[t]}</span>
-                    <span className="text-[11px] sm:text-[12px] font-black leading-tight">
+                    <span className="text-base leading-none md:text-lg">{tabIcon[t]}</span>
+                    <span className="text-[10px] sm:text-[12px] font-black leading-tight">
                       {tabLabel[t]}
                     </span>
                   </button>
@@ -1112,7 +1112,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* PERFIL */}
           {tab === "perfil" && (
-            <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-4">
+            <div className="mt-3 rounded-[20px] bg-[#0b1628] border border-white/10 p-3 space-y-3 md:mt-5 md:rounded-[28px] md:p-4 md:space-y-4">
               <Field label="Nome">
                 <input
                   value={profile.nome}
@@ -1156,11 +1156,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     setProfile((p) => ({ ...p, bio: e.target.value }))
                   }
                   placeholder="Fale um pouco sobre você"
-                  className={inputClass("min-h-28 resize-y")}
+                  className={inputClass("min-h-20 resize-y md:min-h-28")}
                 />
               </Field>
 
-              <section className="overflow-hidden rounded-[28px] border border-emerald-300/10 bg-gradient-to-br from-slate-950 via-[#0b1628] to-[#07111f] p-4 shadow-[0_22px_70px_rgba(0,0,0,0.22)]">
+              <section className="overflow-hidden rounded-[20px] border border-emerald-300/10 bg-gradient-to-br from-slate-950 via-[#0b1628] to-[#07111f] p-3 shadow-[0_22px_70px_rgba(0,0,0,0.22)] md:rounded-[28px] md:p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">
@@ -1179,14 +1179,14 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3 md:mt-4 md:gap-3">
                   {trustItems.map((item) => (
                     <div
                       key={item.title}
-                      className="rounded-2xl border border-white/10 bg-white/[0.045] p-3 shadow-[0_14px_38px_rgba(0,0,0,0.16)]"
+                      className="rounded-xl border border-white/10 bg-white/[0.045] p-2.5 shadow-[0_14px_38px_rgba(0,0,0,0.16)] md:rounded-2xl md:p-3"
                     >
                       <div className="flex items-start gap-3">
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-lg">
+                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-base md:h-10 md:w-10 md:rounded-2xl md:text-lg">
                           {item.icon}
                         </div>
                         <div className="min-w-0">
@@ -1198,7 +1198,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   ))}
                 </div>
 
-                <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.045] p-4">
+                <div className="mt-3 rounded-[18px] border border-white/10 bg-white/[0.045] p-3 md:mt-4 md:rounded-[24px] md:p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-black text-white">
@@ -1249,32 +1249,32 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* CONFIG */}
           {tab === "config" && (
-            <div className="mt-5 space-y-4">
-              <div className="rounded-[30px] bg-gradient-to-br from-[#0b1628] via-[#081426] to-[#050b16] border border-cyan-300/10 p-5 shadow-[0_20px_70px_rgba(0,0,0,0.24)]">
+            <div className="mt-3 space-y-3 md:mt-5 md:space-y-4">
+              <div className="rounded-[20px] bg-gradient-to-br from-[#0b1628] via-[#081426] to-[#050b16] border border-cyan-300/10 p-3 shadow-[0_20px_70px_rgba(0,0,0,0.24)] md:rounded-[30px] md:p-5">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-xl shadow-lg">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-lg shadow-lg md:h-12 md:w-12 md:rounded-2xl md:text-xl">
                       ⚙️
                     </div>
                     <div>
-                      <div className="text-lg font-black text-white">Configurações</div>
-                      <div className="text-sm text-slate-400">
+                      <div className="text-base font-black text-white md:text-lg">Configurações</div>
+                      <div className="text-xs text-slate-400 md:text-sm">
                         Ajuste presença, mapa e experiência visual.
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-4 py-3 text-sm font-black text-cyan-100">
+                  <div className="rounded-xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 md:rounded-2xl md:px-4 md:py-3 md:text-sm">
                     Mapa limpo por padrão
                   </div>
                 </div>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <section className="rounded-[28px] border border-white/10 bg-[#0b1628] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)]">
+              <div className="grid gap-3 lg:grid-cols-2 md:gap-4">
+                <section className="rounded-[20px] border border-white/10 bg-[#0b1628] p-3 shadow-[0_18px_55px_rgba(0,0,0,0.22)] md:rounded-[28px] md:p-4">
                   <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">Presença</div>
 
-                  <label className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                  <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-4 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
                     <div>
                       <div className="text-sm font-extrabold text-white">Visível no mapa</div>
                       <div className="text-xs text-slate-400">Permite aparecer como disponível para clientes próximos.</div>
@@ -1287,7 +1287,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     />
                   </label>
 
-                  <label className="mt-3 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                  <label className="mt-2.5 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-3 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
                     <div>
                       <div className="text-sm font-extrabold text-white">Notificações</div>
                       <div className="text-xs text-slate-400">Pedidos, chat, aceite, conclusão e avaliações.</div>
@@ -1300,11 +1300,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     />
                   </label>
 
-                  <div className="mt-3 rounded-[26px] border border-cyan-300/10 bg-gradient-to-br from-slate-950 via-[#0b1628] to-[#08111f] px-4 py-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)]">
+                  <div className="mt-2.5 rounded-[18px] border border-cyan-300/10 bg-gradient-to-br from-slate-950 via-[#0b1628] to-[#08111f] px-3 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.22)] md:mt-3 md:rounded-[26px] md:px-4 md:py-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-lg">
+                          <div className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-base md:h-10 md:w-10 md:rounded-2xl md:text-lg">
                             🔔
                           </div>
                           <div>
@@ -1337,7 +1337,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                           type="button"
                           onClick={ativarPush}
                           disabled={pushSalvando || pushTestando || !pushInfo.supported}
-                          className="h-11 rounded-2xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 md:h-11 md:rounded-2xl"
                         >
                           {pushSalvando ? "Ativando..." : "Ativar notificações"}
                         </button>
@@ -1346,7 +1346,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                           type="button"
                           onClick={testarPush}
                           disabled={pushSalvando || pushTestando || !pushInfo.supported}
-                          className="h-11 rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-slate-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+                          className="h-10 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-slate-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50 md:h-11 md:rounded-2xl"
                         >
                           {pushTestando ? "Enviando..." : "Testar notificação"}
                         </button>
@@ -1356,7 +1356,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                             type="button"
                             onClick={desativarPush}
                             disabled={pushSalvando || pushTestando}
-                            className="h-10 rounded-2xl border border-white/10 bg-transparent px-4 text-xs font-black text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200 disabled:opacity-50"
+                            className="h-9 rounded-xl border border-white/10 bg-transparent px-4 text-xs font-black text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200 disabled:opacity-50 md:h-10 md:rounded-2xl"
                           >
                             Desativar
                           </button>
@@ -1366,10 +1366,10 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   </div>
                 </section>
 
-                <section className="rounded-[28px] border border-white/10 bg-[#0b1628] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)]">
+                <section className="rounded-[20px] border border-white/10 bg-[#0b1628] p-3 shadow-[0_18px_55px_rgba(0,0,0,0.22)] md:rounded-[28px] md:p-4">
                   <div className="text-xs font-black uppercase tracking-[0.16em] text-cyan-300">Mapa ao vivo</div>
 
-                  <label className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                  <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-4 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
                     <div>
                       <div className="text-sm font-extrabold text-white">Mostrar pessoas online</div>
                       <div className="text-xs text-slate-400">Mantido desligado para o mapa ficar mais limpo.</div>
@@ -1382,7 +1382,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     />
                   </label>
 
-                  <label className="mt-3 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                  <label className="mt-2.5 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-3 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
                     <div>
                       <div className="text-sm font-extrabold text-white">Atualização ao vivo</div>
                       <div className="text-xs text-slate-400">Atualiza marcadores automaticamente quando ativado.</div>
@@ -1395,7 +1395,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     />
                   </label>
 
-                  <label className="mt-4 block rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                  <label className="mt-3 block rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-4 md:rounded-2xl md:px-4 md:py-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-extrabold text-white">Limite de marcadores</div>
@@ -1418,9 +1418,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 </section>
               </div>
 
-              <section className="rounded-[28px] border border-white/10 bg-[#0b1628] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)]">
+              <section className="rounded-[20px] border border-white/10 bg-[#0b1628] p-3 shadow-[0_18px_55px_rgba(0,0,0,0.22)] md:rounded-[28px] md:p-4">
                 <div className="text-xs font-black uppercase tracking-[0.16em] text-violet-300">Experiência</div>
-                <label className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-4">
+                <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-4 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
                   <div>
                     <div className="text-sm font-extrabold text-white">Animações da interface</div>
                     <div className="text-xs text-slate-400">Mantém transições e feedbacks de XP/patente mais vivos.</div>
@@ -1438,8 +1438,8 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* CORRE */}
           {tab === "corre" && (
-            <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-4">
-              <label className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/70 border border-white/10 px-4 py-3">
+            <div className="mt-3 rounded-[20px] bg-[#0b1628] border border-white/10 p-3 space-y-3 md:mt-5 md:rounded-[28px] md:p-4 md:space-y-4">
+              <label className="flex items-center justify-between gap-3 rounded-xl bg-slate-900/70 border border-white/10 px-3 py-3 md:gap-4 md:rounded-2xl md:px-4">
                 <div>
                   <div className="text-sm font-extrabold text-white">
                     Ativar currículo de Corre
@@ -1459,7 +1459,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               </label>
 
               {profile.isCorre && (
-                <div className="space-y-4">
+                <div className="space-y-3 md:space-y-4">
                   <Field label="Título do Corre">
                     <input
                       value={profile.correTitulo}
@@ -1481,11 +1481,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                         setProfile((p) => ({ ...p, correBio: e.target.value }))
                       }
                       placeholder="Conte que tipo de corre você faz, como trabalha e sua experiência."
-                      className={inputClass("min-h-28 resize-y")}
+                      className={inputClass("min-h-20 resize-y md:min-h-28")}
                     />
                   </Field>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
                     <Field label="Transporte">
                       <select
                         value={profile.correTransporte}
@@ -1533,7 +1533,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     </Field>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
                     <Field label="Disponibilidade">
                       <input
                         value={profile.correDisponibilidade}
@@ -1569,8 +1569,8 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* PROFISSIONAL */}
           {tab === "profissional" && (
-            <div className="mt-5 rounded-[28px] bg-[#0b1628] border border-white/10 p-4 space-y-4">
-              <label className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/70 border border-white/10 px-4 py-3">
+            <div className="mt-3 rounded-[20px] bg-[#0b1628] border border-white/10 p-3 space-y-3 md:mt-5 md:rounded-[28px] md:p-4 md:space-y-4">
+              <label className="flex items-center justify-between gap-3 rounded-xl bg-slate-900/70 border border-white/10 px-3 py-3 md:gap-4 md:rounded-2xl md:px-4">
                 <div>
                   <div className="text-sm font-extrabold text-white">
                     Modo profissional
@@ -1593,7 +1593,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               </label>
 
               {profile.isProfissional && (
-                <div className="space-y-4">
+                <div className="space-y-3 md:space-y-4">
 
                   <Field label="Título profissional">
                     <input
@@ -1613,11 +1613,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                         setProfile((p) => ({ ...p, descricao: e.target.value }))
                       }
                       placeholder="Conte o que você faz, região que atende e diferenciais."
-                      className={inputClass("min-h-28 resize-y")}
+                      className={inputClass("min-h-20 resize-y md:min-h-28")}
                     />
                   </Field>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
                     <Field label="Preço base">
                       <input
                         value={profile.preco}
@@ -1646,7 +1646,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     </Field>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
                     <Field label="Região profissional">
                       <input
                         value={profile.profRegiao}
@@ -1682,16 +1682,16 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* MONETIZAÇÃO */}
           {tab === "monetizacao" && (
-            <div className="mt-5 space-y-4">
-              <div className="rounded-[28px] bg-gradient-to-br from-emerald-500/10 via-[#0b1628] to-blue-500/10 border border-cyan-400/10 p-4 shadow-[0_0_35px_rgba(34,211,238,0.06)]">
-                <div className="text-lg font-black text-white">
+            <div className="mt-3 space-y-3 md:mt-5 md:space-y-4">
+              <div className="rounded-[20px] bg-gradient-to-br from-emerald-500/10 via-[#0b1628] to-blue-500/10 border border-cyan-400/10 p-3 shadow-[0_0_35px_rgba(34,211,238,0.06)] md:rounded-[28px] md:p-4">
+                <div className="text-base font-black text-white md:text-lg">
                   💚 Corre Aqui sem taxa
                 </div>
-                <div className="mt-1 text-sm leading-relaxed text-slate-300">
+                <div className="mt-1 text-xs leading-snug text-slate-300 md:text-sm md:leading-relaxed">
                   O trabalhador fica com 100% do valor do serviço. Recursos premium, anúncios locais e boosts serão preparados com calma, sem cobrança obrigatória agora.
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 md:mt-4 md:gap-3">
                   {[
                     "✨ Premium em breve",
                     "📢 Anúncios locais",
@@ -1699,7 +1699,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   ].map((item) => (
                     <div
                       key={item}
-                      className="rounded-2xl border border-white/10 bg-slate-900/70 px-3 py-3 text-sm font-black text-white"
+                      className="rounded-xl border border-white/10 bg-slate-900/70 px-3 py-2.5 text-xs font-black text-white md:rounded-2xl md:py-3 md:text-sm"
                     >
                       {item}
                     </div>
@@ -1707,7 +1707,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 </div>
               </div>
 
-              <div className="rounded-[28px] bg-[#0b1628] border border-white/10 p-4">
+              <div className="rounded-[20px] bg-[#0b1628] border border-white/10 p-3 md:rounded-[28px] md:p-4">
                 <PlanosCorreAqui
                   planoAtual={profile.plano || "Free"}
                   onSelecionarPlano={(plano) =>
@@ -1722,7 +1722,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             onClick={salvar}
             disabled={salvando || fotoSalvando}
             className="
-              w-full mt-5 py-4 rounded-3xl
+              w-full mt-3 py-3 md:mt-5 md:py-4 rounded-2xl md:rounded-3xl
               bg-gradient-to-r from-blue-600 to-indigo-600
               hover:from-blue-500 hover:to-indigo-500
               text-white font-extrabold

@@ -1101,6 +1101,20 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       })
   }, [corres, filtro, busca, meuId, categoriaFiltro, isProfissional])
 
+  const resumoCorre = useMemo(() => {
+    const lista = Array.isArray(corres) ? corres : []
+    return lista.reduce(
+      (acc, p) => {
+        const status = String(p?.status || 'aberto').toLowerCase()
+        if (status === 'aberto') acc.abertos += 1
+        if (p?.aceite?.id === meuId) acc.meus += 1
+        if (status === 'concluido') acc.concluidos += 1
+        return acc
+      },
+      { abertos: 0, meus: 0, concluidos: 0 }
+    )
+  }, [corres, meuId])
+
   async function aceitarCorre(p) {
     if (!meuId) {
       showToast({ type: 'error', title: 'Sem login', message: 'Entre para aceitar.' })
@@ -1724,15 +1738,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     'px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white transition'
 
   const btnPrimary =
-    'px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/25 transition'
+    'px-2.5 py-1.5 rounded-xl bg-[#ffd91a] text-slate-950 hover:bg-yellow-300 shadow-md shadow-yellow-500/20 transition md:bg-blue-600 md:text-white md:hover:bg-blue-700 md:shadow-blue-500/25'
 
   const btnDanger =
-    'px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-500/20 transition'
+    'px-2.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black shadow-md shadow-red-500/20 transition'
 
   const btnDark =
-    'px-2.5 py-1.5 rounded-xl bg-gray-900 text-white hover:bg-black border border-white/5 transition'
+    'px-2.5 py-1.5 rounded-xl bg-gray-900 text-white font-black hover:bg-black border border-white/5 transition'
 
-  const btnMapBase = 'px-2.5 py-1.5 rounded-xl text-sm font-semibold border transition'
+  const btnMapBase = 'px-2.5 py-1.5 rounded-xl text-sm font-black border transition'
   const btnMapEnabled = 'bg-slate-900 text-white border-slate-700 hover:bg-slate-800'
   const btnMapDisabled = 'bg-white/5 text-white/70 border-white/10 opacity-70 cursor-not-allowed'
 
@@ -1824,15 +1838,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       `}</style>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="relative z-10 w-full max-w-[1280px] mx-auto px-3 py-3 pb-24 md:px-4 md:py-5 md:pb-32 sm:px-5 lg:px-6">
+      <div className="relative z-10 w-full max-w-[1280px] mx-auto px-2.5 py-2.5 pb-20 md:px-4 md:py-5 md:pb-32 sm:px-5 lg:px-6">
         {/* ✅ TROCAR MODO DENTRO DO LAYOUT (não cobre mais os cards) */}
         {typeof onBackToMode === 'function' && (
-          <div className="mb-3 flex justify-start md:mb-4">
+          <div className="mb-2.5 flex justify-start md:mb-4">
             <button
               onClick={voltarModoLimpo}
               className="
                 inline-flex items-center gap-2
-                rounded-xl px-3 py-2 md:rounded-2xl md:px-4 md:py-2.5
+                rounded-xl px-3 py-1.5 md:rounded-2xl md:px-4 md:py-2.5
                 bg-white/10 hover:bg-white/14
                 border border-white/12
                 text-white text-xs font-extrabold md:text-sm
@@ -1852,23 +1866,27 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
-            <div className="relative mb-3 overflow-hidden rounded-[22px] bg-white/[0.08] border border-white/10 shadow-[0_18px_58px_rgba(0,0,0,0.22)] text-white backdrop-blur-xl md:mb-4 md:rounded-[28px] md:shadow-[0_22px_80px_rgba(0,0,0,0.24)]">
-              <div className="absolute inset-x-0 top-0 h-px bg-white/25 pointer-events-none" />
+            <div className="relative mb-2.5 overflow-hidden rounded-[26px] border border-yellow-100/80 bg-[#ffe76a] text-slate-950 shadow-[0_18px_42px_rgba(245,158,11,0.18)] backdrop-blur-xl md:mb-4 md:rounded-[28px] md:border-white/10 md:bg-white/[0.08] md:text-white md:shadow-[0_22px_80px_rgba(0,0,0,0.24)]">
+              <div className="absolute inset-x-0 top-0 h-px bg-white/45 pointer-events-none" />
+              <div className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-[42px] bg-white/22 rotate-12 md:hidden" />
+              <div className="pointer-events-none absolute bottom-2 right-5 grid h-24 w-24 place-items-center rounded-[30px] bg-white/40 text-5xl md:hidden">
+                ⚡
+              </div>
 
-              <div className="relative p-3 md:p-5">
+              <div className="relative p-2.5 md:p-5">
                 <div className="flex items-center justify-between gap-3 flex-wrap md:gap-4">
                   <div className="flex items-center gap-2.5 min-w-0 md:gap-3">
-                    <LogoCorreAqui className="h-14 w-14 rounded-xl border-0 shadow-none md:h-24 md:w-24 md:rounded-2xl" />
+                    <LogoCorreAqui className="h-12 w-12 rounded-[20px] border-0 shadow-[0_10px_24px_rgba(15,23,42,0.12)] md:h-24 md:w-24 md:rounded-2xl md:shadow-none" />
 
                     <div className="leading-tight min-w-0">
-                      <div className="truncate text-sm font-extrabold text-white md:text-lg">
+                      <div className="truncate text-lg font-black text-slate-950 md:text-lg md:text-white">
                         Bem-vindo, {meuNome || '...'}
                       </div>
-                      <div className="mt-1 text-xs text-slate-300 md:text-sm">
-                        Aceite pedidos próximos, conclua com clareza e suba sua reputação.
+                      <div className="mt-0.5 line-clamp-1 text-[12px] font-bold text-slate-700 md:mt-1 md:text-sm md:font-normal md:text-slate-300">
+                        Trabalhos perto de você, com chat e reputação.
                       </div>
 
-                      <div className="mt-1.5 flex gap-1.5 flex-wrap md:mt-2 md:gap-2">
+                      <div className="mt-1 flex gap-1.5 flex-wrap md:mt-2 md:gap-2">
                         <Patente tipo="corre" nivel={minhaPatenteCorre} size="sm" showLabel={false} />
                         {isProfissional && <Patente tipo="prof" nivel={minhaPatenteProf} size="sm" />}
                       </div>
@@ -1879,7 +1897,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     <button
                       type="button"
                       onClick={() => setTab('corre')}
-                      className="rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-slate-950 shadow-lg shadow-black/20 transition hover:bg-slate-100 md:rounded-2xl md:px-4 md:py-2.5 md:text-sm"
+                      className="rounded-xl bg-slate-950 px-3 py-1.5 text-xs font-extrabold text-white shadow-lg shadow-black/15 transition hover:bg-slate-800 md:rounded-2xl md:bg-white md:px-4 md:py-2.5 md:text-sm md:text-slate-950 md:hover:bg-slate-100"
                     >
                       📋 Pedidos
                     </button>
@@ -1887,11 +1905,33 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     <button
                       type="button"
                       onClick={() => setOpenMapaAoVivo(true)}
-                      className="rounded-xl border border-white/12 bg-white/10 px-3 py-2 text-xs font-extrabold text-white shadow-sm transition hover:bg-white/14 md:rounded-2xl md:px-4 md:py-2.5 md:text-sm"
+                      className="rounded-xl border border-slate-950/10 bg-white/55 px-3 py-1.5 text-xs font-extrabold text-slate-950 shadow-sm transition hover:bg-white/70 md:rounded-2xl md:border-white/12 md:bg-white/10 md:px-4 md:py-2.5 md:text-sm md:text-white md:hover:bg-white/14"
                     >
                       🗺️ Mapa ao vivo
                     </button>
                   </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 md:hidden">
+                  {[
+                    ['Abertos', resumoCorre.abertos],
+                    ['Aceitos', resumoCorre.meus],
+                    ['Feitos', resumoCorre.concluidos],
+                  ].map(([label, value]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => {
+                        if (label === 'Aceitos') setFiltro('meus')
+                        else if (label === 'Abertos') setFiltro('abertos')
+                        else setFiltro('todos')
+                      }}
+                      className="rounded-[18px] bg-white/62 px-3 py-2 text-left shadow-[0_10px_22px_rgba(15,23,42,0.08)]"
+                    >
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</div>
+                      <div className="mt-0.5 text-xl font-black text-slate-950">{value}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -2005,12 +2045,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {modoApp === 'corre' && tab === 'corre' && (
           <>
             {/* Painel de filtros do Corre */}
-            <div className="mb-3 overflow-hidden rounded-[22px] bg-white/96 border border-white/70 shadow-[0_14px_44px_rgba(0,0,0,0.14)] text-slate-900 backdrop-blur-xl md:mb-4 md:rounded-[28px] md:shadow-[0_18px_58px_rgba(0,0,0,0.18)]">
-              <div className="p-2.5 md:p-4">
+            <div className="mb-2.5 overflow-hidden rounded-[26px] bg-white/96 border border-white/70 shadow-[0_14px_44px_rgba(0,0,0,0.14)] text-slate-900 backdrop-blur-xl md:mb-4 md:rounded-[28px] md:shadow-[0_18px_58px_rgba(0,0,0,0.18)]">
+              <div className="p-2 md:p-4">
                 {/* filtros status */}
                 <div className="grid grid-cols-3 gap-1.5 md:gap-2">
                   <button
-                    className={`rounded-xl border px-2.5 py-2 text-xs font-extrabold transition md:rounded-2xl md:px-3 md:py-2.5 md:text-sm ${
+                    className={`rounded-xl border px-2.5 py-1.5 text-xs font-extrabold transition md:rounded-2xl md:px-3 md:py-2.5 md:text-sm ${
                       filtro === 'abertos'
                         ? 'bg-slate-950 text-white border-slate-950 shadow-lg shadow-slate-900/20'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -2022,7 +2062,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   </button>
 
                   <button
-                    className={`rounded-xl border px-2.5 py-2 text-xs font-extrabold transition md:rounded-2xl md:px-3 md:py-2.5 md:text-sm ${
+                    className={`rounded-xl border px-2.5 py-1.5 text-xs font-extrabold transition md:rounded-2xl md:px-3 md:py-2.5 md:text-sm ${
                       filtro === 'meus'
                         ? 'bg-slate-950 text-white border-slate-950 shadow-lg shadow-slate-900/20'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -2034,7 +2074,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   </button>
 
                   <button
-                    className={`rounded-xl border px-2.5 py-2 text-xs font-extrabold transition md:rounded-2xl md:px-3 md:py-2.5 md:text-sm ${
+                    className={`rounded-xl border px-2.5 py-1.5 text-xs font-extrabold transition md:rounded-2xl md:px-3 md:py-2.5 md:text-sm ${
                       filtro === 'todos'
                         ? 'bg-slate-950 text-white border-slate-950 shadow-lg shadow-slate-900/20'
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -2047,8 +2087,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 </div>
 
                 {/* Busca + categoria */}
-                <div className="mt-2.5 grid grid-cols-1 gap-1.5 md:mt-3 md:grid-cols-[1fr_260px] md:gap-2">
-                  <div className="flex items-center gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 shadow-sm md:rounded-2xl md:px-4 md:py-3">
+                <div className="mt-2 grid grid-cols-1 gap-1.5 md:mt-3 md:grid-cols-[1fr_260px] md:gap-2">
+                  <div className="flex items-center gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2 shadow-sm md:rounded-2xl md:px-4 md:py-3">
                     <span className="text-base md:text-lg">🔍</span>
                     <input
                       value={busca}
@@ -2061,7 +2101,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   <select
                     value={categoriaFiltro}
                     onChange={(e) => setCategoriaFiltro(e.target.value)}
-                    className="rounded-xl bg-white border border-slate-200 px-3 py-2.5 text-sm font-bold text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 md:rounded-2xl md:px-4 md:py-3"
+                    className="rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm font-bold text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 md:rounded-2xl md:px-4 md:py-3"
                     title="Filtrar por categoria"
                   >
                     <option value="todas">📦 Todas categorias</option>
@@ -2072,6 +2112,28 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="mt-2 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+                  {[{ id: 'todas', label: 'Todos', emoji: '✨' }, ...(CATEGORIES || []).slice(0, 6)].map((cat) => {
+                    const ativo = categoriaFiltro === cat.id
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setCategoriaFiltro(cat.id)}
+                        className={[
+                          'shrink-0 rounded-full border px-3 py-2 text-[11px] font-black transition active:scale-[0.97]',
+                          ativo
+                            ? 'border-slate-950 bg-slate-950 text-white'
+                            : 'border-slate-200 bg-slate-50 text-slate-700',
+                        ].join(' ')}
+                      >
+                        <span className="mr-1">{cat.emoji}</span>
+                        {cat.label}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -2100,9 +2162,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             )}
 
             {/* Lista */}
-            <div className="grid grid-cols-1 items-start gap-2.5 pb-36 md:gap-3 md:pb-24 xl:grid-cols-2 sm:pb-36">
+            <div className="grid grid-cols-1 items-start gap-2 pb-28 md:gap-3 md:pb-24 xl:grid-cols-2 sm:pb-36">
               {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
-                <div className="text-sm text-slate-500">Nenhum corre aqui para mostrar.</div>
+                <div className="rounded-[24px] border border-white/10 bg-white/[0.06] p-5 text-center text-sm font-bold text-slate-300">
+                  Nenhum trabalho para mostrar agora.
+                </div>
               )}
 
               {corresFiltrados.map((p, index) => {
@@ -2139,7 +2203,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     whileHover={{ y: -3, scale: 1.008 }}
                     whileTap={{ scale: 0.985 }}
                     className={[
-                      "corre-card-clean relative overflow-hidden rounded-[20px] p-2.5 md:rounded-[24px] md:p-3.5 text-slate-950 flex flex-col gap-1.5 md:gap-2 select-none cursor-default",
+                      "corre-card-clean relative overflow-hidden rounded-[18px] p-2 md:rounded-[24px] md:p-3.5 text-slate-950 flex flex-col gap-1.5 md:gap-2 select-none cursor-default",
                       "bg-white border border-slate-200/80 shadow-[0_16px_42px_rgba(15,23,42,0.12)]",
                       "ring-1 ring-slate-900/[0.03] transition",
                       status === 'aberto' ? "border-emerald-200/90 shadow-[0_18px_44px_rgba(16,185,129,0.13)]" : "",
@@ -2235,7 +2299,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       <span className="ml-2 font-semibold">{getProximoPassoPedido(p, meuId)}</span>
                     </div>
 
-                    <StatusFluxoServico pedido={p} compact className="relative z-10" />
+                    <StatusFluxoServico pedido={p} compact className={`relative z-10 ${cardAberto ? '' : 'hidden md:block'}`} />
 
                     {cardAberto && (
                       <>
@@ -2282,7 +2346,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       </>
                     )}
 
-                    <div className="relative z-10 grid grid-cols-2 sm:flex gap-1.5 md:gap-2 flex-wrap mt-0.5 md:mt-1">
+                    <div className="relative z-10 grid grid-cols-2 gap-1.5 md:mt-1 md:flex md:flex-wrap md:gap-2">
                       <button
                         className="rounded-lg bg-white border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-800 shadow-sm transition hover:bg-slate-50 md:rounded-xl md:px-2.5"
                         onClick={() => setCardAbertoId(cardAberto ? null : p.id)}
@@ -2329,7 +2393,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                       {status === 'aberto' && (
                         <button
-                          className={`${btnPrimary} disabled:opacity-60`}
+                          className={`${btnPrimary} col-span-2 disabled:opacity-60 md:col-span-1`}
                           onClick={() => aceitarCorre(p)}
                           disabled={aceitandoId === p.id}
                           type="button"
@@ -2351,7 +2415,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                       {status === 'aceito' && souCriador(p) && (
                         <button
-                          className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/20 disabled:opacity-60 transition"
+                          className="col-span-2 rounded-xl bg-emerald-600 px-2.5 py-1.5 font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-700 disabled:opacity-60 md:col-span-1"
                           onClick={() => abrirConclusao(p)}
                           disabled={serviçondoId === p.id}
                           type="button"
@@ -2602,22 +2666,21 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
 
       {modoApp === 'cliente' && !isMapOpen && (
-        <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[99980] px-2 pointer-events-none md:inset-x-auto md:right-6 md:bottom-6 md:px-0">
-          <div className="pointer-events-auto mx-auto grid w-full max-w-[390px] grid-cols-4 items-center gap-1 rounded-[18px] border border-slate-200 bg-white/94 p-1 shadow-[0_18px_54px_rgba(15,23,42,0.22)] backdrop-blur-xl md:max-w-[430px] md:gap-1.5 md:rounded-[24px] md:p-1.5">
+        <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[99980] px-3 pointer-events-none md:inset-x-auto md:right-6 md:bottom-6 md:px-0">
+          <div className="pointer-events-auto mx-auto flex h-[70px] w-full max-w-[390px] items-center justify-between rounded-full border border-slate-200 bg-white px-3 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.24)] backdrop-blur-xl md:max-w-[430px] md:border-white/10 md:bg-slate-950/92 md:px-4 md:text-white">
             <button
               type="button"
               onClick={() => setClientePainelBaixo('meusPedidos')}
               title="Pedidos"
               className={[
-                'relative h-10 min-w-0 rounded-xl px-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:rounded-2xl md:px-2 md:text-xs',
-                'flex items-center justify-center gap-1 border md:gap-1.5',
+                'relative flex h-12 w-12 flex-col items-center justify-center rounded-2xl text-[10px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:w-16',
                 clientePainelBaixo === 'meusPedidos'
-                  ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+                  ? 'bg-slate-950 text-white md:bg-white md:text-slate-950'
+                  : 'text-slate-700 hover:bg-slate-100 md:text-slate-300 md:hover:bg-white/[0.1] md:hover:text-white',
               ].join(' ')}
             >
-              <span className="text-sm md:text-base">📦</span>
-              <span className="hidden min-[390px]:inline">Pedidos</span>
+              <span className="text-xl leading-none">📦</span>
+              <span className="mt-0.5 hidden min-[360px]:block">Pedidos</span>
             </button>
 
             <button
@@ -2625,15 +2688,26 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onClick={() => setClientePainelBaixo('conversas')}
               title="Conversas"
               className={[
-                'relative h-10 min-w-0 rounded-xl px-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:rounded-2xl md:px-2 md:text-xs',
-                'flex items-center justify-center gap-1 border md:gap-1.5',
+                'relative flex h-12 w-12 flex-col items-center justify-center rounded-2xl text-[10px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:w-16',
                 clientePainelBaixo === 'conversas'
-                  ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+                  ? 'bg-slate-950 text-white md:bg-white md:text-slate-950'
+                  : 'text-slate-700 hover:bg-slate-100 md:text-slate-300 md:hover:bg-white/[0.1] md:hover:text-white',
               ].join(' ')}
             >
-              <span className="text-sm md:text-base">💬</span>
-              <span className="hidden min-[390px]:inline">Conversas</span>
+              <span className="text-xl leading-none">💬</span>
+              <span className="mt-0.5 hidden min-[360px]:block">Chat</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOpenIA(true)}
+              title="Criar pedido"
+              className="-mt-9 grid h-[74px] w-[74px] shrink-0 place-items-center rounded-full border-[6px] border-white bg-[#ffd91a] text-slate-950 shadow-[0_18px_38px_rgba(245,158,11,0.28)] transition active:scale-[0.96] md:-mt-8 md:border-slate-950"
+            >
+              <span className="flex flex-col items-center leading-none">
+                <span className="text-2xl">⚡</span>
+                <span className="mt-1 text-[10px] font-black">Criar</span>
+              </span>
             </button>
 
             <button
@@ -2641,15 +2715,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onClick={() => setClientePainelBaixo('notificacoes')}
               title="Avisos"
               className={[
-                'relative h-10 min-w-0 rounded-xl px-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:rounded-2xl md:px-2 md:text-xs',
-                'flex items-center justify-center gap-1 border md:gap-1.5',
+                'relative flex h-12 w-12 flex-col items-center justify-center rounded-2xl text-[10px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:w-16',
                 clientePainelBaixo === 'notificacoes'
-                  ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+                  ? 'bg-slate-950 text-white md:bg-white md:text-slate-950'
+                  : 'text-slate-700 hover:bg-slate-100 md:text-slate-300 md:hover:bg-white/[0.1] md:hover:text-white',
               ].join(' ')}
             >
-              <span className="text-sm md:text-base">🔔</span>
-              <span className="hidden min-[390px]:inline">Avisos</span>
+              <span className="text-xl leading-none">🔔</span>
+              <span className="mt-0.5 hidden min-[360px]:block">Avisos</span>
             </button>
 
             <button
@@ -2657,15 +2730,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onClick={() => setClientePainelBaixo('seguranca')}
               title="Segurança"
               className={[
-                'relative h-10 min-w-0 rounded-xl px-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:rounded-2xl md:px-2 md:text-xs',
-                'flex items-center justify-center gap-1 border md:gap-1.5',
+                'relative flex h-12 w-12 flex-col items-center justify-center rounded-2xl text-[10px] font-black transition-all duration-200 active:scale-[0.96] md:h-12 md:w-16',
                 clientePainelBaixo === 'seguranca'
-                  ? 'bg-slate-950 text-white border-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.24)]'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50',
+                  ? 'bg-slate-950 text-white md:bg-white md:text-slate-950'
+                  : 'text-slate-700 hover:bg-slate-100 md:text-slate-300 md:hover:bg-white/[0.1] md:hover:text-white',
               ].join(' ')}
             >
-              <span className="text-sm md:text-base">🛡️</span>
-              <span className="hidden min-[390px]:inline">Segurança</span>
+              <span className="text-xl leading-none">🛡️</span>
+              <span className="mt-0.5 hidden min-[360px]:block">Seguro</span>
             </button>
           </div>
         </div>
@@ -2674,13 +2746,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       {modoApp === 'cliente' && clientePainelBaixo && (
         <div className="fixed inset-0 z-[99990] bg-[#0f172a] flex justify-center">
           <div className="w-full max-w-[900px] h-[100dvh] bg-[#0f172a] text-white shadow-[0_0_40px_rgba(0,0,0,0.45)] flex flex-col">
-            <div className="shrink-0 px-4 pt-4 pb-3 bg-[#111827] border-b border-slate-700 shadow-md">
+            <div className="shrink-0 px-3 pt-3 pb-2.5 bg-[#111827] border-b border-slate-700 shadow-md md:px-4 md:pt-4 md:pb-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-300">
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-300 md:text-xs md:tracking-[0.18em]">
                     Corre Aqui
                   </div>
-                  <div className="mt-1 text-xl font-black text-white truncate">
+                  <div className="mt-0.5 truncate text-lg font-black text-white md:mt-1 md:text-xl">
                     {clientePainelBaixo === 'meusPedidos'
                       ? 'Histórico de serviços'
                       : clientePainelBaixo === 'chat'
@@ -2699,7 +2771,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     setClientePainelBaixo('')
                     if (clientePainelBaixo === 'chat') setChatPedido(null)
                   }}
-                  className="w-11 h-11 rounded-2xl bg-[#1e293b] hover:bg-[#263449] text-white font-black border border-slate-700"
+                  className="h-9 w-9 rounded-xl bg-[#1e293b] hover:bg-[#263449] text-white font-black border border-slate-700 md:h-11 md:w-11 md:rounded-2xl"
                   aria-label="Fechar"
                 >
                   ✕
@@ -2707,7 +2779,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto overscroll-contain p-3 md:p-5 pb-28 bg-[#0f172a]">
+            <div className="flex-1 overflow-y-auto overscroll-contain bg-[#0f172a] p-2.5 pb-24 md:p-5 md:pb-28">
               {clientePainelBaixo === 'meusPedidos' && (
                 <MeusPedidosCliente
                   meuId={meuId}
@@ -2726,7 +2798,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               )}
 
               {clientePainelBaixo === 'conversas' && (
-                <div className="rounded-[28px] overflow-hidden bg-[#0f172a] border border-slate-700 shadow-lg text-white">
+                <div className="overflow-hidden rounded-[20px] bg-[#0f172a] border border-slate-700 shadow-lg text-white md:rounded-[28px]">
                   <ListaConversas
                     meuId={meuId}
                     onAbrirChat={(pedidoId) => {
@@ -2762,12 +2834,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               )}
 
               {clientePainelBaixo === 'chat' && chatPedido && (
-                <div className="rounded-[28px] overflow-hidden bg-[#0f172a] border border-slate-700 shadow-lg text-white">
-                  <div className="px-4 py-3 border-b border-slate-700 bg-[#111827]">
+                <div className="overflow-hidden rounded-[20px] bg-[#0f172a] border border-slate-700 shadow-lg text-white md:rounded-[28px]">
+                  <div className="border-b border-slate-700 bg-[#111827] px-3 py-2.5 md:px-4 md:py-3">
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-300">Chat do pedido</div>
-                        <div className="mt-1 text-base font-black text-white truncate">{chatPedido?.titulo || 'Corre aqui'}</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-300 md:text-xs md:tracking-[0.16em]">Chat do pedido</div>
+                        <div className="mt-0.5 truncate text-sm font-black text-white md:mt-1 md:text-base">{chatPedido?.titulo || 'Corre aqui'}</div>
                       </div>
                       <button
                         type="button"
@@ -2775,14 +2847,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                           setChatPedido(null)
                           setClientePainelBaixo('conversas')
                         }}
-                        className="px-3 py-2 rounded-2xl bg-[#1e293b] hover:bg-[#263449] text-white text-xs font-black border border-slate-700"
+                        className="rounded-xl bg-[#1e293b] px-3 py-1.5 text-xs font-black text-white border border-slate-700 hover:bg-[#263449] md:rounded-2xl md:py-2"
                       >
                         Voltar
                       </button>
                     </div>
                   </div>
 
-                  <div className="p-3">
+                  <div className="p-2 md:p-3">
                     <ChatMensagens
                       pedidoId={chatPedido.id}
                       meuId={meuId}
@@ -2806,14 +2878,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="w-full max-w-lg rounded-[22px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)] md:rounded-[30px] md:p-5"
+            className="w-full max-w-lg rounded-[20px] border border-white/10 bg-[#07111f] p-3 text-white shadow-[0_28px_95px_rgba(0,0,0,0.62)] md:rounded-[30px] md:p-5 md:shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">
                   Conclusão do serviço
                 </div>
-                <h2 className="mt-1 text-xl font-black md:text-2xl">Está tudo certo?</h2>
+                <h2 className="mt-1 text-lg font-black md:text-2xl">Está tudo certo?</h2>
                 <p className="mt-1.5 text-xs leading-relaxed text-slate-300 md:mt-2 md:text-sm">
                   Confirme somente depois que o combinado foi entregue. Depois disso você poderá avaliar quem fez o serviço.
                 </p>
@@ -2821,28 +2893,28 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               <button
                 type="button"
                 onClick={() => setConclusaoPedido(null)}
-                className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
+                className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
                 aria-label="Fechar"
               >
                 ×
               </button>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 md:mt-5 md:rounded-3xl md:p-4">
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 md:mt-5 md:rounded-3xl md:p-4">
               <div className="text-sm font-black text-white">{conclusaoPedido?.titulo || 'Serviço'}</div>
               <div className="mt-1 text-xs text-slate-400">
                 {conclusaoPedido?.aceite?.nome ? `Feito por ${conclusaoPedido.aceite.nome}` : 'Aguardando dados de quem aceitou'}
               </div>
             </div>
 
-            <StatusFluxoServico pedido={conclusaoPedido} tone="dark" className="mt-4" />
+            <StatusFluxoServico pedido={conclusaoPedido} tone="dark" className="mt-3 md:mt-4" />
 
-            <div className="mt-4 grid gap-2 md:mt-5 md:gap-3">
+            <div className="mt-3 grid gap-2 md:mt-5 md:gap-3">
               <button
                 type="button"
                 disabled={serviçondoId === conclusaoPedido.id}
                 onClick={() => marcarConcluído(conclusaoPedido)}
-                className="w-full rounded-2xl bg-emerald-600 px-3 py-3 text-sm font-black text-white shadow-[0_14px_44px_rgba(16,185,129,0.2)] hover:bg-emerald-500 disabled:opacity-60 md:rounded-3xl md:px-4 md:py-4 md:text-base md:shadow-[0_18px_60px_rgba(16,185,129,0.24)]"
+                className="w-full rounded-2xl bg-emerald-600 px-3 py-2.5 text-sm font-black text-white shadow-[0_14px_44px_rgba(16,185,129,0.2)] hover:bg-emerald-500 disabled:opacity-60 md:rounded-3xl md:px-4 md:py-4 md:text-base md:shadow-[0_18px_60px_rgba(16,185,129,0.24)]"
               >
                 {serviçondoId === conclusaoPedido.id ? 'Confirmando...' : 'Confirmar serviço feito'}
               </button>
@@ -2852,7 +2924,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   abrirProblema(conclusaoPedido)
                   setConclusaoPedido(null)
                 }}
-                className="w-full rounded-2xl border border-red-400/25 bg-red-500/12 px-3 py-3 text-sm font-black text-red-100 hover:bg-red-500/18 md:rounded-3xl md:px-4 md:py-4 md:text-base"
+                className="w-full rounded-2xl border border-red-400/25 bg-red-500/12 px-3 py-2.5 text-sm font-black text-red-100 hover:bg-red-500/18 md:rounded-3xl md:px-4 md:py-4 md:text-base"
               >
                 Problema com serviço
               </button>
@@ -2866,14 +2938,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="w-full max-w-lg rounded-[22px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)] md:rounded-[30px] md:p-5"
+            className="w-full max-w-lg rounded-[20px] border border-white/10 bg-[#07111f] p-3 text-white shadow-[0_28px_95px_rgba(0,0,0,0.62)] md:rounded-[30px] md:p-5 md:shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
                   Avaliação pós-serviço
                 </div>
-                <h2 className="mt-1 text-xl font-black md:text-2xl">Como foi a experiência?</h2>
+                <h2 className="mt-1 text-lg font-black md:text-2xl">Como foi a experiência?</h2>
                 <p className="mt-1.5 text-xs leading-relaxed text-slate-300 md:mt-2 md:text-sm">
                   Sua avaliação fica ligada ao histórico do serviço e ajuda a comunidade a confiar em bons perfis.
                 </p>
@@ -2881,7 +2953,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               <button
                 type="button"
                 onClick={() => setAvaliacaoPedido(null)}
-                className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
+                className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
                 aria-label="Fechar"
               >
                 ×
@@ -2894,7 +2966,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               className="mt-4 md:mt-5"
             />
 
-            <div className="mt-4 flex justify-center gap-1.5 md:mt-5 md:gap-2">
+            <div className="mt-3 flex justify-center gap-1.5 md:mt-5 md:gap-2">
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
@@ -2913,7 +2985,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               ))}
             </div>
 
-            <label className="mt-5 block text-xs font-bold uppercase tracking-wide text-slate-300">
+            <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-300 md:mt-5">
               Comentário opcional
               <textarea
                 value={avaliacaoComentario}
@@ -2928,7 +3000,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               type="button"
               disabled={salvandoAvaliacao}
               onClick={salvarAvaliacaoServico}
-              className="mt-4 w-full rounded-2xl bg-amber-400 px-3 py-3 text-sm font-black text-slate-950 hover:bg-amber-300 disabled:opacity-60 md:mt-5 md:rounded-3xl md:px-4 md:py-4 md:text-base"
+              className="mt-3 w-full rounded-2xl bg-amber-400 px-3 py-2.5 text-sm font-black text-slate-950 hover:bg-amber-300 disabled:opacity-60 md:mt-5 md:rounded-3xl md:px-4 md:py-4 md:text-base"
             >
               {salvandoAvaliacao ? 'Enviando...' : 'Enviar avaliação'}
             </button>
@@ -2941,14 +3013,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="w-full max-w-lg rounded-[22px] border border-white/10 bg-[#07111f] p-4 text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)] md:rounded-[30px] md:p-5"
+            className="w-full max-w-lg rounded-[20px] border border-white/10 bg-[#07111f] p-3 text-white shadow-[0_28px_95px_rgba(0,0,0,0.62)] md:rounded-[30px] md:p-5 md:shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-red-300">
                   Segurança do serviço
                 </div>
-                <h2 className="mt-1 text-xl font-black md:text-2xl">Problema com serviço</h2>
+                <h2 className="mt-1 text-lg font-black md:text-2xl">Problema com serviço</h2>
                 <p className="mt-1.5 text-xs leading-relaxed text-slate-300 md:mt-2 md:text-sm">
                   Registre o que aconteceu. Casos de conduta inadequada ou segurança também ficam salvos como denúncia.
                 </p>
@@ -2956,14 +3028,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               <button
                 type="button"
                 onClick={() => setProblemaPedido(null)}
-                className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
+                className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
                 aria-label="Fechar"
               >
                 ×
               </button>
             </div>
 
-            <div className="mt-4 grid gap-1.5 md:mt-5 md:gap-2">
+            <div className="mt-3 grid gap-1.5 md:mt-5 md:gap-2">
               {[
                 ['servico_nao_resolvido', 'Serviço não resolvido'],
                 ['valor_combinado', 'Valor ou combinado'],
@@ -3003,7 +3075,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               type="button"
               disabled={salvandoProblema}
               onClick={registrarProblemaServico}
-              className="mt-4 w-full rounded-2xl bg-red-600 px-3 py-3 text-sm font-black text-white hover:bg-red-500 disabled:opacity-60 md:mt-5 md:rounded-3xl md:px-4 md:py-4 md:text-base"
+              className="mt-3 w-full rounded-2xl bg-red-600 px-3 py-2.5 text-sm font-black text-white hover:bg-red-500 disabled:opacity-60 md:mt-5 md:rounded-3xl md:px-4 md:py-4 md:text-base"
             >
               {salvandoProblema ? 'Registrando...' : 'Registrar problema'}
             </button>

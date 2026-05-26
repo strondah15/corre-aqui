@@ -155,6 +155,8 @@ export default function ListaProfissionais({
   limit = 200,
   onAbrirPerfil,
   onAgendar,
+  showHeader = true,
+  compact = false,
 }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -264,7 +266,8 @@ export default function ListaProfissionais({
     'bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.22)] ring-1 ring-white/5 backdrop-blur-xl'
 
   return (
-    <div className={`overflow-hidden rounded-[22px] md:rounded-[28px] ${glass}`}>
+    <div className={`overflow-hidden ${showHeader ? 'rounded-[22px] md:rounded-[28px]' : 'rounded-[18px] md:rounded-[24px]'} ${glass}`}>
+      {showHeader ? (
       <div className="border-b border-white/10 bg-white/[0.03] px-3 py-3 md:px-4 md:py-4 sm:px-5">
         <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Busca inteligente</div>
         <div className="mt-1 text-sm font-black text-white md:text-base">
@@ -320,8 +323,9 @@ export default function ListaProfissionais({
           {' '}· {filtrados.length} encontrados
         </div>
       </div>
+      ) : null}
 
-      <div className="bg-white/[0.03] p-2.5 md:p-3 sm:p-4">
+      <div className={`${showHeader ? 'bg-white/[0.03]' : 'bg-transparent'} p-2 md:p-3 ${compact ? 'sm:p-3' : 'sm:p-4'}`}>
         {loading ? (
           <div className="text-sm text-slate-300">Carregando profissionais…</div>
         ) : filtrados.length === 0 ? (
@@ -332,7 +336,7 @@ export default function ListaProfissionais({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 items-stretch gap-2.5 md:grid-cols-2 md:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className={compact ? 'grid grid-cols-1 items-stretch gap-2 md:grid-cols-2 md:gap-4 xl:grid-cols-3 2xl:grid-cols-4' : 'grid grid-cols-1 items-stretch gap-2.5 md:grid-cols-2 md:gap-4 xl:grid-cols-3 2xl:grid-cols-4'}>
             {filtrados.map((u) => (
               <CardProfissional
                 key={u.uid}

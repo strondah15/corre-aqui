@@ -11,7 +11,7 @@ import {
 function Field({ label, children, hint }) {
   return (
     <label className="block">
-      <div className="mb-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+      <div className="mb-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 sm:mb-1.5 sm:text-xs sm:tracking-[0.14em]">
         {label}
       </div>
       {children}
@@ -21,7 +21,7 @@ function Field({ label, children, hint }) {
 }
 
 const inputClass =
-  'h-12 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50 focus:ring-4 focus:ring-cyan-400/10'
+  'h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50 focus:ring-4 focus:ring-cyan-400/10 sm:h-12 sm:rounded-2xl sm:px-4'
 
 export default function CadastroPerfilInicial({
   uid,
@@ -68,25 +68,25 @@ export default function CadastroPerfilInicial({
   }
 
   return (
-    <main className="min-h-[100dvh] overflow-y-auto bg-[#050914] px-3 py-3 text-white sm:px-4 sm:py-6">
+    <main className="min-h-[100dvh] overflow-y-auto bg-[#050914] px-2.5 py-2.5 text-white sm:px-4 sm:py-6">
       <div className="pointer-events-none fixed inset-0 hidden bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(37,99,235,0.18),transparent_32%)] sm:block" />
 
-      <div className="relative mx-auto flex min-h-[calc(100dvh-1.5rem)] w-full max-w-5xl items-start justify-center sm:min-h-[calc(100vh-3rem)] sm:items-center">
+      <div className="relative mx-auto flex min-h-[calc(100dvh-1rem)] w-full max-w-5xl items-start justify-center sm:min-h-[calc(100vh-3rem)] sm:items-center">
         <motion.form
           onSubmit={salvar}
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="grid w-full overflow-hidden rounded-[24px] border border-white/10 bg-[#0b1422] shadow-[0_18px_55px_rgba(0,0,0,0.32)] sm:rounded-[34px] sm:bg-[#0b1422]/92 sm:shadow-[0_34px_120px_rgba(0,0,0,0.48)] sm:backdrop-blur-2xl lg:grid-cols-[0.9fr_1.1fr]"
+          className="grid w-full overflow-hidden rounded-[20px] border border-white/10 bg-[#0b1422] shadow-[0_18px_55px_rgba(0,0,0,0.32)] sm:rounded-[34px] sm:bg-[#0b1422]/92 sm:shadow-[0_34px_120px_rgba(0,0,0,0.48)] sm:backdrop-blur-2xl lg:grid-cols-[0.9fr_1.1fr]"
         >
-          <section className="border-b border-white/10 bg-white/[0.03] p-4 sm:p-8 lg:border-b-0 lg:border-r">
-            <div className="inline-flex rounded-full border border-cyan-300/15 bg-cyan-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
+          <section className="border-b border-white/10 bg-white/[0.03] p-3 sm:p-8 lg:border-b-0 lg:border-r">
+            <div className="inline-flex rounded-full border border-cyan-300/15 bg-cyan-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100 sm:text-[11px] sm:tracking-[0.18em]">
               Cadastro do app
             </div>
-            <h1 className="mt-4 text-2xl font-black leading-tight tracking-tight sm:mt-5 sm:text-4xl">
+            <h1 className="mt-3 text-xl font-black leading-tight tracking-tight sm:mt-5 sm:text-4xl">
               Complete seu perfil para entrar.
             </h1>
-            <p className="mt-3 text-sm leading-relaxed text-slate-400">
+            <p className="mt-2 text-xs leading-snug text-slate-400 sm:mt-3 sm:text-sm sm:leading-relaxed">
               O Corre Aqui usa esse cadastro para mostrar seu nome, sua cidade, suas conversas,
               pedidos, patentes e notificações no mesmo perfil.
             </p>
@@ -107,8 +107,8 @@ export default function CadastroPerfilInicial({
             </div>
           </section>
 
-          <section className="p-4 sm:p-8">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <section className="p-3 sm:p-8">
+            <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-4">
               <Field label="Nome no app">
                 <input
                   value={form.nome}
@@ -151,11 +151,11 @@ export default function CadastroPerfilInicial({
               </Field>
             </div>
 
-            <div className="mt-5">
-              <div className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
+            <div className="mt-4 sm:mt-5">
+              <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400 sm:mb-2 sm:text-xs sm:tracking-[0.14em]">
                 Como você quer começar?
               </div>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                 {Object.values(TIPOS_CONTA).map((tipo) => {
                   const active = form.tipoConta === tipo.id
                   return (
@@ -164,14 +164,14 @@ export default function CadastroPerfilInicial({
                       type="button"
                       onClick={() => setCampo('tipoConta', tipo.id)}
                       className={[
-                        'min-h-[84px] rounded-[18px] border p-3 text-left transition active:scale-[0.98] sm:min-h-[112px] sm:rounded-[22px] sm:p-4',
+                        'min-h-[72px] rounded-xl border p-2 text-left transition active:scale-[0.98] sm:min-h-[112px] sm:rounded-[22px] sm:p-4',
                         active
                           ? 'border-cyan-300/60 bg-cyan-400/14 shadow-[0_18px_48px_rgba(34,211,238,0.12)]'
                           : 'border-white/10 bg-white/[0.045] hover:bg-white/[0.07]',
                       ].join(' ')}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-black text-white">{tipo.titulo}</span>
+                        <span className="line-clamp-2 text-[11px] font-black leading-tight text-white sm:text-sm">{tipo.titulo}</span>
                         <span
                           className={[
                             'grid h-5 w-5 place-items-center rounded-full border text-[10px] font-black',
@@ -181,7 +181,7 @@ export default function CadastroPerfilInicial({
                           OK
                         </span>
                       </div>
-                      <p className="mt-2 text-xs leading-relaxed text-slate-400">{tipo.subtitulo}</p>
+                      <p className="mt-1 hidden text-xs leading-relaxed text-slate-400 sm:block">{tipo.subtitulo}</p>
                     </button>
                   )
                 })}
@@ -192,7 +192,7 @@ export default function CadastroPerfilInicial({
               <textarea
                 value={form.bio}
                 onChange={(e) => setCampo('bio', e.target.value)}
-                className={`${inputClass} mt-5 h-20 resize-none py-3 leading-relaxed sm:h-24`}
+                className={`${inputClass} mt-4 h-16 resize-none py-2.5 leading-snug sm:mt-5 sm:h-24 sm:py-3 sm:leading-relaxed`}
                 placeholder="Ex: Faco entregas rapidas, montagem, limpeza ou manutencao."
                 maxLength={180}
               />
@@ -204,11 +204,11 @@ export default function CadastroPerfilInicial({
               </div>
             ) : null}
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-4 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:gap-3">
               <button
                 type="submit"
                 disabled={!podeSalvar}
-                className="h-12 flex-1 rounded-[20px] bg-gradient-to-r from-blue-600 to-cyan-500 text-sm font-black text-white shadow-[0_14px_34px_rgba(37,99,235,0.28)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55 sm:h-14 sm:rounded-[22px] sm:shadow-[0_18px_48px_rgba(37,99,235,0.35)]"
+                className="h-11 flex-1 rounded-[16px] bg-gradient-to-r from-blue-600 to-cyan-500 text-sm font-black text-white shadow-[0_14px_34px_rgba(37,99,235,0.28)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55 sm:h-14 sm:rounded-[22px] sm:shadow-[0_18px_48px_rgba(37,99,235,0.35)]"
               >
                 {salvando ? 'Salvando perfil...' : 'Entrar no Corre Aqui'}
               </button>
@@ -217,7 +217,7 @@ export default function CadastroPerfilInicial({
                 <button
                   type="button"
                   onClick={onSair}
-                  className="h-12 rounded-[20px] border border-white/10 bg-white/[0.045] px-5 text-sm font-black text-white/70 transition hover:bg-white/[0.07] sm:h-14 sm:rounded-[22px]"
+                  className="h-11 rounded-[16px] border border-white/10 bg-white/[0.045] px-5 text-sm font-black text-white/70 transition hover:bg-white/[0.07] sm:h-14 sm:rounded-[22px]"
                 >
                   Sair
                 </button>

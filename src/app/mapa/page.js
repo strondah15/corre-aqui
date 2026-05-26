@@ -1,5 +1,6 @@
 'use client'
 import dynamic from 'next/dynamic'
+import LoginGate from '@/components/LoginGate'
 import UsuariosOnline from '@/components/UsuariosOnline'
 
 const Mapadinamico = dynamic(() => import('@/components/Mapadinamico'), {
@@ -8,9 +9,9 @@ const Mapadinamico = dynamic(() => import('@/components/Mapadinamico'), {
 
 export default function Page() {
   return (
-    <>
+    <LoginGate>
       <Mapadinamico initialMode="cliente" />
       <UsuariosOnline />
-    </>
+    </LoginGate>
   )
 }

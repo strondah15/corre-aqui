@@ -78,8 +78,8 @@ async function notificarNoTelefone({ title, body, tag }) {
     new Notification(title, {
       body,
       tag,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      icon: '/corre-aqui-icon-192.png',
+      badge: '/corre-aqui-icon-192.png',
     })
     return true
   } catch {
@@ -251,29 +251,29 @@ export default function AvisoCorreAceito({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -16, scale: 0.96 }}
         transition={{ type: 'spring', stiffness: 220, damping: 22 }}
-        className="pointer-events-none fixed inset-x-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[99985] mx-auto max-w-[430px] sm:top-4 md:top-24 md:left-auto md:right-7 md:mx-0 md:w-[430px]"
+        className="pointer-events-none fixed inset-x-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-[99985] mx-auto max-w-[370px] sm:top-4 md:top-24 md:left-auto md:right-7 md:mx-0 md:w-[430px] md:max-w-[430px]"
       >
-        <div className="pointer-events-auto relative overflow-hidden rounded-[28px] border border-emerald-300/20 bg-[#07111f]/96 p-4 text-white shadow-[0_28px_90px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+        <div className="pointer-events-auto relative overflow-hidden rounded-[20px] border border-emerald-300/20 bg-[#07111f]/96 p-3 text-white shadow-[0_22px_70px_rgba(0,0,0,0.42)] backdrop-blur-2xl md:rounded-[28px] md:p-4 md:shadow-[0_28px_90px_rgba(0,0,0,0.45)]">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-cyan-300 to-blue-500" />
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-2.5 md:gap-3">
             <motion.div
               animate={{ scale: [1, 1.08, 1], rotate: [0, -4, 4, 0] }}
               transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-              className="grid h-14 w-14 shrink-0 place-items-center rounded-[20px] bg-emerald-500 text-2xl shadow-[0_16px_45px_rgba(16,185,129,0.28)]"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] bg-emerald-500 text-xl shadow-[0_14px_36px_rgba(16,185,129,0.26)] md:h-14 md:w-14 md:rounded-[20px] md:text-2xl md:shadow-[0_16px_45px_rgba(16,185,129,0.28)]"
             >
               ✓
             </motion.div>
 
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-300">Novo aceite</div>
-              <div className="mt-1 text-lg font-black leading-tight text-white">
+              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-300 md:text-[11px] md:tracking-[0.16em]">Novo aceite</div>
+              <div className="mt-0.5 line-clamp-2 text-base font-black leading-tight text-white md:mt-1 md:text-lg">
                 {pedidoAceito?.aceite?.nome || 'Alguém'} aceitou seu pedido
               </div>
-              <div className="mt-1 truncate text-sm font-semibold text-slate-300">
+              <div className="mt-0.5 truncate text-xs font-semibold text-slate-300 md:mt-1 md:text-sm">
                 {pedidoAceito?.titulo || 'Corre aqui'}
               </div>
 
-              <div className="mt-3 grid gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-xs text-slate-300">
+              <div className="mt-2 grid gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] p-2 text-[11px] text-slate-300 md:mt-3 md:gap-2 md:rounded-2xl md:p-3 md:text-xs">
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-bold text-slate-500">Horário</span>
                   <b className="text-slate-100">{horarioAceite}</b>
@@ -288,7 +288,7 @@ export default function AvisoCorreAceito({
                 <button
                   type="button"
                   onClick={ativarAlertas}
-                  className="mt-3 rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1.5 text-xs font-black text-blue-100 transition hover:bg-blue-500/15"
+                  className="mt-2 rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1.5 text-[11px] font-black text-blue-100 transition hover:bg-blue-500/15 md:mt-3 md:text-xs"
                 >
                   Ativar alertas do navegador
                 </button>
@@ -298,16 +298,16 @@ export default function AvisoCorreAceito({
             <button
               type="button"
               onClick={fechar}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-lg font-black text-slate-200 transition hover:bg-white/[0.12]"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-base font-black text-slate-200 transition hover:bg-white/[0.12] md:h-9 md:w-9 md:rounded-2xl md:text-lg"
               aria-label="Fechar aviso"
             >
               ×
             </button>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-1.5 md:mt-4 md:gap-2">
             <button
-              className="h-11 rounded-2xl bg-emerald-600 px-3 text-sm font-black text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+              className="h-10 rounded-xl bg-emerald-600 px-3 text-xs font-black text-white transition hover:bg-emerald-500 active:scale-[0.98] md:h-11 md:rounded-2xl md:text-sm"
               onClick={() => {
                 onAbrirChat?.(pedidoAceito)
                 fechar()
@@ -318,7 +318,7 @@ export default function AvisoCorreAceito({
             </button>
 
             <button
-              className="h-11 rounded-2xl border border-white/10 bg-white/[0.06] px-3 text-sm font-black text-white transition hover:bg-white/[0.1] active:scale-[0.98]"
+              className="h-10 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-xs font-black text-white transition hover:bg-white/[0.1] active:scale-[0.98] md:h-11 md:rounded-2xl md:text-sm"
               onClick={() => {
                 onVerMapa?.(pedidoAceito)
                 fechar()

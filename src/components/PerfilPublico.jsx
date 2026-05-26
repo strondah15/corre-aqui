@@ -76,9 +76,9 @@ function normalizeCategoryIds(...values) {
 function InfoLine({ label, value }) {
   if (!value) return null
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-white/8 py-2.5 last:border-0">
-      <span className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{label}</span>
-      <span className="max-w-[65%] text-right text-sm font-bold text-slate-100">{value}</span>
+    <div className="flex items-start justify-between gap-2 border-b border-white/8 py-2 last:border-0 md:gap-3 md:py-2.5">
+      <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 md:text-xs md:tracking-[0.12em]">{label}</span>
+      <span className="max-w-[65%] text-right text-xs font-bold text-slate-100 md:text-sm">{value}</span>
     </div>
   )
 }
@@ -92,9 +92,9 @@ function StatCard({ value, label, tone = 'slate' }) {
   }
 
   return (
-    <div className={`rounded-2xl border px-3 py-3 text-center ${tones[tone] || tones.slate}`}>
-      <div className="truncate text-xl font-black">{value}</div>
-      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{label}</div>
+    <div className={`rounded-xl border px-2 py-2 text-center md:rounded-2xl md:px-3 md:py-3 ${tones[tone] || tones.slate}`}>
+      <div className="truncate text-base font-black md:text-xl">{value}</div>
+      <div className="truncate text-[9px] font-black uppercase tracking-[0.1em] text-slate-400 md:text-[10px] md:tracking-[0.14em]">{label}</div>
     </div>
   )
 }
@@ -106,15 +106,15 @@ function ServicePanel({ title, label, accent, children }) {
       : 'bg-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.8)]'
 
   return (
-    <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+    <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</div>
-          <h3 className="mt-1 truncate text-base font-black text-white">{title}</h3>
+          <h3 className="mt-1 truncate text-sm font-black text-white md:text-base">{title}</h3>
         </div>
         <span className={`h-3 w-3 rounded-full ${dot}`} />
       </div>
-      <div className="mt-3">{children}</div>
+      <div className="mt-2 md:mt-3">{children}</div>
     </section>
   )
 }
@@ -317,12 +317,12 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
     <div className="fixed inset-0 z-[99999]">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="absolute inset-x-2 bottom-2 mx-auto max-h-[96vh] max-w-5xl overflow-y-auto rounded-[22px] border border-white/10 bg-[#07111f] text-white shadow-[0_30px_120px_rgba(0,0,0,0.6)] md:rounded-[30px] sm:inset-x-3 md:bottom-auto md:top-1/2 md:-translate-y-1/2">
-        <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.22),transparent_34%),linear-gradient(135deg,#020617,#0f172a_58%,#07111f)] p-4 md:p-6">
+      <div className="absolute inset-x-2 bottom-2 mx-auto max-h-[96dvh] max-w-5xl overflow-y-auto rounded-[20px] border border-white/10 bg-[#07111f] text-white shadow-[0_30px_120px_rgba(0,0,0,0.6)] md:max-h-[96vh] md:rounded-[30px] sm:inset-x-3 md:bottom-auto md:top-1/2 md:-translate-y-1/2">
+        <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.22),transparent_34%),linear-gradient(135deg,#020617,#0f172a_58%,#07111f)] p-3 md:p-6">
           <div className="flex items-start justify-between gap-3 md:gap-4">
             <div className="flex min-w-0 items-start gap-3 md:gap-4">
               <div
-                className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[18px] border border-white/10 bg-white/8 bg-cover bg-center text-2xl shadow-[0_14px_34px_rgba(0,0,0,0.3)] md:h-20 md:w-20 md:rounded-[26px] md:text-4xl md:shadow-[0_18px_45px_rgba(0,0,0,0.35)]"
+                className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[16px] border border-white/10 bg-white/8 bg-cover bg-center text-xl shadow-[0_14px_34px_rgba(0,0,0,0.3)] md:h-20 md:w-20 md:rounded-[26px] md:text-4xl md:shadow-[0_18px_45px_rgba(0,0,0,0.35)]"
                 style={dados.fotoURL ? { backgroundImage: `url(${JSON.stringify(dados.fotoURL)})` } : undefined}
                 aria-label={dados.nome}
               >
@@ -331,7 +331,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="max-w-full truncate text-xl font-black leading-tight md:text-3xl">{dados.nome}</h2>
+                    <h2 className="max-w-full truncate text-lg font-black leading-tight md:text-3xl">{dados.nome}</h2>
                   {dados.perfilVerificado ? (
                     <span className="rounded-full border border-cyan-300/25 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-black text-cyan-100">
                       ✓ Verificado
@@ -340,7 +340,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
                 </div>
                 <p className="mt-1 text-xs font-semibold text-slate-400 md:text-sm">{dados.cidade}</p>
 
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-2 flex flex-wrap gap-1.5 md:mt-3 md:gap-2">
                   <span className={dados.emServico ? 'rounded-full border border-amber-300/25 bg-amber-400/10 px-2.5 py-0.5 text-[11px] font-black text-amber-100 md:px-3 md:py-1 md:text-xs' : 'rounded-full border border-emerald-300/25 bg-emerald-400/10 px-2.5 py-0.5 text-[11px] font-black text-emerald-100 md:px-3 md:py-1 md:text-xs'}>
                     {dados.emServico ? `Em serviço ${dados.ocupadoAte ? `até ${formatOcupadoAte(dados.ocupadoAte)}` : ''}` : 'Disponível agora'}
                   </span>
@@ -353,21 +353,21 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
               </div>
             </div>
 
-            <button onClick={onClose} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/8 text-lg font-black text-white hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl md:text-xl" type="button" title="Fechar">
+            <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/8 text-base font-black text-white hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl md:text-xl" type="button" title="Fechar">
               ×
             </button>
           </div>
         </div>
 
-        <div className="grid gap-3 p-3 md:grid-cols-[1.15fr_0.85fr] md:gap-5 md:p-6">
-          <main className="space-y-3 md:space-y-4">
+        <div className="grid gap-2.5 p-2.5 md:grid-cols-[1.15fr_0.85fr] md:gap-5 md:p-6">
+          <main className="space-y-2.5 md:space-y-4">
             <div className="grid grid-cols-3 gap-2">
               <StatCard value={notaLabel} label="Nota" tone="amber" />
               <StatCard value={dados.servicosFeitos || 0} label="Serviços" tone="emerald" />
               <StatCard value={dados.totalAvaliacoes || 0} label="Avaliações" tone="cyan" />
             </div>
 
-            <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
+            <section className="rounded-[16px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Confiança</div>
@@ -382,7 +382,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
                   {dados.perfilVerificado ? 'Perfil verificado' : 'Em validação'}
                 </span>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-1.5 text-center text-[11px] font-black md:mt-4 md:gap-2 md:text-xs">
+              <div className="mt-2 grid grid-cols-3 gap-1.5 text-center text-[10px] font-black md:mt-4 md:gap-2 md:text-xs">
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-slate-200 md:rounded-2xl md:py-3">Chat</div>
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-slate-200 md:rounded-2xl md:py-3">Histórico</div>
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-slate-200 md:rounded-2xl md:py-3">Denúncia</div>
@@ -390,14 +390,14 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
             </section>
 
             {dados.bio ? (
-              <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
+              <section className="rounded-[16px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
                 <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Resumo</div>
                 <p className="mt-2 text-sm leading-relaxed text-slate-200">{dados.bio}</p>
               </section>
             ) : null}
 
             {dados.categorias.length ? (
-              <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
+              <section className="rounded-[16px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
                 <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Atua com</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {dados.categorias.map((cat) => (
@@ -409,7 +409,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
               </section>
             ) : null}
 
-              <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
+              <section className="rounded-[16px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
               <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Ficha técnica</div>
               <div className="mt-3">
                 <InfoLine label="Região" value={dados.cidade} />
@@ -438,8 +438,8 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
             </div>
           </main>
 
-          <aside className="space-y-3">
-            <section className="rounded-[20px] border border-white/10 bg-white/[0.05] p-3 md:rounded-[26px] md:p-4">
+          <aside className="space-y-2.5 md:space-y-3">
+            <section className="rounded-[18px] border border-white/10 bg-white/[0.05] p-3 md:rounded-[26px] md:p-4">
               <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Ações</div>
               <div className="mt-3 grid gap-2">
                 <button
@@ -476,7 +476,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
               </div>
             </section>
 
-            <section className="rounded-[20px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[26px] md:p-4">
+            <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[26px] md:p-4">
               <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Avaliações recentes</div>
               <div className="mt-3 space-y-2">
                 {dados.avaliacoes.length ? (
@@ -497,7 +497,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
               </div>
             </section>
 
-            <section className="rounded-[20px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[26px] md:p-4">
+            <section className="rounded-[18px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[26px] md:p-4">
               <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Histórico</div>
               <div className="mt-3 space-y-2">
                 {dados.historico.length ? (

@@ -242,88 +242,88 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
   const alcanceLabel = ALCANCES.find((a) => a.id === alcance)?.label || 'Normal'
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 px-3 py-4 backdrop-blur-md" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
-      <div className="relative w-full max-w-5xl overflow-hidden rounded-[32px] border border-white/12 bg-[#07111f] text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)]">
-        <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 p-5">
-          <div className="flex items-start justify-between gap-4">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 px-2 py-2 backdrop-blur-md md:px-3 md:py-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
+      <div className="relative w-full max-w-5xl overflow-hidden rounded-[22px] border border-white/12 bg-[#07111f] text-white shadow-[0_30px_120px_rgba(0,0,0,0.65)] md:rounded-[32px]">
+        <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 p-3 md:p-5">
+          <div className="flex items-start justify-between gap-3 md:gap-4">
             <div>
-              <div className="text-2xl font-black tracking-tight">Criar pedido</div>
-              <div className="mt-1 max-w-xl text-sm leading-relaxed text-slate-400">Monte um pedido claro para aparecer melhor para quem está disponível na região.</div>
+              <div className="text-lg font-black tracking-tight md:text-2xl">Criar pedido</div>
+              <div className="mt-0.5 line-clamp-1 max-w-xl text-xs leading-snug text-slate-400 md:mt-1 md:line-clamp-none md:text-sm md:leading-relaxed">Monte um pedido claro para aparecer melhor para quem está disponível na região.</div>
             </div>
-            <button onClick={onClose} className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/8 text-xl font-black text-white hover:bg-white/15" type="button" title="Fechar">
+            <button onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/8 text-lg font-black text-white hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl md:text-xl" type="button" title="Fechar">
               ×
             </button>
           </div>
         </div>
 
-        <div className="grid max-h-[82vh] gap-0 overflow-y-auto md:grid-cols-[1.15fr_0.85fr]">
-          <section className="space-y-4 p-5">
+        <div className="grid max-h-[92dvh] gap-0 overflow-y-auto md:max-h-[82vh] md:grid-cols-[1.15fr_0.85fr]">
+          <section className="space-y-3 p-3 md:space-y-4 md:p-5">
             <div>
-              <div className="mb-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Tipo de atendimento</div>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 md:mb-2 md:text-xs md:tracking-[0.16em]">Tipo de atendimento</div>
+              <div className="grid grid-cols-3 gap-1.5 md:gap-2">
                 {MODOS.map((m) => (
                   <button
                     key={m.id}
                     type="button"
                     onClick={() => setModoPedido(m.id)}
-                    className={modoPedido === m.id ? 'rounded-2xl border border-blue-400 bg-blue-500/18 p-3 text-left ring-2 ring-blue-500/25' : 'rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left hover:bg-white/[0.07]'}
+                    className={modoPedido === m.id ? 'rounded-xl border border-blue-400 bg-blue-500/18 p-2 text-left ring-2 ring-blue-500/25 md:rounded-2xl md:p-3' : 'rounded-xl border border-white/10 bg-white/[0.04] p-2 text-left hover:bg-white/[0.07] md:rounded-2xl md:p-3'}
                   >
-                    <div className="text-sm font-black text-white">{m.label}</div>
-                    <div className="mt-1 text-xs leading-snug text-slate-400">{m.help}</div>
+                    <div className="line-clamp-1 text-[11px] font-black text-white md:text-sm">{m.label}</div>
+                    <div className="mt-1 hidden text-xs leading-snug text-slate-400 md:block">{m.help}</div>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-[1fr_0.8fr]">
+            <div className="grid gap-2.5 md:grid-cols-[1fr_0.8fr] md:gap-3">
               <label>
-                <div className="mb-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Categoria</div>
-                <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className="h-12 w-full rounded-2xl border border-white/12 bg-slate-950 px-4 text-white outline-none focus:ring-2 focus:ring-blue-500/45">
+                <div className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 md:mb-2 md:text-xs md:tracking-[0.16em]">Categoria</div>
+                <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className="h-10 w-full rounded-xl border border-white/12 bg-slate-950 px-3 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500/45 md:h-12 md:rounded-2xl md:px-4">
                   {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
                 </select>
               </label>
 
               <label>
-                <div className="mb-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Valor opcional</div>
-                <div className="flex h-12 items-center rounded-2xl border border-white/12 bg-slate-950 px-4 focus-within:ring-2 focus-within:ring-emerald-500/35">
-                  <span className="mr-3 rounded-full bg-emerald-400/10 px-2 py-1 text-xs font-black text-emerald-200">R$</span>
-                  <input value={valorDigitado} onChange={(e) => setValorDigitado(e.target.value)} placeholder="Ex: 80,00" className="min-w-0 flex-1 bg-transparent text-white placeholder:text-slate-600 outline-none" inputMode="decimal" />
+                <div className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 md:mb-2 md:text-xs md:tracking-[0.16em]">Valor opcional</div>
+                <div className="flex h-10 items-center rounded-xl border border-white/12 bg-slate-950 px-3 focus-within:ring-2 focus-within:ring-emerald-500/35 md:h-12 md:rounded-2xl md:px-4">
+                  <span className="mr-2 rounded-full bg-emerald-400/10 px-2 py-0.5 text-[11px] font-black text-emerald-200 md:mr-3 md:py-1 md:text-xs">R$</span>
+                  <input value={valorDigitado} onChange={(e) => setValorDigitado(e.target.value)} placeholder="Ex: 80,00" className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-slate-600 outline-none md:text-base" inputMode="decimal" />
                 </div>
               </label>
             </div>
 
             <label>
-              <div className="mb-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Título curto</div>
+              <div className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 md:mb-2 md:text-xs md:tracking-[0.16em]">Título curto</div>
               <input
                 value={tituloManual}
                 onChange={(e) => setTituloManual(e.target.value.slice(0, 80))}
                 placeholder="Ex: trocar torneira hoje"
-                className="h-12 w-full rounded-2xl border border-white/12 bg-slate-950 px-4 text-white placeholder:text-slate-600 outline-none focus:ring-2 focus:ring-blue-500/45"
+                className="h-10 w-full rounded-xl border border-white/12 bg-slate-950 px-3 text-sm text-white placeholder:text-slate-600 outline-none focus:ring-2 focus:ring-blue-500/45 md:h-12 md:rounded-2xl md:px-4 md:text-base"
               />
             </label>
 
             <div>
-              <div className="mb-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Descrição do pedido</div>
+              <div className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 md:mb-2 md:text-xs md:tracking-[0.16em]">Descrição do pedido</div>
               <div className="relative">
                 <textarea
                   value={mensagem}
                   onChange={(e) => setMensagem(e.target.value.slice(0, 260))}
                   placeholder="Ex: preciso trocar uma torneira hoje, bairro Centro, valor a combinar."
-                  className="h-36 w-full resize-none rounded-3xl border border-white/12 bg-slate-950 p-4 pr-16 text-white placeholder:text-slate-600 outline-none focus:ring-2 focus:ring-blue-500/45"
+                  className="h-24 w-full resize-none rounded-2xl border border-white/12 bg-slate-950 p-3 pr-14 text-sm text-white placeholder:text-slate-600 outline-none focus:ring-2 focus:ring-blue-500/45 md:h-36 md:rounded-3xl md:p-4 md:pr-16 md:text-base"
                 />
-                <div className="absolute bottom-3 right-4 text-xs font-bold text-slate-600">{mensagem.length}/260</div>
+                <div className="absolute bottom-2 right-3 text-[10px] font-bold text-slate-600 md:bottom-3 md:right-4 md:text-xs">{mensagem.length}/260</div>
               </div>
             </div>
 
             <div>
-              <div className="mb-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Sugestões rápidas</div>
-              <div className="flex flex-wrap gap-2">
+              <div className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 md:mb-2 md:text-xs md:tracking-[0.16em]">Sugestões rápidas</div>
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:flex-wrap md:gap-2 [&::-webkit-scrollbar]:hidden">
                 {sugestoes.map((s) => (
                   <button
                     type="button"
                     key={s}
                     onClick={() => setMensagem(s)}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08] active:scale-[0.98]"
+                    className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-bold text-slate-200 transition hover:bg-white/[0.08] active:scale-[0.98] md:py-2 md:text-xs"
                   >
                     {s}
                   </button>
@@ -332,8 +332,8 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
             </div>
 
             <div>
-              <div className="mb-2 px-1 text-xs font-black uppercase tracking-[0.16em] text-slate-500">Alcance</div>
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="mb-1.5 px-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 md:mb-2 md:text-xs md:tracking-[0.16em]">Alcance</div>
+              <div className="grid grid-cols-3 gap-1.5 md:gap-2">
                 {ALCANCES.map((a) => (
                   <button
                     key={a.id}
@@ -344,56 +344,56 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
                     disabled={a.disabled}
                     className={
                       a.disabled
-                        ? 'cursor-not-allowed rounded-2xl border border-white/10 bg-white/[0.025] p-3 text-left opacity-55'
+                        ? 'cursor-not-allowed rounded-xl border border-white/10 bg-white/[0.025] p-2 text-left opacity-55 md:rounded-2xl md:p-3'
                         : alcance === a.id
-                          ? 'rounded-2xl border border-emerald-300 bg-emerald-400/12 p-3 text-left ring-2 ring-emerald-400/20'
-                          : 'rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left hover:bg-white/[0.07]'
+                          ? 'rounded-xl border border-emerald-300 bg-emerald-400/12 p-2 text-left ring-2 ring-emerald-400/20 md:rounded-2xl md:p-3'
+                          : 'rounded-xl border border-white/10 bg-white/[0.04] p-2 text-left hover:bg-white/[0.07] md:rounded-2xl md:p-3'
                     }
                   >
-                    <div className="text-sm font-black text-white">{a.label}</div>
-                    <div className="mt-1 text-xs leading-snug text-slate-400">{a.help}</div>
+                    <div className="line-clamp-1 text-[11px] font-black text-white md:text-sm">{a.label}</div>
+                    <div className="mt-1 hidden text-xs leading-snug text-slate-400 md:block">{a.help}</div>
                   </button>
                 ))}
               </div>
             </div>
           </section>
 
-          <aside className="border-t border-white/10 bg-white/[0.035] p-5 md:border-l md:border-t-0">
-            <div className="sticky top-5 space-y-4">
-              <section className="rounded-[26px] border border-white/10 bg-slate-950/80 p-4">
-                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Prévia</div>
-                <h3 className="mt-3 text-xl font-black leading-tight text-white">{tituloFinal}</h3>
-                <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-slate-400">{mensagem.trim() || 'Seu pedido aparece aqui antes de publicar.'}</p>
+          <aside className="border-t border-white/10 bg-white/[0.035] p-3 md:border-l md:border-t-0 md:p-5">
+            <div className="sticky top-5 space-y-3 md:space-y-4">
+              <section className="rounded-[18px] border border-white/10 bg-slate-950/80 p-3 md:rounded-[26px] md:p-4">
+                <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 md:text-[11px] md:tracking-[0.16em]">Prévia</div>
+                <h3 className="mt-2 line-clamp-2 text-base font-black leading-tight text-white md:mt-3 md:text-xl">{tituloFinal}</h3>
+                <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-slate-400 md:mt-2 md:line-clamp-4 md:text-sm md:leading-relaxed">{mensagem.trim() || 'Seu pedido aparece aqui antes de publicar.'}</p>
 
-                <div className="mt-4 grid gap-2">
-                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2 text-sm">
+                <div className="mt-3 grid gap-1.5 md:mt-4 md:gap-2">
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.04] px-3 py-1.5 text-xs md:rounded-2xl md:py-2 md:text-sm">
                     <span className="text-slate-500">Tipo</span>
                     <b>{modeLabel}</b>
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.04] px-3 py-1.5 text-xs md:rounded-2xl md:py-2 md:text-sm">
                     <span className="text-slate-500">Categoria</span>
                     <b className="truncate">{categoria?.emoji} {categoria?.label}</b>
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.04] px-3 py-1.5 text-xs md:rounded-2xl md:py-2 md:text-sm">
                     <span className="text-slate-500">Valor</span>
                     <b>{formatMoney(valorFinal)}</b>
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.04] px-3 py-1.5 text-xs md:rounded-2xl md:py-2 md:text-sm">
                     <span className="text-slate-500">Alcance</span>
                     <b>{alcanceLabel}</b>
                   </div>
                 </div>
               </section>
 
-              <label className="flex items-center justify-between gap-3 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3">
+              <label className="flex items-center justify-between gap-3 rounded-[16px] border border-white/10 bg-white/[0.04] px-3 py-2.5 md:rounded-[22px] md:px-4 md:py-3">
                 <span>
-                  <span className="block text-sm font-black text-white">Usar localização</span>
-                  <span className="block text-xs text-slate-500">Ajuda pessoas próximas a encontrar seu pedido.</span>
+                  <span className="block text-xs font-black text-white md:text-sm">Usar localização</span>
+                  <span className="block text-[11px] text-slate-500 md:text-xs">Ajuda pessoas próximas a encontrar seu pedido.</span>
                 </span>
                 <input type="checkbox" checked={usarLocal} onChange={(e) => setUsarLocal(e.target.checked)} className="h-5 w-5 accent-blue-500" />
               </label>
 
-              <button onClick={publicarPedido} disabled={loading || !mensagem.trim()} className="h-14 w-full rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-[0_18px_50px_rgba(37,99,235,0.32)] transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50" type="button">
+              <button onClick={publicarPedido} disabled={loading || !mensagem.trim()} className="h-12 w-full rounded-[16px] bg-blue-600 px-4 text-sm font-black text-white shadow-[0_16px_42px_rgba(37,99,235,0.3)] transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 md:h-14 md:rounded-2xl md:shadow-[0_18px_50px_rgba(37,99,235,0.32)]" type="button">
                 {loading ? 'Publicando...' : 'Publicar pedido'}
               </button>
 

@@ -180,8 +180,8 @@ export default function MeusPedidosCliente({
   }
 
   return (
-    <div className="mt-3 rounded-[22px] p-3 bg-[#0f172a] border border-slate-700 shadow-2xl shadow-black/40 md:mt-4 md:rounded-[1.8rem] md:p-4">
-      <div className="mb-3 flex items-center justify-between rounded-xl bg-[#1e293b] border border-slate-600 px-3 py-2 shadow-lg shadow-black/20 md:mb-4 md:rounded-2xl md:py-2.5">
+    <div className="mt-2 rounded-[20px] p-2.5 bg-[#0f172a] border border-slate-700 shadow-2xl shadow-black/40 md:mt-4 md:rounded-[1.8rem] md:p-4">
+      <div className="mb-2.5 flex items-center justify-between rounded-xl bg-[#1e293b] border border-slate-600 px-3 py-2 shadow-lg shadow-black/20 md:mb-4 md:rounded-2xl md:py-2.5">
         <div className="text-sm font-semibold text-white">
           Histórico de serviços
         </div>
@@ -190,26 +190,26 @@ export default function MeusPedidosCliente({
         </div>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-5 md:mb-4 md:gap-2">
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-base font-black text-white md:text-lg">{totalAbertos}</div>
-          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Abertos</div>
+      <div className="mb-2.5 grid grid-cols-5 gap-1 md:mb-4 md:gap-2">
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-sm font-black text-white md:text-lg">{totalAbertos}</div>
+          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">Abertos</div>
         </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-base font-black text-amber-300 md:text-lg">{totalAceitos}</div>
-          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Em andamento</div>
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-sm font-black text-amber-300 md:text-lg">{totalAceitos}</div>
+          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">Andam.</div>
         </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-base font-black text-sky-300 md:text-lg">{totalConcluidos}</div>
-          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Concluídos</div>
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-sm font-black text-sky-300 md:text-lg">{totalConcluidos}</div>
+          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">Concl.</div>
         </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-base font-black text-amber-200 md:text-lg">{totalAvaliacoesPendentes}</div>
-          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">A avaliar</div>
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-sm font-black text-amber-200 md:text-lg">{totalAvaliacoesPendentes}</div>
+          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">A avaliar</div>
         </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-2.5 py-2 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-base font-black text-red-300 md:text-lg">{totalProblemas}</div>
-          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Problemas</div>
+        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
+          <div className="text-sm font-black text-red-300 md:text-lg">{totalProblemas}</div>
+          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">Problemas</div>
         </div>
       </div>
 
@@ -218,7 +218,7 @@ export default function MeusPedidosCliente({
           Você ainda não criou pedidos.
         </div>
       ) : (
-        <div className="space-y-2.5 md:space-y-3">
+        <div className="space-y-2 md:space-y-3">
           {meusPedidos.map((p, index) => (
             <motion.div
               key={p.id}
@@ -228,7 +228,7 @@ export default function MeusPedidosCliente({
               whileHover={{ scale: 1.01, y: -2 }}
               whileTap={{ scale: 0.985 }}
               className={[
-                "relative overflow-hidden rounded-xl p-3 bg-[#1e293b] border border-slate-600 transition-colors duration-200 hover:bg-[#263449] select-none shadow-lg shadow-black/30 md:rounded-2xl md:p-4",
+                "relative overflow-hidden rounded-[18px] p-2.5 bg-[#1e293b] border border-slate-600 transition-colors duration-200 hover:bg-[#263449] select-none shadow-lg shadow-black/30 md:rounded-2xl md:p-4",
                 String(p?.status || 'aberto').toLowerCase() === 'aberto'
                   ? "border-emerald-500/50 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-900/30"
                   : "",
@@ -248,7 +248,7 @@ export default function MeusPedidosCliente({
                   </div>
 
                   {p?.descricao && String(p.descricao).trim().toLowerCase() !== String(p?.titulo || '').trim().toLowerCase() ? (
-                    <div className="mt-1 line-clamp-2 select-text text-xs text-slate-200 md:text-sm">
+                    <div className="mt-1 line-clamp-1 select-text text-xs text-slate-200 md:line-clamp-2 md:text-sm">
                       {p.descricao}
                     </div>
                   ) : null}
@@ -281,7 +281,7 @@ export default function MeusPedidosCliente({
                 <span className="ml-2 font-semibold text-slate-100">{proximoPassoPedido(p)}</span>
               </div>
 
-              <StatusFluxoServico pedido={p} tone="dark" className="mt-3" />
+              <StatusFluxoServico pedido={p} tone="dark" className="mt-2 hidden md:block" />
 
               <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs text-slate-200 md:mt-3 md:gap-2 md:text-sm">
                 {p?.valor != null && Number.isFinite(Number(p.valor)) ? (

@@ -114,49 +114,49 @@ export default function AgendaProfissional({ uid, modo = 'profissional', compact
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, ease: 'easeOut' }}
-      className="relative overflow-hidden rounded-[30px] border border-white/10 bg-[#07111f]/88 p-3 text-white shadow-[0_24px_80px_rgba(0,0,0,0.34)] backdrop-blur-2xl md:p-5"
+      className="relative overflow-hidden rounded-[22px] border border-white/10 bg-[#07111f]/88 p-2.5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-2xl md:rounded-[30px] md:p-5"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_8%,rgba(59,130,246,0.16),transparent_34%),radial-gradient(circle_at_88%_18%,rgba(168,85,247,0.12),transparent_32%)]" />
 
       <div className="relative">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-blue-100">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.055] px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-blue-100 md:px-3 md:py-1 md:text-[11px]">
               📅 Agenda
             </div>
-            <h2 className="mt-3 text-xl font-black tracking-tight text-white md:text-2xl">
+            <h2 className="mt-2 text-lg font-black tracking-tight text-white md:mt-3 md:text-2xl">
               Minha agenda
             </h2>
-            <p className="mt-1 max-w-lg text-xs leading-relaxed text-slate-400 md:text-sm">
+            <p className="mt-1 line-clamp-1 max-w-lg text-[11px] leading-snug text-slate-400 md:line-clamp-none md:text-sm md:leading-relaxed">
               {modo === 'cliente'
                 ? 'Acompanhe seus agendamentos com profissionais.'
                 : 'Aceite serviços futuros e organize sua fila sem sair do fluxo.'}
             </p>
           </div>
 
-          <div className="shrink-0 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-center">
-            <div className="text-lg font-black leading-none text-amber-100">{resumo.pendente}</div>
+          <div className="shrink-0 rounded-xl border border-amber-300/20 bg-amber-400/10 px-2.5 py-1.5 text-center md:rounded-2xl md:px-3 md:py-2">
+            <div className="text-base font-black leading-none text-amber-100 md:text-lg">{resumo.pendente}</div>
             <div className="mt-0.5 text-[10px] font-bold text-amber-100/70">pend.</div>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-2.5">
+        <div className="mt-3 grid grid-cols-3 gap-1.5 md:mt-4 md:gap-2">
+          <div className="rounded-xl border border-white/10 bg-white/[0.045] p-2 md:rounded-2xl md:p-2.5">
             <div className="text-[10px] font-bold text-slate-400">Pendentes</div>
-            <div className="mt-1 text-lg font-black text-amber-100">{resumo.pendente}</div>
+            <div className="mt-0.5 text-base font-black text-amber-100 md:mt-1 md:text-lg">{resumo.pendente}</div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-2.5">
+          <div className="rounded-xl border border-white/10 bg-white/[0.045] p-2 md:rounded-2xl md:p-2.5">
             <div className="text-[10px] font-bold text-slate-400">Confirmados</div>
-            <div className="mt-1 text-lg font-black text-emerald-100">{resumo.aceito}</div>
+            <div className="mt-0.5 text-base font-black text-emerald-100 md:mt-1 md:text-lg">{resumo.aceito}</div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-2.5">
+          <div className="rounded-xl border border-white/10 bg-white/[0.045] p-2 md:rounded-2xl md:p-2.5">
             <div className="text-[10px] font-bold text-slate-400">Recusados</div>
-            <div className="mt-1 text-lg font-black text-rose-100">{resumo.recusado}</div>
+            <div className="mt-0.5 text-base font-black text-rose-100 md:mt-1 md:text-lg">{resumo.recusado}</div>
           </div>
         </div>
 
         {loading ? (
-          <div className="mt-4 space-y-3">
+          <div className="mt-3 space-y-2 md:mt-4 md:space-y-3">
             {[0, 1, 2].map((i) => (
               <div key={i} className="h-28 animate-pulse rounded-[24px] border border-white/10 bg-white/[0.045]" />
             ))}
@@ -183,7 +183,7 @@ export default function AgendaProfissional({ uid, modo = 'profissional', compact
                   initial="initial"
                   animate="animate"
                   transition={{ duration: 0.22, delay: Math.min(index * 0.035, 0.18) }}
-                  className="rounded-[24px] border border-white/10 bg-white/[0.055] p-3.5 shadow-[0_12px_34px_rgba(0,0,0,0.18)] transition hover:bg-white/[0.075] md:p-4"
+                  className="rounded-[18px] border border-white/10 bg-white/[0.055] p-2.5 shadow-[0_12px_34px_rgba(0,0,0,0.18)] transition hover:bg-white/[0.075] md:rounded-[24px] md:p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -201,11 +201,11 @@ export default function AgendaProfissional({ uid, modo = 'profissional', compact
                     </span>
                   </div>
 
-                  <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-slate-400 md:text-sm">
+                  <p className="mt-2 line-clamp-1 text-xs leading-snug text-slate-400 md:mt-3 md:line-clamp-2 md:text-sm md:leading-relaxed">
                     {a.descricao || 'Sem descrição informada.'}
                   </p>
 
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-300">
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-300 md:mt-3 md:gap-2 md:text-xs">
                     {souProf ? (
                       <span className="rounded-full bg-white/[0.055] px-2.5 py-1">
                         👤 Cliente: <b className="text-white">{a.clienteNome || 'Cliente'}</b>
@@ -223,13 +223,13 @@ export default function AgendaProfissional({ uid, modo = 'profissional', compact
                   </div>
 
                   {souProf && status === 'pendente' ? (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="mt-2.5 grid grid-cols-2 gap-1.5 md:mt-3 md:gap-2">
                       <motion.button
                         type="button"
                         whileTap={{ scale: 0.97 }}
                         disabled={salvandoId === a.id}
                         onClick={() => responder(a.id, 'aceito')}
-                        className="rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2.5 text-sm font-black text-white shadow-[0_12px_30px_rgba(16,185,129,0.22)] disabled:opacity-60"
+                        className="rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-2 text-xs font-black text-white shadow-[0_12px_30px_rgba(16,185,129,0.22)] disabled:opacity-60 md:rounded-2xl md:py-2.5 md:text-sm"
                       >
                         Aceitar
                       </motion.button>
@@ -238,7 +238,7 @@ export default function AgendaProfissional({ uid, modo = 'profissional', compact
                         whileTap={{ scale: 0.97 }}
                         disabled={salvandoId === a.id}
                         onClick={() => responder(a.id, 'recusado')}
-                        className="rounded-2xl border border-rose-300/20 bg-rose-500/12 px-3 py-2.5 text-sm font-black text-rose-100 disabled:opacity-60"
+                        className="rounded-xl border border-rose-300/20 bg-rose-500/12 px-3 py-2 text-xs font-black text-rose-100 disabled:opacity-60 md:rounded-2xl md:py-2.5 md:text-sm"
                       >
                         Recusar
                       </motion.button>
