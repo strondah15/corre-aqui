@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { signOut } from "firebase/auth";
 import { ref, onValue, update, serverTimestamp } from "firebase/database";
 import { getDownloadURL, ref as storageRef, uploadBytesResumable } from "firebase/storage";
-import { database, storage } from "@/lib/firebase";
+import { auth, database, storage } from "@/lib/firebase";
 import {
   ativarPushNotifications,
   desativarPushNotifications,
@@ -90,16 +91,16 @@ function PlanoResumo({ onOpenPlanos }) {
   const atual = planoInfo.EmBreve;
 
   return (
-    <div className="mt-5 w-full rounded-[26px] bg-[#0c1a2e] border border-cyan-400/10 p-4 text-left shadow-[0_0_40px_rgba(34,211,238,0.08)]">
+    <div className="mt-5 w-full rounded-[26px] border border-blue-100 bg-white/88 p-4 text-left text-slate-950 shadow-[0_18px_38px_rgba(15,23,42,0.10)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] font-black text-emerald-300">
+          <div className="text-[11px] uppercase tracking-[0.18em] font-black text-blue-700">
             Crescimento justo
           </div>
-          <div className="mt-1 text-sm font-extrabold text-white">
+          <div className="mt-1 text-sm font-extrabold text-blue-950">
             💚 Sem taxa do app
           </div>
-          <div className="mt-1 text-xs leading-relaxed text-slate-300">
+          <div className="mt-1 text-xs leading-relaxed text-slate-600">
             100% do valor combinado fica com quem faz o serviço. Recursos premium e anúncios locais chegam em breve.
           </div>
         </div>
@@ -114,7 +115,7 @@ function PlanoResumo({ onOpenPlanos }) {
       <button
         type="button"
         onClick={onOpenPlanos}
-        className="mt-3 w-full rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 px-4 py-3 text-sm font-extrabold text-white active:scale-[0.98] transition"
+        className="mt-3 w-full rounded-2xl bg-blue-700 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-blue-800 active:scale-[0.98]"
       >
         Ver recursos em breve
       </button>
@@ -126,12 +127,12 @@ function PlanoResumo({ onOpenPlanos }) {
 function Field({ label, children, hint }) {
   return (
     <label className="block">
-      <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 md:mb-1.5 md:text-xs">
+      <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-slate-500 md:mb-1.5 md:text-xs">
         {label}
       </div>
       {children}
       {hint ? (
-        <div className="mt-1 text-[11px] text-slate-500">{hint}</div>
+        <div className="mt-1 text-[11px] font-semibold text-slate-500">{hint}</div>
       ) : null}
     </label>
   );
@@ -139,10 +140,10 @@ function Field({ label, children, hint }) {
 
 function inputClass(extra = "") {
   return [
-    "w-full rounded-xl md:rounded-2xl bg-slate-900/70 border border-white/10",
-    "px-3 py-2.5 md:px-4 md:py-3 text-sm md:text-base text-slate-100 placeholder:text-slate-500",
+    "w-full rounded-xl md:rounded-2xl bg-white border border-slate-200",
+    "px-3 py-2.5 md:px-4 md:py-3 text-sm md:text-base text-slate-950 placeholder:text-slate-400",
     "outline-none focus:ring-2 focus:ring-blue-500/35 focus:border-blue-400/50",
-    "transition",
+    "shadow-sm transition",
     extra,
   ].join(" ");
 }
@@ -610,6 +611,27 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     }
   }
 
+  async function sairDaConta() {
+    try {
+      await signOut(auth);
+      [
+        "meuId",
+        "meuNome",
+        "cadastroCompleto",
+        "fotoURL",
+        "fotoUrl",
+        "avatarURL",
+        "avatarEmoji",
+        "visivelNoMapa",
+        "notifsAtivas",
+      ].forEach((key) => window.localStorage.removeItem(key));
+      if (uid) window.localStorage.removeItem(`cadastroCompleto:${uid}`);
+      window.location.href = "/";
+    } catch {
+      window.location.href = "/";
+    }
+  }
+
   async function salvarFotoNosPerfis(fotoFinal, storagePath = "", storageModo = "firebase") {
     const avatarEmoji = profile.avatarEmoji || "";
     const payload = {
@@ -915,15 +937,15 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         : "Não ativada";
   const pushStatusClass =
     pushPermission === "granted"
-      ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-100"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
       : pushPermission === "denied"
-        ? "border-rose-300/20 bg-rose-400/10 text-rose-100"
-        : "border-amber-300/20 bg-amber-400/10 text-amber-100";
+        ? "border-rose-200 bg-rose-50 text-rose-700"
+        : "border-amber-200 bg-amber-50 text-amber-700";
 
   return (
-    <div className="fixed inset-0 z-[100000] bg-[#020617]">
+    <div className="fixed inset-0 z-[100000] bg-slate-950">
       <div
-        className="absolute inset-0 bg-black/72 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm"
         onClick={onClose}
       />
 
@@ -933,27 +955,27 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         transition={{ type: "spring", stiffness: 120, damping: 18 }}
         className="
           fixed inset-0 h-screen w-screen
-          bg-[#06101d] text-white
+          bg-white text-slate-950
           border-0
-          shadow-[0_30px_120px_rgba(0,0,0,0.65)]
+          shadow-[0_30px_120px_rgba(15,23,42,0.35)]
           overflow-y-auto
         "
       >
-        <div className="sticky top-0 z-10 bg-[#06101d]/95 backdrop-blur-xl border-b border-white/10">
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
           <div className="mx-auto w-full max-w-7xl px-3 py-2.5 md:px-8 md:py-4 flex items-center justify-between gap-3">
             <div>
-              <div className="text-base font-extrabold text-white md:text-lg">
+              <div className="text-base font-extrabold text-blue-950 md:text-lg">
                 Meu perfil
               </div>
-              <div className="text-[11px] text-slate-400 md:text-xs">
-                Configure como você aparece no Corre Aqui.
+              <div className="text-[11px] font-semibold text-slate-500 md:text-xs">
+                Perfil, confiança, notificações e preferências.
               </div>
             </div>
 
             <button
               type="button"
               onClick={onClose}
-              className="h-9 w-9 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-white/10 text-white text-base font-black active:scale-[0.96] transition shadow-lg md:h-12 md:w-12 md:rounded-3xl md:text-xl"
+              className="h-9 w-9 rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-[0.96] md:h-12 md:w-12 md:rounded-3xl md:text-xl"
               title="Fechar"
             >
               ✕
@@ -963,7 +985,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
         <div className="mx-auto w-full max-w-7xl p-2.5 md:p-6">
           {/* FOTO + HEADER */}
-          <div className="rounded-[22px] bg-gradient-to-br from-[#0b1730] via-[#0a1428] to-[#050b16] border border-cyan-300/10 p-3 md:rounded-[32px] md:p-6 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
+          <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#0b73ff_0%,#18bfd2_48%,#ffe36b_100%)] p-3 text-white shadow-[0_22px_70px_rgba(37,99,235,0.22)] md:rounded-[36px] md:p-6">
             <div className="flex flex-col items-center text-center">
               <label className={["cursor-pointer relative group", fotoSalvando ? "pointer-events-none opacity-80" : ""].join(" ")}>
                 <input
@@ -976,32 +998,32 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
                 {fotoPrincipal ? (
                   <div
-                    className="h-20 w-20 rounded-full bg-cover bg-center border-4 border-cyan-300/80 ring-4 ring-cyan-400/15 shadow-[0_0_45px_rgba(34,211,238,0.28)] md:h-28 md:w-28"
+                    className="h-20 w-20 rounded-[28px] border-4 border-white bg-cover bg-center shadow-[0_16px_38px_rgba(15,23,42,0.22)] md:h-28 md:w-28 md:rounded-[36px]"
                     style={{ backgroundImage: `url(${JSON.stringify(fotoPrincipal)})` }}
                     aria-label="Foto do perfil"
                   />
                 ) : (
-                  <div className="h-20 w-20 rounded-full bg-white/10 flex items-center justify-center text-3xl border border-white/20 shadow-2xl md:h-28 md:w-28 md:text-4xl">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-[28px] border-4 border-white bg-white/90 text-3xl text-blue-700 shadow-[0_16px_38px_rgba(15,23,42,0.22)] md:h-28 md:w-28 md:rounded-[36px] md:text-4xl">
                     {profile.avatarEmoji || "📷"}
                   </div>
                 )}
 
-                <div className="absolute inset-0 rounded-full bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-xs font-bold">
+                <div className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-blue-950/55 text-xs font-bold opacity-0 transition group-hover:opacity-100 md:rounded-[36px]">
                   {fotoSalvando ? "Salvando..." : "Trocar foto"}
                 </div>
               </label>
 
               {fotoAviso ? (
-                <div className="mt-3 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-2 text-xs font-bold text-cyan-100">
+                <div className="mt-3 rounded-2xl border border-white/30 bg-white/18 px-3 py-2 text-xs font-bold text-white">
                   {fotoAviso}
                 </div>
               ) : null}
 
-              <div className="mt-3 text-xl font-extrabold text-white md:mt-4 md:text-2xl">
+              <div className="mt-3 text-2xl font-black text-white drop-shadow-sm md:mt-4 md:text-3xl">
                 {profile.nome || "Seu nome"}
               </div>
 
-              <div className="mt-0.5 text-xs text-slate-400 md:mt-1 md:text-sm">
+              <div className="mt-0.5 text-xs font-bold text-white/82 md:mt-1 md:text-sm">
                 {profile.cidade || "Cidade não informada"}
               </div>
 
@@ -1043,36 +1065,36 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-1.5 w-full md:mt-5 md:gap-2">
-                <div className="rounded-xl bg-white/[0.06] border border-white/10 px-2 py-2 md:rounded-2xl md:px-3 md:py-3">
-                  <div className="text-base font-black text-white md:text-lg">{serviceStats.total}</div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <div className="rounded-[18px] border border-white/55 bg-white/88 px-2 py-2 text-blue-950 shadow-[0_12px_24px_rgba(15,23,42,0.10)] md:rounded-2xl md:px-3 md:py-3">
+                  <div className="text-base font-black md:text-lg">{serviceStats.total}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
                     Histórico
                   </div>
                 </div>
-                <div className="rounded-xl bg-white/[0.06] border border-white/10 px-2 py-2 md:rounded-2xl md:px-3 md:py-3">
-                  <div className="text-base font-black text-white md:text-lg">
+                <div className="rounded-[18px] border border-white/55 bg-white/88 px-2 py-2 text-blue-950 shadow-[0_12px_24px_rgba(15,23,42,0.10)] md:rounded-2xl md:px-3 md:py-3">
+                  <div className="text-base font-black md:text-lg">
                     {serviceStats.notaMedia ? `★ ${serviceStats.notaMedia.toFixed(1)}` : "Sem nota"}
                   </div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
                     Nota
                   </div>
                 </div>
-                <div className="rounded-xl bg-white/[0.06] border border-white/10 px-2 py-2 md:rounded-2xl md:px-3 md:py-3">
-                  <div className="text-base font-black text-white md:text-lg">{serviceStats.problemas}</div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">
+                <div className="rounded-[18px] border border-white/55 bg-white/88 px-2 py-2 text-blue-950 shadow-[0_12px_24px_rgba(15,23,42,0.10)] md:rounded-2xl md:px-3 md:py-3">
+                  <div className="text-base font-black md:text-lg">{serviceStats.problemas}</div>
+                  <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500">
                     Problemas
                   </div>
                 </div>
               </div>
 
               <div className="mt-1.5 grid grid-cols-2 gap-1.5 w-full text-left md:mt-2 md:gap-2">
-                <div className="rounded-xl bg-white/[0.04] border border-white/10 px-2.5 py-1.5 md:rounded-2xl md:px-3 md:py-2">
-                  <div className="text-sm font-black text-cyan-100">{serviceStats.comoCorre}</div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Como corre</div>
+                <div className="rounded-[18px] border border-white/40 bg-white/28 px-2.5 py-1.5 md:rounded-2xl md:px-3 md:py-2">
+                  <div className="text-sm font-black text-white">{serviceStats.comoCorre}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-white/70">Como corre</div>
                 </div>
-                <div className="rounded-xl bg-white/[0.04] border border-white/10 px-2.5 py-1.5 md:rounded-2xl md:px-3 md:py-2">
-                  <div className="text-sm font-black text-cyan-100">{serviceStats.comoCliente}</div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Como cliente</div>
+                <div className="rounded-[18px] border border-white/40 bg-white/28 px-2.5 py-1.5 md:rounded-2xl md:px-3 md:py-2">
+                  <div className="text-sm font-black text-white">{serviceStats.comoCliente}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-white/70">Como cliente</div>
                 </div>
               </div>
 
@@ -1084,7 +1106,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           </div>
 
           {/* MENU DO PERFIL */}
-          <div className="mt-3 rounded-[20px] bg-slate-950/65 border border-white/10 p-1.5 shadow-[0_20px_70px_rgba(0,0,0,0.28)] md:mt-5 md:rounded-[30px] md:p-2">
+          <div className="mt-3 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.10)] md:mt-5 md:rounded-[30px] md:p-2">
             <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6 md:gap-2">
               {["perfil", "corre", "profissional", "config", "monetizacao", "patentes"].map(
                 (t) => (
@@ -1096,8 +1118,8 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                       "group min-h-[54px] rounded-[16px] px-1.5 py-2 text-center border transition-all duration-200 active:scale-[0.96] md:min-h-[72px] md:rounded-[24px] md:px-2 md:py-3",
                       "flex flex-col items-center justify-center gap-1",
                       tab === t
-                        ? "bg-gradient-to-br from-blue-600 via-cyan-500 to-emerald-400 text-white border-cyan-200/40 shadow-[0_12px_45px_rgba(34,211,238,0.22)]"
-                        : "bg-slate-800/80 hover:bg-slate-700/90 text-slate-200 border-white/10 hover:border-white/20",
+                        ? "border-[#ffd91a] bg-[#ffd91a] text-blue-950 shadow-[0_12px_28px_rgba(250,204,21,0.22)]"
+                        : "border-transparent bg-blue-50 text-slate-700 hover:bg-blue-100 hover:text-blue-950",
                     ].join(" ")}
                   >
                     <span className="text-base leading-none md:text-lg">{tabIcon[t]}</span>
@@ -1112,7 +1134,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* PERFIL */}
           {tab === "perfil" && (
-            <div className="mt-3 rounded-[20px] bg-[#0b1628] border border-white/10 p-3 space-y-3 md:mt-5 md:rounded-[28px] md:p-4 md:space-y-4">
+            <div className="mt-3 space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:mt-5 md:space-y-4 md:rounded-[30px] md:p-5">
               <Field label="Nome">
                 <input
                   value={profile.nome}
@@ -1160,21 +1182,21 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 />
               </Field>
 
-              <section className="overflow-hidden rounded-[20px] border border-emerald-300/10 bg-gradient-to-br from-slate-950 via-[#0b1628] to-[#07111f] p-3 shadow-[0_22px_70px_rgba(0,0,0,0.22)] md:rounded-[28px] md:p-4">
+              <section className="overflow-hidden rounded-[24px] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-yellow-50 p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">
                       Segurança e confiança
                     </div>
-                    <h3 className="mt-1 text-lg font-black text-white">
+                    <h3 className="mt-1 text-lg font-black text-blue-950">
                       🔒 Construindo uma comunidade confiável
                     </h3>
-                    <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-400">
+                    <p className="mt-1 max-w-2xl text-xs font-semibold leading-relaxed text-slate-600">
                       O Corre Aqui usa reputação, histórico e avaliações para aumentar a confiança entre clientes, corres e profissionais.
                     </p>
                   </div>
 
-                  <div className="inline-flex w-fit rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-black text-emerald-100">
+                  <div className="inline-flex w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
                     🟢 Perfil verificado em breve
                   </div>
                 </div>
@@ -1183,43 +1205,43 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   {trustItems.map((item) => (
                     <div
                       key={item.title}
-                      className="rounded-xl border border-white/10 bg-white/[0.045] p-2.5 shadow-[0_14px_38px_rgba(0,0,0,0.16)] md:rounded-2xl md:p-3"
+                      className="rounded-2xl border border-slate-100 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.07)] md:p-4"
                     >
                       <div className="flex items-start gap-3">
-                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-base md:h-10 md:w-10 md:rounded-2xl md:text-lg">
+                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-base md:h-10 md:w-10 md:rounded-2xl md:text-lg">
                           {item.icon}
                         </div>
                         <div className="min-w-0">
-                          <div className="text-sm font-black text-white">{item.title}</div>
-                          <div className="mt-1 text-xs leading-relaxed text-slate-400">{item.text}</div>
+                          <div className="text-sm font-black text-slate-950">{item.title}</div>
+                          <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{item.text}</div>
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-3 rounded-[18px] border border-white/10 bg-white/[0.045] p-3 md:mt-4 md:rounded-[24px] md:p-4">
+                <div className="mt-3 rounded-[22px] border border-blue-100 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.07)] md:mt-4 md:rounded-[28px] md:p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-black text-white">
+                      <div className="text-sm font-black text-slate-950">
                         CPF para verificação de perfil
                       </div>
-                      <div className="mt-1 text-xs leading-relaxed text-slate-400">
+                      <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
                         Em breve, perfis verificados terão mais confiança e destaque.
                       </div>
 
                       {cpfSalvoMask ? (
-                        <div className="mt-2 inline-flex rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-[11px] font-black text-emerald-100">
+                        <div className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-black text-emerald-700">
                           CPF salvo: {cpfSalvoMask}
                         </div>
                       ) : (
-                        <div className="mt-2 inline-flex rounded-full border border-slate-300/10 bg-slate-400/10 px-3 py-1.5 text-[11px] font-black text-slate-300">
+                        <div className="mt-2 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-black text-slate-500">
                           Opcional
                         </div>
                       )}
 
                       {cpfAviso ? (
-                        <div className="mt-2 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-2 text-[11px] font-bold text-cyan-100">
+                        <div className="mt-2 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-bold text-blue-800">
                           {cpfAviso}
                         </div>
                       ) : null}
@@ -1235,9 +1257,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                         inputMode="numeric"
                         autoComplete="off"
                         placeholder={cpfSalvoMask ? "Atualizar CPF" : "000.000.000-00"}
-                        className={inputClass("bg-slate-950/70")}
+                        className={inputClass()}
                       />
-                      <div className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                      <div className="mt-1 text-[11px] font-semibold leading-relaxed text-slate-500">
                         O app não pede documento ou selfie nesta etapa.
                       </div>
                     </div>
@@ -1250,34 +1272,34 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           {/* CONFIG */}
           {tab === "config" && (
             <div className="mt-3 space-y-3 md:mt-5 md:space-y-4">
-              <div className="rounded-[20px] bg-gradient-to-br from-[#0b1628] via-[#081426] to-[#050b16] border border-cyan-300/10 p-3 shadow-[0_20px_70px_rgba(0,0,0,0.24)] md:rounded-[30px] md:p-5">
+              <div className="rounded-[24px] bg-[linear-gradient(135deg,#0b73ff_0%,#18bfd2_52%,#ffe36b_100%)] p-4 text-white shadow-[0_22px_60px_rgba(37,99,235,0.18)] md:rounded-[32px] md:p-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-lg shadow-lg md:h-12 md:w-12 md:rounded-2xl md:text-xl">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-white/90 text-lg text-blue-700 shadow-lg md:h-12 md:w-12 md:rounded-2xl md:text-xl">
                       ⚙️
                     </div>
                     <div>
                       <div className="text-base font-black text-white md:text-lg">Configurações</div>
-                      <div className="text-xs text-slate-400 md:text-sm">
-                        Ajuste presença, mapa e experiência visual.
+                      <div className="text-xs font-semibold text-white/82 md:text-sm">
+                        Ajuste presença, notificações, mapa e experiência.
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 md:rounded-2xl md:px-4 md:py-3 md:text-sm">
+                  <div className="rounded-full bg-[#ffd91a] px-4 py-2 text-xs font-black text-blue-950 shadow-[0_10px_22px_rgba(15,23,42,0.12)] md:px-5 md:py-3 md:text-sm">
                     Mapa limpo por padrão
                   </div>
                 </div>
               </div>
 
               <div className="grid gap-3 lg:grid-cols-2 md:gap-4">
-                <section className="rounded-[20px] border border-white/10 bg-[#0b1628] p-3 shadow-[0_18px_55px_rgba(0,0,0,0.22)] md:rounded-[28px] md:p-4">
-                  <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">Presença</div>
+                <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_16px_38px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                  <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Presença</div>
 
-                  <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-4 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
+                  <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 md:mt-4 md:gap-4 md:px-4 md:py-4">
                     <div>
-                      <div className="text-sm font-extrabold text-white">Visível no mapa</div>
-                      <div className="text-xs text-slate-400">Permite aparecer como disponível para clientes próximos.</div>
+                      <div className="text-sm font-extrabold text-slate-950">Visível no mapa</div>
+                      <div className="text-xs font-semibold text-slate-500">Permite aparecer como disponível para clientes próximos.</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1287,10 +1309,10 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     />
                   </label>
 
-                  <label className="mt-2.5 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-3 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
+                  <label className="mt-2.5 flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 md:mt-3 md:gap-4 md:px-4 md:py-4">
                     <div>
-                      <div className="text-sm font-extrabold text-white">Notificações</div>
-                      <div className="text-xs text-slate-400">Pedidos, chat, aceite, conclusão e avaliações.</div>
+                      <div className="text-sm font-extrabold text-slate-950">Notificações</div>
+                      <div className="text-xs font-semibold text-slate-500">Pedidos, chat, aceite, conclusão e avaliações.</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1300,16 +1322,16 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     />
                   </label>
 
-                  <div className="mt-2.5 rounded-[18px] border border-cyan-300/10 bg-gradient-to-br from-slate-950 via-[#0b1628] to-[#08111f] px-3 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.22)] md:mt-3 md:rounded-[26px] md:px-4 md:py-4">
+                  <div className="mt-2.5 rounded-[22px] border border-blue-100 bg-blue-50 px-3 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] md:mt-3 md:rounded-[28px] md:px-4 md:py-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <div className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-base md:h-10 md:w-10 md:rounded-2xl md:text-lg">
+                          <div className="grid h-9 w-9 place-items-center rounded-xl bg-white text-base shadow-sm md:h-10 md:w-10 md:rounded-2xl md:text-lg">
                             🔔
                           </div>
                           <div>
-                            <div className="text-sm font-extrabold text-white">Notificações</div>
-                            <div className="mt-0.5 text-xs leading-relaxed text-slate-400">
+                            <div className="text-sm font-extrabold text-slate-950">Notificações</div>
+                            <div className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">
                               Receba avisos de chat, aceite, conclusão e avaliação.
                             </div>
                           </div>
@@ -1320,13 +1342,13 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                         </div>
 
                         {!pushInfo.supported && pushInfo.reason ? (
-                          <div className="mt-2 rounded-2xl border border-amber-300/15 bg-amber-400/10 px-3 py-2 text-[11px] font-bold text-amber-100">
+                          <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
                             {pushInfo.reason}
                           </div>
                         ) : null}
 
                         {pushAviso ? (
-                          <div className="mt-2 rounded-2xl border border-cyan-300/15 bg-cyan-400/10 px-3 py-2 text-[11px] font-bold text-cyan-100">
+                          <div className="mt-2 rounded-2xl border border-blue-100 bg-white px-3 py-2 text-[11px] font-bold text-blue-800">
                             {pushAviso}
                           </div>
                         ) : null}
@@ -1346,7 +1368,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                           type="button"
                           onClick={testarPush}
                           disabled={pushSalvando || pushTestando || !pushInfo.supported}
-                          className="h-10 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-slate-100 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50 md:h-11 md:rounded-2xl"
+                          className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 md:h-11 md:rounded-2xl"
                         >
                           {pushTestando ? "Enviando..." : "Testar notificação"}
                         </button>
@@ -1356,7 +1378,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                             type="button"
                             onClick={desativarPush}
                             disabled={pushSalvando || pushTestando}
-                            className="h-9 rounded-xl border border-white/10 bg-transparent px-4 text-xs font-black text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200 disabled:opacity-50 md:h-10 md:rounded-2xl"
+                            className="h-9 rounded-xl border border-slate-200 bg-transparent px-4 text-xs font-black text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:opacity-50 md:h-10 md:rounded-2xl"
                           >
                             Desativar
                           </button>
@@ -1366,13 +1388,13 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                   </div>
                 </section>
 
-                <section className="rounded-[20px] border border-white/10 bg-[#0b1628] p-3 shadow-[0_18px_55px_rgba(0,0,0,0.22)] md:rounded-[28px] md:p-4">
-                  <div className="text-xs font-black uppercase tracking-[0.16em] text-cyan-300">Mapa ao vivo</div>
+                <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_16px_38px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                  <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Mapa ao vivo</div>
 
-                  <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-4 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
+                  <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 md:mt-4 md:gap-4 md:px-4 md:py-4">
                     <div>
-                      <div className="text-sm font-extrabold text-white">Mostrar pessoas online</div>
-                      <div className="text-xs text-slate-400">Mantido desligado para o mapa ficar mais limpo.</div>
+                      <div className="text-sm font-extrabold text-slate-950">Mostrar pessoas online</div>
+                      <div className="text-xs font-semibold text-slate-500">Mantido desligado para o mapa ficar mais limpo.</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1382,10 +1404,10 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     />
                   </label>
 
-                  <label className="mt-2.5 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-3 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
+                  <label className="mt-2.5 flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 md:mt-3 md:gap-4 md:px-4 md:py-4">
                     <div>
-                      <div className="text-sm font-extrabold text-white">Atualização ao vivo</div>
-                      <div className="text-xs text-slate-400">Atualiza marcadores automaticamente quando ativado.</div>
+                      <div className="text-sm font-extrabold text-slate-950">Atualização ao vivo</div>
+                      <div className="text-xs font-semibold text-slate-500">Atualiza marcadores automaticamente quando ativado.</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1395,13 +1417,13 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     />
                   </label>
 
-                  <label className="mt-3 block rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-4 md:rounded-2xl md:px-4 md:py-4">
+                  <label className="mt-3 block rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 md:mt-4 md:px-4 md:py-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-extrabold text-white">Limite de marcadores</div>
-                        <div className="text-xs text-slate-400">Use pouco para manter o mapa leve.</div>
+                        <div className="text-sm font-extrabold text-slate-950">Limite de marcadores</div>
+                        <div className="text-xs font-semibold text-slate-500">Use pouco para manter o mapa leve.</div>
                       </div>
-                      <div className="rounded-full bg-white/10 px-3 py-1 text-sm font-black text-white">
+                      <div className="rounded-full bg-[#ffd91a] px-3 py-1 text-sm font-black text-blue-950">
                         {profile.mapLimiteOnline}
                       </div>
                     </div>
@@ -1418,12 +1440,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                 </section>
               </div>
 
-              <section className="rounded-[20px] border border-white/10 bg-[#0b1628] p-3 shadow-[0_18px_55px_rgba(0,0,0,0.22)] md:rounded-[28px] md:p-4">
-                <div className="text-xs font-black uppercase tracking-[0.16em] text-violet-300">Experiência</div>
-                <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/70 px-3 py-3 md:mt-4 md:gap-4 md:rounded-2xl md:px-4 md:py-4">
+              <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_16px_38px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Experiência</div>
+                <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 md:mt-4 md:gap-4 md:px-4 md:py-4">
                   <div>
-                    <div className="text-sm font-extrabold text-white">Animações da interface</div>
-                    <div className="text-xs text-slate-400">Mantém transições e feedbacks de XP/patente mais vivos.</div>
+                    <div className="text-sm font-extrabold text-slate-950">Animações da interface</div>
+                    <div className="text-xs font-semibold text-slate-500">Mantém transições e feedbacks de XP/patente mais vivos.</div>
                   </div>
                   <input
                     type="checkbox"
@@ -1432,6 +1454,23 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     className="h-5 w-5 accent-violet-500"
                   />
                 </label>
+              </section>
+
+              <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_16px_38px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Conta</div>
+                <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 md:mt-4 md:px-4 md:py-4">
+                  <div className="text-sm font-extrabold text-slate-950">Sessão do app</div>
+                  <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                    Use esta opção para sair com segurança deste aparelho.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={sairDaConta}
+                    className="mt-3 h-10 rounded-xl border border-rose-200 bg-rose-50 px-4 text-xs font-black text-rose-700 transition hover:bg-rose-100 md:h-11 md:rounded-2xl"
+                  >
+                    Sair da conta
+                  </button>
+                </div>
               </section>
             </div>
           )}
@@ -1723,10 +1762,9 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             disabled={salvando || fotoSalvando}
             className="
               w-full mt-3 py-3 md:mt-5 md:py-4 rounded-2xl md:rounded-3xl
-              bg-gradient-to-r from-blue-600 to-indigo-600
-              hover:from-blue-500 hover:to-indigo-500
-              text-white font-extrabold
-              shadow-[0_18px_60px_rgba(37,99,235,0.28)]
+              bg-[#ffd91a] hover:bg-yellow-300
+              text-blue-950 font-black
+              shadow-[0_18px_42px_rgba(250,204,21,0.24)]
               disabled:opacity-60 disabled:cursor-not-allowed
               active:scale-[0.98] transition
             "

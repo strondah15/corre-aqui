@@ -132,21 +132,21 @@ function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
   const preco = safeStr(item?.profPrecoBase || item?.correPreco || item?.precoBase) || 'A combinar'
 
   return (
-    <article className="w-[154px] shrink-0 overflow-hidden rounded-[22px] border border-slate-100 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.11)]">
+    <article className="w-[154px] shrink-0 overflow-hidden rounded-[22px] border border-slate-100 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.11)] md:w-[190px] md:rounded-[26px]">
       <button
         type="button"
         onClick={() => onAbrirPerfil?.(item)}
         className="block w-full text-left"
       >
-        <div className="relative grid h-28 place-items-center bg-gradient-to-br from-amber-50 via-cyan-50 to-emerald-50">
+        <div className="relative grid h-28 place-items-center bg-gradient-to-br from-amber-50 via-cyan-50 to-emerald-50 md:h-36">
           {item?.fotoURL ? (
             <div
               aria-label={nome}
-              className="h-16 w-16 rounded-[24px] bg-cover bg-center ring-4 ring-white shadow-[0_10px_24px_rgba(15,23,42,0.16)]"
+              className="h-16 w-16 rounded-[24px] bg-cover bg-center ring-4 ring-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] md:h-20 md:w-20 md:rounded-[28px]"
               style={{ backgroundImage: `url("${item.fotoURL}")` }}
             />
           ) : (
-            <div className="grid h-16 w-16 place-items-center rounded-[24px] bg-slate-950 text-lg font-black text-white ring-4 ring-white shadow-[0_10px_24px_rgba(15,23,42,0.16)]">
+            <div className="grid h-16 w-16 place-items-center rounded-[24px] bg-slate-950 text-lg font-black text-white ring-4 ring-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] md:h-20 md:w-20 md:rounded-[28px] md:text-xl">
               {item?.avatarEmoji || iniciais}
             </div>
           )}
@@ -155,8 +155,8 @@ function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
           </span>
         </div>
 
-        <div className="p-3">
-          <div className="line-clamp-1 text-[15px] font-black leading-tight text-slate-950">
+        <div className="p-3 md:p-4">
+          <div className="line-clamp-1 text-[15px] font-black leading-tight text-slate-950 md:text-lg">
             {nome}
           </div>
           <div className="mt-1 line-clamp-2 min-h-[32px] text-[12px] font-bold leading-tight text-slate-600">
@@ -252,16 +252,18 @@ export default function ClienteHome({
 
   return (
     <>
-    <div className="md:hidden -mx-2 -mt-2 min-h-[calc(100dvh-4rem)] overflow-hidden rounded-t-[28px] bg-white pb-24 text-slate-950 shadow-[0_-12px_60px_rgba(255,255,255,0.08)]">
-      <div className="bg-[#ffe76a] px-4 pb-8 pt-4">
-        <div className="flex items-center justify-between gap-3">
+    <div className="-mx-2.5 -mt-2 min-h-[calc(100dvh-4rem)] overflow-hidden bg-white pb-24 text-slate-950 md:mx-0 md:mt-0 md:min-h-0 md:rounded-[34px] md:pb-8 md:shadow-[0_24px_90px_rgba(0,0,0,0.24)]">
+      <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_45%,#ffe36b_100%)] px-4 pb-8 pt-4 md:px-8 md:pb-12 md:pt-7">
+        <div className="pointer-events-none absolute -right-14 top-12 h-44 w-44 rounded-[48px] bg-yellow-200/35 rotate-12 md:-right-8 md:top-6 md:h-72 md:w-72 md:rounded-[72px]" />
+        <div className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full bg-white/16 md:h-64 md:w-64" />
+        <div className="relative flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={() => onAbrirPerfil?.()}
-            className="relative grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[24px] bg-white/55 text-base font-black text-slate-950 shadow-[0_12px_26px_rgba(15,23,42,0.12)]"
+            className="relative grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[24px] bg-white/92 text-base font-black text-blue-700 shadow-[0_12px_26px_rgba(15,23,42,0.16)] md:h-16 md:w-16 md:rounded-[28px] md:text-xl"
             title="Abrir perfil"
           >
-            <span className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-rose-500 ring-4 ring-[#ffe76a]" />
+            <span className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-[#ffd91a] ring-4 ring-blue-500" />
             {iniciais}
           </button>
 
@@ -270,10 +272,10 @@ export default function ClienteHome({
             onClick={() => onAbrirPerfil?.()}
             className="min-w-0 flex-1 text-left"
           >
-            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">
+            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/75 md:text-xs">
               Perto de você
             </div>
-            <div className="mt-0.5 flex items-center gap-1 truncate text-lg font-black text-slate-950">
+            <div className="mt-0.5 flex items-center gap-1 truncate text-lg font-black text-white md:text-2xl">
               <span className="truncate">{nomeExibicao}</span>
               <span>›</span>
             </div>
@@ -283,7 +285,7 @@ export default function ClienteHome({
             <button
               type="button"
               onClick={() => setCatId('servicos_gerais')}
-              className="grid h-10 w-10 place-items-center rounded-2xl bg-emerald-500 text-lg font-black text-white shadow-[0_10px_24px_rgba(16,185,129,0.26)]"
+              className="grid h-10 w-10 place-items-center rounded-2xl bg-[#ffd91a] text-lg font-black text-blue-950 shadow-[0_10px_24px_rgba(245,158,11,0.22)] md:h-12 md:w-12 md:rounded-[20px] md:text-xl"
               title="Serviços rápidos"
             >
               %
@@ -291,7 +293,7 @@ export default function ClienteHome({
             <button
               type="button"
               onClick={() => onIrAoVivo?.()}
-              className="grid h-10 w-10 place-items-center rounded-2xl bg-white/50 text-xl font-black text-slate-950"
+              className="grid h-10 w-10 place-items-center rounded-2xl bg-white/86 text-xl font-black text-blue-700 md:h-12 md:w-12 md:rounded-[20px]"
               title="Mapa"
             >
               🗺️
@@ -299,11 +301,11 @@ export default function ClienteHome({
             <button
               type="button"
               onClick={() => onAbrirPerfil?.()}
-              className="relative grid h-10 w-10 place-items-center rounded-2xl bg-white/50 text-xl font-black text-slate-950"
+              className="relative grid h-10 w-10 place-items-center rounded-2xl bg-white/86 text-xl font-black text-blue-700 md:h-12 md:w-12 md:rounded-[20px]"
               title="Notificações"
             >
               🔔
-              <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white ring-2 ring-[#ffe76a]">
+              <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white ring-2 ring-white">
                 !
               </span>
             </button>
@@ -313,30 +315,30 @@ export default function ClienteHome({
         <button
           type="button"
           onClick={() => onCriarPedido?.()}
-          className="mt-4 flex h-14 w-full items-center gap-3 rounded-[22px] bg-white/74 px-4 text-left text-lg font-black text-slate-500 shadow-[0_12px_24px_rgba(15,23,42,0.08)] backdrop-blur"
+          className="relative mt-4 flex h-14 w-full items-center gap-3 rounded-[22px] border border-white/70 bg-white/92 px-4 text-left text-lg font-black text-slate-500 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur md:mt-6 md:h-16 md:max-w-3xl md:px-5 md:text-xl"
         >
-          <span className="text-2xl">⌕</span>
+          <span className="text-2xl text-blue-600">⌕</span>
           <span className="truncate">buscar ajuda rápida</span>
         </button>
 
         <button
           type="button"
           onClick={() => onCriarPedido?.()}
-          className="mt-4 block w-full overflow-hidden rounded-[26px] bg-[#ffd91a] text-left shadow-[0_18px_34px_rgba(15,23,42,0.14)]"
+          className="relative mt-4 block w-full overflow-hidden rounded-[26px] bg-[linear-gradient(135deg,#ffdd28_0%,#ffe977_45%,#158cff_100%)] text-left shadow-[0_18px_34px_rgba(15,23,42,0.18)] md:mt-6 md:rounded-[34px]"
         >
-          <div className="relative min-h-[152px] p-5">
-            <div className="absolute -right-8 -top-6 h-40 w-40 rounded-[36px] bg-emerald-500/22 rotate-12" />
-            <div className="absolute bottom-4 right-4 grid h-24 w-24 place-items-center rounded-[30px] bg-white/70 text-5xl shadow-lg">
+          <div className="relative min-h-[152px] p-5 md:min-h-[230px] md:p-8">
+            <div className="absolute -right-8 -top-6 h-40 w-40 rounded-[36px] bg-blue-700/20 rotate-12 md:h-72 md:w-72 md:rounded-[64px]" />
+            <div className="absolute bottom-4 right-4 grid h-24 w-24 place-items-center rounded-[30px] bg-white/80 text-5xl shadow-lg md:bottom-8 md:right-10 md:h-36 md:w-36 md:rounded-[42px] md:text-7xl">
               ⚡
             </div>
-            <div className="relative max-w-[210px]">
-              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-700">
+            <div className="relative max-w-[210px] md:max-w-xl">
+              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-700 md:text-xs">
                 Corre Aqui
               </div>
-              <div className="mt-1 text-3xl font-black leading-[0.92] text-slate-950">
+              <div className="mt-1 text-3xl font-black leading-[0.92] text-slate-950 md:text-6xl">
                 Precisa resolver hoje?
               </div>
-              <div className="mt-3 inline-flex rounded-full bg-white px-4 py-2 text-xs font-black text-slate-950 shadow">
+              <div className="mt-3 inline-flex rounded-full bg-blue-700 px-4 py-2 text-xs font-black text-white shadow md:mt-6 md:px-6 md:py-3 md:text-sm">
                 Criar pedido agora
               </div>
             </div>
@@ -344,22 +346,22 @@ export default function ClienteHome({
         </button>
       </div>
 
-      <div className="-mt-5 rounded-t-[30px] bg-white px-4 pt-4">
-        <div className="flex items-center gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="-mt-5 bg-white px-4 pt-4 md:rounded-t-[30px] md:px-8 md:pt-6">
+        <div className="flex items-center gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
           {[
             ['🛵', 'Corre rápido'],
             ['⚡', 'No horário'],
             ['🛡️', 'Seguro'],
             ['💬', 'Chat'],
           ].map(([icon, label]) => (
-            <div key={label} className="flex shrink-0 items-center gap-2 rounded-full bg-slate-50 px-3 py-2 text-sm font-black text-slate-950">
-              <span className="grid h-7 w-7 place-items-center rounded-full bg-[#ffd91a] text-base">{icon}</span>
+            <div key={label} className="flex shrink-0 items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-sm font-black text-slate-950 md:px-4 md:py-2.5 md:text-base">
+              <span className="grid h-7 w-7 place-items-center rounded-full bg-[#ffd91a] text-base shadow-[0_6px_14px_rgba(245,158,11,0.18)] md:h-8 md:w-8">{icon}</span>
               {label}
             </div>
           ))}
         </div>
 
-        <div className="mt-5 flex gap-5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="mt-5 flex gap-5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:mt-7 md:gap-7 [&::-webkit-scrollbar]:hidden">
           {categoriasRapidas.map((cat) => {
             const ativo = catId === cat.id
             return (
@@ -367,15 +369,15 @@ export default function ClienteHome({
                 key={cat.id || 'todos-mobile'}
                 type="button"
                 onClick={() => setCatId(cat.id)}
-                className="w-[72px] shrink-0 text-center"
+                className="w-[72px] shrink-0 text-center md:w-[92px]"
               >
                 <span className={[
-                  'mx-auto grid h-16 w-16 place-items-center rounded-[24px] text-3xl shadow-[0_12px_24px_rgba(15,23,42,0.08)]',
-                  ativo ? 'bg-[#ffd91a]' : 'bg-slate-50',
+                  'mx-auto grid h-16 w-16 place-items-center rounded-[24px] text-3xl shadow-[0_12px_24px_rgba(15,23,42,0.08)] md:h-20 md:w-20 md:rounded-[28px] md:text-4xl',
+                  ativo ? 'bg-[#ffd91a] ring-2 ring-blue-500/35' : 'bg-blue-50',
                 ].join(' ')}>
                   {cat.emoji}
                 </span>
-                <span className="mt-2 block line-clamp-2 text-[12px] font-bold leading-tight text-slate-800">
+                <span className="mt-2 block line-clamp-2 text-[12px] font-bold leading-tight text-slate-800 md:text-sm">
                   {cat.label}
                 </span>
               </button>
@@ -383,31 +385,31 @@ export default function ClienteHome({
           })}
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3">
+        <div className="mt-6 grid grid-cols-2 gap-3 md:mt-8 md:gap-5">
           <button
             type="button"
             onClick={() => setModo('corre')}
-            className="min-h-[112px] rounded-[24px] bg-gradient-to-br from-orange-300 to-amber-500 p-4 text-left shadow-[0_14px_30px_rgba(245,158,11,0.22)]"
+            className="min-h-[112px] rounded-[24px] bg-gradient-to-br from-yellow-300 via-amber-300 to-blue-500 p-4 text-left shadow-[0_14px_30px_rgba(37,99,235,0.18)] md:min-h-[150px] md:rounded-[30px] md:p-6"
           >
             <div className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-800">Corres</div>
-            <div className="mt-1 text-2xl font-black leading-none text-slate-950">{providers.filter((p) => p.isCorre).length}</div>
-            <div className="mt-1 text-xs font-black text-slate-800">disponíveis</div>
+            <div className="mt-1 text-2xl font-black leading-none text-slate-950 md:text-4xl">{providers.filter((p) => p.isCorre).length}</div>
+            <div className="mt-1 text-xs font-black text-slate-800 md:text-sm">disponíveis</div>
           </button>
           <button
             type="button"
             onClick={() => setModo('profissional')}
-            className="min-h-[112px] rounded-[24px] bg-gradient-to-br from-cyan-200 to-emerald-300 p-4 text-left shadow-[0_14px_30px_rgba(45,212,191,0.2)]"
+            className="min-h-[112px] rounded-[24px] bg-gradient-to-br from-cyan-100 via-blue-200 to-sky-500 p-4 text-left shadow-[0_14px_30px_rgba(37,99,235,0.2)] md:min-h-[150px] md:rounded-[30px] md:p-6"
           >
             <div className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-800">Profissionais</div>
-            <div className="mt-1 text-2xl font-black leading-none text-slate-950">{providers.filter((p) => p.isProfissional).length}</div>
-            <div className="mt-1 text-xs font-black text-slate-800">com ficha</div>
+            <div className="mt-1 text-2xl font-black leading-none text-slate-950 md:text-4xl">{providers.filter((p) => p.isProfissional).length}</div>
+            <div className="mt-1 text-xs font-black text-slate-800 md:text-sm">com ficha</div>
           </button>
         </div>
 
-        <section className="mt-7">
+        <section className="mt-7 md:mt-10">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-black leading-none text-slate-950">Melhores perto</h2>
+              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Melhores perto</h2>
               <p className="mt-1 text-sm font-semibold text-slate-400">{modo === 'corre' ? 'Corres rápidos disponíveis' : 'Profissionais para contratar'}</p>
             </div>
             <button
@@ -419,7 +421,7 @@ export default function ClienteHome({
             </button>
           </div>
 
-          <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
             {(list.length ? list : providers).slice(0, 8).map((item) => (
               <ProviderMiniCard
                 key={item.uid}
@@ -437,10 +439,10 @@ export default function ClienteHome({
           </div>
         </section>
 
-        <section className="mt-6">
+        <section className="mt-6 md:mt-10">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-black leading-none text-slate-950">Todos disponíveis</h2>
+              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Todos disponíveis</h2>
               <p className="mt-1 text-sm font-semibold text-slate-400">{list.length} encontrado(s)</p>
             </div>
             <div className="grid grid-cols-2 rounded-full bg-slate-100 p-1">
@@ -467,7 +469,7 @@ export default function ClienteHome({
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-[24px] bg-slate-950 p-1.5">
+          <div className="overflow-hidden rounded-[24px] bg-slate-950 p-1.5 md:rounded-[30px] md:p-2">
             <ListaProfissionais
               mode={modo}
               categoriaId={catId}
@@ -483,7 +485,7 @@ export default function ClienteHome({
       </div>
     </div>
 
-    <div className="hidden mt-2 space-y-2.5 px-2 pb-20 select-none bg-transparent md:block md:mt-3 md:space-y-4 md:px-3 md:pb-28 sm:px-0">
+    <div className="hidden">
       <div className={`rounded-[20px] p-2.5 md:rounded-[28px] md:p-5 ${glass}`}>
         <div className="flex items-center justify-between gap-2.5 md:gap-4">
           <div className="flex min-w-0 items-center gap-2.5 md:gap-3">

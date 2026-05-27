@@ -15,17 +15,17 @@ export default function LegalPage({
   children,
 }) {
   return (
-    <main className="min-h-[100dvh] bg-[#050914] px-4 py-5 text-white sm:px-5 sm:py-8">
+    <main className="min-h-[100dvh] bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white sm:px-5 sm:py-8">
       <div className="mx-auto w-full max-w-4xl">
-        <header className="rounded-[30px] border border-white/10 bg-white/[0.055] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.28)] sm:p-6">
+        <header className="rounded-[30px] border border-white/35 bg-white/90 p-5 text-slate-950 shadow-[0_24px_80px_rgba(37,99,235,0.22)] backdrop-blur-2xl sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <LogoCorreAqui className="h-14 w-14 rounded-2xl" />
+              <LogoCorreAqui className="h-14 w-14 rounded-2xl bg-white shadow-[0_12px_30px_rgba(37,99,235,0.18)]" />
               <div>
-                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-200">
+                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-700">
                   {eyebrow}
                 </div>
-                <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">
+                <h1 className="mt-1 text-2xl font-black tracking-tight text-blue-950 sm:text-3xl">
                   {title}
                 </h1>
               </div>
@@ -33,14 +33,14 @@ export default function LegalPage({
 
             <Link
               href="/"
-              className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-sm font-black text-white transition hover:bg-white/[0.1] active:scale-[0.98]"
+              className="inline-flex h-11 items-center justify-center rounded-2xl border border-blue-100 bg-blue-700 px-4 text-sm font-black text-white transition hover:bg-blue-600 active:scale-[0.98]"
             >
               Voltar ao app
             </Link>
           </div>
 
           {subtitle ? (
-            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-300">
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-600">
               {subtitle}
             </p>
           ) : null}
@@ -50,14 +50,14 @@ export default function LegalPage({
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded-full border border-white/10 bg-white/[0.045] px-3 py-1.5 text-xs font-black text-slate-200 transition hover:bg-white/[0.09]"
+                className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700 transition hover:bg-blue-100"
               >
                 {item.label}
               </Link>
             ))}
           </div>
 
-          <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-xs font-bold leading-relaxed text-amber-100">
+          <div className="mt-4 rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-bold leading-relaxed text-blue-950">
             Versao inicial para testes do produto. Antes do lancamento publico, revise com suporte juridico e ajuste contatos oficiais.
           </div>
         </header>
@@ -83,4 +83,3 @@ export function LegalSection({ title, children }) {
     </section>
   )
 }
-

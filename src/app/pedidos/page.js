@@ -68,7 +68,7 @@ export default function ListaPedidos() {
   const abertos = pedidos.filter((p) => (p.status || 'aberto') === 'aberto')
 
   return (
-    <main className="min-h-[100dvh] bg-[#050914] px-3 py-4 text-white md:px-6 md:py-7">
+    <main className="min-h-[100dvh] bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-3 py-4 text-white md:px-6 md:py-7">
       <div className="mx-auto w-full max-w-5xl">
         <header className="rounded-[22px] border border-white/10 bg-white/[0.055] p-4 shadow-[0_22px_70px_rgba(0,0,0,0.32)] md:rounded-[30px] md:p-6">
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200 md:text-xs">

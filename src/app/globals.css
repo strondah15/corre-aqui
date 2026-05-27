@@ -6,10 +6,10 @@
 /* ============================= */
 
 :root {
-  --background: #070a12;
+  --background: #0b73ff;
   --foreground: #e5e7eb;
 
-  --color-background: #070a12;
+  --color-background: #0b73ff;
   --color-foreground: #e5e7eb;
 
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -19,7 +19,7 @@
 /* Se quiser respeitar o sistema, mantenha. Mas seu app é DARK por padrão. */
 @media (prefers-color-scheme: light) {
   :root {
-    --background: #070a12;
+    --background: #0b73ff;
     --foreground: #e5e7eb;
   }
 }
@@ -37,10 +37,10 @@ body {
   font-family: var(--font-sans);
   color: var(--foreground);
   background:
-    radial-gradient(circle at 18% 12%, rgba(59,130,246,0.16), transparent 44%),
-    radial-gradient(circle at 82% 82%, rgba(99,102,241,0.12), transparent 48%),
-    radial-gradient(circle at 55% 55%, rgba(14,165,233,0.06), transparent 60%),
-    linear-gradient(180deg, #04060c 0%, #060914 55%, #04060c 100%);
+    radial-gradient(circle at 16% 12%, rgba(255,255,255,0.18), transparent 38%),
+    radial-gradient(circle at 84% 16%, rgba(255,217,26,0.28), transparent 42%),
+    radial-gradient(circle at 80% 86%, rgba(25,183,200,0.22), transparent 48%),
+    linear-gradient(135deg, #071a47 0%, #0b73ff 34%, #19b7c8 68%, #ffe36b 125%);
   background-attachment: fixed;
   overflow-x: hidden;
 }
@@ -63,15 +63,15 @@ body::before {
     ),
     repeating-radial-gradient(
       circle at 78% 72%,
-      rgba(59,130,246,0.04) 0px,
-      rgba(59,130,246,0.04) 1px,
+      rgba(255,255,255,0.05) 0px,
+      rgba(255,255,255,0.05) 1px,
       transparent 12px,
       transparent 22px
     ),
     repeating-radial-gradient(
       circle at 55% 40%,
-      rgba(99,102,241,0.035) 0px,
-      rgba(99,102,241,0.035) 1px,
+      rgba(255,217,26,0.05) 0px,
+      rgba(255,217,26,0.05) 1px,
       transparent 11px,
       transparent 20px
     );
@@ -85,7 +85,7 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(circle at 50% 35%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.40) 70%, rgba(0,0,0,0.70) 100%);
+  background: radial-gradient(circle at 50% 35%, rgba(0,0,0,0) 0%, rgba(2,6,23,0.26) 72%, rgba(2,6,23,0.58) 100%);
 }
 
 /* garante que seu app fique acima do fundo */

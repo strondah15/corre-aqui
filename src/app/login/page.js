@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
+import LogoCorreAqui from '@/components/LogoCorreAqui'
 import {
   clearGoogleRedirectPending,
   getGoogleRedirectUser,
@@ -109,21 +109,13 @@ export default function LoginPage() {
 
   if (checking || redirecting) {
     return (
-      <main className="grid min-h-[100dvh] place-items-center bg-[#050914] px-4 py-5 text-white">
-        <div className="w-full max-w-sm rounded-[28px] border border-white/10 bg-white/[0.055] p-5 text-center shadow-[0_22px_70px_rgba(0,0,0,0.34)]">
-          <Image
-            src="/logo-corre-aqui.png.png"
-            alt="Corre Aqui"
-            width={72}
-            height={72}
-            className="mx-auto h-16 w-16 object-contain"
-            priority
-            unoptimized
-          />
-          <h1 className="mt-4 text-xl font-black">
+      <main className="grid min-h-[100dvh] place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white">
+        <div className="w-full max-w-sm rounded-[28px] border border-white/35 bg-white/92 p-5 text-center text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.22)] backdrop-blur-2xl">
+          <LogoCorreAqui className="mx-auto h-20 w-20 rounded-[22px] bg-white shadow-[0_14px_34px_rgba(37,99,235,0.18)]" />
+          <h1 className="mt-4 text-xl font-black text-blue-950">
             {redirecting ? 'Voltando do Google...' : 'Abrindo Corre Aqui...'}
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-slate-400">
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
             {redirecting ? 'Confirmando sua conta no celular. Não precisa tocar de novo.' : 'Verificando se sua sessão já está ativa.'}
           </p>
         </div>
@@ -132,21 +124,11 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-[100dvh] place-items-center bg-[#050914] px-4 py-5 text-white">
-      <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-white/[0.055] p-5 text-center shadow-[0_22px_70px_rgba(0,0,0,0.34)] sm:p-6">
-        <div className="mx-auto grid h-20 w-20 place-items-center rounded-[26px] border border-cyan-300/15 bg-white/[0.06] shadow-[0_18px_55px_rgba(0,0,0,0.25)]">
-          <Image
-            src="/logo-corre-aqui.png.png"
-            alt="Corre Aqui"
-            width={64}
-            height={64}
-            className="h-16 w-16 object-contain"
-            priority
-            unoptimized
-          />
-        </div>
-        <h1 className="mt-3 text-2xl font-black">Entrar no app</h1>
-        <p className="mt-2 text-sm leading-relaxed text-slate-400">
+    <main className="grid min-h-[100dvh] place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white">
+      <div className="w-full max-w-md rounded-[32px] border border-white/35 bg-white/92 p-5 text-center text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.22)] backdrop-blur-2xl sm:p-6">
+        <LogoCorreAqui className="mx-auto h-24 w-24 rounded-[28px] bg-white shadow-[0_18px_55px_rgba(37,99,235,0.2)]" />
+        <h1 className="mt-3 text-2xl font-black text-blue-950">Entrar no app</h1>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
           Sua conta mantém perfil, pedidos, conversas, avaliações e notificações sempre juntos.
         </p>
 
@@ -156,14 +138,14 @@ export default function LoginPage() {
             ['💬', 'Chat confiável', 'As conversas ficam conectadas ao mesmo perfil.'],
             ['⭐', 'Reputação real', 'Patentes, avaliações e histórico ganham valor.'],
           ].map(([icon, title, text]) => (
-            <div key={title} className="rounded-2xl border border-white/10 bg-slate-950/45 px-3 py-3">
+            <div key={title} className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3">
               <div className="flex items-start gap-3">
-                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white/[0.06] text-base">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-base shadow-sm">
                   {icon}
                 </div>
                 <div>
-                  <div className="text-sm font-black text-white">{title}</div>
-                  <div className="mt-0.5 text-xs leading-relaxed text-slate-400">{text}</div>
+                  <div className="text-sm font-black text-blue-950">{title}</div>
+                  <div className="mt-0.5 text-xs leading-relaxed text-slate-600">{text}</div>
                 </div>
               </div>
             </div>
@@ -174,12 +156,12 @@ export default function LoginPage() {
           type="button"
           onClick={entrarGoogle}
           disabled={loading}
-          className="relative z-50 mt-6 h-14 w-full rounded-[22px] bg-white px-5 text-sm font-black text-slate-950 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 pointer-events-auto"
+          className="relative z-50 mt-6 h-14 w-full rounded-[22px] bg-[#ffd91a] px-5 text-sm font-black text-blue-950 shadow-[0_16px_38px_rgba(245,158,11,0.22)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 pointer-events-auto"
         >
           {loading ? 'Abrindo Google...' : 'Entrar com Google'}
         </button>
 
-        <div className="mt-3 rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-xs font-bold leading-relaxed text-emerald-100">
+        <div className="mt-3 rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-bold leading-relaxed text-blue-950">
           Entrada por conta ajuda a proteger histórico, reputação e notificações.
         </div>
 

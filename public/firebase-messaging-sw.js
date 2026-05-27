@@ -1,9 +1,8 @@
-const CACHE_NAME = 'corre-aqui-static-v1'
+const CACHE_NAME = 'corre-aqui-static-v2'
 const STATIC_ASSETS = [
   '/',
   '/manifest.webmanifest',
   '/corre-aqui-icon-192.png',
-  '/logo-corre-aqui.png.png',
 ]
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 const IS_LOCAL_DEV = LOCAL_HOSTS.has(self.location.hostname)

@@ -4,7 +4,6 @@ import {
   getRedirectResult,
   GoogleAuthProvider,
   setPersistence,
-  signInAnonymously,
   signInWithPopup,
   signInWithRedirect,
 } from "firebase/auth";
@@ -85,7 +84,16 @@ async function ensureAuthPersistence() {
 }
 
 function deveUsarRedirect() {
-  return false;
+  if (typeof window === "undefined") return false;
+
+  const ua = window.navigator?.userAgent || "";
+  const mobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(ua);
+  const standalone = Boolean(
+    window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      window.navigator?.standalone,
+  );
+
+  return mobile || standalone;
 }
 
 function deveTentarRedirectDepoisDoPopup(err) {
@@ -203,11 +211,4 @@ export async function getGoogleRedirectUser() {
   }
 
   return null;
-}
-
-export async function signInAsGuest() {
-  await ensureAuthPersistence();
-
-  const result = await signInAnonymously(auth);
-  return result.user;
 }

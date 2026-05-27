@@ -375,7 +375,7 @@ export default function LoginGate({ children }) {
   }
 
   if (aguardandoEntrada) {
-    return <main className="min-h-[100dvh] bg-[#020617]" aria-busy="true" />
+    return <main className="min-h-[100dvh] bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_100%)]" aria-busy="true" />
   }
 
   if (!viuBoasVindas) {
@@ -384,14 +384,17 @@ export default function LoginGate({ children }) {
 
   if (!uid) {
     return (
-      <main className="grid min-h-[100dvh] place-items-center bg-[#050914] px-4 py-5 text-white">
-        <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-white/[0.055] p-5 text-center shadow-[0_24px_80px_rgba(0,0,0,0.34)] sm:p-6">
-          <LogoCorreAqui className="mx-auto h-20 w-20 rounded-[22px]" />
-          <div className="mt-4 inline-flex rounded-full border border-cyan-300/15 bg-cyan-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">
+      <main className="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_100%)] px-4 py-5 text-white">
+        <div className="pointer-events-none absolute -right-24 top-16 h-80 w-80 rounded-[80px] bg-yellow-200/30 rotate-12" />
+        <div className="pointer-events-none absolute -left-24 -top-20 h-72 w-72 rounded-full bg-white/16" />
+
+        <div className="relative w-full max-w-md rounded-[32px] border border-white/35 bg-white/92 p-5 text-center text-slate-950 shadow-[0_24px_80px_rgba(37,99,235,0.24)] backdrop-blur-2xl sm:p-6">
+          <LogoCorreAqui className="mx-auto h-24 w-24 rounded-[26px] bg-white shadow-[0_18px_55px_rgba(37,99,235,0.2)]" />
+          <div className="mt-4 inline-flex rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-blue-700">
             Conta segura
           </div>
-          <h1 className="mt-3 text-2xl font-black">Entrar no Corre Aqui</h1>
-          <p className="mt-2 text-sm leading-relaxed text-slate-400">
+          <h1 className="mt-3 text-2xl font-black text-blue-950">Entrar no Corre Aqui</h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
             Use sua conta Google para manter perfil, pedidos, chat, avaliações e notificações no mesmo lugar.
           </p>
 
@@ -401,14 +404,14 @@ export default function LoginGate({ children }) {
               ['💬', 'Conversas salvas', 'Combine serviços com mais segurança pelo chat.'],
               ['⭐', 'Reputação', 'Patentes e avaliações acompanham sua evolução.'],
             ].map(([icon, title, text]) => (
-              <div key={title} className="rounded-2xl border border-white/10 bg-slate-950/45 px-3 py-3">
+              <div key={title} className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3">
                 <div className="flex items-start gap-3">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white/[0.06] text-base">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-base shadow-sm">
                     {icon}
                   </div>
                   <div>
-                    <div className="text-sm font-black text-white">{title}</div>
-                    <div className="mt-0.5 text-xs leading-relaxed text-slate-400">{text}</div>
+                    <div className="text-sm font-black text-blue-950">{title}</div>
+                    <div className="mt-0.5 text-xs leading-relaxed text-slate-600">{text}</div>
                   </div>
                 </div>
               </div>
@@ -416,7 +419,7 @@ export default function LoginGate({ children }) {
           </div>
 
           {loginError ? (
-            <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-left text-xs font-semibold leading-relaxed text-rose-100">
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-left text-xs font-semibold leading-relaxed text-rose-700">
               {loginError}
             </div>
           ) : null}
@@ -425,19 +428,19 @@ export default function LoginGate({ children }) {
             type="button"
             onClick={loginGoogle}
             disabled={loginLoading}
-            className="relative z-50 mt-5 h-13 w-full rounded-[22px] bg-white px-4 py-4 text-sm font-black text-slate-950 shadow-[0_16px_44px_rgba(255,255,255,0.12)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 pointer-events-auto"
+            className="relative z-50 mt-5 h-13 w-full rounded-[22px] bg-[#ffd91a] px-4 py-4 text-sm font-black text-blue-950 shadow-[0_16px_44px_rgba(245,158,11,0.24)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 pointer-events-auto"
           >
             {loginLoading ? 'Abrindo...' : 'Entrar com Google'}
           </button>
 
-          <div className="mt-3 rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-xs font-bold leading-relaxed text-emerald-100">
+          <div className="mt-3 rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-bold leading-relaxed text-blue-950">
             Entrar com conta ajuda a proteger conversas, reputação e notificações.
           </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-500">
-            <a href="/termos" className="transition hover:text-slate-300">Termos</a>
-            <a href="/privacidade" className="transition hover:text-slate-300">Privacidade</a>
-            <a href="/seguranca" className="transition hover:text-slate-300">Seguranca</a>
+            <a href="/termos" className="transition hover:text-blue-700">Termos</a>
+            <a href="/privacidade" className="transition hover:text-blue-700">Privacidade</a>
+            <a href="/seguranca" className="transition hover:text-blue-700">Seguranca</a>
           </div>
         </div>
       </main>
@@ -457,15 +460,6 @@ export default function LoginGate({ children }) {
   }
 
   return (
-    <>
-      <button
-        onClick={sair}
-        className="fixed top-4 right-4 bg-red-600 text-white px-3 py-1 rounded"
-      >
-        Sair
-      </button>
-
-      {children}
-    </>
+    <>{children}</>
   )
 }

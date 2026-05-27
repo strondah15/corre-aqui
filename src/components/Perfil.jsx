@@ -25,19 +25,19 @@ export default function Perfil() {
 
   if (!uid) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#050914] px-4 text-white">
-        <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-white/[0.055] p-6 text-center shadow-[0_30px_100px_rgba(0,0,0,0.45)]">
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">
+      <main className="grid min-h-screen place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 text-white">
+        <div className="w-full max-w-md rounded-[30px] border border-white/35 bg-white/92 p-6 text-center text-slate-950 shadow-[0_30px_100px_rgba(37,99,235,0.24)] backdrop-blur-2xl">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-700">
             Corre Aqui
           </div>
-          <h1 className="mt-3 text-2xl font-black">Perfil do app</h1>
-          <p className="mt-2 text-sm leading-relaxed text-slate-400">
+          <h1 className="mt-3 text-2xl font-black text-blue-950">Perfil do app</h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">
             Entre primeiro para editar cadastro, notificacoes, patentes e preferencias.
           </p>
           <button
             type="button"
             onClick={() => router.replace('/')}
-            className="mt-5 h-12 w-full rounded-2xl bg-white text-sm font-black text-slate-950 transition active:scale-[0.98]"
+            className="mt-5 h-12 w-full rounded-2xl bg-[#ffd91a] text-sm font-black text-blue-950 transition active:scale-[0.98]"
           >
             Ir para entrada
           </button>
