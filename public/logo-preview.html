@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Preview Logo Corre Aqui</title>
+    <style>
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        background: #020617;
+        color: white;
+        font-family: Arial, sans-serif;
+      }
+
+      main {
+        width: min(92vw, 760px);
+        text-align: center;
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        align-items: center;
+      }
+
+      img {
+        width: 100%;
+        max-width: 320px;
+        border-radius: 32px;
+        background: #111827;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      }
+
+      button {
+        margin-top: 22px;
+        border: 0;
+        border-radius: 999px;
+        padding: 14px 22px;
+        background: #ffd91a;
+        color: #08204f;
+        font-weight: 900;
+        cursor: pointer;
+      }
+
+      p {
+        color: #94a3b8;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Preview logo Corre Aqui</h1>
+      <p>
+        Esta página força cache novo. Depois de mudar os números, salve o arquivo, rode
+        <b>node scripts\generate-corre-icon.cjs</b> e clique em atualizar.
+      </p>
+      <div class="grid">
+        <div>
+          <h2>Logo app</h2>
+          <img id="logo" alt="Logo Corre Aqui" />
+        </div>
+        <div>
+          <h2>Ícone 512</h2>
+          <img id="icon" alt="Ícone Corre Aqui" />
+        </div>
+      </div>
+      <button type="button" onclick="reloadImages()">Atualizar preview</button>
+    </main>
+
+    <script>
+      function reloadImages() {
+        const stamp = Date.now();
+        document.getElementById("logo").src = `/corre-logo-composite.png?v=${stamp}`;
+        document.getElementById("icon").src = `/corre-aqui-icon-512.png?v=${stamp}`;
+      }
+
+      reloadImages();
+    </script>
+  </body>
+</html>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import Image from "next/image";
 
 function BluePin() {
   return (
@@ -22,23 +23,16 @@ function BluePin() {
 
 function YellowRunner({ className = "" }) {
   return (
-    <svg viewBox="0 0 220 220" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="splash-old-runner-yellow" x1="30" x2="190" y1="30" y2="190" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#fff173" />
-          <stop offset="0.55" stopColor="#ffd91a" />
-          <stop offset="1" stopColor="#f59e0b" />
-        </linearGradient>
-      </defs>
-      <g fill="none" stroke="url(#splash-old-runner-yellow)" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="132" cy="45" r="18" fill="url(#splash-old-runner-yellow)" stroke="none" />
-        <path d="M116 76 91 121" strokeWidth="27" />
-        <path d="M110 86 64 81" strokeWidth="21" />
-        <path d="M114 86 153 103 178 83" strokeWidth="21" />
-        <path d="M91 121 55 169 30 200" strokeWidth="24" />
-        <path d="M92 122 143 148 125 199" strokeWidth="24" />
-      </g>
-    </svg>
+    <Image
+      src="/corre-runner.png"
+      width={900}
+      height={900}
+      className={className}
+      alt=""
+      aria-hidden="true"
+      priority
+      unoptimized
+    />
   );
 }
 

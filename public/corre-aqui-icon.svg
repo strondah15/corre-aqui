@@ -1,33 +1,3 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Corre Aqui">
-  <defs>
-    <linearGradient id="bg" x1="0" x2="512" y1="0" y2="512" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0b73ff"/>
-      <stop offset="0.55" stop-color="#19b7c8"/>
-      <stop offset="1" stop-color="#ffe36b"/>
-    </linearGradient>
-    <linearGradient id="pin" x1="96" x2="418" y1="48" y2="438" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0b73ff"/>
-      <stop offset="0.54" stop-color="#18bfd2"/>
-      <stop offset="1" stop-color="#0646a8"/>
-    </linearGradient>
-    <linearGradient id="runner" x1="150" x2="360" y1="120" y2="340" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#fff173"/>
-      <stop offset="0.55" stop-color="#ffd91a"/>
-      <stop offset="1" stop-color="#f59e0b"/>
-    </linearGradient>
-  </defs>
-
-  <rect width="512" height="512" fill="url(#bg)"/>
-  <circle cx="256" cy="246" r="190" fill="#ffffff" opacity="0.16"/>
-  <path d="M256 24C153.9 24 71 106.5 71 208.2c0 131.6 154.9 244.8 176.9 260.2a14.3 14.3 0 0 0 16.2 0C286.1 453 441 339.8 441 208.2 441 106.5 358.1 24 256 24Z" fill="url(#pin)"/>
-  <circle cx="256" cy="205" r="121" fill="#fff" opacity="0.94"/>
-  <circle cx="256" cy="205" r="96" fill="#eaf7ff"/>
-  <g fill="none" stroke="url(#runner)" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="291" cy="137" r="24" fill="url(#runner)" stroke="none"/>
-    <path d="M270 174 238 231" stroke-width="38"/>
-    <path d="M262 186 205 180" stroke-width="28"/>
-    <path d="M267 186 318 207 350 181" stroke-width="28"/>
-    <path d="M238 231 191 294 158 334" stroke-width="32"/>
-    <path d="M239 232 304 265 281 333" stroke-width="32"/>
-  </g>
+  <image href="/corre-logo-composite.png" width="512" height="512" preserveAspectRatio="xMidYMid meet"/>
 </svg>
