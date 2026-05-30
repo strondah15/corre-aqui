@@ -58,9 +58,9 @@ export default function AssistenteIAFlutuante({
   const limparChips = () => setSugestoes([])
 
   // clique em chip = simula enviar texto
-  const selecionarOpcao = (texto) => {
+  const selecionarOpcao = async (texto) => {
     setMensagens((msgs) => [...msgs, { de: 'eu', texto }])
-    if (modo === 'pedido') tratarEntradaPedido(texto)
+    if (modo === 'pedido') await interpretarComandoPedido(texto)
     else executarAcaoChat(texto)
   }
 
@@ -86,13 +86,6 @@ export default function AssistenteIAFlutuante({
       setDraft((d) => ({ ...d, tipo: tipoSug, titulo: d.titulo || (lower.includes('criar pedido') ? '' : msg) }))
       setModo('pedido'); setPasso(0)
       addMsg('ia', `Beleza! Parece um pedido do tipo **${tipoSug}**. Vamos completar os detalhes.`)
-      addMsg('ia', `1) Qual **título** curto para o pedido?`)
-      limparChips()
-      setChips([
-        { label: 'Serviço de pacote', value: 'Serviço de pacote' },
-        { label: 'Comprar no mercado', value: 'Comprar no mercado' },
-        { label: 'Ajuda em casa', value: 'Ajuda em casa' },
-      ])
       return
     }
 
@@ -281,75 +274,106 @@ Confirma?`)
 
 
   return open ? (
-    <div className="fixed inset-0 z-[2000] bg-black/10 flex items-center justify-center">
-      <div className="bg-white w-[92%] max-w-[640px] rounded-2xl shadow-2xl overflow-hidden">
-        {/* Cabeçalho */}
-        <div className="px-5 py-4 border-b flex items-center justify-between">
-          <div className="font-semibold text-gray-800">
-            {modo === 'pedido' ? 'Criar pedido' : 'Assistente'}
+    <div className="fixed inset-0 z-[2000] flex items-end justify-center bg-slate-950/68 px-2 pb-2 pt-10 backdrop-blur-md sm:items-center sm:p-4">
+      <div className="relative flex max-h-[92dvh] w-full max-w-[680px] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#07111f]/96 text-white shadow-[0_30px_120px_rgba(0,0,0,0.62)]">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_0%,rgba(34,211,238,0.17),transparent_34%),radial-gradient(circle_at_95%_10%,rgba(255,217,26,0.16),transparent_30%)]" />
+
+        <div className="relative flex items-start justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5 sm:py-4">
+          <div className="min-w-0">
+            <div className="inline-flex rounded-full border border-yellow-300/30 bg-yellow-300/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-yellow-100">
+              Corre Aqui IA
+            </div>
+            <h2 className="mt-2 text-lg font-black tracking-tight sm:text-2xl">
+              {modo === 'pedido' ? 'Criar pedido guiado' : 'Assistente rápido'}
+            </h2>
+            <p className="mt-0.5 line-clamp-1 text-xs font-semibold text-slate-400 sm:text-sm">
+              Descreva o que precisa e eu organizo em pedido.
+            </p>
           </div>
-          <button onClick={onFechar} className="text-gray-500 hover:text-gray-700 text-xl" title="Fechar">×</button>
+
+          <button
+            type="button"
+            onClick={onFechar}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-xl font-black text-white transition hover:bg-white/[0.12]"
+            title="Fechar"
+          >
+            ×
+          </button>
         </div>
 
-        {/* Mensagens */}
-        <div ref={listaRef} className="px-5 py-4 max-h-[54vh] overflow-y-auto space-y-2">
+        <div ref={listaRef} className="relative min-h-[280px] flex-1 space-y-2 overflow-y-auto px-4 py-4 sm:max-h-[54vh] sm:px-5">
           {mensagens.map((m, i) => (
-            <div key={i} className={`flex ${m.de === 'eu' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`px-3 py-2 rounded-xl text-sm max-w-[80%] ${
+            <div key={`${m.de}-${i}`} className={`flex ${m.de === 'eu' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={[
+                  'max-w-[84%] whitespace-pre-line rounded-[18px] px-3 py-2 text-sm leading-relaxed shadow-[0_10px_24px_rgba(0,0,0,0.14)]',
                   m.de === 'eu'
-                    ? 'bg-blue-600 text-white rounded-tr-sm'
-                    : 'bg-gray-100 text-gray-800 rounded-tl-sm'
-                }`}>
+                    ? 'rounded-br-md bg-blue-600 text-white'
+                    : 'rounded-bl-md border border-white/10 bg-white/[0.065] text-slate-100',
+                ].join(' ')}
+              >
                 {m.texto}
               </div>
             </div>
           ))}
-          {loading && <div className="text-sm text-gray-500">Salvando pedido...</div>}
-          {erro && <div className="text-sm text-red-600">⚠ {erro}</div>}
+          {loading ? (
+            <div className="inline-flex rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-black text-emerald-100">
+              Salvando pedido...
+            </div>
+          ) : null}
+          {erro ? (
+            <div className="rounded-2xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-100">
+              ⚠ {erro}
+            </div>
+          ) : null}
         </div>
 
-        {/* SUGESTÕES / CHIPS */}
-        {sugestoes.length > 0 && (
-          <div className="px-5 pt-2 pb-3 flex flex-wrap gap-2">
-            {sugestoes.map((s, idx) => (
-              <button
-                key={idx}
-                onClick={() => selecionarOpcao(s.value)}
-                className="px-3 py-1.5 text-sm rounded-full border bg-white hover:bg-gray-50"
-                title={s.value}
-              >
-                {s.label}
-              </button>
-            ))}
+        {sugestoes.length > 0 ? (
+          <div className="relative border-t border-white/10 px-4 py-3 sm:px-5">
+            <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap [&::-webkit-scrollbar]:hidden">
+              {sugestoes.map((s, idx) => (
+                <button
+                  key={`${s.value}-${idx}`}
+                  type="button"
+                  onClick={() => selecionarOpcao(s.value)}
+                  className="shrink-0 rounded-full border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-black text-slate-100 transition hover:bg-white/[0.11] active:scale-[0.98]"
+                  title={s.value}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
+        ) : null}
 
-{/* Botão de confirmação quando o wizard terminou */}
-{modo === 'pedido' && passo >= perguntas.length && (
-  <div className="px-5 pb-2">
-    <button
-      type="button"
-      onClick={salvar}
-      className="px-4 py-2 rounded-xl bg-green-600 text-white text-sm hover:bg-green-700"
-      title="Criar pedido agora"
-    >
-      ✅ Criar pedido
-    </button>
-  </div>
-)}
+        {modo === 'pedido' && passo >= perguntas.length ? (
+          <div className="relative px-4 pb-2 sm:px-5">
+            <button
+              type="button"
+              onClick={salvar}
+              disabled={loading}
+              className="h-11 w-full rounded-2xl bg-[#ffd91a] px-4 text-sm font-black text-blue-950 shadow-[0_14px_36px_rgba(250,204,21,0.22)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              title="Criar pedido agora"
+            >
+              ✅ Criar pedido
+            </button>
+          </div>
+        ) : null}
 
-
-        {/* Input */}
-        <form onSubmit={enviar} className="px-5 pb-5 pt-2 flex gap-2">
+        <form onSubmit={enviar} className="relative flex gap-2 border-t border-white/10 bg-slate-950/45 px-4 py-3 sm:px-5 sm:py-4">
           <input
             value={entrada}
             onChange={(e) => setEntrada(e.target.value)}
             placeholder={modo === 'pedido'
-              ? 'Responda ou clique nas opções acima (ex.: "serviço", "pix", "alta", "confirmar").'
-              : 'Diga "criar pedido" ou use as opções acima.'}
-            className="flex-1 border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              ? 'Responda aqui ou toque em uma sugestão...'
+              : 'Diga "criar pedido" ou descreva o serviço...'}
+            className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-3 text-sm font-semibold text-white outline-none placeholder:text-slate-500 focus:ring-2 focus:ring-blue-400/35"
           />
-          <button type="submit" className="bg-blue-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-blue-700">
+          <button
+            type="submit"
+            disabled={loading || !entrada.trim()}
+            className="h-12 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-[0_14px_34px_rgba(37,99,235,0.28)] transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          >
             Enviar
           </button>
         </form>

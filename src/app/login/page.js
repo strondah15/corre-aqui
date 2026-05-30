@@ -174,7 +174,7 @@ export default function LoginPage() {
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-500">
           <a href="/termos" className="transition hover:text-slate-300">Termos</a>
           <a href="/privacidade" className="transition hover:text-slate-300">Privacidade</a>
-          <a href="/seguranca" className="transition hover:text-slate-300">Seguranca</a>
+          <a href="/seguranca" className="transition hover:text-slate-300">Segurança</a>
         </div>
 
         <button

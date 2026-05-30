@@ -36,17 +36,11 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
         }
 
         @keyframes corre-runner-enter {
-          0% { opacity: 0; transform: translate3d(-118%, 34%, 0) scale(.48) rotate(-10deg); }
-          14% { opacity: 1; }
-          48% { opacity: 1; transform: translate3d(-34%, 12%, 0) scale(.72) rotate(-4deg); }
-          76% { opacity: 1; transform: translate3d(2%, -2%, 0) scale(1.04) rotate(1deg); }
-          90% { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
-          100% { opacity: 0; transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
-        }
-
-        @keyframes corre-final-logo {
-          0%, 72% { opacity: 0; transform: scale(.98); }
-          86%, 100% { opacity: 1; transform: scale(1); }
+          0% { opacity: 0; transform: translate3d(-155%, 34%, 0) scale(1) rotate(-8deg); }
+          8% { opacity: 1; }
+          86% { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+          94% { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+          100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
         }
 
         @keyframes corre-splash-ring {
@@ -69,13 +63,31 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
         .corre-splash-orbit { animation: corre-splash-orbit 3.2s ease-in-out infinite; }
         .corre-splash-pulse { animation: corre-splash-soft-pulse 1.15s ease-in-out infinite; }
         .corre-splash-logo { animation: corre-splash-pin-pop .56s cubic-bezier(.2,.9,.2,1) both; }
-        .corre-splash-logo-float { animation: corre-splash-float 1.45s ease-in-out 1.05s infinite; }
-        .corre-splash-runner { animation: corre-runner-enter .9s cubic-bezier(.18,.84,.2,1) .08s both; }
-        .corre-splash-final-logo { animation: corre-final-logo 1.05s ease-out both; }
-        .corre-splash-ring { animation: corre-splash-ring .92s ease-out .66s both; }
-        .corre-splash-streak { animation: corre-splash-streak .78s ease-out .12s both; }
-        .corre-splash-title { animation: corre-splash-rise .38s ease-out .76s both; }
-        .corre-splash-status { animation: corre-splash-rise .32s ease-out .9s both; }
+        .corre-splash-logo-float { animation: corre-splash-float 1.45s ease-in-out 1.75s infinite; }
+        .corre-splash-runner { animation: corre-runner-enter 1.45s linear .12s both; }
+        .corre-splash-runner-image {
+          filter: saturate(1.12) contrast(1.04) brightness(1.04);
+        }
+        .corre-splash-pin-aura {
+          background:
+            radial-gradient(circle at 52% 84%, rgba(255, 226, 27, .44), transparent 26%),
+            radial-gradient(circle at 45% 34%, rgba(255, 255, 255, .22), transparent 35%),
+            radial-gradient(circle at 50% 48%, rgba(14, 165, 233, .36), transparent 52%);
+          filter: blur(12px);
+          transform: scale(.9);
+        }
+        .corre-splash-pin-base {
+          filter:
+            saturate(1.22)
+            contrast(1.1)
+            brightness(1.05)
+            drop-shadow(0 18px 34px rgba(2, 23, 57, .28))
+            drop-shadow(0 0 24px rgba(14, 165, 233, .18));
+        }
+        .corre-splash-ring { animation: corre-splash-ring .92s ease-out 1.28s both; }
+        .corre-splash-streak { animation: corre-splash-streak 1.26s ease-out .18s both; }
+        .corre-splash-title { animation: corre-splash-rise .38s ease-out 1.5s both; }
+        .corre-splash-status { animation: corre-splash-rise .32s ease-out 1.68s both; }
 
         @media (prefers-reduced-motion: reduce) {
           .corre-splash-orbit,
@@ -83,7 +95,8 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
           .corre-splash-logo,
           .corre-splash-logo-float,
           .corre-splash-runner,
-          .corre-splash-final-logo,
+          .corre-splash-pin-aura,
+          .corre-splash-pin-base,
           .corre-splash-ring,
           .corre-splash-streak,
           .corre-splash-title,
@@ -109,45 +122,31 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
           <div className="corre-splash-logo absolute inset-0 grid place-items-center">
             <div className="corre-splash-logo-float h-full w-full">
               <div className="relative h-full w-full scale-[1.28] drop-shadow-[0_28px_60px_rgba(15,23,42,0.28)]">
-                <svg
-                  className="absolute inset-0 h-full w-full"
-                  viewBox="0 0 512 512"
-                  aria-hidden="true"
-                >
-                  <defs>
-                    <linearGradient id="correPinSplash" x1="92" x2="420" y1="42" y2="450" gradientUnits="userSpaceOnUse">
-                      <stop stopColor="#0b73ff" />
-                      <stop offset="0.52" stopColor="#18bfd2" />
-                      <stop offset="1" stopColor="#0646a8" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M256 24C153.9 24 71 106.5 71 208.2c0 131.6 154.9 244.8 176.9 260.2a14.3 14.3 0 0 0 16.2 0C286.1 453 441 339.8 441 208.2 441 106.5 358.1 24 256 24Z" fill="url(#correPinSplash)" />
-                  <path d="M256 52c86.4 0 156.5 69.8 156.5 155.9 0 105.2-112 200.4-156.5 234.7C211.5 408.3 99.5 313.1 99.5 207.9 99.5 121.8 169.6 52 256 52Z" fill="#ffffff" opacity="0.16" />
-                  <circle cx="256" cy="205" r="121" fill="#ffffff" opacity="0.94" />
-                  <circle cx="256" cy="205" r="96" fill="#eaf7ff" />
-                </svg>
+                <div className="corre-splash-pin-aura pointer-events-none absolute inset-[9%]" aria-hidden="true" />
 
                 <Image
-                  src="/corre-runner.png"
-                  width={900}
-                  height={1185}
+                  src="/pin_vazio.png"
+                  width={460}
+                  height={640}
                   alt=""
                   aria-hidden="true"
                   priority
                   unoptimized
-                  className="corre-splash-runner absolute left-[30.8%] top-[18%] h-auto w-[43%] object-contain"
+                  className="corre-splash-pin-base absolute left-[18.4%] top-[3%] h-[88%] w-auto object-contain"
                 />
 
-                <Image
-                  src="/corre-logo-simple.png"
-                  width={1024}
-                  height={1024}
-                  alt=""
-                  aria-hidden="true"
-                  priority
-                  unoptimized
-                  className="corre-splash-final-logo absolute inset-0 h-full w-full object-contain"
-                />
+                <div className="corre-splash-runner absolute left-[38.4%] top-[6.6%] w-[45%]">
+                  <Image
+                    src="/boneco_correndo.png"
+                    width={420}
+                    height={500}
+                    alt=""
+                    aria-hidden="true"
+                    priority
+                    unoptimized
+                    className="corre-splash-runner-image relative z-10 h-auto w-full object-contain"
+                  />
+                </div>
               </div>
             </div>
           </div>

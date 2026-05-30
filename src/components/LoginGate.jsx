@@ -180,7 +180,7 @@ export default function LoginGate({ children }) {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
     const timer = window.setTimeout(() => {
       setSplashMinDone(true)
-    }, reduceMotion ? 1250 : 1850)
+    }, reduceMotion ? 1450 : 2400)
 
     return () => window.clearTimeout(timer)
   }, [pularVinheta])
@@ -440,7 +440,7 @@ export default function LoginGate({ children }) {
           <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-500">
             <a href="/termos" className="transition hover:text-blue-700">Termos</a>
             <a href="/privacidade" className="transition hover:text-blue-700">Privacidade</a>
-            <a href="/seguranca" className="transition hover:text-blue-700">Seguranca</a>
+            <a href="/seguranca" className="transition hover:text-blue-700">Segurança</a>
           </div>
         </div>
       </main>

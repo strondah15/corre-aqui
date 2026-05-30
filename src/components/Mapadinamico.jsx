@@ -637,7 +637,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       showToast({
         type: 'info',
         title: notification.title || data.title || 'Corre Aqui',
-        message: notification.body || data.body || data.message || 'Voce tem uma nova atualizacao.',
+        message: notification.body || data.body || data.message || 'Você tem uma nova atualização.',
       })
     }).then((off) => {
       if (!active) {
@@ -1539,7 +1539,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           tipo: 'avaliacao_recebida',
           pedidoId: p.id,
           conversaId: p?.conversaId || p.id,
-          titulo: 'Voce recebeu uma avaliacao',
+          titulo: 'Você recebeu uma avaliação',
           mensagem: `Nota ${nota.toFixed(1)} em ${p.titulo || 'Corre aqui'}.`,
           prioridade: 'media',
           acao: 'ver_historico',
@@ -1776,15 +1776,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     'px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white transition'
 
   const btnPrimary =
-    'flex min-h-[42px] items-center justify-center rounded-[18px] bg-[#ffd91a] px-3 py-2 text-sm font-black text-blue-950 shadow-[0_12px_24px_rgba(250,204,21,0.28)] transition hover:bg-yellow-300 md:min-h-[38px] md:px-4'
+    'flex min-h-[38px] items-center justify-center rounded-[16px] bg-[#ffd91a] px-2.5 py-2 text-xs font-black text-blue-950 shadow-[0_10px_22px_rgba(250,204,21,0.26)] transition hover:bg-yellow-300 md:min-h-[38px] md:px-4 md:text-sm'
 
   const btnDanger =
-    'flex min-h-[40px] items-center justify-center rounded-[18px] bg-red-600 px-3 py-2 text-xs font-black text-white shadow-md shadow-red-500/20 transition hover:bg-red-700 md:min-h-[38px] md:px-4 md:text-sm'
+    'flex min-h-[38px] items-center justify-center rounded-[16px] bg-red-600 px-2.5 py-2 text-xs font-black text-white shadow-md shadow-red-500/20 transition hover:bg-red-700 md:min-h-[38px] md:px-4 md:text-sm'
 
   const btnDark =
-    'flex min-h-[40px] items-center justify-center rounded-[18px] border border-blue-950 bg-blue-950 px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-slate-900 md:min-h-[38px] md:px-4 md:text-sm'
+    'flex min-h-[38px] items-center justify-center rounded-[16px] border border-blue-950 bg-blue-950 px-2.5 py-2 text-xs font-black text-white shadow-sm transition hover:bg-slate-900 md:min-h-[38px] md:px-4 md:text-sm'
 
-  const btnMapBase = 'flex min-h-[40px] items-center justify-center rounded-[18px] border px-3 py-2 text-xs font-black transition md:min-h-[38px] md:px-4 md:text-sm'
+  const btnMapBase = 'flex min-h-[38px] items-center justify-center rounded-[16px] border px-2.5 py-2 text-xs font-black transition md:min-h-[38px] md:px-4 md:text-sm'
   const btnMapEnabled = 'bg-blue-950 text-white border-blue-950 hover:bg-slate-900'
   const btnMapDisabled = 'bg-white/5 text-white/70 border-white/10 opacity-70 cursor-not-allowed'
 
@@ -2320,8 +2320,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     whileHover={{ y: -3, scale: 1.008 }}
                     whileTap={{ scale: 0.985 }}
                     className={[
-                      "corre-card-clean relative flex flex-col gap-2 overflow-hidden rounded-[24px] bg-white text-slate-950 shadow-[0_14px_34px_rgba(15,23,42,0.11)]",
-                      "border border-slate-100 transition md:rounded-[28px]",
+                      "corre-card-clean relative flex flex-col gap-1.5 overflow-hidden rounded-[22px] bg-white text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.10)]",
+                      "border border-slate-100 transition md:gap-2 md:rounded-[26px]",
                       status === 'aberto' ? "shadow-[0_18px_44px_rgba(37,99,235,0.12)]" : "",
                       b.destaque ? "border-fuchsia-300/80 ring-2 ring-fuchsia-300/30 shadow-[0_18px_54px_rgba(217,70,239,0.18)]" : "",
                       b.emergencia ? "border-red-400 ring-2 ring-red-400/55 shadow-[0_20px_64px_rgba(239,68,68,0.26)] animate-pulse" : "",
@@ -2339,25 +2339,25 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     ) : b.destaque ? (
                       <div className="pointer-events-none absolute -right-12 -top-12 h-24 w-24 rounded-full bg-fuchsia-400/30 blur-2xl md:h-36 md:w-36" />
                     ) : status === 'aberto' ? (
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-blue-50/95 via-cyan-50/40 to-transparent md:h-24" />
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-blue-50/95 via-cyan-50/35 to-transparent md:h-20" />
                     ) : null}
-                    <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-br from-blue-50 via-cyan-50 to-yellow-50" />
-                    <div className="relative z-10 flex items-start justify-between gap-2 px-3 pt-4 md:gap-3 md:px-4 md:pt-5">
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-br from-blue-50 via-cyan-50 to-yellow-50 md:h-24" />
+                    <div className="relative z-10 flex items-start justify-between gap-2 px-3 pt-3 md:gap-3 md:px-4 md:pt-4">
                       <div className="min-w-0 flex-1">
                         <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-700 md:gap-2 md:px-2.5 md:py-1 md:text-[10px] md:tracking-[0.16em]">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
                           Disponível
                         </div>
-                        <div className="mt-1 line-clamp-2 break-words text-[17px] font-black leading-tight text-slate-950 md:mt-2 md:line-clamp-1 md:text-xl">{p.titulo || '(sem título)'}</div>
+                        <div className="mt-1 line-clamp-2 break-words text-base font-black leading-tight text-slate-950 md:mt-1.5 md:text-lg">{p.titulo || '(sem título)'}</div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex max-w-[44%] shrink-0 flex-col items-end gap-1 md:max-w-none md:flex-row md:items-center md:gap-2">
                         {b.emergencia ? (
-                          <span className="text-[11px] px-2.5 py-1 rounded-full bg-red-100 border border-red-300 text-red-800 font-black shadow-sm animate-pulse">
-                            🚨 URGENTE (EM BREVE)
+                          <span className="rounded-full border border-red-300 bg-red-100 px-2 py-0.5 text-[9px] font-black text-red-800 shadow-sm animate-pulse md:px-2.5 md:py-1 md:text-[11px]">
+                            🚨 URGENTE
                           </span>
                         ) : b.destaque ? (
-                          <span className="text-[11px] px-2.5 py-1 rounded-full bg-fuchsia-100 border border-fuchsia-300 text-fuchsia-800 font-black shadow-sm">
-                            🚀 DESTAQUE (EM BREVE)
+                          <span className="rounded-full border border-fuchsia-300 bg-fuchsia-100 px-2 py-0.5 text-[9px] font-black text-fuchsia-800 shadow-sm md:px-2.5 md:py-1 md:text-[11px]">
+                            🚀 DESTAQUE
                           </span>
                         ) : null}
                         <BadgeStatus status={status} />
@@ -2365,15 +2365,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     </div>
 
                     {/* modo + categoria */}
-                    <div className="relative z-10 flex flex-wrap items-center gap-1.5 px-3 md:gap-2 md:px-4">
+                    <div className="relative z-10 flex flex-nowrap items-center gap-1.5 overflow-hidden px-3 md:flex-wrap md:gap-2 md:px-4">
                       <BadgeModo modo={p?.modoPedido} />
 
                       {catObj ? (
-                        <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 md:py-1 md:text-xs">
+                        <span className="min-w-0 truncate rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 md:py-1 md:text-xs">
                           {catObj.emoji} {catObj.label}
                         </span>
                       ) : p?.categoriaId ? (
-                        <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 md:py-1 md:text-xs">
+                        <span className="min-w-0 truncate rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 md:py-1 md:text-xs">
                           🏷️ {String(p.categoriaId)}
                         </span>
                       ) : (
@@ -2389,8 +2389,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       )}
                     </div>
 
-                    <div className="relative z-10 mx-3 flex items-center justify-between gap-2 rounded-[22px] border border-slate-100 bg-slate-50 px-3 py-2 md:mx-4 md:px-4">
-                      <div className="min-w-0 text-[11px] md:text-xs font-black uppercase tracking-wide">
+                    <div className="relative z-10 mx-3 grid grid-cols-[1fr_auto] items-center gap-2 rounded-[18px] border border-slate-100 bg-slate-50 px-2.5 py-1.5 md:mx-4 md:rounded-[20px] md:px-3 md:py-2">
+                      <div className="min-w-0 text-[10px] font-black uppercase tracking-wide md:text-xs">
                         {b.emergencia ? (
                           <span className="text-red-700">🚨 Resposta rápida</span>
                         ) : b.destaque ? (
@@ -2400,22 +2400,22 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         )}
                       </div>
                       {p.valor != null && Number.isFinite(Number(p.valor)) ? (
-                        <div className="shrink-0 rounded-[16px] border border-yellow-300 bg-[#ffd91a] px-3 py-1 text-sm font-black text-blue-950 shadow-[0_8px_18px_rgba(250,204,21,0.22)] md:px-4 md:text-base">
+                        <div className="shrink-0 rounded-[14px] border border-yellow-300 bg-[#ffd91a] px-2.5 py-1 text-sm font-black text-blue-950 shadow-[0_8px_18px_rgba(250,204,21,0.22)] md:px-4 md:text-base">
                           R$ {Number(p.valor).toFixed(2)}
                         </div>
                       ) : (
-                        <div className="shrink-0 rounded-[16px] border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-black text-blue-800 md:px-4 md:text-xs">
+                        <div className="shrink-0 rounded-[14px] border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-800 md:px-4 md:text-xs">
                           combinar
                         </div>
                       )}
                     </div>
 
-                    <div className="relative z-10 mx-3 flex items-center gap-2 rounded-[20px] border border-sky-100 bg-blue-50 px-3 py-2 text-[11px] text-slate-700 md:mx-4 md:px-4 md:text-xs">
+                    <div className="relative z-10 mx-3 flex items-center gap-2 rounded-[16px] border border-sky-100 bg-blue-50 px-2.5 py-1.5 text-[11px] text-slate-700 md:mx-4 md:rounded-[18px] md:px-3 md:py-2 md:text-xs">
                       <span className="shrink-0 font-black uppercase tracking-[0.12em] text-sky-700">Passo</span>
                       <span className="line-clamp-1 min-w-0 font-semibold">{getProximoPassoPedido(p, meuId)}</span>
                     </div>
 
-                    <StatusFluxoServico pedido={p} compact className={`relative z-10 mx-3 md:mx-4 ${cardAberto ? '' : 'hidden md:block'}`} />
+                    <StatusFluxoServico pedido={p} compact className={`relative z-10 mx-3 md:mx-4 ${cardAberto ? '' : 'hidden'}`} />
 
                     {cardAberto && (
                       <>
@@ -2462,9 +2462,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       </>
                     )}
 
-                    <div className="relative z-10 mt-1 grid grid-cols-3 gap-1.5 border-t border-slate-100 bg-white p-2.5 md:flex md:flex-wrap md:gap-2 md:p-3">
+                    <div className="relative z-10 mt-1 grid grid-cols-4 gap-1.5 border-t border-slate-100 bg-white p-2 md:flex md:flex-wrap md:gap-2 md:p-3">
                       <button
-                        className="flex min-h-[40px] items-center justify-center rounded-[18px] border border-white/10 bg-white px-2 py-2 text-xs font-black text-blue-950 shadow-sm transition hover:bg-blue-50 md:min-h-[38px] md:px-4"
+                        className="flex min-h-[38px] items-center justify-center rounded-[16px] border border-slate-200 bg-white px-2 py-2 text-[11px] font-black text-blue-950 shadow-sm transition hover:bg-blue-50 md:min-h-[38px] md:px-4 md:text-sm"
                         onClick={() => setCardAbertoId(cardAberto ? null : p.id)}
                         type="button"
                       >
@@ -2489,7 +2489,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                           className={`${btnMapBase} ${mapOk ? btnMapEnabled : btnMapDisabled}`}
                           title={mapOk ? 'Abrir no mapa' : 'Sem lat/lng válidos'}
                         >
-                          📍 Ver no mapa
+                          📍 <span className="md:hidden">Mapa</span><span className="hidden md:inline">Ver no mapa</span>
                         </button>
                       )}
 
@@ -2499,17 +2499,17 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                       {(status === 'aceito' || status === 'concluido') && (souCriador(p) || souAceitador(p)) && (
                         <button
-                          className="px-2.5 py-1.5 rounded-xl bg-white border border-red-200 text-red-700 font-black hover:bg-red-50 shadow-sm transition"
+                          className="col-span-2 min-h-[38px] rounded-[16px] border border-red-200 bg-white px-2 py-2 text-[11px] font-black text-red-700 shadow-sm transition hover:bg-red-50 md:col-span-1 md:px-3 md:text-xs"
                           onClick={() => abrirProblema(p)}
                           type="button"
                         >
-                          Problema com serviço
+                          Problema
                         </button>
                       )}
 
                       {status === 'aberto' && (
                         <button
-                          className={`${btnPrimary} col-span-3 disabled:opacity-60 md:col-span-1`}
+                          className={`${btnPrimary} disabled:opacity-60`}
                           onClick={() => aceitarCorre(p)}
                           disabled={aceitandoId === p.id}
                           type="button"
@@ -2520,29 +2520,29 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                       {aceitoPorMim && status === 'aceito' && (
                         <button
-                          className={`${btnDanger} disabled:opacity-60`}
+                          className={`${btnDanger} col-span-2 disabled:opacity-60 md:col-span-1`}
                           onClick={() => cancelarAceite(p)}
                           disabled={cancelandoId === p.id}
                           type="button"
                         >
-                          {cancelandoId === p.id ? 'Cancelando…' : 'Cancelar aceitação'}
+                          {cancelandoId === p.id ? 'Cancelando…' : 'Cancelar'}
                         </button>
                       )}
 
                       {status === 'aceito' && souCriador(p) && (
                         <button
-                          className="col-span-2 rounded-xl bg-emerald-600 px-2.5 py-1.5 font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-700 disabled:opacity-60 md:col-span-1"
+                          className="col-span-2 min-h-[38px] rounded-[16px] bg-emerald-600 px-2 py-2 text-[11px] font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-700 disabled:opacity-60 md:col-span-1 md:px-3 md:text-xs"
                           onClick={() => abrirConclusao(p)}
                           disabled={serviçondoId === p.id}
                           type="button"
                         >
-                          {serviçondoId === p.id ? 'Confirmando…' : 'Confirmar serviço feito'}
+                          {serviçondoId === p.id ? 'Confirmando…' : 'Concluir'}
                         </button>
                       )}
 
                       {status === 'concluido' && souCriador(p) && !p?.avaliacao ? (
                         <button
-                          className="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/20 transition"
+                          className="min-h-[38px] rounded-[16px] bg-amber-500 px-2 py-2 text-[11px] font-black text-slate-950 shadow-md shadow-amber-500/20 transition hover:bg-amber-600 md:px-3 md:text-xs"
                           onClick={() => abrirAvaliacao(p)}
                           type="button"
                         >

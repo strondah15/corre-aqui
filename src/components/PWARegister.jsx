@@ -31,21 +31,30 @@ export default function PWARegister() {
     let active = true
     let unsubscribe = () => {}
 
-    onForegroundPush((payload) => {
+    onForegroundPush(async (payload) => {
       if (Notification.permission !== 'granted') return
 
       const notification = payload?.notification || {}
       const data = payload?.data || {}
       const title = notification.title || data.title || 'Corre Aqui'
       const body = notification.body || data.body || data.message || ''
+      const options = {
+        body,
+        icon: data.icon || '/corre-aqui-icon-192.png',
+        badge: data.badge || '/corre-aqui-icon-192.png',
+        tag: data.tag || `corre-aqui-${Date.now()}`,
+        renotify: true,
+        data: { url: data.url || '/' },
+      }
 
       try {
-        new Notification(title, {
-          body,
-          icon: data.icon || '/corre-aqui-icon-192.png',
-          badge: data.badge || '/corre-aqui-icon-192.png',
-          tag: data.tag || `corre-aqui-${Date.now()}`,
-        })
+        if ('serviceWorker' in navigator) {
+          const registration = await navigator.serviceWorker.ready
+          await registration.showNotification(title, options)
+          return
+        }
+
+        new Notification(title, options)
       } catch {}
     }).then((off) => {
       if (!active) {

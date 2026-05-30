@@ -1,15 +1,15 @@
 import LegalPage, { LegalSection } from '@/components/LegalPage'
 
 export const metadata = {
-  title: 'Seguranca e denuncia | Corre Aqui',
-  description: 'Regras basicas de seguranca, denuncia e moderacao do Corre Aqui.',
+  title: 'Segurança e denúncia | Corre Aqui',
+  description: 'Regras básicas de segurança, denúncia e moderação do Corre Aqui.',
 }
 
 export default function SegurancaPage() {
   return (
     <LegalPage
-      title="Seguranca e denuncia"
-      subtitle="Orientacoes para combinar servicos com mais confianca e acompanhar problemas dentro do app."
+      title="Segurança e denúncia"
+      subtitle="Orientações para combinar serviços com mais confiança e acompanhar problemas dentro do app."
     >
       <LegalSection title="1. Antes de aceitar ou contratar">
         <p>
@@ -70,4 +70,3 @@ export default function SegurancaPage() {
     </LegalPage>
   )
 }
-

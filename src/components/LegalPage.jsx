@@ -4,7 +4,7 @@ import LogoCorreAqui from '@/components/LogoCorreAqui'
 const navLinks = [
   { href: '/termos', label: 'Termos' },
   { href: '/privacidade', label: 'Privacidade' },
-  { href: '/seguranca', label: 'Seguranca' },
+  { href: '/seguranca', label: 'Segurança' },
 ]
 
 export default function LegalPage({
@@ -58,13 +58,13 @@ export default function LegalPage({
           </div>
 
           <div className="mt-4 rounded-2xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-bold leading-relaxed text-blue-950">
-            Versao inicial para testes do produto. Antes do lancamento publico, revise com suporte juridico e ajuste contatos oficiais.
+            Versão inicial para testes do produto. Antes do lançamento público, revise com suporte jurídico e ajuste contatos oficiais.
           </div>
         </header>
 
         <article className="mt-4 rounded-[30px] border border-white/10 bg-white/[0.965] p-5 text-slate-900 shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:p-7">
           <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
-            Ultima atualizacao: {updatedAt}
+            Última atualização: {updatedAt}
           </div>
           <div className="space-y-6">{children}</div>
         </article>

@@ -5,7 +5,9 @@ import { ref, serverTimestamp, update } from 'firebase/database'
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 
 export const MESSAGING_SW_PATH = '/firebase-messaging-sw.js'
-const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || ''
+const BUILD_VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || ''
+let resolvedVapidKey = BUILD_VAPID_KEY
+let resolvedVapidKeyPromise = null
 
 function tokenKey(token) {
   return String(token || '')
@@ -22,6 +24,24 @@ function platformInfo() {
     language: window.navigator?.language || 'pt-BR',
     origin: window.location.origin,
   }
+}
+
+async function getVapidKey() {
+  if (resolvedVapidKey) return resolvedVapidKey
+  if (typeof window === 'undefined') return ''
+
+  if (!resolvedVapidKeyPromise) {
+    resolvedVapidKeyPromise = fetch('/api/firebase-config', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return ''
+        const data = await response.json().catch(() => ({}))
+        return String(data?.vapidKey || '').trim()
+      })
+      .catch(() => '')
+  }
+
+  resolvedVapidKey = await resolvedVapidKeyPromise
+  return resolvedVapidKey
 }
 
 export async function getPushCapabilities() {
@@ -42,10 +62,15 @@ export async function getPushCapabilities() {
   }
 
   if (!window.isSecureContext) {
+    const hostname = window.location?.hostname || ''
+    const isLanHost = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(hostname)
+
     return {
       supported: false,
       permission: Notification.permission,
-      reason: 'Push real exige HTTPS. Teste pelo deploy da Vercel ou domínio seguro.',
+      reason: isLanHost
+        ? 'No celular pelo IP local o Chrome bloqueia notificacoes. Use o link HTTPS da Vercel para ativar.'
+        : 'Push real exige HTTPS. Teste pelo deploy da Vercel ou dominio seguro.',
     }
   }
 
@@ -58,11 +83,12 @@ export async function getPushCapabilities() {
     }
   }
 
-  if (!VAPID_KEY) {
+  const vapidKey = await getVapidKey()
+  if (!vapidKey) {
     return {
       supported: false,
       permission: Notification.permission,
-      reason: 'NEXT_PUBLIC_FIREBASE_VAPID_KEY nao esta configurada no build.',
+      reason: 'Chave VAPID de notificacoes nao esta configurada no servidor.',
       vapidConfigured: false,
     }
   }
@@ -72,6 +98,7 @@ export async function getPushCapabilities() {
     permission: Notification.permission,
     reason: '',
     vapidConfigured: true,
+    vapidSource: BUILD_VAPID_KEY ? 'build' : 'server',
   }
 }
 
@@ -105,8 +132,11 @@ export async function ativarPushNotifications(uid) {
 
   const registration = await getServiceWorkerRegistration()
   const messaging = getMessaging(app)
+  const vapidKey = await getVapidKey()
+  if (!vapidKey) throw new Error('Chave VAPID de notificacoes nao esta configurada no servidor.')
+
   const token = await getToken(messaging, {
-    vapidKey: VAPID_KEY,
+    vapidKey,
     serviceWorkerRegistration: registration,
   })
 
@@ -168,6 +198,10 @@ function mensagemErroPushApi(data, fallback = 'Nao consegui enviar o push de tes
 
   if (reason === 'forbidden_push_context') {
     return 'A rota recusou o teste para este usuario.'
+  }
+
+  if (data?.failureCount && Array.isArray(data.failures) && data.failures.length) {
+    return `${fallback} (${data.failures[0]?.code || 'fcm_failed'})`
   }
 
   return reason ? `${fallback} (${reason})` : fallback

@@ -65,7 +65,7 @@ export default function TelaBoasVindas({ onEntrar }) {
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-black text-blue-950/70">
           <a href="/termos" className="transition hover:text-blue-950">Termos</a>
           <a href="/privacidade" className="transition hover:text-blue-950">Privacidade</a>
-          <a href="/seguranca" className="transition hover:text-blue-950">Seguranca</a>
+          <a href="/seguranca" className="transition hover:text-blue-950">Segurança</a>
         </div>
       </div>
     </main>

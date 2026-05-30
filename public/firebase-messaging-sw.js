@@ -8,6 +8,16 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 const IS_LOCAL_DEV = LOCAL_HOSTS.has(self.location.hostname)
 
 let firebaseMessagingReady = null
+let firebaseMessagingImported = false
+const recentNotificationTags = new Map()
+
+try {
+  importScripts('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js')
+  importScripts('https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js')
+  firebaseMessagingImported = true
+} catch (error) {
+  console.warn('[Corre Aqui SW] Firebase Messaging scripts indisponiveis:', error)
+}
 
 function notificationTargetUrl(data = {}) {
   const url = data.url || data.click_action || data.link || '/'
@@ -18,18 +28,56 @@ function showCorreNotification(payload = {}) {
   const notification = payload.notification || {}
   const data = payload.data || {}
   const title = notification.title || data.title || 'Corre Aqui'
-  const body = notification.body || data.body || data.message || 'Voce tem uma atualizacao.'
+  const body = notification.body || data.body || data.message || 'Você tem uma atualização.'
   const url = notificationTargetUrl(data)
+  const tag = data.tag || data.pedidoId || 'corre-aqui'
+  const now = Date.now()
+  const lastShownAt = recentNotificationTags.get(tag) || 0
+
+  if (now - lastShownAt < 1500) return Promise.resolve()
+  recentNotificationTags.set(tag, now)
 
   return self.registration.showNotification(title, {
     body,
     icon: data.icon || '/corre-aqui-icon-192.png',
     badge: data.badge || '/corre-aqui-icon-192.png',
-    tag: data.tag || data.pedidoId || 'corre-aqui',
+    tag,
     renotify: true,
+    vibrate: [90, 40, 90],
     requireInteraction: data.requireInteraction === 'true',
     data: { url },
   })
+}
+
+function normalizePushPayload(event) {
+  if (!event.data) return null
+
+  try {
+    const json = event.data.json()
+    const data = json?.data || json?.webpush?.data || {}
+    const notification = json?.notification || json?.webpush?.notification || {}
+
+    return {
+      notification,
+      data: {
+        ...data,
+        title: data.title || notification.title || json.title,
+        body: data.body || data.message || notification.body || json.body,
+        url: data.url || data.click_action || json.fcmOptions?.link || json.link,
+        tag: data.tag || notification.tag || json.collapse_key,
+      },
+    }
+  } catch {
+    const body = event.data.text()
+    return {
+      notification: {},
+      data: {
+        title: 'Corre Aqui',
+        body,
+        url: '/',
+      },
+    }
+  }
 }
 
 async function initFirebaseMessaging() {
@@ -37,14 +85,13 @@ async function initFirebaseMessaging() {
 
   firebaseMessagingReady = (async () => {
     try {
+      if (!firebaseMessagingImported || !self.firebase?.messaging) return null
+
       const res = await fetch('/api/firebase-config', { cache: 'no-store' })
       if (!res.ok) return null
 
       const { config } = await res.json()
       if (!config?.apiKey || !config?.projectId || !config?.messagingSenderId) return null
-
-      importScripts('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js')
-      importScripts('https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js')
 
       if (!self.firebase?.apps?.length) {
         self.firebase.initializeApp(config)
@@ -102,6 +149,16 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request)))
+})
+
+self.addEventListener('push', (event) => {
+  const payload = normalizePushPayload(event)
+  const title = payload?.notification?.title || payload?.data?.title
+  const body = payload?.notification?.body || payload?.data?.body || payload?.data?.message
+
+  if (!title && !body) return
+
+  event.waitUntil(showCorreNotification(payload))
 })
 
 self.addEventListener('notificationclick', (event) => {

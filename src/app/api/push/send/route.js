@@ -143,7 +143,7 @@ export async function POST(request) {
   }
 
   const title = text(body.titulo || body.title, 'Corre Aqui', 80)
-  const message = text(body.mensagem || body.body || body.message, 'Voce tem uma nova atualizacao.', 180)
+  const message = text(body.mensagem || body.body || body.message, 'Você tem uma nova atualização.', 180)
   const url = resolveClickUrl(body)
   const tag = text(body.tag, `corre-aqui-${pedidoId || `teste-${actorUid}`}-${body.tipo || body.type || 'push'}`, 120)
   const data = stringData({
@@ -164,6 +164,10 @@ export async function POST(request) {
     tokens: tokenEntries.map((entry) => entry.token),
     data,
     webpush: {
+      headers: {
+        Urgency: body.prioridade === 'alta' ? 'high' : 'normal',
+        TTL: '86400',
+      },
       fcmOptions: {
         link: url,
       },
@@ -171,10 +175,18 @@ export async function POST(request) {
   })
 
   await disableInvalidTokens(db, toUid, tokenEntries, result.responses || [])
+  const failures = (result.responses || [])
+    .map((response, index) => ({
+      tokenKey: tokenEntries[index]?.key,
+      code: response?.error?.code,
+      message: response?.error?.message,
+    }))
+    .filter((failure) => failure.code)
 
   return NextResponse.json({
     ok: result.successCount > 0,
     successCount: result.successCount,
     failureCount: result.failureCount,
+    failures: failures.slice(0, 5),
   })
 }

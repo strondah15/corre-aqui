@@ -1,4 +1,5 @@
 export async function GET() {
+  const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || process.env.FIREBASE_VAPID_KEY || ''
   const config = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
@@ -12,7 +13,8 @@ export async function GET() {
   return Response.json(
     {
       config,
-      vapidKeyConfigured: Boolean(process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || ''),
+      vapidKey,
+      vapidKeyConfigured: Boolean(vapidKey),
     },
     {
       headers: {
@@ -21,4 +23,3 @@ export async function GET() {
     }
   )
 }
-
