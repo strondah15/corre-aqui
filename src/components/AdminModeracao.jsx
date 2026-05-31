@@ -51,24 +51,8 @@ function statusInfo(status) {
   return STATUS.find((s) => s.id === id) || STATUS[0]
 }
 
-function adminPorEnv(uid) {
-  const raw = process.env.NEXT_PUBLIC_ADMIN_UIDS || ''
-  return raw
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean)
-    .includes(String(uid || ''))
-}
-
-function isAdminUser(userNode, adminFlag, uid) {
-  return Boolean(
-    adminFlag === true ||
-      adminPorEnv(uid) ||
-      userNode?.admin === true ||
-      userNode?.role === 'admin' ||
-      userNode?.profile?.admin === true ||
-      userNode?.profile?.role === 'admin'
-  )
+function isAdminUser(adminFlag) {
+  return adminFlag === true
 }
 
 function normalizeRegistros(problemas, denuncias, pedidos, users) {
@@ -177,10 +161,7 @@ export default function AdminModeracao() {
     }
   }, [authUser?.uid])
 
-  const isAdmin = useMemo(
-    () => isAdminUser(userNode, adminFlag, authUser?.uid),
-    [userNode, adminFlag, authUser?.uid]
-  )
+  const isAdmin = useMemo(() => isAdminUser(adminFlag), [adminFlag])
 
   useEffect(() => {
     if (!isAdmin) return

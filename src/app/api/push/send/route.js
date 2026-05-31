@@ -58,9 +58,9 @@ async function disableInvalidTokens(db, toUid, tokenEntries, responses) {
     const entry = tokenEntries[index]
 
     if (entry?.key && code && INVALID_TOKEN_CODES.has(code)) {
-      updates[`users/${toUid}/pushTokens/${entry.key}/enabled`] = false
-      updates[`users/${toUid}/pushTokens/${entry.key}/lastError`] = code
-      updates[`users/${toUid}/pushTokens/${entry.key}/lastErrorAt`] = now
+      updates[`userPrivate/${toUid}/pushTokens/${entry.key}/enabled`] = false
+      updates[`userPrivate/${toUid}/pushTokens/${entry.key}/lastError`] = code
+      updates[`userPrivate/${toUid}/pushTokens/${entry.key}/lastErrorAt`] = now
     }
   })
 
@@ -128,12 +128,19 @@ export async function POST(request) {
 
   const userSnap = await db.ref(`users/${toUid}`).get()
   const user = userSnap.val() || {}
+  const userPrivateSnap = await db.ref(`userPrivate/${toUid}`).get()
+  const userPrivate = userPrivateSnap.val() || {}
 
-  if (user?.profile?.notificacoes === false || user?.notificacoes === false || user?.push?.enabled === false) {
+  if (
+    user?.profile?.notificacoes === false ||
+    user?.notificacoes === false ||
+    user?.push?.enabled === false ||
+    userPrivate?.push?.enabled === false
+  ) {
     return NextResponse.json({ ok: false, skipped: true, reason: 'user_notifications_disabled' })
   }
 
-  const pushTokens = user?.pushTokens || {}
+  const pushTokens = userPrivate?.pushTokens || {}
   const tokenEntries = Object.entries(pushTokens)
     .map(([key, value]) => ({ key, token: value?.token, enabled: value?.enabled !== false }))
     .filter((entry) => entry.enabled && typeof entry.token === 'string' && entry.token.length > 20)

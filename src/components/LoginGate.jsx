@@ -110,6 +110,16 @@ async function salvarUsuarioBasico(user) {
       email: user.email || atual.email || '',
       anonimo: !!user.isAnonymous,
       authProvider: user.isAnonymous ? 'anonimo' : 'google',
+      admin: null,
+      role: null,
+      pushTokens: null,
+      cpf: null,
+      cpfDigits: null,
+      cpfMasked: null,
+      cpfStatus: null,
+      cpfVerificacao: null,
+      documento: null,
+      documentoVerificacao: null,
       atualizadoEm: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }
@@ -124,6 +134,15 @@ async function salvarUsuarioBasico(user) {
     Promise.race([update(userRef, basePayload), esperar(1800)]).catch(() => {})
 
     const profilePayload = {
+      admin: null,
+      role: null,
+      cpf: null,
+      cpfDigits: null,
+      cpfMasked: null,
+      cpfStatus: null,
+      cpfVerificacao: null,
+      documento: null,
+      documentoVerificacao: null,
       atualizadoEm: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }

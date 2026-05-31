@@ -155,6 +155,7 @@ export async function ativarPushNotifications(uid) {
       updatedAt: serverTimestamp(),
       ...info,
     },
+    [`users/${uid}/pushTokens`]: null,
     [`users/${uid}/profile/notificacoes`]: true,
     [`users/${uid}/profile/pushNotifications`]: {
       enabled: true,
@@ -163,7 +164,15 @@ export async function ativarPushNotifications(uid) {
       tokenKey: key,
       updatedAt: serverTimestamp(),
     },
-    [`users/${uid}/pushTokens/${key}`]: {
+    [`userPrivate/${uid}/push`]: {
+      enabled: true,
+      permission,
+      provider: 'firebase_messaging',
+      tokenKey: key,
+      updatedAt: serverTimestamp(),
+      ...info,
+    },
+    [`userPrivate/${uid}/pushTokens/${key}`]: {
       token,
       enabled: true,
       active: true,
@@ -253,6 +262,9 @@ export async function desativarPushNotifications(uid) {
     [`users/${uid}/push/disabledAt`]: serverTimestamp(),
     [`users/${uid}/profile/pushNotifications/enabled`]: false,
     [`users/${uid}/profile/pushNotifications/disabledAt`]: serverTimestamp(),
+    [`users/${uid}/pushTokens`]: null,
+    [`userPrivate/${uid}/push/enabled`]: false,
+    [`userPrivate/${uid}/push/disabledAt`]: serverTimestamp(),
   })
 }
 

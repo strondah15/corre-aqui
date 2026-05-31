@@ -861,13 +861,22 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       const fotoPrincipal = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
       const profilePublic = { ...profile };
       delete profilePublic.cpf;
+      delete profilePublic.cpfDigits;
       delete profilePublic.cpfVerificacao;
       delete profilePublic.cpfMasked;
+      delete profilePublic.cpfStatus;
       delete profilePublic.documento;
       delete profilePublic.documentoVerificacao;
 
       await update(ref(database, `${userBasePath}/profile`), {
         ...profilePublic,
+        cpf: null,
+        cpfDigits: null,
+        cpfMasked: null,
+        cpfStatus: null,
+        cpfVerificacao: null,
+        documento: null,
+        documentoVerificacao: null,
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
         avatar: fotoPrincipal || profile.avatarEmoji || "",
@@ -908,6 +917,13 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
       await update(ref(database, `${userBasePath}`), {
         nome: profile.nome,
+        cpf: null,
+        cpfDigits: null,
+        cpfMasked: null,
+        cpfStatus: null,
+        cpfVerificacao: null,
+        documento: null,
+        documentoVerificacao: null,
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
         avatar: fotoPrincipal || profile.avatarEmoji || "",

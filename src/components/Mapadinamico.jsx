@@ -596,26 +596,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
   }
 
-  const trocarModoDireto = (next) => {
-    if (next !== 'cliente' && next !== 'corre') return
-    if (next === modoApp) return
-
-    setOpenPerfil(false)
-    setOpenIA(false)
-    setChatPedido(null)
-    setMapItem(null)
-    setOpenMapaAoVivo(false)
-    setClientePainelBaixo('')
-    setTab('corre')
-
-    setModoApp(next)
-    showToast({
-      type: 'info',
-      title: 'Modo alterado',
-      message: next === 'cliente' ? 'Modo Cliente ativado' : 'Modo Corre ativado',
-    })
-  }
-
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
 
@@ -1927,53 +1907,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       `}</style>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <div className="relative z-10 w-full max-w-[1280px] mx-auto px-2.5 py-2.5 pb-24 md:px-4 md:py-5 md:pb-32 sm:px-5 lg:px-6">
-        {/* ✅ TROCA DE MODO COMPACTA */}
+      <div className="relative z-10 w-full max-w-[1280px] mx-auto px-2.5 pt-0 pb-24 md:px-4 md:py-5 md:pb-32 sm:px-5 lg:px-6">
+        {/* ✅ TROCA DE MODO FLUTUANTE */}
         {typeof onBackToMode === 'function' && (
-          <div className="mb-1 flex justify-end pr-1 md:mb-4 md:justify-start md:pr-0">
-            <div className="inline-flex max-w-full items-center gap-0.5 rounded-full border border-white/60 bg-white/92 p-0.5 text-blue-950 shadow-[0_12px_28px_rgba(37,99,235,0.14)] backdrop-blur-xl md:gap-1 md:p-1">
-              <span className="hidden px-3 text-[11px] font-black uppercase tracking-[0.18em] text-blue-500 md:inline">
-                Modo
-              </span>
-              <button
-                onClick={() => trocarModoDireto('cliente')}
-                className={[
-                  'h-8 rounded-full px-3 text-[11px] font-black transition active:scale-[0.98] md:h-11 md:px-5 md:text-sm',
-                  modoApp === 'cliente'
-                    ? 'bg-[#ffd91a] text-blue-950 shadow-[0_10px_24px_rgba(250,204,21,0.28)]'
-                    : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700',
-                ].join(' ')}
-                type="button"
-                aria-pressed={modoApp === 'cliente'}
-                title="Usar como cliente"
-              >
-                Cliente
-              </button>
-              <button
-                onClick={() => trocarModoDireto('corre')}
-                className={[
-                  'h-8 rounded-full px-3 text-[11px] font-black transition active:scale-[0.98] md:h-11 md:px-5 md:text-sm',
-                  modoApp === 'corre'
-                    ? 'bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.25)]'
-                    : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700',
-                ].join(' ')}
-                type="button"
-                aria-pressed={modoApp === 'corre'}
-                title="Usar como corre"
-              >
-                Corre
-              </button>
-              <button
-                onClick={voltarModoLimpo}
-                className="hidden h-11 place-items-center rounded-full border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 transition hover:bg-blue-50 active:scale-[0.98] md:grid"
-                type="button"
-                title="Abrir escolha de modo"
-                aria-label="Abrir escolha de modo"
-              >
-                Escolher
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={voltarModoLimpo}
+            className="absolute left-2 top-11 z-30 inline-flex h-8 items-center gap-1 rounded-full border border-white/75 bg-white/94 px-2.5 text-[10px] font-black text-blue-950 shadow-[0_12px_26px_rgba(15,23,42,0.16)] backdrop-blur-xl transition active:scale-[0.97] md:left-6 md:top-6 md:h-10 md:gap-1.5 md:px-4 md:text-xs"
+            type="button"
+            title="Voltar para escolher Cliente ou Corre"
+          >
+            <span className="text-xs md:text-base">↩</span>
+            <span className="md:hidden">Modo</span>
+            <span className="hidden md:inline">Trocar modo</span>
+          </button>
         )}
 
         {/* CORRE: Header + Inbox */}
