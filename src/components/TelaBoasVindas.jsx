@@ -48,15 +48,15 @@ export default function TelaBoasVindas({ onEntrar }) {
           </div>
         </div>
 
-        <a
-          href="/login"
+        <button
+          type="button"
           onClick={() => {
             onEntrar?.()
           }}
           className="relative z-50 mt-4 flex h-11 w-full items-center justify-center rounded-[18px] bg-[#ffd91a] text-sm font-black text-blue-950 shadow-[0_14px_34px_rgba(245,158,11,0.24)] transition active:scale-[0.98] sm:mt-5 sm:h-14 sm:rounded-[22px] pointer-events-auto"
         >
           Começar
-        </a>
+        </button>
 
         <div className="mt-4 text-center text-xs font-semibold text-blue-950/70">
           Você continua no controle dos seus dados e da sua localização.

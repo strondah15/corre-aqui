@@ -168,7 +168,8 @@ function maskCpfSalvo(value) {
 }
 
 const FOTO_MAX_ORIGINAL_BYTES = 8 * 1024 * 1024;
-const FOTO_MAX_DIMENSION = 520;
+const FOTO_MAX_DIMENSION = 480;
+const FOTO_UPLOAD_IDLE_TIMEOUT_MS = 90000;
 
 function isFotoValor(v) {
   const s = String(v || "").trim();
@@ -240,7 +241,7 @@ async function prepararFotoPerfil(file) {
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   img.close?.();
 
-  const blob = await canvasToBlob(canvas, "image/jpeg", 0.88);
+  const blob = await canvasToBlob(canvas, "image/jpeg", 0.82);
   if (!blob) throw new Error("foto_invalida");
 
   return {
@@ -261,9 +262,10 @@ function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
   });
 }
 
-function uploadFotoComTimeout(refArquivo, blob, metadata, ms = 45000) {
+function uploadFotoComTimeout(refArquivo, blob, metadata, ms = FOTO_UPLOAD_IDLE_TIMEOUT_MS, onProgress) {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timer = null;
     const task = uploadBytesResumable(refArquivo, blob, metadata);
 
     const finish = (fn, value) => {
@@ -273,22 +275,55 @@ function uploadFotoComTimeout(refArquivo, blob, metadata, ms = 45000) {
       fn(value);
     };
 
-    const timer = window.setTimeout(() => {
-      const error = new Error("storage_timeout");
-      error.code = "storage_timeout";
-      try {
-        task.cancel();
-      } catch {}
-      finish(reject, error);
-    }, ms);
+    const refreshTimer = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        if (settled) return;
+        const error = new Error("storage_timeout");
+        error.code = "storage_timeout";
+        try {
+          task.cancel();
+        } catch {}
+        finish(reject, error);
+      }, ms);
+    };
+
+    refreshTimer();
 
     task.on(
       "state_changed",
-      null,
+      (snapshot) => {
+        refreshTimer();
+        if (snapshot.totalBytes > 0) {
+          onProgress?.(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+        }
+      },
       (error) => finish(reject, error),
       () => finish(resolve, task.snapshot),
     );
   });
+}
+
+async function uploadFotoComRetry(refArquivo, blob, metadata, onProgress) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await uploadFotoComTimeout(refArquivo, blob, metadata, FOTO_UPLOAD_IDLE_TIMEOUT_MS, onProgress);
+    } catch (error) {
+      lastError = error;
+      if (
+        !["storage_timeout", "storage/retry-limit-exceeded", "storage/canceled"].includes(String(error?.code || error?.message || "")) ||
+        attempt === 2
+      ) {
+        throw error;
+      }
+      onProgress?.(0, true);
+      await new Promise((resolve) => window.setTimeout(resolve, 900));
+    }
+  }
+
+  throw lastError || new Error("foto_upload");
 }
 
 export default function PerfilDrawer({ open, onClose, uid }) {
@@ -706,20 +741,33 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       try {
         const storageBucket = String(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "").trim();
         if (!storageBucket) throw new Error("storage_bucket_missing");
+        if (!auth.currentUser?.uid || auth.currentUser.uid !== uid) throw new Error("auth_missing");
+        await auth.currentUser.getIdToken(true).catch(() => null);
 
         const agora = Date.now();
         const caminho = `profilePhotos/${uid}.jpg`;
         const fotoRef = storageRef(storage, caminho);
 
-        await uploadFotoComTimeout(fotoRef, preparada.blob, {
-          contentType: preparada.mime,
-          customMetadata: {
-            userId: String(uid),
-            tipo: "foto_perfil",
+        await uploadFotoComRetry(
+          fotoRef,
+          preparada.blob,
+          {
+            contentType: preparada.mime,
+            customMetadata: {
+              userId: String(uid),
+              tipo: "foto_perfil",
+            },
           },
-        });
+          (percentual, tentandoNovamente = false) => {
+            if (tentandoNovamente) {
+              setFotoAviso("Conexão lenta. Tentando enviar novamente...");
+              return;
+            }
+            setFotoAviso(percentual ? `Enviando foto... ${percentual}%` : "Enviando foto...");
+          },
+        );
 
-        const url = await promiseComTimeout(getDownloadURL(fotoRef), 5000, "foto_url_timeout");
+        const url = await promiseComTimeout(getDownloadURL(fotoRef), 15000, "foto_url_timeout");
         const urlFinal = `${url}${url.includes("?") ? "&" : "?"}v=${agora}`;
 
         setProfile((p) => ({
@@ -735,10 +783,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         setSalvo(true);
         setTimeout(() => setSalvo(false), 2200);
       } catch (error) {
-        console.error("[PerfilDrawer] upload foto:", error);
-        throw new Error(error?.message === "storage_bucket_missing" ? "storage_bucket_missing" : "foto_upload");
+        console.warn("[PerfilDrawer] upload foto:", error?.code || error?.message || error);
+        throw error;
       }
     } catch (error) {
+      const code = String(error?.code || error?.message || "");
       const msg =
         error?.message === "foto_grande"
           ? "Escolha uma imagem de até 8 MB."
@@ -746,8 +795,14 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             ? "Escolha um arquivo de imagem."
             : error?.message === "storage_bucket_missing"
               ? "Firebase Storage não está configurado."
-            : error?.message === "foto_upload"
-              ? "Não foi possível enviar a foto."
+            : error?.message === "auth_missing" || code.includes("unauth")
+              ? "Entre novamente para salvar a foto."
+            : error?.message === "storage_timeout" || code.includes("retry-limit") || code.includes("canceled")
+              ? "A conexão ficou lenta e a foto não terminou de enviar. Tente novamente em uma rede melhor."
+            : code.includes("unauthorized")
+              ? "O Storage recusou o envio. Verifique as regras do Firebase Storage."
+            : error?.message === "foto_url_timeout"
+              ? "A foto foi enviada, mas não consegui confirmar o link agora. Tente reabrir o perfil."
             : "Não consegui ler essa foto.";
       setProfile((p) => ({
         ...p,

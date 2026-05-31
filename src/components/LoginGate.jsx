@@ -20,6 +20,7 @@ import SplashScreen from '@/components/SplashScreen'
 import { perfilMinimoCompleto } from '@/lib/perfilCadastro'
 
 let vinhetaJaRodouNoRuntime = false
+const USER_READ_TIMEOUT_MS = 7000
 
 function esperar(ms, valor = null) {
   return new Promise((resolve) => {
@@ -72,12 +73,18 @@ function limparSessaoLocal(uid) {
   } catch {}
 }
 
+function marcarBoasVindasVistas() {
+  try {
+    localStorage.setItem('viuBoasVindas', 'true')
+  } catch {}
+}
+
 async function salvarUsuarioBasico(user) {
   if (!user?.uid) return {}
 
   try {
     const userRef = ref(database, `users/${user.uid}`)
-    const snap = await Promise.race([get(userRef), esperar(1800)])
+    const snap = await Promise.race([get(userRef), esperar(USER_READ_TIMEOUT_MS)])
     const leituraConfirmada = typeof snap?.val === 'function'
     const atual = leituraConfirmada ? snap.val() || {} : {}
     const profileAtual = atual.profile || {}
@@ -165,7 +172,7 @@ export default function LoginGate({ children }) {
   const [splashClosing, setSplashClosing] = useState(false)
   const [splashDone, setSplashDone] = useState(pularVinheta || vinhetaJaRodouNoRuntime)
 
-  const aguardandoEntrada = loading || (checandoPerfil && !cadastroCompleto)
+  const aguardandoEntrada = loading || resolvendoRedirect || (checandoPerfil && !cadastroCompleto)
   const splashReadyToClose = splashMinDone && !aguardandoEntrada
 
   useEffect(() => {
@@ -209,6 +216,8 @@ export default function LoginGate({ children }) {
 
     setUid(user.uid)
     setAuthUser(user)
+    setViuBoasVindas(true)
+    marcarBoasVindasVistas()
     setChecandoPerfil(true)
 
     const localCompleto = perfilCompletoLocal(user.uid)
@@ -295,9 +304,7 @@ export default function LoginGate({ children }) {
 
   function entrarBoasVindas() {
     setViuBoasVindas(true)
-    try {
-      localStorage.setItem('viuBoasVindas', 'true')
-    } catch {}
+    marcarBoasVindasVistas()
   }
 
   async function loginGoogle() {
@@ -306,6 +313,8 @@ export default function LoginGate({ children }) {
     try {
       setLoginLoading(true)
       setLoginError('')
+      setViuBoasVindas(true)
+      marcarBoasVindasVistas()
       const user = await signInWithGoogle()
 
       if (!user) {
@@ -317,7 +326,7 @@ export default function LoginGate({ children }) {
           setLoading(false)
           setResolvendoRedirect(false)
           setLoginError('O Google não terminou a entrada. Toque novamente ou confira se o domínio está autorizado no Firebase.')
-        }, 8000)
+        }, 15000)
         return
       }
 
@@ -378,7 +387,7 @@ export default function LoginGate({ children }) {
     return <main className="min-h-[100dvh] bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_100%)]" aria-busy="true" />
   }
 
-  if (!viuBoasVindas) {
+  if (!viuBoasVindas && !uid) {
     return <TelaBoasVindas onEntrar={entrarBoasVindas} />
   }
 

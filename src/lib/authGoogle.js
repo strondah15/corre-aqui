@@ -23,11 +23,17 @@ function setRedirectPending() {
   try {
     sessionStorage.setItem(REDIRECT_PENDING_KEY, String(Date.now()));
   } catch {}
+  try {
+    localStorage.setItem(REDIRECT_PENDING_KEY, String(Date.now()));
+  } catch {}
 }
 
 function clearRedirectPending() {
   try {
     sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+  } catch {}
+  try {
+    localStorage.removeItem(REDIRECT_PENDING_KEY);
   } catch {}
 }
 
@@ -37,8 +43,9 @@ export function clearGoogleRedirectPending() {
 
 export function isGoogleRedirectPending() {
   try {
-    const raw = sessionStorage.getItem(REDIRECT_PENDING_KEY);
-    const ms = Number(raw || 0);
+    const rawSession = sessionStorage.getItem(REDIRECT_PENDING_KEY);
+    const rawLocal = localStorage.getItem(REDIRECT_PENDING_KEY);
+    const ms = Math.max(Number(rawSession || 0), Number(rawLocal || 0));
     return Boolean(ms && Date.now() - ms < 2 * 60 * 1000);
   } catch {
     return false;

@@ -32,6 +32,12 @@ function mensagemErroGoogle(err) {
   return 'Não foi possível abrir o Google agora. Tente novamente em instantes.'
 }
 
+function marcarEntradaIniciada() {
+  try {
+    localStorage.setItem('viuBoasVindas', 'true')
+  } catch {}
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [checking, setChecking] = useState(true)
@@ -53,7 +59,10 @@ export default function LoginPage() {
 
     getGoogleRedirectUser().then((user) => {
       if (!active) return
-      if (user?.uid) router.replace('/')
+      if (user?.uid) {
+        marcarEntradaIniciada()
+        router.replace('/')
+      }
     }).finally(() => {
       if (!active) return
       setRedirecting(false)
@@ -63,6 +72,7 @@ export default function LoginPage() {
       if (!active) return
       window.clearTimeout(fallback)
       if (user?.uid) {
+        marcarEntradaIniciada()
         router.replace('/')
         return
       }
@@ -83,8 +93,10 @@ export default function LoginPage() {
     try {
       setErro('')
       setLoading(true)
+      marcarEntradaIniciada()
       const user = await signInWithGoogle()
       if (user?.uid) {
+        marcarEntradaIniciada()
         router.replace('/')
         return
       }
@@ -95,7 +107,7 @@ export default function LoginPage() {
         setRedirecting(false)
         setLoading(false)
         setErro('Se o Google não abriu, seu navegador pode ter bloqueado o redirecionamento ou o domínio ainda não está autorizado no Firebase.')
-      }, 1800)
+      }, 15000)
     } catch (err) {
       console.error(err)
       clearGoogleRedirectPending()
