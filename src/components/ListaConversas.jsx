@@ -123,8 +123,8 @@ export default function ListaConversas({
   )
 
   return (
-    <div className="overflow-hidden rounded-[22px] border border-white/10 bg-[#07111f] shadow-[0_18px_60px_rgba(0,0,0,0.32)] md:rounded-[28px] md:shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-3 py-3 md:px-4 md:py-4">
+    <div className="overflow-hidden rounded-[24px] border border-blue-100 bg-white shadow-[0_18px_55px_rgba(37,99,235,0.12)] md:rounded-[32px]">
+      <div className="border-b border-blue-100 bg-[linear-gradient(135deg,#eef8ff_0%,#ffffff_58%,#fff6bf_100%)] px-3 py-3 md:px-4 md:py-4">
         <div className="flex items-center justify-between gap-2.5 md:gap-3.5">
           <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
             <LogoCorreAqui
@@ -133,21 +133,21 @@ export default function ListaConversas({
             />
 
             <div className="min-w-0 leading-tight">
-              <div className="text-sm font-black text-white md:text-base">Conversas</div>
-              <div className="mt-0.5 truncate text-[11px] text-slate-400 md:mt-1 md:text-xs">Pedidos aceitos e histórico rápido</div>
+              <div className="text-sm font-black text-blue-950 md:text-base">Conversas</div>
+              <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-600 md:mt-1 md:text-xs">Pedidos aceitos e histórico rápido</div>
             </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
-            <div className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-black text-slate-200 md:px-2.5 md:py-1 md:text-[11px]">
+            <div className="rounded-full border border-blue-100 bg-white px-2 py-0.5 text-[10px] font-black text-blue-800 shadow-sm md:px-2.5 md:py-1 md:text-[11px]">
               {conversasFiltradas.length}
             </div>
             <div
               className={[
                 'rounded-full border px-2 py-0.5 text-[10px] font-black md:px-2.5 md:py-1 md:text-[11px]',
                 totalNaoLidas > 0
-                  ? 'border-rose-300/30 bg-rose-500/15 text-rose-100'
-                  : 'border-white/10 bg-white/[0.05] text-slate-300',
+                  ? 'border-rose-200 bg-rose-50 text-rose-700'
+                  : 'border-blue-100 bg-white text-slate-600',
               ].join(' ')}
               title="Conversas não lidas"
             >
@@ -161,16 +161,16 @@ export default function ListaConversas({
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por pedido, pessoa ou mensagem..."
-            className="h-10 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-xs text-white outline-none placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500/35 md:h-12 md:rounded-2xl md:px-4 md:text-sm"
+            className="h-10 w-full rounded-xl border border-blue-100 bg-white px-3 text-xs font-bold text-slate-950 outline-none placeholder:text-slate-400 focus:ring-4 focus:ring-blue-400/15 md:h-12 md:rounded-2xl md:px-4 md:text-sm"
           />
         </div>
       </div>
 
-      <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-2 md:max-h-[calc(100dvh-14rem)] md:p-3">
+      <div className="max-h-[calc(100dvh-13rem)] overflow-y-auto bg-slate-50 p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
         {conversasFiltradas.length === 0 ? (
-          <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 text-slate-200">
-            <div className="font-black text-white">Nenhuma conversa ainda</div>
-            <div className="mt-1 text-sm leading-relaxed text-slate-400">
+          <div className="rounded-3xl border border-dashed border-blue-200 bg-white p-5 text-slate-700">
+            <div className="font-black text-blue-950">Nenhuma conversa ainda</div>
+            <div className="mt-1 text-sm leading-relaxed text-slate-600">
               Quando alguém aceitar um pedido ou responder no chat, a conversa aparece aqui.
             </div>
           </div>
@@ -199,18 +199,18 @@ export default function ListaConversas({
                   className={[
                     'w-full rounded-[18px] border px-2.5 py-2.5 text-left transition-all duration-200 md:rounded-[22px] md:px-3 md:py-3',
                     c.unread
-                      ? 'border-blue-300/30 bg-blue-500/14 shadow-[0_14px_42px_rgba(37,99,235,0.16)]'
-                      : 'border-white/10 bg-white/[0.045] hover:bg-white/[0.07]',
+                      ? 'border-blue-200 bg-blue-50 shadow-[0_14px_42px_rgba(37,99,235,0.14)]'
+                      : 'border-slate-200 bg-white hover:bg-blue-50',
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-2.5 md:gap-3">
                     <div className="flex min-w-0 items-start gap-2.5 md:gap-3">
-                      <div className={c.unread ? 'mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-400 shadow-[0_0_18px_rgba(96,165,250,0.8)] md:h-2.5 md:w-2.5' : 'mt-1 h-2 w-2 shrink-0 rounded-full bg-slate-700 md:h-2.5 md:w-2.5'} />
+                      <div className={c.unread ? 'mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500 shadow-[0_0_18px_rgba(59,130,246,0.7)] md:h-2.5 md:w-2.5' : 'mt-1 h-2 w-2 shrink-0 rounded-full bg-slate-300 md:h-2.5 md:w-2.5'} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <div className="truncate text-sm font-black text-white md:text-base">{titulo}</div>
+                          <div className="truncate text-sm font-black text-blue-950 md:text-base">{titulo}</div>
                           {c.unread ? (
-                            <span className="rounded-full bg-blue-400/15 px-2 py-0.5 text-[10px] font-black text-blue-100 ring-1 ring-blue-300/20">
+                            <span className="rounded-full bg-blue-700 px-2 py-0.5 text-[10px] font-black text-white">
                               novo
                             </span>
                           ) : null}
@@ -224,7 +224,7 @@ export default function ListaConversas({
                     <div className="shrink-0 text-[10px] font-bold text-slate-500 md:text-[11px]">{hora}</div>
                   </div>
 
-                  <div className="mt-1.5 line-clamp-2 pl-4 text-xs leading-snug text-slate-300 md:mt-2 md:pl-5 md:text-sm md:leading-relaxed">
+                  <div className="mt-1.5 line-clamp-2 pl-4 text-xs font-semibold leading-snug text-slate-700 md:mt-2 md:pl-5 md:text-sm md:leading-relaxed">
                     {preview ? (
                       <>
                         {enviadaPorMim ? <span className="text-slate-500">Você: </span> : null}

@@ -396,7 +396,7 @@ async function aplicarImpulsionarNoPedido({ pedido, level, meuId, meuNome }) {
 }
 
 /** =======================
- * Toast simples (dark)
+ * Toast premium
 ======================= */
 function Toast({ toast, onClose }) {
   useEffect(() => {
@@ -408,33 +408,60 @@ function Toast({ toast, onClose }) {
   if (!toast) return null
 
   const type = toast.type || 'info'
-
-  const base =
-    'fixed top-4 left-1/2 -translate-x-1/2 z-[99999] px-4 py-3 rounded-2xl shadow-xl border text-sm max-w-[92vw] w-[420px] '
-
-  const styles =
+  const meta =
     type === 'success'
-      ? 'bg-emerald-500/15 border-emerald-400/20 text-emerald-100'
+      ? {
+          icon: '✓',
+          badge: 'bg-emerald-500 text-white',
+          border: 'border-emerald-200',
+          glow: 'shadow-[0_18px_48px_rgba(16,185,129,0.18)]',
+        }
       : type === 'error'
-      ? 'bg-red-500/15 border-red-400/20 text-red-100'
-      : 'bg-white/10 border-white/10 text-slate-950'
+      ? {
+          icon: '!',
+          badge: 'bg-rose-500 text-white',
+          border: 'border-rose-200',
+          glow: 'shadow-[0_18px_48px_rgba(244,63,94,0.18)]',
+        }
+      : {
+          icon: 'i',
+          badge: 'bg-blue-600 text-white',
+          border: 'border-blue-100',
+          glow: 'shadow-[0_18px_48px_rgba(37,99,235,0.16)]',
+        }
 
   return (
-    <div className={`${base} ${styles}`}>
-      <div className="flex items-start gap-3">
-        <div className="flex-1">
-          {toast.title && <div className="font-semibold">{toast.title}</div>}
-          <div className="mt-0.5 text-gray-200">{toast.message}</div>
+    <motion.div
+      initial={{ opacity: 0, y: -14, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      role="status"
+      className={[
+        'fixed left-1/2 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[99999] w-[min(92vw,420px)] -translate-x-1/2',
+        'rounded-[22px] border bg-white/96 p-2.5 text-sm text-slate-950 backdrop-blur-xl',
+        'md:left-auto md:right-6 md:top-6 md:translate-x-0',
+        meta.border,
+        meta.glow,
+      ].join(' ')}
+    >
+      <div className="flex items-center gap-3">
+        <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-base font-black ${meta.badge}`}>
+          {meta.icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          {toast.title ? <div className="truncate text-sm font-black text-blue-950">{toast.title}</div> : null}
+          {toast.message ? <div className="mt-0.5 text-xs font-semibold leading-snug text-slate-600">{toast.message}</div> : null}
         </div>
         <button
           onClick={onClose}
-          className="text-[11px] md:text-xs px-2 py-0.5 md:py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-slate-200 bg-slate-50 text-base font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
           type="button"
+          aria-label="Fechar aviso"
         >
-          fechar
+          ×
         </button>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -567,6 +594,26 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     if (typeof onBackToMode === 'function') {
       onBackToMode()
     }
+  }
+
+  const trocarModoDireto = (next) => {
+    if (next !== 'cliente' && next !== 'corre') return
+    if (next === modoApp) return
+
+    setOpenPerfil(false)
+    setOpenIA(false)
+    setChatPedido(null)
+    setMapItem(null)
+    setOpenMapaAoVivo(false)
+    setClientePainelBaixo('')
+    setTab('corre')
+
+    setModoApp(next)
+    showToast({
+      type: 'info',
+      title: 'Modo alterado',
+      message: next === 'cliente' ? 'Modo Cliente ativado' : 'Modo Corre ativado',
+    })
   }
 
   useEffect(() => {
@@ -1844,6 +1891,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       })
       return
     }
+    if (['inbox', 'agenda', 'seguranca'].includes(id)) {
+      router.push(`/corre/${id}`)
+      return
+    }
     setTab(id)
   }
 
@@ -1877,27 +1928,51 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       <div className="relative z-10 w-full max-w-[1280px] mx-auto px-2.5 py-2.5 pb-24 md:px-4 md:py-5 md:pb-32 sm:px-5 lg:px-6">
-        {/* ✅ TROCAR MODO DENTRO DO LAYOUT (não cobre mais os cards) */}
+        {/* ✅ TROCA DE MODO COMPACTA */}
         {typeof onBackToMode === 'function' && (
-          <div className="mb-2 flex justify-start md:mb-4">
-            <button
-              onClick={voltarModoLimpo}
-              className="
-                inline-flex h-10 items-center gap-2
-                rounded-[18px] px-3 md:h-auto md:rounded-2xl md:px-4 md:py-2.5
-                bg-white/92 hover:bg-white
-                border border-blue-100/70
-                text-blue-950 text-xs font-extrabold md:text-sm
-                shadow-[0_12px_30px_rgba(37,99,235,0.16)]
-                backdrop-blur-xl
-                transition
-              "
-              type="button"
-              title="Voltar para escolher Cliente ou Corre"
-            >
-              <span className="text-sm md:text-base">↩</span>
-              <span>Trocar modo</span>
-            </button>
+          <div className="mb-1 flex justify-end pr-1 md:mb-4 md:justify-start md:pr-0">
+            <div className="inline-flex max-w-full items-center gap-0.5 rounded-full border border-white/60 bg-white/92 p-0.5 text-blue-950 shadow-[0_12px_28px_rgba(37,99,235,0.14)] backdrop-blur-xl md:gap-1 md:p-1">
+              <span className="hidden px-3 text-[11px] font-black uppercase tracking-[0.18em] text-blue-500 md:inline">
+                Modo
+              </span>
+              <button
+                onClick={() => trocarModoDireto('cliente')}
+                className={[
+                  'h-8 rounded-full px-3 text-[11px] font-black transition active:scale-[0.98] md:h-11 md:px-5 md:text-sm',
+                  modoApp === 'cliente'
+                    ? 'bg-[#ffd91a] text-blue-950 shadow-[0_10px_24px_rgba(250,204,21,0.28)]'
+                    : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700',
+                ].join(' ')}
+                type="button"
+                aria-pressed={modoApp === 'cliente'}
+                title="Usar como cliente"
+              >
+                Cliente
+              </button>
+              <button
+                onClick={() => trocarModoDireto('corre')}
+                className={[
+                  'h-8 rounded-full px-3 text-[11px] font-black transition active:scale-[0.98] md:h-11 md:px-5 md:text-sm',
+                  modoApp === 'corre'
+                    ? 'bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.25)]'
+                    : 'text-slate-500 hover:bg-blue-50 hover:text-blue-700',
+                ].join(' ')}
+                type="button"
+                aria-pressed={modoApp === 'corre'}
+                title="Usar como corre"
+              >
+                Corre
+              </button>
+              <button
+                onClick={voltarModoLimpo}
+                className="hidden h-11 place-items-center rounded-full border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 transition hover:bg-blue-50 active:scale-[0.98] md:grid"
+                type="button"
+                title="Abrir escolha de modo"
+                aria-label="Abrir escolha de modo"
+              >
+                Escolher
+              </button>
+            </div>
           </div>
         )}
 
@@ -1965,7 +2040,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setTab('inbox')}
+                      onClick={() => router.push('/corre/inbox')}
                       title="Notificações e conversas"
                       className="relative grid h-11 w-11 place-items-center rounded-[18px] bg-white/90 text-lg shadow-[0_12px_26px_rgba(15,23,42,0.14)] transition hover:scale-[1.03] md:h-14 md:w-14 md:rounded-[22px]"
                     >

@@ -134,24 +134,24 @@ export default function PainelProblemasDenuncias({
   const totalAbertos = registros.filter((p) => String(p.status || 'aberto').toLowerCase() === 'aberto').length
 
   return (
-    <div className="overflow-hidden rounded-[20px] border border-white/10 bg-[#07111f] text-white shadow-[0_20px_60px_rgba(0,0,0,0.32)] md:rounded-[28px] md:shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-3 py-3 md:px-4 md:py-4">
+    <div className="overflow-hidden rounded-[24px] border border-blue-100 bg-white text-slate-950 shadow-[0_18px_55px_rgba(37,99,235,0.12)] md:rounded-[32px]">
+      <div className="border-b border-blue-100 bg-[linear-gradient(135deg,#eef8ff_0%,#ffffff_58%,#fff6bf_100%)] px-3 py-3 md:px-4 md:py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-red-300 md:text-[11px] md:tracking-[0.18em]">Segurança</div>
-            <div className="mt-0.5 text-lg font-black md:mt-1 md:text-xl">Problemas e denúncias</div>
-            <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-400 md:mt-1 md:text-xs">
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-600 md:text-[11px] md:tracking-[0.18em]">Segurança</div>
+            <div className="mt-0.5 text-lg font-black text-blue-950 md:mt-1 md:text-xl">Problemas e denúncias</div>
+            <div className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-slate-600 md:mt-1 md:text-xs">
               Acompanhe registros ligados aos seus pedidos e conversas.
             </div>
           </div>
           <div className="grid grid-cols-2 gap-1.5 text-center md:gap-2">
-            <div className="rounded-xl border border-white/10 bg-white/[0.05] px-2 py-1.5 md:rounded-2xl md:px-3 md:py-2">
-              <div className="text-base font-black text-white md:text-lg">{totalAbertos}</div>
+            <div className="rounded-xl border border-blue-100 bg-white px-2 py-1.5 shadow-sm md:rounded-2xl md:px-3 md:py-2">
+              <div className="text-base font-black text-blue-950 md:text-lg">{totalAbertos}</div>
               <div className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-500 md:text-[10px] md:tracking-[0.12em]">abertos</div>
             </div>
-            <div className="rounded-xl border border-red-300/20 bg-red-500/10 px-2 py-1.5 md:rounded-2xl md:px-3 md:py-2">
-              <div className="text-base font-black text-red-100 md:text-lg">{totalDenuncias}</div>
-              <div className="text-[9px] font-black uppercase tracking-[0.1em] text-red-300 md:text-[10px] md:tracking-[0.12em]">denúncias</div>
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-2 py-1.5 shadow-sm md:rounded-2xl md:px-3 md:py-2">
+              <div className="text-base font-black text-rose-700 md:text-lg">{totalDenuncias}</div>
+              <div className="text-[9px] font-black uppercase tracking-[0.1em] text-rose-500 md:text-[10px] md:tracking-[0.12em]">denúncias</div>
             </div>
           </div>
         </div>
@@ -169,8 +169,8 @@ export default function PainelProblemasDenuncias({
               className={[
                 'h-9 rounded-xl border text-[11px] font-black transition active:scale-[0.98] md:h-10 md:rounded-2xl md:text-xs',
                 filtro === id
-                  ? 'border-red-300/35 bg-red-500/16 text-red-100'
-                  : 'border-white/10 bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]',
+                  ? 'border-blue-600 bg-blue-700 text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)]'
+                  : 'border-blue-100 bg-white text-slate-700 hover:bg-blue-50',
               ].join(' ')}
             >
               {label}
@@ -179,11 +179,11 @@ export default function PainelProblemasDenuncias({
         </div>
       </div>
 
-      <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
+      <div className="max-h-[calc(100dvh-13rem)] overflow-y-auto bg-slate-50 p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
         {filtrados.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-white/12 bg-white/[0.035] p-5 text-center">
-            <div className="text-lg font-black">Nenhum problema registrado</div>
-            <div className="mt-1 text-sm leading-relaxed text-slate-400">
+          <div className="rounded-3xl border border-dashed border-blue-200 bg-white p-5 text-center">
+            <div className="text-lg font-black text-blue-950">Nenhum problema registrado</div>
+            <div className="mt-1 text-sm leading-relaxed text-slate-600">
               Quando você registrar um problema ou denúncia, ele aparece aqui.
             </div>
           </div>
@@ -201,22 +201,22 @@ export default function PainelProblemasDenuncias({
                   className={[
                     'rounded-[18px] border p-2.5 md:rounded-[24px] md:p-4',
                     denuncia
-                      ? 'border-red-300/25 bg-red-500/10'
-                      : 'border-amber-300/20 bg-amber-500/10',
+                      ? 'border-rose-200 bg-rose-50'
+                      : 'border-yellow-200 bg-yellow-50',
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-white/10 bg-white/[0.07] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-200">
+                        <span className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-800">
                           {denuncia ? 'Denúncia' : 'Problema'}
                         </span>
-                        <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600">
                           {p.status || 'aberto'}
                         </span>
                       </div>
-                      <div className="mt-1.5 text-sm font-black text-white md:mt-2 md:text-base">{p.tipoLabel}</div>
-                      <div className="mt-1 truncate text-xs font-semibold text-slate-300 md:text-sm">
+                      <div className="mt-1.5 text-sm font-black text-blue-950 md:mt-2 md:text-base">{p.tipoLabel}</div>
+                      <div className="mt-1 truncate text-xs font-semibold text-slate-700 md:text-sm">
                         {p.pedidoTitulo || pedido?.titulo || 'Corre aqui'}
                       </div>
                     </div>
@@ -226,7 +226,7 @@ export default function PainelProblemasDenuncias({
                   </div>
 
                   {p.descricao ? (
-                    <div className="mt-2.5 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs leading-snug text-slate-200 md:mt-3 md:rounded-2xl md:text-sm md:leading-relaxed">
+                    <div className="mt-2.5 rounded-xl border border-white bg-white/78 px-3 py-2 text-xs font-semibold leading-snug text-slate-700 shadow-sm md:mt-3 md:rounded-2xl md:text-sm md:leading-relaxed">
                       {p.descricao}
                     </div>
                   ) : null}
@@ -237,20 +237,20 @@ export default function PainelProblemasDenuncias({
                         <button
                           type="button"
                           onClick={() => onAbrirChat?.(pedido)}
-                          className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-black text-white transition hover:bg-blue-500 active:scale-[0.98] md:rounded-2xl md:py-2"
+                          className="rounded-xl bg-blue-700 px-3 py-1.5 text-xs font-black text-white shadow-[0_10px_22px_rgba(37,99,235,0.18)] transition hover:bg-blue-800 active:scale-[0.98] md:rounded-2xl md:py-2"
                         >
                           Abrir conversa
                         </button>
                         <button
                           type="button"
                           onClick={() => onAbrirPedido?.(pedido)}
-                          className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-black text-slate-200 transition hover:bg-white/[0.1] md:rounded-2xl md:py-2"
+                          className="rounded-xl border border-blue-100 bg-white px-3 py-1.5 text-xs font-black text-blue-800 transition hover:bg-blue-50 md:rounded-2xl md:py-2"
                         >
                           Ver pedido
                         </button>
                       </>
                     ) : (
-                      <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-bold text-slate-400 md:rounded-2xl md:py-2">
+                      <span className="rounded-xl border border-blue-100 bg-white px-3 py-1.5 text-xs font-bold text-slate-500 md:rounded-2xl md:py-2">
                         Pedido ainda não carregado
                       </span>
                     )}

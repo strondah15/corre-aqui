@@ -42,13 +42,13 @@ function tipoInfo(tipo) {
 }
 
 function toneClass(tone, unread) {
-  const active = unread ? 'shadow-[0_16px_46px_rgba(37,99,235,0.16)]' : ''
-  if (tone === 'emerald') return `border-emerald-300/25 bg-emerald-500/10 ${active}`
-  if (tone === 'blue') return `border-blue-300/25 bg-blue-500/10 ${active}`
-  if (tone === 'sky') return `border-sky-300/25 bg-sky-500/10 ${active}`
-  if (tone === 'amber') return `border-amber-300/25 bg-amber-500/10 ${active}`
-  if (tone === 'rose') return `border-rose-300/25 bg-rose-500/10 ${active}`
-  return `border-white/10 bg-white/[0.045] ${active}`
+  const active = unread ? 'shadow-[0_16px_46px_rgba(37,99,235,0.14)]' : ''
+  if (tone === 'emerald') return `border-emerald-200 bg-emerald-50 ${active}`
+  if (tone === 'blue') return `border-blue-200 bg-blue-50 ${active}`
+  if (tone === 'sky') return `border-sky-200 bg-sky-50 ${active}`
+  if (tone === 'amber') return `border-yellow-200 bg-yellow-50 ${active}`
+  if (tone === 'rose') return `border-rose-200 bg-rose-50 ${active}`
+  return `border-slate-200 bg-white ${active}`
 }
 
 export default function CentralNotificacoes({
@@ -147,13 +147,13 @@ export default function CentralNotificacoes({
   }
 
   return (
-    <div className="overflow-hidden rounded-[20px] border border-white/10 bg-[#07111f] text-white shadow-[0_20px_60px_rgba(0,0,0,0.32)] md:rounded-[28px] md:shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-      <div className="border-b border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-3 py-3 md:px-4 md:py-4">
+    <div className="overflow-hidden rounded-[24px] border border-blue-100 bg-white text-slate-950 shadow-[0_18px_55px_rgba(37,99,235,0.12)] md:rounded-[32px]">
+      <div className="border-b border-blue-100 bg-[linear-gradient(135deg,#eef8ff_0%,#ffffff_58%,#fff6bf_100%)] px-3 py-3 md:px-4 md:py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-300 md:text-[11px] md:tracking-[0.18em]">Central</div>
-            <div className="mt-0.5 text-lg font-black md:mt-1 md:text-xl">Notificações</div>
-            <div className="mt-0.5 line-clamp-1 text-[11px] text-slate-400 md:mt-1 md:text-xs">
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-600 md:text-[11px] md:tracking-[0.18em]">Central</div>
+            <div className="mt-0.5 text-lg font-black text-blue-950 md:mt-1 md:text-xl">Notificações</div>
+            <div className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-slate-600 md:mt-1 md:text-xs">
               Aceites, mensagens, conclusões, avaliações e alertas importantes.
             </div>
           </div>
@@ -161,7 +161,7 @@ export default function CentralNotificacoes({
             type="button"
             onClick={marcarTodas}
             disabled={naoLidas === 0}
-            className="shrink-0 rounded-xl border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-black text-slate-200 transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-45 md:rounded-2xl md:px-3 md:py-2 md:text-xs"
+            className="shrink-0 rounded-xl border border-blue-100 bg-white px-2.5 py-1.5 text-[11px] font-black text-blue-800 shadow-sm transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45 md:rounded-2xl md:px-3 md:py-2 md:text-xs"
           >
             Marcar lidas
           </button>
@@ -180,8 +180,8 @@ export default function CentralNotificacoes({
               className={[
                 'h-9 rounded-xl border text-[11px] font-black transition active:scale-[0.98] md:h-10 md:rounded-2xl md:text-xs',
                 filtro === id
-                  ? 'border-cyan-300/35 bg-cyan-400/14 text-cyan-100'
-                  : 'border-white/10 bg-white/[0.045] text-slate-300 hover:bg-white/[0.08]',
+                  ? 'border-blue-600 bg-blue-700 text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)]'
+                  : 'border-blue-100 bg-white text-slate-700 hover:bg-blue-50',
               ].join(' ')}
             >
               {label}
@@ -190,11 +190,11 @@ export default function CentralNotificacoes({
         </div>
       </div>
 
-      <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
+      <div className="max-h-[calc(100dvh-13rem)] overflow-y-auto bg-slate-50 p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
         {filtradas.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-white/12 bg-white/[0.035] p-5 text-center">
-            <div className="text-lg font-black">Tudo em dia</div>
-            <div className="mt-1 text-sm leading-relaxed text-slate-400">
+          <div className="rounded-3xl border border-dashed border-blue-200 bg-white p-5 text-center">
+            <div className="text-lg font-black text-blue-950">Tudo em dia</div>
+            <div className="mt-1 text-sm leading-relaxed text-slate-600">
               Quando algo importante acontecer, aparece aqui.
             </div>
           </div>
@@ -212,22 +212,22 @@ export default function CentralNotificacoes({
                   className={`rounded-[18px] border p-2.5 md:rounded-[22px] md:p-3 ${toneClass(info.tone, unread)}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.07] text-base md:h-11 md:w-11 md:rounded-2xl md:text-lg">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-blue-100 bg-white text-base shadow-sm md:h-11 md:w-11 md:rounded-2xl md:text-lg">
                       {info.icon}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+                        <span className="rounded-full border border-blue-100 bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-blue-800">
                           {info.label}
                         </span>
                         {unread ? (
-                          <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.8)]" />
+                          <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_18px_rgba(59,130,246,0.7)]" />
                         ) : null}
                       </div>
-                      <div className="mt-1 truncate text-sm font-black text-white">
+                      <div className="mt-1 truncate text-sm font-black text-blue-950">
                         {n?.titulo || 'Nova notificação'}
                       </div>
-                      <div className="mt-1 line-clamp-2 text-xs leading-snug text-slate-300 md:text-sm md:leading-relaxed">
+                      <div className="mt-1 line-clamp-2 text-xs font-semibold leading-snug text-slate-700 md:text-sm md:leading-relaxed">
                         {n?.mensagem || 'Você tem uma atualização no Corre Aqui.'}
                       </div>
                       <div className="mt-2 text-[11px] font-bold text-slate-500">{formatData(n?.criadoEm || n?.createdAt)}</div>
@@ -238,7 +238,7 @@ export default function CentralNotificacoes({
                     <button
                       type="button"
                       onClick={() => abrir(n)}
-                      className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-black text-white transition hover:bg-blue-500 active:scale-[0.98] md:rounded-2xl md:py-2"
+                      className="rounded-xl bg-blue-700 px-3 py-1.5 text-xs font-black text-white shadow-[0_10px_22px_rgba(37,99,235,0.18)] transition hover:bg-blue-800 active:scale-[0.98] md:rounded-2xl md:py-2"
                     >
                       Abrir
                     </button>
@@ -246,7 +246,7 @@ export default function CentralNotificacoes({
                       <button
                         type="button"
                         onClick={() => marcarLida(n)}
-                        className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-black text-slate-200 transition hover:bg-white/[0.1] md:rounded-2xl md:py-2"
+                        className="rounded-xl border border-blue-100 bg-white px-3 py-1.5 text-xs font-black text-blue-800 transition hover:bg-blue-50 md:rounded-2xl md:py-2"
                       >
                         Marcar lida
                       </button>
