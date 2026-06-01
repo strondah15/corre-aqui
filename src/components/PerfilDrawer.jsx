@@ -680,40 +680,55 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       updatedAt: serverTimestamp(),
     };
 
+    const updates = {
+      [`${userBasePath}/uid`]: uid,
+      [`${userBasePath}/fotoURL`]: payload.fotoURL,
+      [`${userBasePath}/photoURL`]: payload.photoURL,
+      [`${userBasePath}/avatar`]: payload.avatar,
+      [`${userBasePath}/avatarEmoji`]: payload.avatarEmoji,
+      [`${userBasePath}/fotoStoragePath`]: payload.fotoStoragePath,
+      [`${userBasePath}/fotoStorage`]: payload.fotoStorage,
+      [`${userBasePath}/fotoAtualizadaEm`]: payload.fotoAtualizadaEm,
+      [`${userBasePath}/updatedAt`]: payload.updatedAt,
+      [`${userBasePath}/atualizadoEm`]: serverTimestamp(),
+      [`${userBasePath}/profile/fotoURL`]: payload.fotoURL,
+      [`${userBasePath}/profile/photoURL`]: payload.photoURL,
+      [`${userBasePath}/profile/avatar`]: payload.avatar,
+      [`${userBasePath}/profile/avatarEmoji`]: payload.avatarEmoji,
+      [`${userBasePath}/profile/fotoStoragePath`]: payload.fotoStoragePath,
+      [`${userBasePath}/profile/fotoStorage`]: payload.fotoStorage,
+      [`${userBasePath}/profile/fotoAtualizadaEm`]: payload.fotoAtualizadaEm,
+      [`${userBasePath}/profile/updatedAt`]: payload.updatedAt,
+      [`${userBasePath}/profile/atualizadoEm`]: serverTimestamp(),
+      [`${userBasePath}/profile/corre/fotoURL`]: payload.fotoURL,
+      [`${userBasePath}/profile/corre/photoURL`]: payload.photoURL,
+      [`${userBasePath}/profile/profissional/fotoURL`]: payload.fotoURL,
+      [`${userBasePath}/profile/profissional/photoURL`]: payload.photoURL,
+      [`${userBasePath}/corre/fotoURL`]: payload.fotoURL,
+      [`${userBasePath}/corre/photoURL`]: payload.photoURL,
+      [`${userBasePath}/profissional/fotoURL`]: payload.fotoURL,
+      [`${userBasePath}/profissional/photoURL`]: payload.photoURL,
+      [`usuariosOnline/${uid}/fotoURL`]: payload.fotoURL,
+      [`usuariosOnline/${uid}/photoURL`]: payload.photoURL,
+      [`usuariosOnline/${uid}/avatar`]: payload.avatar,
+      [`usuariosOnline/${uid}/avatarEmoji`]: payload.avatarEmoji,
+      [`usuariosOnline/${uid}/fotoStoragePath`]: payload.fotoStoragePath,
+      [`usuariosOnline/${uid}/fotoStorage`]: payload.fotoStorage,
+      [`usuariosOnline/${uid}/fotoAtualizadaEm`]: payload.fotoAtualizadaEm,
+      [`usuariosOnline/${uid}/updatedAt`]: payload.updatedAt,
+      [`usuariosOnline/${uid}/atualizadoEm`]: serverTimestamp(),
+    };
+
+    await promiseComTimeout(
+      update(ref(database), updates),
+      15000,
+      "foto_db_timeout",
+    );
+
     try {
       if (fotoFinal) window.localStorage.setItem("fotoURL", fotoFinal);
       if (avatarEmoji) window.localStorage.setItem("avatarEmoji", avatarEmoji);
     } catch {}
-
-    await update(ref(database, `${userBasePath}/profile`), {
-      ...payload,
-      "corre/fotoURL": fotoFinal || null,
-      "corre/photoURL": fotoFinal || null,
-      "profissional/fotoURL": fotoFinal || null,
-      "profissional/photoURL": fotoFinal || null,
-      atualizadoEm: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-
-    await update(ref(database, userBasePath), {
-      uid,
-      ...payload,
-      "profile/fotoURL": fotoFinal || null,
-      "profile/photoURL": fotoFinal || null,
-      "profile/avatar": fotoFinal || avatarEmoji || "",
-      "corre/fotoURL": fotoFinal || null,
-      "corre/photoURL": fotoFinal || null,
-      "profissional/fotoURL": fotoFinal || null,
-      "profissional/photoURL": fotoFinal || null,
-      atualizadoEm: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-
-    await update(ref(database, `usuariosOnline/${uid}`), {
-      ...payload,
-      atualizadoEm: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
   }
 
   async function alterarFotoPerfil(event) {
@@ -769,6 +784,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
         const url = await promiseComTimeout(getDownloadURL(fotoRef), 15000, "foto_url_timeout");
         const urlFinal = `${url}${url.includes("?") ? "&" : "?"}v=${agora}`;
+        setFotoAviso("Salvando foto...");
 
         setProfile((p) => ({
           ...p,
@@ -803,6 +819,10 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               ? "O Storage recusou o envio. Verifique as regras do Firebase Storage."
             : error?.message === "foto_url_timeout"
               ? "A foto foi enviada, mas não consegui confirmar o link agora. Tente reabrir o perfil."
+            : error?.message === "foto_db_timeout"
+              ? "A foto foi enviada, mas o perfil demorou para salvar. Tente novamente."
+            : code.toLowerCase().includes("permission_denied") || code.toLowerCase().includes("permission-denied")
+              ? "A foto foi enviada, mas o Firebase recusou salvar no perfil. Verifique as regras do Realtime Database."
             : "Não consegui ler essa foto.";
       setProfile((p) => ({
         ...p,
