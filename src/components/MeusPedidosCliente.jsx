@@ -52,6 +52,7 @@ export default function MeusPedidosCliente({
 }) {
   const [pedidoAlcance, setPedidoAlcance] = useState(null)
   const [aplicandoAlcance, setAplicandoAlcance] = useState(false)
+  const [historicoFiltro, setHistoricoFiltro] = useState('todos')
 
   const avisar = (payload) => {
     if (typeof onToast === 'function') onToast(payload)
@@ -120,10 +121,19 @@ export default function MeusPedidosCliente({
   const totalConcluidos = meusPedidos.filter((p) => String(p?.status || '').toLowerCase() === 'concluido').length
   const totalAceitos = meusPedidos.filter((p) => String(p?.status || '').toLowerCase() === 'aceito').length
   const totalAbertos = meusPedidos.filter((p) => String(p?.status || 'aberto').toLowerCase() === 'aberto').length
+  const totalCancelados = meusPedidos.filter((p) => String(p?.status || '').toLowerCase() === 'cancelado').length
   const totalProblemas = meusPedidos.filter((p) => !!p?.problemaServico).length
   const totalAvaliacoesPendentes = meusPedidos.filter(
     (p) => String(p?.status || '').toLowerCase() === 'concluido' && !p?.avaliacao
   ).length
+  const pedidosFiltrados = meusPedidos.filter((p) => {
+    const status = String(p?.status || 'aberto').toLowerCase()
+    if (historicoFiltro === 'todos') return true
+    if (historicoFiltro === 'andamento') return status === 'aceito'
+    if (historicoFiltro === 'concluidos') return status === 'concluido'
+    if (historicoFiltro === 'cancelados') return status === 'cancelado'
+    return status === historicoFiltro
+  })
 
   const podeRelatarProblema = (p) => ['aceito', 'concluido'].includes(String(p?.status || '').toLowerCase())
   const podeAvaliar = (p) => String(p?.status || '').toLowerCase() === 'concluido' && !p?.avaliacao
@@ -172,6 +182,14 @@ export default function MeusPedidosCliente({
       )
     }
 
+    if (s === 'cancelado') {
+      return (
+        <span className="text-[11px] px-2 py-1 rounded-full bg-slate-600/50 border border-slate-500 text-slate-200 font-semibold">
+          CANCELADO
+        </span>
+      )
+    }
+
     return (
       <span className="text-[11px] px-2 py-1 rounded-full bg-slate-700 border border-slate-600 text-white font-semibold">
         {s.toUpperCase()}
@@ -213,13 +231,41 @@ export default function MeusPedidosCliente({
         </div>
       </div>
 
+      <div className="mb-2.5 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:mb-4 md:gap-2 [&::-webkit-scrollbar]:hidden">
+        {[
+          ['todos', 'Todos', meusPedidos.length],
+          ['aberto', 'Abertos', totalAbertos],
+          ['andamento', 'Em andamento', totalAceitos],
+          ['concluidos', 'Concluidos', totalConcluidos],
+          ['cancelados', 'Cancelados', totalCancelados],
+        ].map(([id, label, count]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setHistoricoFiltro(id)}
+            className={[
+              'shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-black transition active:scale-[0.97] md:px-4 md:py-2 md:text-xs',
+              historicoFiltro === id
+                ? 'border-yellow-300 bg-[#ffd91a] text-blue-950 shadow-[0_10px_20px_rgba(250,204,21,0.18)]'
+                : 'border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800',
+            ].join(' ')}
+          >
+            {label} <span className="opacity-70">{count}</span>
+          </button>
+        ))}
+      </div>
+
       {meusPedidos.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-600 bg-[#1e293b] p-3 text-sm font-semibold text-slate-200 md:rounded-2xl md:p-4">
           Você ainda não criou pedidos.
         </div>
+      ) : pedidosFiltrados.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-600 bg-[#1e293b] p-3 text-sm font-semibold text-slate-200 md:rounded-2xl md:p-4">
+          Nenhum pedido nesse status.
+        </div>
       ) : (
         <div className="space-y-2 md:space-y-3">
-          {meusPedidos.map((p, index) => (
+          {pedidosFiltrados.map((p, index) => (
             <motion.div
               key={p.id}
               initial={{ opacity: 0, y: 20 }}

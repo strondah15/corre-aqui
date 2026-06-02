@@ -202,11 +202,11 @@ export default function ClienteHome({
 }) {
   const [modo, setModo] = useState('corre') // corre | profissional
   const [catId, setCatId] = useState('')
+  const [busca, setBusca] = useState('')
 
   // ✅ NOVO: a tela do cliente agora usa uma lista limpa.
   // Os botões Corre/Profissionais ficam no card principal e a ficha entra direto abaixo,
   // sem repetir busca, categoria e filtros no meio da tela.
-  const busca = ''
   const nomeExibicao = safeStr(meuNome) || 'Anônimo'
   const iniciais = nomeExibicao
     .split(/\s+/)
@@ -305,59 +305,61 @@ export default function ClienteHome({
               title="Notificações"
             >
               🔔
-              <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white ring-2 ring-white">
-                !
-              </span>
             </button>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onCriarPedido?.()}
-          className="relative mt-4 flex h-14 w-full items-center gap-3 rounded-[22px] border border-white/70 bg-white/92 px-4 text-left text-lg font-black text-slate-500 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur md:mt-6 md:h-16 md:max-w-3xl md:px-5 md:text-xl"
-        >
+        <label className="relative z-30 mt-4 flex h-14 w-full items-center gap-3 rounded-[22px] border border-white/70 bg-white/92 px-4 text-left text-lg font-black text-slate-500 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur md:mt-6 md:h-16 md:max-w-3xl md:px-5 md:text-xl">
           <span className="text-2xl text-blue-600">⌕</span>
-          <span className="truncate">buscar ajuda rápida</span>
-        </button>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !busca.trim()) onCriarPedido?.()
+            }}
+            placeholder="buscar ajuda rápida"
+            className="min-w-0 flex-1 bg-transparent font-black text-slate-700 outline-none placeholder:text-slate-500"
+          />
+        </label>
 
-        <button
-          type="button"
-          onClick={() => onCriarPedido?.()}
-          className="relative mt-4 block w-full overflow-hidden rounded-[26px] bg-[linear-gradient(135deg,#ffdd28_0%,#ffe977_45%,#158cff_100%)] text-left shadow-[0_18px_34px_rgba(15,23,42,0.18)] md:mt-6 md:rounded-[34px]"
-        >
+        <section className="relative mt-4 block w-full overflow-hidden rounded-[26px] bg-[linear-gradient(135deg,#ffdd28_0%,#ffe977_45%,#158cff_100%)] text-left shadow-[0_18px_34px_rgba(15,23,42,0.18)] md:mt-6 md:rounded-[34px]">
           <div className="relative min-h-[152px] p-5 md:min-h-[230px] md:p-8">
             <div className="absolute -right-8 -top-6 h-40 w-40 rounded-[36px] bg-blue-700/20 rotate-12 md:h-72 md:w-72 md:rounded-[64px]" />
             <div className="absolute bottom-4 right-4 grid h-24 w-24 place-items-center rounded-[30px] bg-white/80 text-5xl shadow-lg md:bottom-8 md:right-10 md:h-36 md:w-36 md:rounded-[42px] md:text-7xl">
-              ⚡
+              🏃
             </div>
             <div className="relative max-w-[210px] md:max-w-xl">
               <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-700 md:text-xs">
                 Corre Aqui
               </div>
               <div className="mt-1 text-3xl font-black leading-[0.92] text-slate-950 md:text-6xl">
-                Precisa resolver hoje?
+                Encontre ajuda perto de você.
               </div>
-              <div className="mt-3 inline-flex rounded-full bg-blue-700 px-4 py-2 text-xs font-black text-white shadow md:mt-6 md:px-6 md:py-3 md:text-sm">
-                Criar pedido agora
-              </div>
+              <p className="mt-3 max-w-[180px] text-xs font-black leading-snug text-blue-950/75 md:mt-5 md:max-w-md md:text-base">
+                Crie um pedido pelo botão principal e acompanhe tudo pelo chat.
+              </p>
             </div>
           </div>
-        </button>
+        </section>
       </div>
 
       <div className="-mt-5 bg-white px-4 pt-4 md:rounded-t-[30px] md:px-8 md:pt-6">
         <div className="flex items-center gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
           {[
-            ['🛵', 'Corre rápido'],
-            ['⚡', 'No horário'],
-            ['🛡️', 'Seguro'],
-            ['💬', 'Chat'],
-          ].map(([icon, label]) => (
-            <div key={label} className="flex shrink-0 items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-sm font-black text-slate-950 md:px-4 md:py-2.5 md:text-base">
+            ['🛵', 'Corre rápido', () => setModo('corre')],
+            ['⚡', 'No horário', () => setModo('profissional')],
+            ['🛡️', 'Seguro', () => onAbrirPerfil?.()],
+            ['💬', 'Chat', () => setModo('profissional')],
+          ].map(([icon, label, action]) => (
+            <button
+              key={label}
+              type="button"
+              onClick={action}
+              className="flex shrink-0 items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-sm font-black text-slate-950 transition active:scale-[0.97] md:px-4 md:py-2.5 md:text-base"
+            >
               <span className="grid h-7 w-7 place-items-center rounded-full bg-[#ffd91a] text-base shadow-[0_6px_14px_rgba(245,158,11,0.18)] md:h-8 md:w-8">{icon}</span>
               {label}
-            </div>
+            </button>
           ))}
         </div>
 

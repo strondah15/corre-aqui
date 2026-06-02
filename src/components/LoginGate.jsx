@@ -284,6 +284,7 @@ export default function LoginGate({ children }) {
 
     let active = true
     let resolved = false
+    let redirectResultDone = !redirectPendente
     const fallback = window.setTimeout(() => {
       if (!active || resolved) return
       setLoading(false)
@@ -292,6 +293,7 @@ export default function LoginGate({ children }) {
 
     const off = onAuthStateChanged(auth, async (user) => {
       if (!active) return
+      if (redirectPendente && !user && !redirectResultDone) return
 
       resolved = true
       window.clearTimeout(fallback)
@@ -302,7 +304,19 @@ export default function LoginGate({ children }) {
     })
 
     getGoogleRedirectUser().then(async (user) => {
-      if (!active || !user?.uid) return
+      redirectResultDone = true
+      if (!active) return
+      if (!user?.uid) {
+        if (!resolved) {
+          resolved = true
+          window.clearTimeout(fallback)
+          await aplicarUsuario(auth.currentUser || null)
+          if (!active) return
+          setLoading(false)
+          setResolvendoRedirect(false)
+        }
+        return
+      }
       resolved = true
       window.clearTimeout(fallback)
       await aplicarUsuario(user)
@@ -311,6 +325,8 @@ export default function LoginGate({ children }) {
       setResolvendoRedirect(false)
     }).catch(() => {
       if (!active) return
+      redirectResultDone = true
+      if (!resolved) setLoading(false)
       setResolvendoRedirect(false)
     })
 

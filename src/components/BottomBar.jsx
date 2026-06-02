@@ -7,8 +7,6 @@ export default function BottomBar({
   onTab,
   unreadCount = 0,
   agendaCount = 0,
-  agendaConfirmados = 0,
-  agendaRecusados = 0,
   problemasCount = 0,
   hidden = false,
   modoApp = 'corre',
@@ -18,7 +16,7 @@ export default function BottomBar({
   if (hidden) return null
   if (modoApp !== 'corre') return null
 
-  const totalAgenda = Number(agendaCount || 0) + Number(agendaConfirmados || 0) + Number(agendaRecusados || 0)
+  const totalAgenda = Number(agendaCount || 0)
 
   const navItems = [
     { id: 'corre', label: 'Trabalhos', icon: '🎯', count: 0 },

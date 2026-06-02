@@ -1,10 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { database, storage } from '@/lib/firebase'
+import { database } from '@/lib/firebase'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
 import { ref, push, onValue, query, limitToLast, update, serverTimestamp } from 'firebase/database'
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
 import { motion } from 'framer-motion'
 
 function getMsgMs(v) {
@@ -45,9 +44,8 @@ const SUGESTOES = [
 ]
 
 const LIMITE_TEXTO = 700
-const LIMITE_ARQUIVO_BYTES = 12 * 1024 * 1024
 const LIMITE_FALLBACK_DATABASE_BYTES = 900 * 1024
-const ACCEPT_ANEXOS = 'image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip'
+const ACCEPT_ANEXOS = 'image/*,.pdf,.doc,.docx,.txt,.zip'
 
 function formatarTamanho(bytes) {
   const n = Number(bytes || 0)
@@ -81,48 +79,12 @@ function previewAnexo(anexo, duracao = 0) {
   return `📎 ${anexo.nome || 'Arquivo'}`
 }
 
-function isStorageRetryError(error) {
-  const code = String(error?.code || '')
-  const message = String(error?.message || '')
-  return code.includes('storage/retry-limit-exceeded') || message.includes('storage/retry-limit-exceeded')
-}
-
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result)
     reader.onerror = reject
     reader.readAsDataURL(file)
-  })
-}
-
-function uploadComTimeout(refArquivo, file, metadata, ms = 12_000) {
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const task = uploadBytesResumable(refArquivo, file, metadata)
-
-    const finish = (fn, value) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      fn(value)
-    }
-
-    const timer = setTimeout(() => {
-      const error = new Error('storage_timeout')
-      error.code = 'storage/retry-limit-exceeded'
-      try {
-        task.cancel()
-      } catch {}
-      finish(reject, error)
-    }, ms)
-
-    task.on(
-      'state_changed',
-      null,
-      (error) => finish(reject, error),
-      () => finish(resolve, task.snapshot)
-    )
   })
 }
 
@@ -301,11 +263,11 @@ export default function ChatMensagens({
     event.target.value = ''
     if (!file) return
 
-    if (file.size > LIMITE_ARQUIVO_BYTES) {
+    if (file.size > LIMITE_FALLBACK_DATABASE_BYTES) {
       onToast?.({
         type: 'error',
         title: 'Arquivo grande demais',
-        message: `Envie arquivos de até ${formatarTamanho(LIMITE_ARQUIVO_BYTES)}.`,
+        message: `No MVP, envie anexos leves de ate ${formatarTamanho(LIMITE_FALLBACK_DATABASE_BYTES)}.`,
       })
       return
     }
@@ -325,56 +287,23 @@ export default function ChatMensagens({
 
   async function subirArquivoChat(file, tipoForcado = '') {
     if (!file || !pedidoId || !meuId) return null
-    if (file.size > LIMITE_ARQUIVO_BYTES) {
+    if (file.size > LIMITE_FALLBACK_DATABASE_BYTES) {
       throw new Error('arquivo_grande')
     }
 
     const tipo = tipoForcado || tipoAnexoPorArquivo(file)
     const agora = Date.now()
     const nomeSeguro = limparNomeArquivo(file.name || `${tipo}-${agora}`)
-    const caminho = `chatAnexos/${pedidoId}/${meuId}_${agora}_${nomeSeguro}`
-    const refArquivo = storageRef(storage, caminho)
+    const url = await fileToDataUrl(file)
 
-    try {
-      await uploadComTimeout(refArquivo, file, {
-        contentType: file.type || 'application/octet-stream',
-        customMetadata: {
-          pedidoId: String(pedidoId),
-          userId: String(meuId),
-          tipo,
-        },
-      })
-
-      const url = await getDownloadURL(refArquivo)
-      return {
-        tipo,
-        url,
-        nome: file.name || nomeSeguro,
-        mime: file.type || 'application/octet-stream',
-        tamanho: file.size || 0,
-        path: caminho,
-        storage: 'firebase',
-      }
-    } catch (error) {
-      if (!isStorageRetryError(error) || file.size > LIMITE_FALLBACK_DATABASE_BYTES) {
-        throw error
-      }
-
-      const url = await fileToDataUrl(file)
-      onToast?.({
-        type: 'info',
-        title: 'Enviado em modo leve',
-        message: 'O Storage não respondeu agora; salvei essa mídia pequena direto na conversa.',
-      })
-      return {
-        tipo,
-        url,
-        nome: file.name || nomeSeguro,
-        mime: file.type || 'application/octet-stream',
-        tamanho: file.size || 0,
-        path: '',
-        storage: 'database_fallback',
-      }
+    return {
+      tipo,
+      url,
+      nome: file.name || nomeSeguro,
+      mime: file.type || 'application/octet-stream',
+      tamanho: file.size || 0,
+      path: '',
+      storage: 'database_mvp',
     }
   }
 
@@ -523,13 +452,10 @@ export default function ChatMensagens({
         await registrarMensagem({ anexo, duracao: duracaoAtual })
       } catch (error) {
         console.warn('Erro ao salvar áudio:', error)
-        const retryStorage = isStorageRetryError(error)
         onToast?.({
           type: 'error',
-          title: retryStorage ? 'Storage indisponível' : 'Falha no áudio',
-          message: retryStorage
-            ? 'Ative o Firebase Storage e publique as regras. Áudios maiores dependem dele.'
-            : 'Não consegui enviar o áudio.',
+          title: 'Falha no audio',
+          message: 'O envio de audio ainda nao esta estavel no MVP.',
         })
       } finally {
         try {
@@ -567,22 +493,18 @@ export default function ChatMensagens({
     } catch (error) {
       console.warn('Erro ao enviar mensagem:', error)
       const grande = error?.message === 'arquivo_grande'
-      const retryStorage = isStorageRetryError(error)
       onToast?.({
         type: 'error',
-        title: grande ? 'Arquivo grande demais' : retryStorage ? 'Storage indisponível' : 'Falha ao enviar',
+        title: grande ? 'Arquivo grande demais' : 'Falha ao enviar',
         message: grande
-          ? `Envie arquivos de até ${formatarTamanho(LIMITE_ARQUIVO_BYTES)}.`
-          : retryStorage
-            ? 'Ative o Firebase Storage e publique as regras. Arquivos maiores dependem dele.'
-            : 'Tente novamente em instantes.',
+          ? `No MVP, envie anexos leves de ate ${formatarTamanho(LIMITE_FALLBACK_DATABASE_BYTES)}.`
+          : 'Tente novamente em instantes.',
       })
     } finally {
       setEnviando(false)
       setAnexando(false)
     }
   }
-
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -818,25 +740,6 @@ export default function ChatMensagens({
             📎
           </button>
 
-          <button
-            type="button"
-            onPointerDown={(e) => {
-              e.preventDefault()
-              pararQuandoIniciarRef.current = false
-              iniciarGravacao()
-            }}
-            onPointerUp={solicitarParadaGravacao}
-            onPointerCancel={solicitarParadaGravacao}
-            onPointerLeave={solicitarParadaGravacao}
-            onContextMenu={(e) => e.preventDefault()}
-            disabled={!pedidoId || enviando || anexando}
-            className={`grid h-9 w-9 shrink-0 touch-none select-none place-items-center rounded-xl text-sm text-white transition sm:h-12 sm:w-12 sm:rounded-2xl sm:text-xl ${
-              gravando ? 'scale-105 bg-red-600 shadow-[0_0_34px_rgba(220,38,38,0.35)]' : 'bg-emerald-600 hover:bg-emerald-500'
-            } disabled:cursor-not-allowed disabled:opacity-50`}
-            title="Segure para gravar"
-          >
-            🎤
-          </button>
 
           <div className="min-w-0 flex-1">
             {gravando ? (

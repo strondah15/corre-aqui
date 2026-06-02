@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "firebase/auth";
 import { ref, onValue, update, serverTimestamp } from "firebase/database";
-import { getDownloadURL, ref as storageRef, uploadBytesResumable } from "firebase/storage";
-import { auth, database, storage } from "@/lib/firebase";
+import { auth, database } from "@/lib/firebase";
+import { uploadProfilePhotoToImgBB } from "@/lib/imgbbClient";
 import {
   ativarPushNotifications,
   desativarPushNotifications,
@@ -167,9 +167,7 @@ function maskCpfSalvo(value) {
   return `***.***.***-${digits.slice(-2)}`;
 }
 
-const FOTO_MAX_ORIGINAL_BYTES = 8 * 1024 * 1024;
-const FOTO_MAX_DIMENSION = 480;
-const FOTO_UPLOAD_IDLE_TIMEOUT_MS = 90000;
+const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
 
 function isFotoValor(v) {
   const s = String(v || "").trim();
@@ -178,78 +176,6 @@ function isFotoValor(v) {
 
 function pickFoto(...vals) {
   return vals.map((v) => String(v || "").trim()).find(isFotoValor) || "";
-}
-
-function fileToDataUrl(fileOrBlob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = reject;
-    reader.readAsDataURL(fileOrBlob);
-  });
-}
-
-function canvasToBlob(canvas, type, quality) {
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), type, quality);
-  });
-}
-
-async function loadImage(file) {
-  if (typeof createImageBitmap === "function") {
-    try {
-      return await createImageBitmap(file, { imageOrientation: "from-image" });
-    } catch {}
-  }
-
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("foto_invalida"));
-    };
-    img.src = url;
-  });
-}
-
-async function prepararFotoPerfil(file) {
-  if (!file?.type?.startsWith("image/")) {
-    throw new Error("tipo_invalido");
-  }
-  if (file.size > FOTO_MAX_ORIGINAL_BYTES) {
-    throw new Error("foto_grande");
-  }
-
-  const img = await loadImage(file);
-  const width = img.width || img.naturalWidth || 0;
-  const height = img.height || img.naturalHeight || 0;
-  if (!width || !height) throw new Error("foto_invalida");
-
-  const scale = Math.min(1, FOTO_MAX_DIMENSION / Math.max(width, height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(width * scale));
-  canvas.height = Math.max(1, Math.round(height * scale));
-
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  img.close?.();
-
-  const blob = await canvasToBlob(canvas, "image/jpeg", 0.82);
-  if (!blob) throw new Error("foto_invalida");
-
-  return {
-    blob,
-    dataUrl: await fileToDataUrl(blob),
-    mime: "image/jpeg",
-    ext: "jpg",
-  };
 }
 
 function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
@@ -262,78 +188,17 @@ function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
   });
 }
 
-function uploadFotoComTimeout(refArquivo, blob, metadata, ms = FOTO_UPLOAD_IDLE_TIMEOUT_MS, onProgress) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let timer = null;
-    const task = uploadBytesResumable(refArquivo, blob, metadata);
-
-    const finish = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timer);
-      fn(value);
-    };
-
-    const refreshTimer = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        if (settled) return;
-        const error = new Error("storage_timeout");
-        error.code = "storage_timeout";
-        try {
-          task.cancel();
-        } catch {}
-        finish(reject, error);
-      }, ms);
-    };
-
-    refreshTimer();
-
-    task.on(
-      "state_changed",
-      (snapshot) => {
-        refreshTimer();
-        if (snapshot.totalBytes > 0) {
-          onProgress?.(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
-        }
-      },
-      (error) => finish(reject, error),
-      () => finish(resolve, task.snapshot),
-    );
-  });
-}
-
-async function uploadFotoComRetry(refArquivo, blob, metadata, onProgress) {
-  let lastError = null;
-
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    try {
-      return await uploadFotoComTimeout(refArquivo, blob, metadata, FOTO_UPLOAD_IDLE_TIMEOUT_MS, onProgress);
-    } catch (error) {
-      lastError = error;
-      if (
-        !["storage_timeout", "storage/retry-limit-exceeded", "storage/canceled"].includes(String(error?.code || error?.message || "")) ||
-        attempt === 2
-      ) {
-        throw error;
-      }
-      onProgress?.(0, true);
-      await new Promise((resolve) => window.setTimeout(resolve, 900));
-    }
-  }
-
-  throw lastError || new Error("foto_upload");
-}
-
 export default function PerfilDrawer({ open, onClose, uid }) {
   const [tab, setTab] = useState("perfil");
 
   const [profile, setProfile] = useState(initialProfile);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
-  const [fotoSalvando, setFotoSalvando] = useState(false);
-  const [fotoAviso, setFotoAviso] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const [photoSuccess, setPhotoSuccess] = useState("");
+  const fotoSalvando = uploadingPhoto;
+  const fotoAviso = photoError || photoSuccess;
   const [pushInfo, setPushInfo] = useState({
     supported: false,
     permission: "default",
@@ -389,8 +254,10 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         moedas: Number(data.moedas || 0),
         servicosCorre,
         servicosProf,
-        patenteCorre: Number(data.patenteCorre || calcularPatentePorServicos(servicosCorre)),
-        patenteProf: Number(data.patenteProf || (isProfissionalUser ? calcularPatentePorServicos(servicosProf) : 0)),
+        patenteCorre: Math.max(Number(data.patenteCorre || 1), calcularPatentePorServicos(servicosCorre)),
+        patenteProf: isProfissionalUser
+          ? Math.max(Number(data.patenteProf || 1), calcularPatentePorServicos(servicosProf))
+          : 0,
       });
 
       const profileData = data.profile || {};
@@ -667,173 +534,133 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     }
   }
 
-  async function salvarFotoNosPerfis(fotoFinal, storagePath = "", storageModo = "firebase") {
-    const avatarEmoji = profile.avatarEmoji || "";
-    const payload = {
-      fotoURL: fotoFinal || null,
-      photoURL: fotoFinal || null,
-      avatar: fotoFinal || avatarEmoji || "",
-      avatarEmoji,
-      fotoStoragePath: storagePath || null,
-      fotoStorage: storageModo,
-      fotoAtualizadaEm: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-
-    const updates = {
-      [`${userBasePath}/uid`]: uid,
-      [`${userBasePath}/fotoURL`]: payload.fotoURL,
-      [`${userBasePath}/photoURL`]: payload.photoURL,
-      [`${userBasePath}/avatar`]: payload.avatar,
-      [`${userBasePath}/avatarEmoji`]: payload.avatarEmoji,
-      [`${userBasePath}/fotoStoragePath`]: payload.fotoStoragePath,
-      [`${userBasePath}/fotoStorage`]: payload.fotoStorage,
-      [`${userBasePath}/fotoAtualizadaEm`]: payload.fotoAtualizadaEm,
-      [`${userBasePath}/updatedAt`]: payload.updatedAt,
-      [`${userBasePath}/atualizadoEm`]: serverTimestamp(),
-      [`${userBasePath}/profile/fotoURL`]: payload.fotoURL,
-      [`${userBasePath}/profile/photoURL`]: payload.photoURL,
-      [`${userBasePath}/profile/avatar`]: payload.avatar,
-      [`${userBasePath}/profile/avatarEmoji`]: payload.avatarEmoji,
-      [`${userBasePath}/profile/fotoStoragePath`]: payload.fotoStoragePath,
-      [`${userBasePath}/profile/fotoStorage`]: payload.fotoStorage,
-      [`${userBasePath}/profile/fotoAtualizadaEm`]: payload.fotoAtualizadaEm,
-      [`${userBasePath}/profile/updatedAt`]: payload.updatedAt,
-      [`${userBasePath}/profile/atualizadoEm`]: serverTimestamp(),
-      [`${userBasePath}/profile/corre/fotoURL`]: payload.fotoURL,
-      [`${userBasePath}/profile/corre/photoURL`]: payload.photoURL,
-      [`${userBasePath}/profile/profissional/fotoURL`]: payload.fotoURL,
-      [`${userBasePath}/profile/profissional/photoURL`]: payload.photoURL,
-      [`${userBasePath}/corre/fotoURL`]: payload.fotoURL,
-      [`${userBasePath}/corre/photoURL`]: payload.photoURL,
-      [`${userBasePath}/profissional/fotoURL`]: payload.fotoURL,
-      [`${userBasePath}/profissional/photoURL`]: payload.photoURL,
-      [`usuariosOnline/${uid}/fotoURL`]: payload.fotoURL,
-      [`usuariosOnline/${uid}/photoURL`]: payload.photoURL,
-      [`usuariosOnline/${uid}/avatar`]: payload.avatar,
-      [`usuariosOnline/${uid}/avatarEmoji`]: payload.avatarEmoji,
-      [`usuariosOnline/${uid}/fotoStoragePath`]: payload.fotoStoragePath,
-      [`usuariosOnline/${uid}/fotoStorage`]: payload.fotoStorage,
-      [`usuariosOnline/${uid}/fotoAtualizadaEm`]: payload.fotoAtualizadaEm,
-      [`usuariosOnline/${uid}/updatedAt`]: payload.updatedAt,
-      [`usuariosOnline/${uid}/atualizadoEm`]: serverTimestamp(),
-    };
-
-    await promiseComTimeout(
-      update(ref(database), updates),
-      15000,
-      "foto_db_timeout",
-    );
-
-    try {
-      if (fotoFinal) window.localStorage.setItem("fotoURL", fotoFinal);
-      if (avatarEmoji) window.localStorage.setItem("avatarEmoji", avatarEmoji);
-    } catch {}
-  }
-
-  async function alterarFotoPerfil(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file || !uid) return;
-
+  async function handleProfilePhotoUpload(file) {
+    const currentUser = auth.currentUser;
+    const currentUid = currentUser?.uid || "";
     const fotoAnterior = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
     const avatarAnterior = profile.avatar || profile.avatarEmoji || "";
+    let previewUrl = "";
 
-    setFotoSalvando(true);
-    setFotoAviso("Preparando foto...");
+    setPhotoError("");
+    setPhotoSuccess("");
+
+    if (!currentUid) {
+      setPhotoError("Entre novamente para salvar a foto.");
+      return;
+    }
+
+    if (uid && currentUid !== uid) {
+      setPhotoError("Sessao diferente do perfil aberto. Entre novamente.");
+      return;
+    }
+
+    if (!file?.type?.startsWith("image/")) {
+      setPhotoError("Escolha um arquivo de imagem.");
+      return;
+    }
+
+    if (file.size > PHOTO_MAX_BYTES) {
+      setPhotoError("Escolha uma imagem de ate 2 MB.");
+      return;
+    }
 
     try {
-      const preparada = await prepararFotoPerfil(file);
+      setUploadingPhoto(true);
+      setPhotoSuccess("Enviando foto... 0%");
+
+      previewUrl = URL.createObjectURL(file);
+      setProfile((p) => ({
+        ...p,
+        fotoURL: previewUrl,
+        photoURL: previewUrl,
+        avatar: previewUrl,
+      }));
+
+      const idToken = await currentUser.getIdToken(true);
+
+      const uploaded = await promiseComTimeout(
+        uploadProfilePhotoToImgBB(file, {
+          uid: currentUid,
+          idToken,
+          onProgress: (progress) => setPhotoSuccess(`Enviando foto... ${progress}%`),
+        }),
+        30000,
+        "foto_upload_timeout",
+      );
+      const fotoURL = uploaded.url;
+
+      setPhotoSuccess("Salvando foto... 90%");
+
+      await promiseComTimeout(
+        update(ref(database, `users/${currentUid}`), {
+          fotoURL,
+          fotoAtualizadaEm: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+        10000,
+        "foto_db_timeout",
+      );
 
       setProfile((p) => ({
         ...p,
-        fotoURL: preparada.dataUrl,
-        photoURL: preparada.dataUrl,
-        avatar: preparada.dataUrl,
+        fotoURL,
+        photoURL: fotoURL,
+        avatar: fotoURL,
+        fotoImgBbId: uploaded.imageId || "",
+        fotoStorage: "imgbb",
       }));
-      setFotoAviso("Enviando foto...");
 
       try {
-        const storageBucket = String(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "").trim();
-        if (!storageBucket) throw new Error("storage_bucket_missing");
-        if (!auth.currentUser?.uid || auth.currentUser.uid !== uid) throw new Error("auth_missing");
-        await auth.currentUser.getIdToken(true).catch(() => null);
+        window.localStorage.setItem("fotoURL", fotoURL);
+      } catch {}
 
-        const agora = Date.now();
-        const caminho = `profilePhotos/${uid}.jpg`;
-        const fotoRef = storageRef(storage, caminho);
-
-        await uploadFotoComRetry(
-          fotoRef,
-          preparada.blob,
-          {
-            contentType: preparada.mime,
-            customMetadata: {
-              userId: String(uid),
-              tipo: "foto_perfil",
-            },
-          },
-          (percentual, tentandoNovamente = false) => {
-            if (tentandoNovamente) {
-              setFotoAviso("Conexão lenta. Tentando enviar novamente...");
-              return;
-            }
-            setFotoAviso(percentual ? `Enviando foto... ${percentual}%` : "Enviando foto...");
-          },
-        );
-
-        const url = await promiseComTimeout(getDownloadURL(fotoRef), 15000, "foto_url_timeout");
-        const urlFinal = `${url}${url.includes("?") ? "&" : "?"}v=${agora}`;
-        setFotoAviso("Salvando foto...");
-
-        setProfile((p) => ({
-          ...p,
-          fotoURL: urlFinal,
-          photoURL: urlFinal,
-          avatar: urlFinal,
-          fotoStoragePath: caminho,
-          fotoStorage: "firebase",
-        }));
-        await salvarFotoNosPerfis(urlFinal, caminho, "firebase");
-        setFotoAviso("Foto salva.");
-        setSalvo(true);
-        setTimeout(() => setSalvo(false), 2200);
-      } catch (error) {
-        console.warn("[PerfilDrawer] upload foto:", error?.code || error?.message || error);
-        throw error;
-      }
+      setPhotoSuccess("Foto salva. 100%");
+      setSalvo(true);
+      window.setTimeout(() => setPhotoSuccess(""), 2500);
+      window.setTimeout(() => setSalvo(false), 2200);
     } catch (error) {
+      console.warn("[PerfilDrawer] upload foto:", error?.code || error?.message || error);
       const code = String(error?.code || error?.message || "");
       const msg =
-        error?.message === "foto_grande"
-          ? "Escolha uma imagem de até 8 MB."
-          : error?.message === "tipo_invalido"
-            ? "Escolha um arquivo de imagem."
-            : error?.message === "storage_bucket_missing"
-              ? "Firebase Storage não está configurado."
+        error?.message === "foto_upload_timeout"
+          ? "A foto demorou para enviar. Tente novamente em uma rede melhor."
+          : error?.message === "foto_grande"
+            ? "Escolha uma imagem de ate 2 MB."
+            : error?.message === "tipo_invalido"
+              ? "Escolha um arquivo de imagem."
+              : error?.message === "imgbb_config_missing" || code === "imgbb_config_missing"
+                ? "ImgBB nao esta configurado. Defina IMGBB_API_KEY no servidor."
+              : code === "firebase_admin_not_configured"
+                ? "Firebase Admin precisa estar configurado para enviar a foto com seguranca."
+              : code === "imgbb_upload_failed"
+                ? "ImgBB recusou o upload da foto. Tente outra imagem."
+            : error?.message === "foto_db_timeout"
+              ? "A foto foi enviada, mas nao consegui salvar no perfil."
             : error?.message === "auth_missing" || code.includes("unauth")
               ? "Entre novamente para salvar a foto."
-            : error?.message === "storage_timeout" || code.includes("retry-limit") || code.includes("canceled")
-              ? "A conexão ficou lenta e a foto não terminou de enviar. Tente novamente em uma rede melhor."
-            : code.includes("unauthorized")
-              ? "O Storage recusou o envio. Verifique as regras do Firebase Storage."
-            : error?.message === "foto_url_timeout"
-              ? "A foto foi enviada, mas não consegui confirmar o link agora. Tente reabrir o perfil."
-            : error?.message === "foto_db_timeout"
-              ? "A foto foi enviada, mas o perfil demorou para salvar. Tente novamente."
-            : code.toLowerCase().includes("permission_denied") || code.toLowerCase().includes("permission-denied")
-              ? "A foto foi enviada, mas o Firebase recusou salvar no perfil. Verifique as regras do Realtime Database."
-            : "Não consegui ler essa foto.";
+            : code.toLowerCase().includes("permission")
+              ? "O Firebase recusou salvar a foto. Verifique as regras."
+            : "Nao foi possivel salvar a foto.";
+
       setProfile((p) => ({
         ...p,
         fotoURL: fotoAnterior,
         photoURL: fotoAnterior,
         avatar: fotoAnterior || avatarAnterior,
       }));
-      setFotoAviso(msg);
+      setPhotoSuccess("");
+      setPhotoError(msg);
     } finally {
-      setFotoSalvando(false);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setUploadingPhoto(false);
     }
+  }
+
+  async function alterarFotoPerfil(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    await handleProfilePhotoUpload(file);
   }
 
   const salvar = async () => {
@@ -1016,8 +843,13 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     profile.perfilVerificado ||
     profile.trust?.verificado
   );
-  const nivelCorreAtual = Number(accountStats.patenteCorre || calcularPatentePorServicos(accountStats.servicosCorre));
-  const nivelProfAtual = Number(accountStats.patenteProf || (profile.isProfissional ? calcularPatentePorServicos(accountStats.servicosProf) : 0));
+  const nivelCorreAtual = Math.max(
+    Number(accountStats.patenteCorre || 1),
+    calcularPatentePorServicos(accountStats.servicosCorre)
+  );
+  const nivelProfAtual = profile.isProfissional
+    ? Math.max(Number(accountStats.patenteProf || 1), calcularPatentePorServicos(accountStats.servicosProf))
+    : 0;
   const pushAtivo = profile.pushNotifications?.enabled === true;
   const pushPermission = pushInfo.permission || "default";
   const pushStatusLabel =

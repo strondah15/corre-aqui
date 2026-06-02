@@ -573,6 +573,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [salvandoProblema, setSalvandoProblema] = useState(false)
 
   const [unreadInbox, setUnreadInbox] = useState(0)
+  const [notificacoesNaoLidas, setNotificacoesNaoLidas] = useState(0)
   const [agendaPendentes, setAgendaPendentes] = useState(0)
   const [agendaConfirmados, setAgendaConfirmados] = useState(0)
   const [agendaRecusados, setAgendaRecusados] = useState(0)
@@ -686,10 +687,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [meuId])
 
   useEffect(() => {
-    if (!meuId) return
+    if (!meuId) {
+      setNotificacoesNaoLidas(0)
+      return
+    }
     const userAtual = usersObj?.[meuId] || {}
     const notificacoesAtivas = userAtual?.profile?.notificacoes !== false
-    if (!notificacoesAtivas) return
+    if (!notificacoesAtivas) {
+      setNotificacoesNaoLidas(0)
+      return
+    }
 
     const nRef = query(ref(database, `notificacoes/${meuId}`), limitToLast(20))
     const off = onValue(nRef, (snap) => {
@@ -697,6 +704,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       const lista = Object.entries(raw)
         .map(([id, n]) => ({ id, ...(n || {}) }))
         .sort((a, b) => Number(b?.criadoEm || 0) - Number(a?.criadoEm || 0))
+      setNotificacoesNaoLidas(lista.filter((n) => n?.lida !== true).length)
 
       if (!notificacoesInicializadasRef.current) {
         lista.forEach((n) => notificacoesVistasRef.current.add(n.id))
@@ -1090,9 +1098,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return Array.isArray(arr) ? arr : []
   }, [meuUserNode])
 
-  const minhaPatenteCorre = useMemo(() => Number(meuUserNode?.patenteCorre || 1), [meuUserNode])
+  const minhaPatenteCorre = useMemo(() => {
+    const servicos = Number(meuUserNode?.servicosCorre ?? meuUserNode?.['serviçosCorre'] ?? 0)
+    return Math.max(Number(meuUserNode?.patenteCorre || 1), calcularPatentePorServicos(servicos))
+  }, [meuUserNode])
   const minhaPatenteProf = useMemo(
-    () => Number(meuUserNode?.patenteProf || (isProfissional ? 1 : 0)),
+    () => {
+      if (!isProfissional) return 0
+      const servicos = Number(meuUserNode?.servicosProf ?? meuUserNode?.['serviçosProf'] ?? 0)
+      return Math.max(Number(meuUserNode?.patenteProf || 1), calcularPatentePorServicos(servicos))
+    },
     [meuUserNode, isProfissional]
   )
 
@@ -1814,6 +1829,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const btnMapBase = 'flex min-h-[38px] items-center justify-center rounded-[16px] border px-2.5 py-2 text-xs font-black transition md:min-h-[38px] md:px-4 md:text-sm'
   const btnMapEnabled = 'bg-blue-950 text-white border-blue-950 hover:bg-slate-900'
   const btnMapDisabled = 'bg-white/5 text-white/70 border-white/10 opacity-70 cursor-not-allowed'
+  const navCountBadge = (count) => {
+    const total = Number(count || 0)
+    if (total <= 0) return null
+    return (
+      <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white ring-2 ring-white md:ring-slate-950">
+        {total > 99 ? '99+' : total}
+      </span>
+    )
+  }
 
   const onBottomTab = (id) => {
     if (id === 'modo') {
@@ -1912,12 +1936,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {typeof onBackToMode === 'function' && (
           <button
             onClick={voltarModoLimpo}
-            className="absolute left-2 top-11 z-30 inline-flex h-8 items-center gap-1 rounded-full border border-white/75 bg-white/94 px-2.5 text-[10px] font-black text-blue-950 shadow-[0_12px_26px_rgba(15,23,42,0.16)] backdrop-blur-xl transition active:scale-[0.97] md:left-6 md:top-6 md:h-10 md:gap-1.5 md:px-4 md:text-xs"
+            className="absolute left-3 top-3 z-[80] inline-flex h-8 items-center gap-1 rounded-full border border-white/80 bg-white/95 px-2.5 text-[10px] font-black text-blue-950 shadow-[0_10px_22px_rgba(15,23,42,0.14)] backdrop-blur-xl transition active:scale-[0.97] md:left-6 md:top-6 md:h-10 md:gap-1.5 md:px-4 md:text-xs"
             type="button"
             title="Voltar para escolher Cliente ou Corre"
           >
             <span className="text-xs md:text-base">↩</span>
-            <span className="md:hidden">Modo</span>
+            <span className="md:hidden">Trocar</span>
             <span className="hidden md:inline">Trocar modo</span>
           </button>
         )}
@@ -2019,7 +2043,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         Corre Aqui
                       </div>
                       <div className="mt-2 max-w-xl text-4xl font-black leading-[0.9] text-blue-950 md:text-6xl">
-                        Pronto para correr hoje?
+                        Pronto para fazer um corre hoje?
                       </div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button
@@ -2045,7 +2069,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     <div className="hidden justify-self-end md:block">
                       <div className="grid h-48 w-48 place-items-center rounded-[42px] bg-blue-600/82 shadow-[0_22px_50px_rgba(37,99,235,0.28)]">
                         <div className="grid h-28 w-28 place-items-center rounded-[32px] bg-white/82 text-6xl shadow-inner">
-                          ⚡
+                          🏃
                         </div>
                       </div>
                     </div>
@@ -2165,22 +2189,46 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             {/* Painel de filtros do Corre */}
             <div className="mb-5 md:mb-8">
               <div>
+                <div className="sticky top-2 z-40 mb-3 rounded-[22px] border border-slate-100 bg-white/95 p-2 shadow-[0_12px_30px_rgba(15,23,42,0.10)] backdrop-blur-xl md:static md:mb-5 md:p-0 md:shadow-none md:border-0 md:bg-transparent">
+                  <label className="flex h-11 items-center gap-2 rounded-[18px] bg-slate-50 px-3 text-sm font-black text-slate-600 md:h-12 md:rounded-[20px] md:bg-white md:ring-1 md:ring-slate-100">
+                    <span className="text-blue-600">⌕</span>
+                    <input
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      placeholder="buscar pedido, cidade ou serviço"
+                      className="min-w-0 flex-1 bg-transparent font-black text-slate-800 outline-none placeholder:text-slate-500"
+                    />
+                    {busca ? (
+                      <button
+                        type="button"
+                        onClick={() => setBusca('')}
+                        className="grid h-7 w-7 place-items-center rounded-full bg-slate-200 text-xs font-black text-slate-700"
+                        title="Limpar busca"
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </label>
+                </div>
+
                 <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {[
-                    ['🛵', 'Corre rápido'],
-                    ['⚡', 'No horário'],
-                    ['🛡️', 'Seguro'],
-                    ['💬', 'Chat'],
-                  ].map(([icon, label]) => (
-                    <div
+                    ['🛵', 'Corre rápido', () => setFiltro('abertos')],
+                    ['⚡', 'Aceitos', () => setFiltro('meus')],
+                    ['🛡️', 'Seguro', () => router.push('/corre/seguranca')],
+                    ['💬', 'Chat', () => router.push('/corre/inbox')],
+                  ].map(([icon, label, action]) => (
+                    <button
                       key={label}
-                      className="flex shrink-0 items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-sm font-black text-slate-950 md:px-4 md:py-2.5 md:text-base"
+                      type="button"
+                      onClick={action}
+                      className="flex shrink-0 items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-sm font-black text-slate-950 transition active:scale-[0.97] md:px-4 md:py-2.5 md:text-base"
                     >
                       <span className="grid h-7 w-7 place-items-center rounded-full bg-[#ffd91a] text-base shadow-[0_6px_14px_rgba(245,158,11,0.18)] md:h-8 md:w-8">
                         {icon}
                       </span>
                       {label}
-                    </div>
+                    </button>
                   ))}
                 </div>
 
@@ -2838,6 +2886,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             >
               <span className="text-xl leading-none">💬</span>
               <span className="mt-0.5 hidden min-[360px]:block">Chat</span>
+              {navCountBadge(unreadInbox)}
             </button>
 
             <button
@@ -2865,6 +2914,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             >
               <span className="text-xl leading-none">🔔</span>
               <span className="mt-0.5 hidden min-[360px]:block">Avisos</span>
+              {navCountBadge(notificacoesNaoLidas)}
             </button>
 
             <button
@@ -2880,6 +2930,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             >
               <span className="text-xl leading-none">🛡️</span>
               <span className="mt-0.5 hidden min-[360px]:block">Seguro</span>
+              {navCountBadge(problemasVisiveisCount)}
             </button>
           </div>
         </div>
