@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CATEGORIES } from '@/constants/categories'
 import ListaProfissionais from './ListaProfissionais'
 
@@ -42,6 +42,41 @@ const getGoogleFoto = (u) => safeStr(
 const getLabelCategoria = (id) => {
   const c = CATEGORIES.find((x) => x.id === id)
   return c ? `${c.emoji} ${c.label}` : '—'
+}
+
+function ClienteHeroMapIcon() {
+  return (
+    <div className="relative h-24 w-24 md:h-36 md:w-36" aria-hidden="true">
+      <div className="absolute -bottom-2 -right-2 h-full w-full rounded-[26px] bg-[#ffd91a] opacity-95 shadow-[0_18px_30px_rgba(245,158,11,0.22)] md:rounded-[38px]" />
+      <div className="relative h-full w-full overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#0969ff_0%,#08b9c8_52%,#ffe35c_115%)] shadow-[0_18px_36px_rgba(15,23,42,0.22)] md:rounded-[34px]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(255,255,255,0.22),transparent_24%),radial-gradient(circle_at_82%_86%,rgba(255,217,26,0.34),transparent_36%)]" />
+        <div
+          className="absolute -bottom-5 left-0 h-20 w-[130%] -rotate-[10deg] opacity-45 md:-bottom-7 md:h-28"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(255,255,255,0.28) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.28) 1px, transparent 1px)',
+            backgroundSize: '18px 18px',
+          }}
+        />
+        <div className="absolute left-[18%] top-[35%] grid gap-1.5 md:gap-2">
+          <span className="block h-2 w-10 rounded-full bg-white shadow-[0_2px_8px_rgba(255,255,255,0.35)] md:h-3 md:w-14" />
+          <span className="block h-2 w-7 rounded-full bg-white shadow-[0_2px_8px_rgba(255,255,255,0.35)] md:h-3 md:w-10" />
+          <span className="block h-2 w-10 rounded-full bg-white shadow-[0_2px_8px_rgba(255,255,255,0.35)] md:h-3 md:w-14" />
+        </div>
+        <svg
+          viewBox="0 0 120 120"
+          className="absolute right-[11%] top-[18%] h-[64%] w-[52%] drop-shadow-[0_10px_14px_rgba(15,23,42,0.22)]"
+          role="img"
+          aria-label="Localizacao rapida"
+        >
+          <path
+            d="M60 6C38.5 6 21 23.4 21 44.8c0 28.4 33.1 64.4 37.1 68.6a2.6 2.6 0 0 0 3.8 0C65.9 109.2 99 73.2 99 44.8 99 23.4 81.5 6 60 6Zm0 54.6c-9.5 0-17.2-7.6-17.2-17.1S50.5 26.4 60 26.4s17.2 7.6 17.2 17.1S69.5 60.6 60 60.6Z"
+            fill="white"
+          />
+        </svg>
+      </div>
+    </div>
+  )
 }
 
 const normalizeProvider = (u) => {
@@ -203,6 +238,8 @@ export default function ClienteHome({
   const [modo, setModo] = useState('corre') // corre | profissional
   const [catId, setCatId] = useState('')
   const [busca, setBusca] = useState('')
+  const [mostrarBuscaFlutuante, setMostrarBuscaFlutuante] = useState(false)
+  const buscaTopoRef = useRef(null)
 
   // ✅ NOVO: a tela do cliente agora usa uma lista limpa.
   // Os botões Corre/Profissionais ficam no card principal e a ficha entra direto abaixo,
@@ -250,8 +287,64 @@ export default function ClienteHome({
     return bySearch.slice(0, 60)
   }, [providers, modo, busca, catId])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    let ticking = false
+    const updateFloatingSearch = () => {
+      const y = window.scrollY || document.documentElement.scrollTop || 0
+      const isMobile = window.innerWidth < 768
+      const rect = buscaTopoRef.current?.getBoundingClientRect()
+      const buscaTopoVisivel = !!rect && rect.bottom > 16 && rect.top < 120
+
+      setMostrarBuscaFlutuante(isMobile && y > 80 && !buscaTopoVisivel)
+    }
+
+    updateFloatingSearch()
+
+    const onScrollOrResize = () => {
+      if (ticking) return
+      ticking = true
+      window.requestAnimationFrame(() => {
+        updateFloatingSearch()
+        ticking = false
+      })
+    }
+
+    window.addEventListener('scroll', onScrollOrResize, { passive: true })
+    window.addEventListener('resize', onScrollOrResize)
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize)
+      window.removeEventListener('resize', onScrollOrResize)
+    }
+  }, [])
+
   return (
     <>
+    {mostrarBuscaFlutuante ? (
+      <div className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.55rem)] z-[99960] px-3 md:hidden">
+        <label className="mx-auto flex h-11 max-w-[430px] items-center gap-2 rounded-[18px] border border-blue-100 bg-white/96 px-3 text-sm font-black text-slate-700 shadow-[0_14px_38px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+          <span className="text-lg text-blue-600">⌕</span>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder={modo === 'corre' ? 'buscar corre perto' : 'buscar profissional'}
+            className="min-w-0 flex-1 bg-transparent font-black text-slate-800 outline-none placeholder:text-slate-500"
+          />
+          {busca ? (
+            <button
+              type="button"
+              onClick={() => setBusca('')}
+              className="grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-xs font-black text-slate-700"
+              title="Limpar busca"
+            >
+              ×
+            </button>
+          ) : null}
+        </label>
+      </div>
+    ) : null}
+
     <div className="-mx-2.5 -mt-2 min-h-[calc(100dvh-4rem)] overflow-hidden bg-white pb-24 text-slate-950 md:mx-0 md:mt-0 md:min-h-0 md:rounded-[34px] md:pb-8 md:shadow-[0_24px_90px_rgba(0,0,0,0.24)]">
       <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_45%,#ffe36b_100%)] px-4 pb-8 pt-4 md:px-8 md:pb-12 md:pt-7">
         <div className="pointer-events-none absolute -right-14 top-12 h-44 w-44 rounded-[48px] bg-yellow-200/35 rotate-12 md:-right-8 md:top-6 md:h-72 md:w-72 md:rounded-[72px]" />
@@ -309,7 +402,7 @@ export default function ClienteHome({
           </div>
         </div>
 
-        <label className="relative z-30 mt-4 flex h-14 w-full items-center gap-3 rounded-[22px] border border-white/70 bg-white/92 px-4 text-left text-lg font-black text-slate-500 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur md:mt-6 md:h-16 md:max-w-3xl md:px-5 md:text-xl">
+        <label ref={buscaTopoRef} className="relative z-30 mt-4 flex h-14 w-full items-center gap-3 rounded-[22px] border border-white/70 bg-white/92 px-4 text-left text-lg font-black text-slate-500 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur md:mt-6 md:h-16 md:max-w-3xl md:px-5 md:text-xl">
           <span className="text-2xl text-blue-600">⌕</span>
           <input
             value={busca}
@@ -325,8 +418,8 @@ export default function ClienteHome({
         <section className="relative mt-4 block w-full overflow-hidden rounded-[26px] bg-[linear-gradient(135deg,#ffdd28_0%,#ffe977_45%,#158cff_100%)] text-left shadow-[0_18px_34px_rgba(15,23,42,0.18)] md:mt-6 md:rounded-[34px]">
           <div className="relative min-h-[152px] p-5 md:min-h-[230px] md:p-8">
             <div className="absolute -right-8 -top-6 h-40 w-40 rounded-[36px] bg-blue-700/20 rotate-12 md:h-72 md:w-72 md:rounded-[64px]" />
-            <div className="absolute bottom-4 right-4 grid h-24 w-24 place-items-center rounded-[30px] bg-white/80 text-5xl shadow-lg md:bottom-8 md:right-10 md:h-36 md:w-36 md:rounded-[42px] md:text-7xl">
-              🏃
+            <div className="absolute bottom-3 right-3 md:bottom-8 md:right-10">
+              <ClienteHeroMapIcon />
             </div>
             <div className="relative max-w-[210px] md:max-w-xl">
               <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-700 md:text-xs">

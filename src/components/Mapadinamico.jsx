@@ -67,6 +67,44 @@ const isFotoValor = (v) => /^(https?:\/\/|data:image\/|blob:|\/)/i.test(String(v
 
 const pickFoto = (...vals) => vals.map((v) => String(v || '').trim()).find(isFotoValor) || ''
 
+function CorreHeroSpeedIcon({ className = '' }) {
+  return (
+    <div className={`relative h-24 w-24 md:h-48 md:w-48 ${className}`} aria-hidden="true">
+      <div className="absolute -right-[7%] -top-[8%] h-[88%] w-[88%] rounded-[28%] bg-[#ffd91a] opacity-95 shadow-[0_22px_42px_rgba(245,158,11,0.24)]" />
+      <div className="relative h-full w-full overflow-hidden rounded-[26%] bg-[linear-gradient(135deg,#0b5fff_0%,#0fb8c5_54%,#ffe33f_116%)] shadow-[0_24px_54px_rgba(37,99,235,0.28)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_20%,rgba(255,255,255,0.22),transparent_22%),radial-gradient(circle_at_82%_86%,rgba(255,217,26,0.34),transparent_38%)]" />
+        <div
+          className="absolute -bottom-[18%] left-[-8%] h-[58%] w-[135%] -rotate-[10deg] opacity-45"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(255,255,255,0.30) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.30) 1px, transparent 1px)',
+            backgroundSize: '18px 18px',
+          }}
+        />
+        <div className="absolute left-[18%] top-[37%] grid gap-1.5 md:gap-2.5">
+          <span className="block h-2 w-10 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.45)] md:h-3 md:w-16" />
+          <span className="block h-2 w-7 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.45)] md:h-3 md:w-11" />
+          <span className="block h-2 w-10 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.45)] md:h-3 md:w-16" />
+        </div>
+        <svg
+          viewBox="0 0 120 120"
+          className="absolute right-[14%] top-[17%] h-[68%] w-[48%] drop-shadow-[0_12px_18px_rgba(15,23,42,0.22)]"
+          role="img"
+          aria-label="Corre rapido"
+        >
+          <path
+            d="M68 4 22 67h32l-9 49 52-70H65L68 4Z"
+            fill="#ffd91a"
+            stroke="#fff"
+            strokeLinejoin="round"
+            strokeWidth="8"
+          />
+        </svg>
+      </div>
+    </div>
+  )
+}
+
 const normalizeLocal = (p) => {
   if (!p || typeof p !== 'object') return p
 
@@ -579,7 +617,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [agendaRecusados, setAgendaRecusados] = useState(0)
   const [correDisponivel, setCorreDisponivel] = useState(true)
   const [bottomBarsHidden, setBottomBarsHidden] = useState(false)
+  const [mostrarBuscaCorreFlutuante, setMostrarBuscaCorreFlutuante] = useState(false)
   const lastScrollYRef = useRef(0)
+  const buscaCorreTopoRef = useRef(null)
 
   /* =======================
      ✅ VOLTAR LIMPO PRA TELA DAS ABAS
@@ -610,6 +650,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       window.requestAnimationFrame(() => {
         const currentY = window.scrollY || document.documentElement.scrollTop || 0
         const diff = currentY - lastScrollYRef.current
+        const isMobile = window.innerWidth < 768
+        const buscaRect = buscaCorreTopoRef.current?.getBoundingClientRect()
+        const buscaTopoVisivel = !!buscaRect && buscaRect.bottom > 16 && buscaRect.top < 120
 
         if (currentY < 80) {
           setBottomBarsHidden(false)
@@ -619,13 +662,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           setBottomBarsHidden(false)
         }
 
+        setMostrarBuscaCorreFlutuante(isMobile && currentY > 80 && !buscaTopoVisivel)
         lastScrollYRef.current = currentY
         ticking = false
       })
     }
 
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    window.addEventListener('resize', onScroll)
+    onScroll()
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
   }, [])
 
   /* =======================
@@ -1931,6 +1980,30 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       `}</style>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
+      {modoApp === 'corre' && tab === 'corre' && !isMapOpen && mostrarBuscaCorreFlutuante ? (
+        <div className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.55rem)] z-[99960] px-3 md:hidden">
+          <label className="mx-auto flex h-11 max-w-[430px] items-center gap-2 rounded-[18px] border border-blue-100 bg-white/96 px-3 text-sm font-black text-slate-700 shadow-[0_14px_38px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+            <span className="text-lg text-blue-600">⌕</span>
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="buscar pedido ou serviço"
+              className="min-w-0 flex-1 bg-transparent font-black text-slate-800 outline-none placeholder:text-slate-500"
+            />
+            {busca ? (
+              <button
+                type="button"
+                onClick={() => setBusca('')}
+                className="grid h-7 w-7 place-items-center rounded-full bg-slate-100 text-xs font-black text-slate-700"
+                title="Limpar busca"
+              >
+                ×
+              </button>
+            ) : null}
+          </label>
+        </div>
+      ) : null}
+
       <div className="relative z-10 w-full max-w-[1280px] mx-auto px-2.5 pt-0 pb-24 md:px-4 md:py-5 md:pb-32 sm:px-5 lg:px-6">
         {/* ✅ TROCA DE MODO FLUTUANTE */}
         {typeof onBackToMode === 'function' && (
@@ -2036,9 +2109,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   </label>
                 </div>
 
-                <div className="mt-6 overflow-hidden rounded-[28px] bg-[#ffdf2e]/95 p-5 shadow-[0_22px_60px_rgba(15,23,42,0.18)] md:mt-8 md:rounded-[34px] md:p-8">
-                  <div className="grid items-center gap-4 md:grid-cols-[1fr_260px]">
-                    <div>
+                <div className="relative mt-6 overflow-hidden rounded-[28px] bg-[#ffdf2e]/95 p-5 shadow-[0_22px_60px_rgba(15,23,42,0.18)] md:mt-8 md:rounded-[34px] md:p-8">
+                  <div className="relative grid items-center gap-4 md:grid-cols-[1fr_260px]">
+                    <div className="relative z-10 pr-16 md:pr-0">
                       <div className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-950/70 md:text-xs">
                         Corre Aqui
                       </div>
@@ -2066,12 +2139,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       </div>
                     </div>
 
-                    <div className="hidden justify-self-end md:block">
-                      <div className="grid h-48 w-48 place-items-center rounded-[42px] bg-blue-600/82 shadow-[0_22px_50px_rgba(37,99,235,0.28)]">
-                        <div className="grid h-28 w-28 place-items-center rounded-[32px] bg-white/82 text-6xl shadow-inner">
-                          🏃
-                        </div>
-                      </div>
+                    <div className="pointer-events-none absolute bottom-4 right-4 z-0 opacity-90 md:static md:justify-self-end md:opacity-100">
+                      <CorreHeroSpeedIcon className="scale-75 md:scale-100" />
                     </div>
                   </div>
                 </div>
@@ -2189,7 +2258,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             {/* Painel de filtros do Corre */}
             <div className="mb-5 md:mb-8">
               <div>
-                <div className="sticky top-2 z-40 mb-3 rounded-[22px] border border-slate-100 bg-white/95 p-2 shadow-[0_12px_30px_rgba(15,23,42,0.10)] backdrop-blur-xl md:static md:mb-5 md:p-0 md:shadow-none md:border-0 md:bg-transparent">
+                <div ref={buscaCorreTopoRef} className="mb-3 rounded-[22px] border border-slate-100 bg-white/95 p-2 shadow-[0_12px_30px_rgba(15,23,42,0.10)] backdrop-blur-xl md:mb-5 md:p-0 md:shadow-none md:border-0 md:bg-transparent">
                   <label className="flex h-11 items-center gap-2 rounded-[18px] bg-slate-50 px-3 text-sm font-black text-slate-600 md:h-12 md:rounded-[20px] md:bg-white md:ring-1 md:ring-slate-100">
                     <span className="text-blue-600">⌕</span>
                     <input

@@ -13,6 +13,10 @@ const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
 const REDIRECT_PENDING_KEY = "correaqui:googleRedirectPending";
 
+function debugAuth(evento, dados = {}) {
+  console.log(`[CorreAqui Auth] ${evento}`, dados);
+}
+
 function esperar(ms, valor = null) {
   return new Promise((resolve) => {
     setTimeout(() => resolve(valor), ms);
@@ -93,14 +97,12 @@ async function ensureAuthPersistence() {
 function deveUsarRedirect() {
   if (typeof window === "undefined") return false;
 
-  const ua = window.navigator?.userAgent || "";
-  const mobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(ua);
   const standalone = Boolean(
     window.matchMedia?.("(display-mode: standalone)")?.matches ||
       window.navigator?.standalone,
   );
 
-  return mobile || standalone;
+  return standalone;
 }
 
 function deveTentarRedirectDepoisDoPopup(err) {
@@ -114,6 +116,7 @@ function deveTentarRedirectDepoisDoPopup(err) {
     mobile &&
     (code === "auth/popup-blocked" ||
       code === "auth/cancelled-popup-request" ||
+      code === "auth/popup-closed-by-user" ||
       code === "auth/operation-not-supported-in-this-environment")
   );
 }
@@ -121,6 +124,26 @@ function deveTentarRedirectDepoisDoPopup(err) {
 function dominioAtual() {
   if (typeof window === "undefined") return "";
   return window.location.hostname || "";
+}
+
+function contextoNavegador() {
+  if (typeof window === "undefined") return {};
+
+  const ua = window.navigator?.userAgent || "";
+  const host = window.location.hostname || "";
+  const isLocalhost = host === "localhost" || host === "127.0.0.1";
+  const isIpLocal = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+
+  return {
+    host,
+    href: window.location.href,
+    mobile: /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(ua),
+    standalone: Boolean(
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+        window.navigator?.standalone,
+    ),
+    precisaAutorizarDominio: Boolean(host && !isLocalhost && isIpLocal),
+  };
 }
 
 export function mensagemErroAuthGoogle(err) {
@@ -163,8 +186,10 @@ export function mensagemErroAuthGoogle(err) {
 export async function signInWithGoogle() {
   try {
     await ensureAuthPersistence();
+    debugAuth("signInWithGoogle:start", contextoNavegador());
 
     if (deveUsarRedirect()) {
+      debugAuth("signInWithGoogle:redirect", contextoNavegador());
       setRedirectPending();
       await signInWithRedirect(auth, provider);
       return null;
@@ -172,10 +197,15 @@ export async function signInWithGoogle() {
 
     let result;
     try {
+      debugAuth("signInWithGoogle:popup", contextoNavegador());
       result = await signInWithPopup(auth, provider);
     } catch (popupErr) {
       if (!deveTentarRedirectDepoisDoPopup(popupErr)) throw popupErr;
 
+      debugAuth("signInWithGoogle:popup-fallback-redirect", {
+        ...contextoNavegador(),
+        code: popupErr?.code || "",
+      });
       setRedirectPending();
       await signInWithRedirect(auth, provider);
       return null;
@@ -185,11 +215,17 @@ export async function signInWithGoogle() {
 
     clearRedirectPending();
     await salvarPerfilGoogle(user);
+    debugAuth("signInWithGoogle:popup-user", { uid: user?.uid || null });
 
     return user;
   } catch (err) {
     clearRedirectPending();
     console.error("Google login error:", err);
+    debugAuth("signInWithGoogle:error", {
+      ...contextoNavegador(),
+      code: err?.code || "",
+      message: err?.message || "",
+    });
     throw err;
   }
 }
@@ -198,24 +234,40 @@ export async function getGoogleRedirectUser() {
   await ensureAuthPersistence();
 
   const tinhaRedirectPendente = isGoogleRedirectPending();
+  debugAuth("getRedirectResult:start", {
+    ...contextoNavegador(),
+    tinhaRedirectPendente,
+    currentUserUid: auth.currentUser?.uid || null,
+  });
 
   const result = await getRedirectResult(auth).catch((err) => {
     console.error("Google redirect result error:", err);
     clearRedirectPending();
-    return null;
+    debugAuth("getRedirectResult:error", {
+      ...contextoNavegador(),
+      code: err?.code || "",
+      message: err?.message || "",
+    });
+    throw err;
   });
 
   if (result?.user) {
     clearRedirectPending();
     await salvarPerfilGoogle(result.user);
+    debugAuth("getRedirectResult:user", { uid: result.user.uid });
     return result.user;
   }
 
   if (tinhaRedirectPendente && auth.currentUser?.uid) {
     clearRedirectPending();
     await salvarPerfilGoogle(auth.currentUser);
+    debugAuth("getRedirectResult:currentUser-fallback", { uid: auth.currentUser.uid });
     return auth.currentUser;
   }
 
+  debugAuth("getRedirectResult:null", {
+    tinhaRedirectPendente,
+    currentUserUid: auth.currentUser?.uid || null,
+  });
   return null;
 }

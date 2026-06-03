@@ -6,12 +6,24 @@ import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 import {
-  clearGoogleRedirectPending,
   getGoogleRedirectUser,
-  isGoogleRedirectPending,
   mensagemErroAuthGoogle,
   signInWithGoogle,
 } from '@/lib/authGoogle'
+
+let loginRedirectPromise = null
+
+function debugAuth(evento, dados = {}) {
+  console.log(`[CorreAqui Auth /login] ${evento}`, dados)
+}
+
+function resolverRedirectUmaVez() {
+  if (!loginRedirectPromise) {
+    loginRedirectPromise = getGoogleRedirectUser()
+  }
+
+  return loginRedirectPromise
+}
 
 function mensagemErroGoogle(err) {
   const msg = mensagemErroAuthGoogle(err)
@@ -42,47 +54,82 @@ export default function LoginPage() {
   const router = useRouter()
   const [checking, setChecking] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [redirecting, setRedirecting] = useState(false)
   const [erro, setErro] = useState('')
 
   useEffect(() => {
     let active = true
-    const redirectPendente = isGoogleRedirectPending()
-    setRedirecting(redirectPendente)
+    let authDone = false
+    let redirectDone = false
+
     setChecking(true)
-
-    const fallback = window.setTimeout(() => {
-      if (!active) return
-      setChecking(false)
-      setRedirecting(false)
-    }, redirectPendente ? 10000 : 4500)
-
-    getGoogleRedirectUser().then((user) => {
-      if (!active) return
-      if (user?.uid) {
-        marcarEntradaIniciada()
-        router.replace('/')
-      }
-    }).finally(() => {
-      if (!active) return
-      setRedirecting(false)
+    debugAuth('checking:true', {
+      host: typeof window !== 'undefined' ? window.location.hostname : '',
+      href: typeof window !== 'undefined' ? window.location.href : '',
     })
+
+    const finalizarSePronto = () => {
+      if (!active) return
+      if (authDone && redirectDone) {
+        debugAuth('checking:false', {
+          motivo: 'auth e redirect finalizados sem user',
+          currentUserUid: auth.currentUser?.uid || null,
+        })
+        setChecking(false)
+      }
+    }
+
+    const entrarNoApp = () => {
+      marcarEntradaIniciada()
+      router.replace('/')
+    }
 
     const off = onAuthStateChanged(auth, (user) => {
       if (!active) return
-      window.clearTimeout(fallback)
+
+      debugAuth('onAuthStateChanged', {
+        uid: user?.uid || null,
+        email: user?.email || '',
+      })
+      authDone = true
       if (user?.uid) {
-        marcarEntradaIniciada()
-        router.replace('/')
+        entrarNoApp()
         return
       }
-      setChecking(false)
-      setRedirecting(false)
+
+      finalizarSePronto()
     })
+
+    resolverRedirectUmaVez()
+      .then((redirectUser) => {
+        redirectDone = true
+        if (!active) return
+
+        debugAuth('getRedirectResult:done', {
+          uid: redirectUser?.uid || null,
+          currentUserUid: auth.currentUser?.uid || null,
+        })
+        if (redirectUser?.uid || auth.currentUser?.uid) {
+          entrarNoApp()
+          return
+        }
+
+        finalizarSePronto()
+      })
+      .catch((err) => {
+        redirectDone = true
+        if (!active) return
+
+        console.error('[LoginPage] Redirect Google: erro', err)
+        debugAuth('getRedirectResult:error', {
+          code: err?.code || '',
+          message: err?.message || '',
+        })
+        setErro(mensagemErroGoogle(err))
+        finalizarSePronto()
+      })
 
     return () => {
       active = false
-      window.clearTimeout(fallback)
       off()
     }
   }, [router])
@@ -94,41 +141,40 @@ export default function LoginPage() {
       setErro('')
       setLoading(true)
       marcarEntradaIniciada()
+      debugAuth('loginGoogle:click', {
+        host: typeof window !== 'undefined' ? window.location.hostname : '',
+        href: typeof window !== 'undefined' ? window.location.href : '',
+      })
       const user = await signInWithGoogle()
+
       if (user?.uid) {
         marcarEntradaIniciada()
         router.replace('/')
-        return
       }
-
-      setRedirecting(true)
-      window.setTimeout(() => {
-        clearGoogleRedirectPending()
-        setRedirecting(false)
-        setLoading(false)
-        setErro('Se o Google não abriu, seu navegador pode ter bloqueado o redirecionamento ou o domínio ainda não está autorizado no Firebase.')
-      }, 15000)
     } catch (err) {
       console.error(err)
-      clearGoogleRedirectPending()
-      setRedirecting(false)
-      setLoading(false)
+      debugAuth('loginGoogle:error', {
+        code: err?.code || '',
+        message: err?.message || '',
+      })
       if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
         setErro(mensagemErroGoogle(err))
       }
+    } finally {
+      setLoading(false)
     }
   }
 
-  if (checking || redirecting) {
+  if (checking) {
     return (
       <main className="grid min-h-[100dvh] place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white">
         <div className="w-full max-w-sm rounded-[28px] border border-white/35 bg-white/92 p-5 text-center text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.22)] backdrop-blur-2xl">
           <LogoCorreAqui className="mx-auto h-20 w-20 rounded-[22px] bg-white shadow-[0_14px_34px_rgba(37,99,235,0.18)]" />
           <h1 className="mt-4 text-xl font-black text-blue-950">
-            {redirecting ? 'Voltando do Google...' : 'Abrindo Corre Aqui...'}
+            Abrindo Corre Aqui...
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            {redirecting ? 'Confirmando sua conta no celular. Não precisa tocar de novo.' : 'Verificando se sua sessão já está ativa.'}
+            Verificando se sua sessão já está ativa. Não precisa tocar de novo.
           </p>
         </div>
       </main>

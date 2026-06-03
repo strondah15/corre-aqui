@@ -1,31 +1,38 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { auth, database } from '@/lib/firebase'
-import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { onAuthStateChanged } from 'firebase/auth'
 import { ref, update, get, serverTimestamp } from 'firebase/database'
 import {
-  clearGoogleRedirectPending,
   getGoogleRedirectUser,
   isGoogleRedirectPending,
   mensagemErroAuthGoogle,
-  signInWithGoogle
+  signInWithGoogle,
 } from '@/lib/authGoogle'
 
-import TelaBoasVindas from './TelaBoasVindas'
-import CadastroPerfilInicial from './CadastroPerfilInicial'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 import SplashScreen from '@/components/SplashScreen'
 import { perfilMinimoCompleto } from '@/lib/perfilCadastro'
 
 let vinhetaJaRodouNoRuntime = false
+let googleRedirectPromise = null
 const USER_READ_TIMEOUT_MS = 7000
+const AUTH_NULL_GRACE_MS = 2200
 
 function esperar(ms, valor = null) {
   return new Promise((resolve) => {
     setTimeout(() => resolve(valor), ms)
   })
+}
+
+function resolverGoogleRedirectUmaVez() {
+  if (!googleRedirectPromise) {
+    googleRedirectPromise = getGoogleRedirectUser()
+  }
+
+  return googleRedirectPromise
 }
 
 function isFotoValor(v) {
@@ -50,33 +57,14 @@ function perfilCompletoLocal(uid) {
   }
 }
 
-function limparSessaoLocal(uid) {
-  try {
-    const remover = [
-      'meuId',
-      'meuNome',
-      'cadastroCompleto',
-      'fotoURL',
-      'fotoUrl',
-      'avatarURL',
-      'avatarEmoji',
-      'visivelNoMapa',
-      'notifsAtivas',
-    ]
-
-    remover.forEach((key) => localStorage.removeItem(key))
-
-    if (uid) localStorage.removeItem(`cadastroCompleto:${uid}`)
-    Object.keys(localStorage)
-      .filter((key) => key.startsWith('cadastroCompleto:'))
-      .forEach((key) => localStorage.removeItem(key))
-  } catch {}
-}
-
 function marcarBoasVindasVistas() {
   try {
     localStorage.setItem('viuBoasVindas', 'true')
   } catch {}
+}
+
+function debugAuth(evento, dados = {}) {
+  console.log(`[CorreAqui Auth] ${evento}`, dados)
 }
 
 async function salvarUsuarioBasico(user) {
@@ -110,22 +98,13 @@ async function salvarUsuarioBasico(user) {
       email: user.email || atual.email || '',
       anonimo: !!user.isAnonymous,
       authProvider: user.isAnonymous ? 'anonimo' : 'google',
-      admin: null,
-      role: null,
-      pushTokens: null,
-      cpf: null,
-      cpfDigits: null,
-      cpfMasked: null,
-      cpfStatus: null,
-      cpfVerificacao: null,
-      documento: null,
-      documentoVerificacao: null,
       atualizadoEm: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }
 
     if (leituraConfirmada && !atual.criadoEm) basePayload.criadoEm = serverTimestamp()
     if (leituraConfirmada && !atual.nome && nomeAuth) basePayload.nome = nomeAuth
+
     const fotoFallback = fotoSalva || (leituraConfirmada ? fotoAuth : '')
     if (!atual.fotoURL && fotoFallback) basePayload.fotoURL = fotoFallback
     if (!atual.photoURL && fotoFallback) basePayload.photoURL = fotoFallback
@@ -134,15 +113,6 @@ async function salvarUsuarioBasico(user) {
     Promise.race([update(userRef, basePayload), esperar(1800)]).catch(() => {})
 
     const profilePayload = {
-      admin: null,
-      role: null,
-      cpf: null,
-      cpfDigits: null,
-      cpfMasked: null,
-      cpfStatus: null,
-      cpfVerificacao: null,
-      documento: null,
-      documentoVerificacao: null,
       atualizadoEm: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }
@@ -153,7 +123,7 @@ async function salvarUsuarioBasico(user) {
     if (!profileAtual.photoURL && fotoFallback) profilePayload.photoURL = fotoFallback
     if (!profileAtual.avatarEmoji && avatarEmojiSalvo) profilePayload.avatarEmoji = avatarEmojiSalvo
 
-    if (Object.keys(profilePayload).length > 1) {
+    if (Object.keys(profilePayload).length > 2) {
       Promise.race([
         update(ref(database, `users/${user.uid}/profile`), profilePayload),
         esperar(1800),
@@ -177,22 +147,43 @@ async function salvarUsuarioBasico(user) {
 export default function LoginGate({ children }) {
   const pathname = usePathname()
   const pularVinheta = String(pathname || '').startsWith('/chat/')
-  const [uid, setUid] = useState(null)
-  const [authUser, setAuthUser] = useState(null)
-  const [userData, setUserData] = useState(null)
+  const authResolvidoRef = useRef(false)
+  const redirectResolvidoRef = useRef(false)
+  const syncUsuarioRef = useRef({ uid: '', promise: null })
+  const authenticatedUidRef = useRef('')
+  const [user, setUser] = useState(null)
   const [cadastroCompleto, setCadastroCompleto] = useState(false)
   const [checandoPerfil, setChecandoPerfil] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [resolvendoRedirect, setResolvendoRedirect] = useState(false)
+  const [authLoading, setAuthLoading] = useState(true)
   const [loginLoading, setLoginLoading] = useState(false)
-  const [viuBoasVindas, setViuBoasVindas] = useState(false)
   const [loginError, setLoginError] = useState('')
   const [splashMinDone, setSplashMinDone] = useState(false)
   const [splashClosing, setSplashClosing] = useState(false)
   const [splashDone, setSplashDone] = useState(pularVinheta || vinhetaJaRodouNoRuntime)
 
-  const aguardandoEntrada = loading || resolvendoRedirect || (checandoPerfil && !cadastroCompleto)
+  const uid = user?.uid || ''
+  const aguardandoEntrada = authLoading
   const splashReadyToClose = splashMinDone && !aguardandoEntrada
+  const renderDestino = !splashDone ? 'splash' : aguardandoEntrada ? 'loading' : !uid ? 'login' : 'app'
+
+  useEffect(() => {
+    debugAuth('render', {
+      destino: renderDestino,
+      motivo:
+        renderDestino === 'splash'
+          ? 'vinheta inicial'
+          : renderDestino === 'loading'
+            ? 'aguardando onAuthStateChanged/getRedirectResult'
+            : renderDestino === 'login'
+              ? 'auth finalizado sem user'
+              : 'user autenticado',
+      uid: uid || null,
+      authLoading,
+      checandoPerfil,
+      cadastroCompleto,
+      host: typeof window !== 'undefined' ? window.location.hostname : '',
+    })
+  }, [authLoading, cadastroCompleto, checandoPerfil, renderDestino, uid])
 
   useEffect(() => {
     if (pularVinheta || vinhetaJaRodouNoRuntime) {
@@ -223,31 +214,53 @@ export default function LoginGate({ children }) {
     return () => window.clearTimeout(timer)
   }, [splashDone, splashReadyToClose])
 
-  const aplicarUsuario = useCallback(async (user) => {
-    if (!user) {
-      setUid(null)
-      setAuthUser(null)
-      setUserData(null)
+  const aplicarUsuario = useCallback(async (firebaseUser) => {
+    if (!firebaseUser?.uid) {
+      debugAuth('aplicarUsuario:null', { motivo: 'onAuthStateChanged sem user' })
+      authenticatedUidRef.current = ''
+      syncUsuarioRef.current = { uid: '', promise: null }
+      setUser(null)
       setCadastroCompleto(false)
       setChecandoPerfil(false)
       return
     }
 
-    setUid(user.uid)
-    setAuthUser(user)
-    setViuBoasVindas(true)
+    debugAuth('aplicarUsuario:user', {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email || '',
+      provider: firebaseUser.providerData?.[0]?.providerId || '',
+    })
+    authenticatedUidRef.current = firebaseUser.uid
+    setUser(firebaseUser)
     marcarBoasVindasVistas()
     setChecandoPerfil(true)
+    setCadastroCompleto(true)
 
-    const localCompleto = perfilCompletoLocal(user.uid)
-    setCadastroCompleto(localCompleto)
+    try {
+      localStorage.setItem('meuNome', firebaseUser.displayName || 'Usuário')
+      localStorage.setItem('meuId', firebaseUser.uid)
+      if (firebaseUser.photoURL) localStorage.setItem('fotoURL', firebaseUser.photoURL)
+    } catch {}
 
-    const data = await salvarUsuarioBasico(user)
-    setUserData(data)
+    const localCompleto = perfilCompletoLocal(firebaseUser.uid)
+
+    if (syncUsuarioRef.current.uid !== firebaseUser.uid || !syncUsuarioRef.current.promise) {
+      syncUsuarioRef.current = {
+        uid: firebaseUser.uid,
+        promise: salvarUsuarioBasico(firebaseUser),
+      }
+    }
+
+    const data = await syncUsuarioRef.current.promise
     setCadastroCompleto(localCompleto || perfilMinimoCompleto(data))
     setChecandoPerfil(false)
+    debugAuth('perfil:sincronizado', {
+      uid: firebaseUser.uid,
+      cadastroCompleto: localCompleto || perfilMinimoCompleto(data),
+      temFotoFirebase: Boolean(data?.fotoURL || data?.profile?.fotoURL),
+    })
 
-    const nomeLocal = data?.profile?.nome || data?.nome || user.displayName || (user.isAnonymous ? 'Visitante' : '')
+    const nomeLocal = data?.profile?.nome || data?.nome || firebaseUser.displayName || (firebaseUser.isAnonymous ? 'Visitante' : '')
     const fotoCache = pickFoto(
       data?.fotoURL,
       data?.profile?.fotoURL,
@@ -255,7 +268,7 @@ export default function LoginGate({ children }) {
       data?.profile?.avatar,
       data?.photoURL,
       data?.profile?.photoURL,
-      user.photoURL
+      firebaseUser.photoURL
     )
     const avatarCache =
       data?.avatarEmoji ||
@@ -264,83 +277,135 @@ export default function LoginGate({ children }) {
       (!isFotoValor(data?.profile?.avatar) ? data?.profile?.avatar : '') ||
       ''
 
-    localStorage.setItem('meuNome', nomeLocal)
-    localStorage.setItem('meuId', user.uid)
-    if (fotoCache) localStorage.setItem('fotoURL', fotoCache)
-    if (avatarCache) localStorage.setItem('avatarEmoji', avatarCache)
+    try {
+      localStorage.setItem('meuNome', nomeLocal)
+      localStorage.setItem('meuId', firebaseUser.uid)
+      if (fotoCache) localStorage.setItem('fotoURL', fotoCache)
+      if (avatarCache) localStorage.setItem('avatarEmoji', avatarCache)
+    } catch {}
   }, [])
 
   useEffect(() => {
-    try {
-      const viu = localStorage.getItem('viuBoasVindas')
-      setViuBoasVindas(viu === 'true')
-    } catch {
-      setViuBoasVindas(false)
+    let active = true
+
+    authResolvidoRef.current = false
+    redirectResolvidoRef.current = false
+    debugAuth('authLoading:true', {
+      host: typeof window !== 'undefined' ? window.location.hostname : '',
+      path: typeof window !== 'undefined' ? window.location.pathname : '/',
+      motivo: 'inicializando listener',
+    })
+    setAuthLoading(true)
+
+    const finalizarSePronto = () => {
+      if (!active) return
+      if (authResolvidoRef.current && redirectResolvidoRef.current) {
+        debugAuth('authLoading:false', {
+          motivo: 'auth e redirect finalizados sem user',
+          temUserAtual: Boolean(auth.currentUser?.uid),
+        })
+        setAuthLoading(false)
+      }
     }
 
-    const redirectPendente = isGoogleRedirectPending()
-    setResolvendoRedirect(redirectPendente)
-    setLoading(true)
-
-    let active = true
-    let resolved = false
-    let redirectResultDone = !redirectPendente
-    const fallback = window.setTimeout(() => {
-      if (!active || resolved) return
-      setLoading(false)
-      setResolvendoRedirect(false)
-    }, redirectPendente ? 10000 : 5500)
-
-    const off = onAuthStateChanged(auth, async (user) => {
-      if (!active) return
-      if (redirectPendente && !user && !redirectResultDone) return
-
-      resolved = true
-      window.clearTimeout(fallback)
-      await aplicarUsuario(user)
-      if (!active) return
-      setLoading(false)
-      setResolvendoRedirect(false)
+    debugAuth('onAuthStateChanged:init', {
+      currentUserUid: auth.currentUser?.uid || null,
+      redirectPendente: isGoogleRedirectPending(),
     })
 
-    getGoogleRedirectUser().then(async (user) => {
-      redirectResultDone = true
+    const off = onAuthStateChanged(auth, async (authUserFromListener) => {
       if (!active) return
-      if (!user?.uid) {
-        if (!resolved) {
-          resolved = true
-          window.clearTimeout(fallback)
-          await aplicarUsuario(auth.currentUser || null)
-          if (!active) return
-          setLoading(false)
-          setResolvendoRedirect(false)
+
+      debugAuth('onAuthStateChanged', {
+        uid: authUserFromListener?.uid || null,
+        email: authUserFromListener?.email || '',
+        redirectPendente: isGoogleRedirectPending(),
+        uidAutenticadoAntes: authenticatedUidRef.current || null,
+      })
+
+      let firebaseUser = authUserFromListener
+
+      if (!firebaseUser?.uid && (authenticatedUidRef.current || isGoogleRedirectPending())) {
+        debugAuth('onAuthStateChanged:null-aguardando', {
+          motivo: authenticatedUidRef.current
+            ? 'null recebido depois de uid valido'
+            : 'redirect ainda pendente',
+          uidAutenticadoAntes: authenticatedUidRef.current || null,
+          tempoMs: AUTH_NULL_GRACE_MS,
+        })
+
+        await esperar(AUTH_NULL_GRACE_MS)
+        if (!active) return
+
+        if (auth.currentUser?.uid) {
+          firebaseUser = auth.currentUser
+          debugAuth('onAuthStateChanged:null-recuperado', {
+            uid: firebaseUser.uid,
+            motivo: 'auth.currentUser apareceu apos aguardar',
+          })
         }
+      }
+
+      authResolvidoRef.current = true
+      await aplicarUsuario(firebaseUser)
+      if (!active) return
+
+      if (firebaseUser?.uid) {
+        redirectResolvidoRef.current = true
+        debugAuth('authLoading:false', {
+          motivo: 'onAuthStateChanged recebeu user',
+          uid: firebaseUser.uid,
+        })
+        setAuthLoading(false)
         return
       }
-      resolved = true
-      window.clearTimeout(fallback)
-      await aplicarUsuario(user)
-      if (!active) return
-      setLoading(false)
-      setResolvendoRedirect(false)
-    }).catch(() => {
-      if (!active) return
-      redirectResultDone = true
-      if (!resolved) setLoading(false)
-      setResolvendoRedirect(false)
+
+      finalizarSePronto()
     })
+
+    resolverGoogleRedirectUmaVez()
+      .then(async (redirectUser) => {
+        redirectResolvidoRef.current = true
+        if (!active) return
+
+        debugAuth('getRedirectResult:done', {
+          uid: redirectUser?.uid || null,
+          currentUserUid: auth.currentUser?.uid || null,
+        })
+        const userResolvido = redirectUser?.uid ? redirectUser : auth.currentUser?.uid ? auth.currentUser : null
+
+        if (userResolvido?.uid) {
+          authResolvidoRef.current = true
+          await aplicarUsuario(userResolvido)
+          if (!active) return
+          debugAuth('authLoading:false', {
+            motivo: redirectUser?.uid ? 'getRedirectResult recebeu user' : 'auth.currentUser usado apos redirect',
+            uid: userResolvido.uid,
+          })
+          setAuthLoading(false)
+          return
+        }
+
+        finalizarSePronto()
+      })
+      .catch((error) => {
+        redirectResolvidoRef.current = true
+        if (!active) return
+
+        console.error('[LoginGate] Redirect Google: erro', error)
+        debugAuth('getRedirectResult:error', {
+          code: error?.code || '',
+          message: error?.message || '',
+        })
+        setLoginError(mensagemErroAuthGoogle(error))
+        finalizarSePronto()
+      })
 
     return () => {
       active = false
-      window.clearTimeout(fallback)
       off()
     }
   }, [aplicarUsuario])
-
-  function entrarBoasVindas() {
-    setViuBoasVindas(true)
-    marcarBoasVindasVistas()
-  }
 
   async function loginGoogle() {
     if (loginLoading) return
@@ -348,26 +413,18 @@ export default function LoginGate({ children }) {
     try {
       setLoginLoading(true)
       setLoginError('')
-      setViuBoasVindas(true)
       marcarBoasVindasVistas()
-      const user = await signInWithGoogle()
-
-      if (!user) {
-        setResolvendoRedirect(true)
-        setLoading(true)
-        window.setTimeout(() => {
-          if (!isGoogleRedirectPending()) return
-          clearGoogleRedirectPending()
-          setLoading(false)
-          setResolvendoRedirect(false)
-          setLoginError('O Google não terminou a entrada. Toque novamente ou confira se o domínio está autorizado no Firebase.')
-        }, 15000)
-        return
-      }
-
-      await aplicarUsuario(user)
+      debugAuth('loginGoogle:click', {
+        host: typeof window !== 'undefined' ? window.location.hostname : '',
+        href: typeof window !== 'undefined' ? window.location.href : '',
+      })
+      await signInWithGoogle()
     } catch (error) {
       console.error('[LoginGate] Google: erro', error)
+      debugAuth('loginGoogle:error', {
+        code: error?.code || '',
+        message: error?.message || '',
+      })
       if (error?.code !== 'auth/popup-closed-by-user' && error?.code !== 'auth/cancelled-popup-request') {
         setLoginError(mensagemErroAuthGoogle(error))
       }
@@ -376,43 +433,16 @@ export default function LoginGate({ children }) {
     }
   }
 
-  async function sair() {
-    const uidAtual = uid
-    await signOut(auth)
-    limparSessaoLocal(uidAtual)
-    location.reload()
-  }
-
-  function concluirCadastro(perfil) {
-    const atualizado = {
-      ...(userData || {}),
-      ...perfil,
-      cadastroCompleto: true,
-      onboardingCompleto: true,
-      profile: {
-        ...((userData && userData.profile) || {}),
-        ...perfil,
-        cadastroCompleto: true,
-        onboardingCompleto: true,
-      },
-    }
-
-    setUserData(atualizado)
-    setCadastroCompleto(true)
-  }
-
   if (!splashDone) {
     return (
       <SplashScreen
         exiting={splashClosing}
         status={
-          resolvendoRedirect
-            ? 'Confirmando sua conta...'
-            : loading
-              ? 'Restaurando sua sessão...'
-              : splashMinDone
-                ? 'Abrindo o app...'
-                : 'Conectando perto de você...'
+          authLoading
+            ? 'Restaurando sua sessão...'
+            : splashMinDone
+              ? 'Abrindo o app...'
+              : 'Conectando perto de você...'
         }
       />
     )
@@ -420,10 +450,6 @@ export default function LoginGate({ children }) {
 
   if (aguardandoEntrada) {
     return <main className="min-h-[100dvh] bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_100%)]" aria-busy="true" />
-  }
-
-  if (!viuBoasVindas && !uid) {
-    return <TelaBoasVindas onEntrar={entrarBoasVindas} />
   }
 
   if (!uid) {
@@ -491,19 +517,5 @@ export default function LoginGate({ children }) {
     )
   }
 
-  if (!cadastroCompleto) {
-    return (
-      <CadastroPerfilInicial
-        uid={uid}
-        authUser={authUser}
-        userData={userData}
-        onSaved={concluirCadastro}
-        onSair={sair}
-      />
-    )
-  }
-
-  return (
-    <>{children}</>
-  )
+  return <>{children}</>
 }
