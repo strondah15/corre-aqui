@@ -26,6 +26,7 @@ import {
   limitToLast,
   runTransaction,
 } from 'firebase/database'
+import { getOnlineTimestamp, splitUsuariosOnline } from '@/lib/presence'
 
 import PerfilDrawer from '@/components/PerfilDrawer'
 import XpToast from '@/components/XpToast'
@@ -146,14 +147,35 @@ const normalizeLocal = (p) => {
 
 async function getMyLocation() {
   return await new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve(null)
+    if (!navigator.geolocation) {
+      console.log('[PRESENCE] localizacao negada/indisponivel', { motivo: 'geolocation indisponivel' })
+      return resolve(null)
+    }
+
+    try {
+      navigator.permissions?.query?.({ name: 'geolocation' }).then((permission) => {
+        console.log('[PRESENCE] localizacao permissao', { state: permission?.state || 'desconhecido' })
+      }).catch(() => {})
+    } catch {}
+
     navigator.geolocation.getCurrentPosition(
-      (pos) =>
+      (pos) => {
+        console.log('[PRESENCE] localizacao permitida', {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        })
         resolve({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-        }),
-      () => resolve(null),
+        })
+      },
+      (error) => {
+        console.log('[PRESENCE] localizacao negada', {
+          code: error?.code || null,
+          message: error?.message || 'sem detalhe',
+        })
+        resolve(null)
+      },
       { enableHighAccuracy: true, timeout: 8000 }
     )
   })
@@ -582,7 +604,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [editValor, setEditValor] = useState('')
 
   const [usersObj, setUsersObj] = useState({})
-  const ONLINE_TTL_MS = 45_000
+  const [meuUserProfile, setMeuUserProfile] = useState(null)
 
   const [toast, setToast] = useState(null)
   const [usuarioSelecionado, setUsuarioSelecionado] = useState(null)
@@ -681,7 +703,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
      0) Cache visual do avatar ate o Firebase carregar
   ======================= */
   useEffect(() => {
-    if (meuId && usersObj?.[meuId]) return
+    if (meuId && (meuUserProfile || usersObj?.[meuId])) return
 
     try {
       const f =
@@ -693,7 +715,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       setFotoURL(f || '')
       setAvatarEmoji(e || '')
     } catch {}
-  }, [openPerfil, meuId, usersObj])
+  }, [openPerfil, meuId, meuUserProfile, usersObj])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -740,7 +762,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       setNotificacoesNaoLidas(0)
       return
     }
-    const userAtual = usersObj?.[meuId] || {}
+    const userAtual = meuUserProfile || {}
     const notificacoesAtivas = userAtual?.profile?.notificacoes !== false
     if (!notificacoesAtivas) {
       setNotificacoesNaoLidas(0)
@@ -787,7 +809,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
 
     return () => off()
-  }, [meuId, showToast, usersObj])
+  }, [meuId, showToast, meuUserProfile])
 
   /* =======================
      modoApp (prioriza initialMode)
@@ -808,7 +830,21 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     try {
       localStorage.setItem('modoApp', modoApp)
     } catch {}
-  }, [modoApp])
+
+    if (meuId) {
+      const agoraPresence = Date.now()
+      console.log('[PRESENCE] uid atual', meuId)
+      console.log(`[PRESENCE] salvando online true em presence/${meuId}`, { origem: 'modoApp' })
+      update(ref(database, `presence/${meuId}`), {
+        modoAtual: modoApp,
+        online: true,
+        lastSeen: agoraPresence,
+        updatedAt: agoraPresence,
+      })
+        .then(() => console.log('[PRESENCE] salvou online com sucesso', { uid: meuId, origem: 'modoApp' }))
+        .catch((error) => console.error('[PRESENCE] erro ao salvar presença', error))
+    }
+  }, [meuId, modoApp])
 
   // ✅ Cliente não usa BottomBar; profissionais abrem em aba lateral direita
   useEffect(() => {
@@ -908,8 +944,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     if (!meuId) return
     let cancelled = false
 
-    const userRef = ref(database, `users/${meuId}`)
+    const userRef = ref(database, `presence/${meuId}`)
     const connectedRef = ref(database, '.info/connected')
+    console.log('[PRESENCE] uid atual', meuId)
+    console.log('[PRESENCE] usando caminho correto', `presence/${meuId}`)
 
     const getAvatarPatch = () => {
       const patch = {}
@@ -923,63 +961,94 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
 
     const writeOnline = async () => {
-      const local = await getMyLocation()
       if (cancelled) return
 
+      const agoraPresence = Date.now()
+      console.log(`[PRESENCE] salvando online true em presence/${meuId}`, {
+        origem: 'Mapadinamico/writeOnline',
+        temLocal: false,
+      })
+
       await update(userRef, {
+        uid: meuId,
         id: meuId,
         nome: meuNome || 'Anônimo',
-        online: correDisponivel,
+        online: true,
         disponivel: correDisponivel,
-        local: correDisponivel ? (local || null) : null,
-        latitude: correDisponivel ? (local?.lat ?? null) : null,
-        longitude: correDisponivel ? (local?.lng ?? null) : null,
-        lastSeen: Date.now(),
-        updatedAt: serverTimestamp(),
+        lastSeen: agoraPresence,
+        updatedAt: agoraPresence,
         ...getAvatarPatch(),
       })
+      console.log('[PRESENCE] salvou online com sucesso', { uid: meuId, origem: 'Mapadinamico/writeOnline' })
+
+      const local = await getMyLocation()
+      if (cancelled || !local) return
+
+      await update(userRef, {
+        local,
+        latitude: local.lat,
+        longitude: local.lng,
+        updatedAt: Date.now(),
+      })
+      console.log('[PRESENCE] local salvo', local)
     }
 
     const writeOffline = async () => {
-      if (cancelled) return
-      await update(userRef, {
-        online: false,
-        lastSeen: Date.now(),
-        updatedAt: serverTimestamp(),
-        ...getAvatarPatch(),
-      }).catch(() => {})
+      return undefined
     }
 
     const offConnected = onValue(connectedRef, async (snap) => {
       const connected = !!snap.val()
+      console.log('[PRESENCE] conectado .info/connected', { uid: meuId, connected, origem: 'Mapadinamico' })
       if (!connected || cancelled) return
 
       try {
+        const agoraPresence = Date.now()
         await onDisconnect(userRef).update({
           online: false,
-          lastSeen: Date.now(),
-          updatedAt: Date.now(),
+          lastSeen: agoraPresence,
+          updatedAt: agoraPresence,
           ...getAvatarPatch(),
         })
       } catch {}
 
       try {
         await writeOnline()
-      } catch {}
+      } catch (error) {
+        console.error('[PRESENCE] erro ao salvar presença', error)
+      }
     })
 
     const heartbeat = setInterval(async () => {
-      const local = await getMyLocation()
+      const agoraPresence = Date.now()
+      console.log(`[PRESENCE] salvando online true em presence/${meuId}`, {
+        origem: 'Mapadinamico/heartbeat',
+        temLocal: false,
+      })
       update(userRef, {
-        online: correDisponivel,
+        online: true,
         disponivel: correDisponivel,
-        local: correDisponivel ? (local || null) : null,
-        latitude: correDisponivel ? (local?.lat ?? null) : null,
-        longitude: correDisponivel ? (local?.lng ?? null) : null,
-        lastSeen: Date.now(),
-        updatedAt: serverTimestamp(),
+        lastSeen: agoraPresence,
+        updatedAt: agoraPresence,
         ...getAvatarPatch(),
-      }).catch(() => {})
+      })
+        .then(() => console.log('[PRESENCE] salvou online com sucesso', { uid: meuId, origem: 'Mapadinamico/heartbeat' }))
+        .catch((error) => console.error('[PRESENCE] erro ao salvar presença', error))
+
+      const local = await getMyLocation()
+      if (cancelled || !local) return
+      console.log(`[PRESENCE] salvando online true em presence/${meuId}`, {
+        origem: 'Mapadinamico/heartbeat/local',
+        temLocal: !!local,
+      })
+      update(userRef, {
+        local,
+        latitude: local.lat,
+        longitude: local.lng,
+        updatedAt: Date.now(),
+      })
+        .then(() => console.log('[PRESENCE] local salvo', local))
+        .catch((error) => console.error('[PRESENCE] erro ao salvar presença', error))
     }, 15000)
 
     const onExit = () => writeOffline()
@@ -995,6 +1064,25 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       onExit()
     }
   }, [meuId, meuNome, fotoURL, avatarEmoji, correDisponivel])
+
+  useEffect(() => {
+    if (!meuId) {
+      setMeuUserProfile(null)
+      return undefined
+    }
+
+    const off = onValue(
+      ref(database, `users/${meuId}`),
+      (snap) => {
+        setMeuUserProfile(snap.val() || null)
+      },
+      (error) => {
+        console.warn('[PRESENCE] erro lendo meu perfil em users/{uid}', error)
+      }
+    )
+
+    return () => off()
+  }, [meuId])
 
   /* =======================
      3) Ler pedidos
@@ -1057,32 +1145,42 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [showToast])
 
   /* =======================
-     4) Ler /users (online)
+     4) Ler /presence (online)
   ======================= */
   useEffect(() => {
-    const off = onValue(ref(database, 'users'), (snap) => {
-      setUsersObj(snap.val() || {})
-    })
+    console.log('[PRESENCE] lendo presence', { path: 'presence', origem: 'Mapadinamico' })
+    const off = onValue(
+      ref(database, 'presence'),
+      (snap) => {
+        const raw = snap.val() || {}
+        console.log('[PRESENCE] total bruto de children em /presence', {
+          total: Object.keys(raw).length,
+          origem: 'Mapadinamico',
+        })
+        setUsersObj(raw)
+      },
+      (error) => {
+        console.warn('[PRESENCE] erro lendo presence', error)
+      }
+    )
     return () => off()
   }, [])
 
-  const onlineUsers = useMemo(() => {
-    const now = Date.now()
-    return Object.entries(usersObj || {})
-      .map(([id, u]) => ({ id, ...u }))
-      .filter((u) => u?.online === true && now - Number(u?.lastSeen || 0) <= ONLINE_TTL_MS)
-      .sort((a, b) => Number(b?.lastSeen || 0) - Number(a?.lastSeen || 0))
+  const { usuariosOnlineLista, usuariosOnlineMapa } = useMemo(() => {
+    return splitUsuariosOnline(usersObj)
   }, [usersObj])
+
+  const onlineUsers = usuariosOnlineLista
 
   const onlineUsersFiltrados = useMemo(() => {
     const t = buscaUsuarioMapa.trim().toLowerCase()
-    if (!t) return onlineUsers
-    return onlineUsers.filter((u) => {
+    if (!t) return usuariosOnlineMapa
+    return usuariosOnlineMapa.filter((u) => {
       const nome = String(u?.nome || '').toLowerCase()
       const cidade = String(u?.cidade || '').toLowerCase()
       return nome.includes(t) || cidade.includes(t)
     })
-  }, [onlineUsers, buscaUsuarioMapa])
+  }, [buscaUsuarioMapa, usuariosOnlineMapa])
 
 
   const onlineUsersParaPerfil = useMemo(() => {
@@ -1095,8 +1193,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const meuUserNode = useMemo(() => {
     if (!meuId) return null
-    return usersObj?.[meuId] || null
-  }, [usersObj, meuId])
+    const presenceNode = usersObj?.[meuId] || {}
+    const profileNode = meuUserProfile || {}
+    return {
+      ...presenceNode,
+      ...profileNode,
+      online: presenceNode?.online ?? profileNode?.online,
+      lastSeen: presenceNode?.lastSeen ?? profileNode?.lastSeen,
+      updatedAt: presenceNode?.updatedAt ?? profileNode?.updatedAt,
+      local: presenceNode?.local ?? profileNode?.local,
+      latitude: presenceNode?.latitude ?? profileNode?.latitude,
+      longitude: presenceNode?.longitude ?? profileNode?.longitude,
+    }
+  }, [usersObj, meuId, meuUserProfile])
 
   useEffect(() => {
     if (!meuUserNode) return
@@ -1906,12 +2015,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         const next = !prev
 
         if (meuId) {
-          update(ref(database, `users/${meuId}`), {
-            online: next,
+          const agoraPresence = Date.now()
+          update(ref(database, `presence/${meuId}`), {
+            online: true,
             disponivel: next,
-            lastSeen: Date.now(),
-            updatedAt: serverTimestamp(),
-          }).catch(() => {})
+            lastSeen: agoraPresence,
+            updatedAt: agoraPresence,
+          }).catch((error) => console.error('[PRESENCE] erro ao salvar presença', error))
         }
 
         showToast({
@@ -2009,13 +2119,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {typeof onBackToMode === 'function' && (
           <button
             onClick={voltarModoLimpo}
-            className="absolute left-3 top-3 z-[80] inline-flex h-8 items-center gap-1 rounded-full border border-white/80 bg-white/95 px-2.5 text-[10px] font-black text-blue-950 shadow-[0_10px_22px_rgba(15,23,42,0.14)] backdrop-blur-xl transition active:scale-[0.97] md:left-6 md:top-6 md:h-10 md:gap-1.5 md:px-4 md:text-xs"
+            className="absolute left-0 top-[5.1rem] z-[80] grid h-11 w-11 place-items-center rounded-r-[18px] border-y border-r border-white/80 bg-white/95 text-lg font-black text-blue-950 shadow-[0_12px_26px_rgba(15,23,42,0.16)] backdrop-blur-xl transition hover:w-12 active:scale-[0.97] md:top-[5.5rem] md:h-12 md:w-12 md:rounded-r-[20px] md:text-xl"
             type="button"
             title="Voltar para escolher Cliente ou Corre"
+            aria-label="Trocar modo"
           >
-            <span className="text-xs md:text-base">↩</span>
-            <span className="md:hidden">Trocar</span>
-            <span className="hidden md:inline">Trocar modo</span>
+            <span aria-hidden="true">↩</span>
           </button>
         )}
 

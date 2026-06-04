@@ -6,7 +6,17 @@
       ".indexOn": ["online", "lastSeen", "isCorre", "isProfissional"],
       "$uid": {
         ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid && (!newData.child('admin').exists() || newData.child('admin').val() === data.child('admin').val()) && (!newData.child('role').exists() || newData.child('role').val() === data.child('role').val()) && (!newData.child('profile/admin').exists() || newData.child('profile/admin').val() === data.child('profile/admin').val()) && (!newData.child('profile/role').exists() || newData.child('profile/role').val() === data.child('profile/role').val()) && (!newData.child('pushTokens').exists() || newData.child('pushTokens').val() === data.child('pushTokens').val()) && (!newData.child('cpf').exists() || newData.child('cpf').val() === data.child('cpf').val()) && (!newData.child('cpfDigits').exists() || newData.child('cpfDigits').val() === data.child('cpfDigits').val()) && (!newData.child('cpfMasked').exists() || newData.child('cpfMasked').val() === data.child('cpfMasked').val()) && (!newData.child('cpfStatus').exists() || newData.child('cpfStatus').val() === data.child('cpfStatus').val()) && (!newData.child('cpfVerificacao').exists() || newData.child('cpfVerificacao').val() === data.child('cpfVerificacao').val()) && (!newData.child('documento').exists() || newData.child('documento').val() === data.child('documento').val()) && (!newData.child('documentoVerificacao').exists() || newData.child('documentoVerificacao').val() === data.child('documentoVerificacao').val()) && (!newData.child('profile/cpf').exists() || newData.child('profile/cpf').val() === data.child('profile/cpf').val()) && (!newData.child('profile/cpfDigits').exists() || newData.child('profile/cpfDigits').val() === data.child('profile/cpfDigits').val()) && (!newData.child('profile/cpfMasked').exists() || newData.child('profile/cpfMasked').val() === data.child('profile/cpfMasked').val()) && (!newData.child('profile/cpfStatus').exists() || newData.child('profile/cpfStatus').val() === data.child('profile/cpfStatus').val()) && (!newData.child('profile/cpfVerificacao').exists() || newData.child('profile/cpfVerificacao').val() === data.child('profile/cpfVerificacao').val()) && (!newData.child('profile/documento').exists() || newData.child('profile/documento').val() === data.child('profile/documento').val()) && (!newData.child('profile/documentoVerificacao').exists() || newData.child('profile/documentoVerificacao').val() === data.child('profile/documentoVerificacao').val())"
+        ".write": "auth != null && auth.uid === $uid && (!newData.child('admin').exists() || newData.child('admin').val() === data.child('admin').val()) && (!newData.child('role').exists() || newData.child('role').val() === data.child('role').val()) && (!newData.child('profile/admin').exists() || newData.child('profile/admin').val() === data.child('profile/admin').val()) && (!newData.child('profile/role').exists() || newData.child('profile/role').val() === data.child('profile/role').val()) && (!newData.child('pushTokens').exists() || newData.child('pushTokens').val() === data.child('pushTokens').val()) && (!newData.child('cpf').exists() || newData.child('cpf').val() === data.child('cpf').val()) && (!newData.child('cpfDigits').exists() || newData.child('cpfDigits').val() === data.child('cpfDigits').val()) && (!newData.child('cpfMasked').exists() || newData.child('cpfMasked').val() === data.child('cpfMasked').val()) && (!newData.child('cpfStatus').exists() || newData.child('cpfStatus').val() === data.child('cpfStatus').val()) && (!newData.child('cpfVerificacao').exists() || newData.child('cpfVerificacao').val() === data.child('cpfVerificacao').val()) && (!newData.child('documento').exists() || newData.child('documento').val() === data.child('documento').val()) && (!newData.child('documentoVerificacao').exists() || newData.child('documentoVerificacao').val() === data.child('documentoVerificacao').val()) && (!newData.child('profile/cpf').exists() || newData.child('profile/cpf').val() === data.child('profile/cpf').val()) && (!newData.child('profile/cpfDigits').exists() || newData.child('profile/cpfDigits').val() === data.child('profile/cpfDigits').val()) && (!newData.child('profile/cpfMasked').exists() || newData.child('profile/cpfMasked').val() === data.child('profile/cpfMasked').val()) && (!newData.child('profile/cpfStatus').exists() || newData.child('profile/cpfStatus').val() === data.child('profile/cpfStatus').val()) && (!newData.child('profile/cpfVerificacao').exists() || newData.child('profile/cpfVerificacao').val() === data.child('profile/cpfVerificacao').val()) && (!newData.child('profile/documento').exists() || newData.child('profile/documento').val() === data.child('profile/documento').val()) && (!newData.child('profile/documentoVerificacao').exists() || newData.child('profile/documentoVerificacao').val() === data.child('profile/documentoVerificacao').val())",
+        "admin": { ".validate": "newData.val() === data.val()" },
+        "role": { ".validate": "newData.val() === data.val()" },
+        "pushTokens": { ".validate": "newData.val() === data.val()" },
+        "cpf": { ".validate": "newData.val() === data.val()" },
+        "cpfDigits": { ".validate": "newData.val() === data.val()" },
+        "cpfMasked": { ".validate": "newData.val() === data.val()" },
+        "cpfStatus": { ".validate": "newData.val() === data.val()" },
+        "cpfVerificacao": { ".validate": "newData.val() === data.val()" },
+        "documento": { ".validate": "newData.val() === data.val()" },
+        "documentoVerificacao": { ".validate": "newData.val() === data.val()" }
       }
     },
     "userPrivate": {
@@ -26,6 +36,13 @@
       ".indexOn": ["online", "lastSeen", "isCorre", "isProfissional"],
       "$uid": {
         ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "presence": {
+      ".read": "auth != null",
+      ".indexOn": ["online", "lastSeen", "updatedAt", "modoAtual"],
+      "$uid": {
         ".write": "auth != null && auth.uid === $uid"
       }
     },

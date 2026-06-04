@@ -60,15 +60,28 @@ async function salvarPerfilGoogle(user) {
   if (!user?.uid) return;
 
   try {
+    const agoraPresence = Date.now();
+    console.log(`[PRESENCE] salvando online true em presence/${user.uid}`, {
+      origem: "authGoogle/salvarPerfilGoogle",
+      path: `presence/${user.uid}`,
+    });
     await Promise.race([
-      update(ref(database, `users/${user.uid}`), {
-        email: user.email || "",
-        authProvider: "google",
-        anonimo: false,
-        atualizadoEm: serverTimestamp(),
+      update(ref(database, `presence/${user.uid}`), {
+        uid: user.uid,
+        id: user.uid,
+        nome: user.displayName || "Usuario",
+        fotoURL: user.photoURL || "",
+        modoAtual: "",
+        online: true,
+        lastSeen: agoraPresence,
+        updatedAt: agoraPresence,
       }),
       esperar(1800),
     ]);
+    console.log("[PRESENCE] salvou online com sucesso", {
+      uid: user.uid,
+      origem: "authGoogle/salvarPerfilGoogle",
+    });
 
     Promise.race([
       update(ref(database, `users/${user.uid}/auth`), {
@@ -82,6 +95,7 @@ async function salvarPerfilGoogle(user) {
       esperar(1800),
     ]).catch(() => {});
   } catch (err) {
+    console.error("[PRESENCE] erro ao salvar presença", err);
     console.warn("Login Google entrou, mas nao salvou auth extra agora:", err);
   }
 }

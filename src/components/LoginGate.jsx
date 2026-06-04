@@ -15,6 +15,7 @@ import {
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 import SplashScreen from '@/components/SplashScreen'
 import { perfilMinimoCompleto } from '@/lib/perfilCadastro'
+import { startPresence } from '@/lib/presence'
 
 let vinhetaJaRodouNoRuntime = false
 let googleRedirectPromise = null
@@ -71,6 +72,13 @@ async function salvarUsuarioBasico(user) {
   if (!user?.uid) return {}
 
   try {
+    console.log('[PRESENCE] uid atual', user.uid)
+    let modoAtual = ''
+    try {
+      const modoSalvo = String(localStorage.getItem('modoApp') || '').toLowerCase()
+      modoAtual = modoSalvo === 'cliente' || modoSalvo === 'corre' ? modoSalvo : ''
+    } catch {}
+
     const userRef = ref(database, `users/${user.uid}`)
     const snap = await Promise.race([get(userRef), esperar(USER_READ_TIMEOUT_MS)])
     const leituraConfirmada = typeof snap?.val === 'function'
@@ -95,6 +103,7 @@ async function salvarUsuarioBasico(user) {
 
     const basePayload = {
       uid: user.uid,
+      id: user.uid,
       email: user.email || atual.email || '',
       anonimo: !!user.isAnonymous,
       authProvider: user.isAnonymous ? 'anonimo' : 'google',
@@ -102,15 +111,48 @@ async function salvarUsuarioBasico(user) {
       updatedAt: serverTimestamp(),
     }
 
+    if (modoAtual) basePayload.modoAtual = modoAtual
     if (leituraConfirmada && !atual.criadoEm) basePayload.criadoEm = serverTimestamp()
-    if (leituraConfirmada && !atual.nome && nomeAuth) basePayload.nome = nomeAuth
+    if (!atual.nome && nomeAuth) basePayload.nome = nomeAuth
 
-    const fotoFallback = fotoSalva || (leituraConfirmada ? fotoAuth : '')
+    const fotoFallback = fotoSalva || fotoAuth
     if (!atual.fotoURL && fotoFallback) basePayload.fotoURL = fotoFallback
     if (!atual.photoURL && fotoFallback) basePayload.photoURL = fotoFallback
     if (!atual.avatarEmoji && avatarEmojiSalvo) basePayload.avatarEmoji = avatarEmojiSalvo
 
-    Promise.race([update(userRef, basePayload), esperar(1800)]).catch(() => {})
+    const userPathPatch = Object.fromEntries(
+      Object.entries(basePayload)
+        .filter(([, value]) => value !== undefined)
+        .map(([key, value]) => [`users/${user.uid}/${key}`, value])
+    )
+
+    const agoraPresence = Date.now()
+    const presencePayload = {
+      uid: user.uid,
+      id: user.uid,
+      nome: nomeAuth || atual.nome || 'Usuario',
+      fotoURL: fotoFallback || '',
+      online: true,
+      lastSeen: agoraPresence,
+      updatedAt: agoraPresence,
+      modoAtual: modoAtual || undefined,
+    }
+    const presencePatch = Object.fromEntries(
+      Object.entries(presencePayload).filter(([, value]) => value !== undefined)
+    )
+
+    console.log(`[PRESENCE] salvando online true em presence/${user.uid}`, {
+      origem: 'LoginGate/salvarUsuarioBasico',
+      path: `presence/${user.uid}`,
+    })
+    const salvarPresencePromise = update(ref(database, `presence/${user.uid}`), presencePatch)
+      .then(() => console.log('[PRESENCE] salvou online com sucesso', { uid: user.uid, origem: 'LoginGate/salvarUsuarioBasico' }))
+      .catch((error) => {
+        console.error('[PRESENCE] erro ao salvar presença', error)
+        throw error
+      })
+    await Promise.race([salvarPresencePromise, esperar(3500)]).catch(() => {})
+    Promise.race([update(ref(database), userPathPatch), esperar(1800)]).catch(() => {})
 
     const profilePayload = {
       atualizadoEm: serverTimestamp(),
@@ -184,6 +226,20 @@ export default function LoginGate({ children }) {
       host: typeof window !== 'undefined' ? window.location.hostname : '',
     })
   }, [authLoading, cadastroCompleto, checandoPerfil, renderDestino, uid])
+
+  useEffect(() => {
+    if (!user?.uid) return undefined
+
+    let nome = user.displayName || ''
+    let fotoURL = user.photoURL || ''
+
+    try {
+      nome = localStorage.getItem('meuNome') || nome
+      fotoURL = localStorage.getItem('fotoURL') || fotoURL
+    } catch {}
+
+    return startPresence(database, user, { nome, fotoURL })
+  }, [user])
 
   useEffect(() => {
     if (pularVinheta || vinhetaJaRodouNoRuntime) {

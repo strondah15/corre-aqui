@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref, serverTimestamp, update } from 'firebase/database'
 import { auth, database } from '@/lib/firebase'
+import { startPresence } from '@/lib/presence'
 
 export default function ListaPedidos() {
   const [pedidos, setPedidos] = useState([])
@@ -17,6 +18,20 @@ export default function ListaPedidos() {
 
     return () => off()
   }, [])
+
+  useEffect(() => {
+    if (!user?.uid) return undefined
+
+    let nome = user.displayName || ''
+    let fotoURL = user.photoURL || ''
+
+    try {
+      nome = localStorage.getItem('meuNome') || nome
+      fotoURL = localStorage.getItem('fotoURL') || fotoURL
+    } catch {}
+
+    return startPresence(database, user, { nome, fotoURL, modoAtual: 'corre' })
+  }, [user])
 
   useEffect(() => {
     if (!user?.uid) {

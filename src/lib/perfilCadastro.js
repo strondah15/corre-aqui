@@ -172,6 +172,10 @@ export async function salvarCadastroPerfil({ uid, authUser, form }) {
     atualizadoEm: serverTimestamp(),
   })
 
+  console.warn('[PRESENCE] caminho legado detectado', {
+    path: `usuariosOnline/${uid}`,
+    origem: 'perfilCadastro',
+  })
   await update(ref(database, `usuariosOnline/${uid}`), {
     nome,
     cidade,

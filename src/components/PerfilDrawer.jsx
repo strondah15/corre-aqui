@@ -804,6 +804,10 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         updatedAt: serverTimestamp(),
       });
 
+      console.warn("[PRESENCE] caminho legado detectado", {
+        path: `usuariosOnline/${uid}`,
+        origem: "PerfilDrawer",
+      });
       await update(ref(database, `usuariosOnline/${uid}`), {
         nome: profile.nome || "",
         fotoURL: fotoPrincipal || null,
