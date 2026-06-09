@@ -46,7 +46,7 @@ const getLabelCategoria = (id) => {
 
 function ClienteHeroMapIcon() {
   return (
-    <div className="relative h-24 w-24 md:h-36 md:w-36" aria-hidden="true">
+    <div className="relative h-16 w-16 min-[390px]:h-20 min-[390px]:w-20 md:h-32 md:w-32" aria-hidden="true">
       <div className="absolute -bottom-2 -right-2 h-full w-full rounded-[26px] bg-[#ffd91a] opacity-95 shadow-[0_18px_30px_rgba(245,158,11,0.22)] md:rounded-[38px]" />
       <div className="relative h-full w-full overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#0969ff_0%,#08b9c8_52%,#ffe35c_115%)] shadow-[0_18px_36px_rgba(15,23,42,0.22)] md:rounded-[34px]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(255,255,255,0.22),transparent_24%),radial-gradient(circle_at_82%_86%,rgba(255,217,26,0.34),transparent_36%)]" />
@@ -231,6 +231,8 @@ export default function ClienteHome({
   meuNome = 'Anônimo',
   onCriarPedido,
   onIrAoVivo,
+  onAbrirPedidos,
+  onAbrirNotificacoes,
   onlineUsers = [],
   onAbrirPerfil,
   onAgendar,
@@ -346,7 +348,7 @@ export default function ClienteHome({
     ) : null}
 
     <div className="-mx-2.5 -mt-2 min-h-[calc(100dvh-4rem)] overflow-hidden bg-white pb-24 text-slate-950 md:mx-0 md:mt-0 md:min-h-0 md:rounded-[34px] md:pb-8 md:shadow-[0_24px_90px_rgba(0,0,0,0.24)]">
-      <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_45%,#ffe36b_100%)] px-4 pb-8 pt-4 md:px-8 md:pb-12 md:pt-7">
+      <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_45%,#ffe36b_100%)] px-4 pb-5 pt-4 md:px-8 md:pb-10 md:pt-7">
         <div className="pointer-events-none absolute -right-14 top-12 h-44 w-44 rounded-[48px] bg-yellow-200/35 rotate-12 md:-right-8 md:top-6 md:h-72 md:w-72 md:rounded-[72px]" />
         <div className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full bg-white/16 md:h-64 md:w-64" />
         <div className="relative flex items-center justify-between gap-3">
@@ -377,11 +379,11 @@ export default function ClienteHome({
           <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
-              onClick={() => setCatId('servicos_gerais')}
-              className="grid h-10 w-10 place-items-center rounded-2xl bg-[#ffd91a] text-lg font-black text-blue-950 shadow-[0_10px_24px_rgba(245,158,11,0.22)] md:h-12 md:w-12 md:rounded-[20px] md:text-xl"
-              title="Serviços rápidos"
+              onClick={() => onAbrirPedidos?.()}
+              className="grid h-10 w-10 place-items-center rounded-2xl bg-[#ffd91a] text-xl font-black text-blue-950 shadow-[0_10px_24px_rgba(245,158,11,0.22)] md:h-12 md:w-12 md:rounded-[20px]"
+              title="Pedidos"
             >
-              %
+              📦
             </button>
             <button
               type="button"
@@ -393,7 +395,7 @@ export default function ClienteHome({
             </button>
             <button
               type="button"
-              onClick={() => onAbrirPerfil?.()}
+              onClick={() => onAbrirNotificacoes?.()}
               className="relative grid h-10 w-10 place-items-center rounded-2xl bg-white/86 text-xl font-black text-blue-700 md:h-12 md:w-12 md:rounded-[20px]"
               title="Notificações"
             >
@@ -402,7 +404,7 @@ export default function ClienteHome({
           </div>
         </div>
 
-        <label ref={buscaTopoRef} className="relative z-30 mt-4 flex h-14 w-full items-center gap-3 rounded-[22px] border border-white/70 bg-white/92 px-4 text-left text-lg font-black text-slate-500 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur md:mt-6 md:h-16 md:max-w-3xl md:px-5 md:text-xl">
+        <label ref={buscaTopoRef} className="relative z-30 mt-3 flex h-12 w-full items-center gap-3 rounded-[20px] border border-white/70 bg-white/92 px-4 text-left text-base font-black text-slate-500 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur md:mt-6 md:h-16 md:max-w-3xl md:px-5 md:text-xl">
           <span className="text-2xl text-blue-600">⌕</span>
           <input
             value={busca}
@@ -415,20 +417,20 @@ export default function ClienteHome({
           />
         </label>
 
-        <section className="relative mt-4 block w-full overflow-hidden rounded-[26px] bg-[linear-gradient(135deg,#ffdd28_0%,#ffe977_45%,#158cff_100%)] text-left shadow-[0_18px_34px_rgba(15,23,42,0.18)] md:mt-6 md:rounded-[34px]">
-          <div className="relative min-h-[152px] p-5 md:min-h-[230px] md:p-8">
-            <div className="absolute -right-8 -top-6 h-40 w-40 rounded-[36px] bg-blue-700/20 rotate-12 md:h-72 md:w-72 md:rounded-[64px]" />
-            <div className="absolute bottom-3 right-3 md:bottom-8 md:right-10">
+        <section className="relative mt-3 block w-full overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#ffdd28_0%,#ffe977_45%,#158cff_100%)] text-left shadow-[0_16px_30px_rgba(15,23,42,0.16)] md:mt-6 md:rounded-[34px]">
+          <div className="relative min-h-[116px] p-4 md:min-h-[210px] md:p-8">
+            <div className="absolute -right-8 -top-6 h-32 w-32 rounded-[32px] bg-blue-700/20 rotate-12 md:h-72 md:w-72 md:rounded-[64px]" />
+            <div className="absolute bottom-4 right-3 md:bottom-8 md:right-10">
               <ClienteHeroMapIcon />
             </div>
-            <div className="relative max-w-[210px] md:max-w-xl">
-              <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-700 md:text-xs">
+            <div className="relative max-w-[205px] min-[390px]:max-w-[230px] md:max-w-xl">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 md:text-xs">
                 Corre Aqui
               </div>
-              <div className="mt-1 text-3xl font-black leading-[0.92] text-slate-950 md:text-6xl">
+              <div className="mt-1 text-[1.7rem] font-black leading-[0.93] text-slate-950 min-[390px]:text-[1.9rem] md:text-6xl">
                 Encontre ajuda perto de você.
               </div>
-              <p className="mt-3 max-w-[180px] text-xs font-black leading-snug text-blue-950/75 md:mt-5 md:max-w-md md:text-base">
+              <p className="mt-3 hidden max-w-[180px] text-xs font-black leading-snug text-blue-950/75 min-[390px]:block md:mt-5 md:max-w-md md:text-base">
                 Crie um pedido pelo botão principal e acompanhe tudo pelo chat.
               </p>
             </div>
@@ -436,8 +438,8 @@ export default function ClienteHome({
         </section>
       </div>
 
-      <div className="-mt-5 bg-white px-4 pt-4 md:rounded-t-[30px] md:px-8 md:pt-6">
-        <div className="flex items-center gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
+      <div className="-mt-3 bg-white px-4 pt-3 md:rounded-t-[30px] md:px-8 md:pt-6">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
           {[
             ['🛵', 'Corre rápido', () => setModo('corre')],
             ['⚡', 'No horário', () => setModo('profissional')],
@@ -448,15 +450,15 @@ export default function ClienteHome({
               key={label}
               type="button"
               onClick={action}
-              className="flex shrink-0 items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-sm font-black text-slate-950 transition active:scale-[0.97] md:px-4 md:py-2.5 md:text-base"
+              className="flex shrink-0 items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1.5 text-xs font-black text-slate-950 transition active:scale-[0.97] md:px-4 md:py-2.5 md:text-base"
             >
-              <span className="grid h-7 w-7 place-items-center rounded-full bg-[#ffd91a] text-base shadow-[0_6px_14px_rgba(245,158,11,0.18)] md:h-8 md:w-8">{icon}</span>
+              <span className="grid h-6 w-6 place-items-center rounded-full bg-[#ffd91a] text-sm shadow-[0_6px_14px_rgba(245,158,11,0.18)] md:h-8 md:w-8 md:text-base">{icon}</span>
               {label}
             </button>
           ))}
         </div>
 
-        <div className="mt-5 flex gap-5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:mt-7 md:gap-7 [&::-webkit-scrollbar]:hidden">
+        <div className="mt-3 flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:mt-7 md:gap-7 [&::-webkit-scrollbar]:hidden">
           {categoriasRapidas.map((cat) => {
             const ativo = catId === cat.id
             return (
@@ -464,15 +466,15 @@ export default function ClienteHome({
                 key={cat.id || 'todos-mobile'}
                 type="button"
                 onClick={() => setCatId(cat.id)}
-                className="w-[72px] shrink-0 text-center md:w-[92px]"
+                className="w-[58px] shrink-0 text-center md:w-[92px]"
               >
                 <span className={[
-                  'mx-auto grid h-16 w-16 place-items-center rounded-[24px] text-3xl shadow-[0_12px_24px_rgba(15,23,42,0.08)] md:h-20 md:w-20 md:rounded-[28px] md:text-4xl',
+                  'mx-auto grid h-14 w-14 place-items-center rounded-[20px] text-2xl shadow-[0_12px_24px_rgba(15,23,42,0.08)] md:h-20 md:w-20 md:rounded-[28px] md:text-4xl',
                   ativo ? 'bg-[#ffd91a] ring-2 ring-blue-500/35' : 'bg-blue-50',
                 ].join(' ')}>
                   {cat.emoji}
                 </span>
-                <span className="mt-2 block line-clamp-2 text-[12px] font-bold leading-tight text-slate-800 md:text-sm">
+                <span className="mt-1.5 block line-clamp-2 text-[11px] font-bold leading-tight text-slate-800 md:text-sm">
                   {cat.label}
                 </span>
               </button>

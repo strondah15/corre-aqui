@@ -12,7 +12,7 @@ function tomorrow() {
 }
 
 const inputClass =
-  'mt-1 w-full rounded-xl border border-white/10 bg-white/[0.065] px-3 py-2.5 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-blue-300/35 focus:bg-white/[0.09] focus:ring-2 focus:ring-blue-400/20 md:mt-1.5 md:rounded-2xl md:py-3'
+  'mt-1 w-full rounded-xl border border-white/10 bg-white/[0.065] px-3 py-2.5 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-yellow-300/40 focus:bg-white/[0.09] focus:ring-2 focus:ring-blue-400/25 md:mt-1.5 md:rounded-2xl md:py-3'
 
 const labelClass = 'text-[10px] uppercase tracking-[0.12em] font-black text-slate-400 md:text-[11px] md:tracking-[0.14em]'
 
@@ -77,13 +77,13 @@ export default function ModalAgenda({ open, onClose, profissional }) {
         transition={{ duration: 0.24, ease: 'easeOut' }}
         className="relative max-h-[94dvh] w-full max-w-[460px] overflow-hidden rounded-[22px] border border-white/10 bg-[#07111f]/96 shadow-[0_28px_90px_rgba(0,0,0,0.58)] md:max-h-[92dvh] md:rounded-[32px] md:shadow-[0_30px_110px_rgba(0,0,0,0.62)]"
       >
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(124,58,237,0.24),transparent_36%),radial-gradient(circle_at_88%_16%,rgba(37,99,235,0.20),transparent_34%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(11,115,255,0.24),transparent_36%),radial-gradient(circle_at_88%_16%,rgba(255,217,26,0.18),transparent_34%)]" />
 
         <div className="relative border-b border-white/10 bg-white/[0.035] px-3 py-3 md:px-5 md:py-5">
           <div className="flex items-start justify-between gap-3 md:gap-4">
             <div className="min-w-0">
-              <div className="inline-flex rounded-full border border-violet-200/20 bg-violet-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-violet-100 md:px-3 md:text-[11px] md:tracking-[0.14em]">
-                📅 Agenda inteligente
+              <div className="inline-flex rounded-full border border-yellow-200/25 bg-yellow-300/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-yellow-100 md:px-3 md:text-[11px] md:tracking-[0.14em]">
+                Agenda inteligente
               </div>
 
               <h2 className="mt-2 text-xl font-black leading-tight tracking-tight text-white md:mt-3 md:text-2xl">
@@ -181,7 +181,7 @@ export default function ModalAgenda({ open, onClose, profissional }) {
             whileTap={{ scale: 0.98 }}
             disabled={salvando}
             onClick={enviar}
-            className="mt-3 w-full rounded-[16px] bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 px-4 py-3 text-sm font-black text-white shadow-[0_16px_40px_rgba(79,70,229,0.3)] transition disabled:cursor-not-allowed disabled:opacity-65 md:mt-4 md:rounded-[22px] md:py-4 md:shadow-[0_18px_46px_rgba(79,70,229,0.32)]"
+            className="mt-3 w-full rounded-[16px] bg-[linear-gradient(135deg,#0b73ff_0%,#18bfd2_50%,#ffd91a_100%)] px-4 py-3 text-sm font-black text-white shadow-[0_16px_40px_rgba(37,99,235,0.30)] transition disabled:cursor-not-allowed disabled:opacity-65 md:mt-4 md:rounded-[22px] md:py-4 md:shadow-[0_18px_46px_rgba(37,99,235,0.32)]"
           >
             {salvando ? 'Enviando...' : 'Solicitar agendamento'}
           </motion.button>

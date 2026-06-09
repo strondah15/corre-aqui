@@ -14,11 +14,11 @@ function pickNome(...values) {
 
 function getOutroUser(pedido, conversa, meuId) {
   if (pedido?.aceite?.id && pedido.aceite.id !== meuId) {
-    return { id: pedido.aceite.id, nome: pedido.aceite.nome || 'Corre' }
+    return { id: pedido.aceite.id, nome: pedido.aceite.nome || 'Corre', fotoURL: pedido.aceite.fotoURL || pedido.aceite.photoURL || '' }
   }
 
   if (pedido?.criador?.id && pedido.criador.id !== meuId) {
-    return { id: pedido.criador.id, nome: pedido.criador.nome || 'Cliente' }
+    return { id: pedido.criador.id, nome: pedido.criador.nome || 'Cliente', fotoURL: pedido.criador.fotoURL || pedido.criador.photoURL || '' }
   }
 
   if (conversa?.outroId || conversa?.outroNome) {
@@ -136,8 +136,8 @@ function ChatPageContent() {
   const outroUser = getOutroUser(pedido, conversa, authUser?.uid)
 
   return (
-    <main className="min-h-[100dvh] bg-[#020617] text-white">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col p-2 sm:p-5">
+    <main className="h-[100dvh] overflow-hidden bg-[#050b12] text-white">
+      <div className="flex h-full w-full flex-col">
         {pedidoId && authUser?.uid ? (
           <ChatMensagens
             pedidoId={pedidoId}

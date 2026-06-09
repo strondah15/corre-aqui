@@ -22,6 +22,20 @@ function safeUrl(u) {
   return ''
 }
 
+function normalizePortfolioFotos(item = {}) {
+  const raw = [
+    ...(Array.isArray(item.fotos) ? item.fotos : []),
+    ...(Array.isArray(item.photos) ? item.photos : []),
+    ...(Array.isArray(item.imagens) ? item.imagens : []),
+    item.fotoURL,
+    item.imageURL,
+    item.imagemURL,
+    item.photoURL,
+  ]
+
+  return Array.from(new Set(raw.map((foto) => safeUrl(foto)).filter(Boolean))).slice(0, 5)
+}
+
 function formatOcupadoAte(v) {
   if (!v) return ''
   const d = new Date(v)
@@ -95,6 +109,29 @@ function StatCard({ value, label, tone = 'slate' }) {
     <div className={`rounded-xl border px-2 py-2 text-center md:rounded-2xl md:px-3 md:py-3 ${tones[tone] || tones.slate}`}>
       <div className="truncate text-base font-black md:text-xl">{value}</div>
       <div className="truncate text-[9px] font-black uppercase tracking-[0.1em] text-slate-400 md:text-[10px] md:tracking-[0.14em]">{label}</div>
+    </div>
+  )
+}
+
+function FichaCard({ icon, label, value, tone = 'blue' }) {
+  const tones = {
+    blue: 'border-blue-300/20 bg-blue-400/10 text-blue-100',
+    yellow: 'border-yellow-300/25 bg-yellow-300/10 text-yellow-100',
+    emerald: 'border-emerald-300/25 bg-emerald-400/10 text-emerald-100',
+    slate: 'border-white/10 bg-white/[0.04] text-slate-100',
+  }
+
+  return (
+    <div className={`rounded-[16px] border p-3 md:rounded-[20px] md:p-3.5 ${tones[tone] || tones.slate}`}>
+      <div className="flex items-center gap-2">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-lg shadow-[0_10px_24px_rgba(0,0,0,0.20)]">
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <div className="text-[10px] font-black uppercase tracking-[0.12em] opacity-60">{label}</div>
+          <div className="mt-0.5 line-clamp-2 text-sm font-black leading-tight">{value || 'Não informado'}</div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -208,6 +245,26 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       ? profCategoriasRaw.filter(Boolean).join(', ')
       : String(profCategoriasRaw || '').trim()
 
+    const portfolio = normalizeList(
+      user.profPortfolio,
+      profile.profPortfolio,
+      user.portfolio,
+      profile.portfolio,
+      prof.portfolio,
+      prof.profPortfolio
+    )
+      .map((item, index) => ({
+        id: String(item?.id || item?.key || `portfolio_${index}`),
+        titulo: pickText(item?.titulo, item?.title, 'Trabalho cadastrado'),
+        descricao: pickText(item?.descricao, item?.description),
+        valor: pickText(item?.valor, item?.preco, item?.price),
+        categoria: pickText(item?.categoria, item?.category),
+        fotos: normalizePortfolioFotos(item),
+      }))
+      .map((item) => ({ ...item, fotoURL: item.fotos[0] || '' }))
+      .filter((item) => item.titulo || item.descricao || item.valor || item.categoria || item.fotos.length)
+      .slice(0, 6)
+
     const correTitulo = pickText(user.correTitulo, corre?.titulo, 'Corre rápido')
     const correTransporte = pickText(user.correTransporte, corre?.transporte)
     const correDisponibilidade = pickText(user.correDisponibilidade, corre?.disponibilidade)
@@ -258,6 +315,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       profPreco,
       profExperiencia,
       profCategorias,
+      portfolio,
       correTitulo,
       correTransporte,
       correDisponibilidade,
@@ -409,13 +467,22 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
               </section>
             ) : null}
 
-              <section className="rounded-[16px] border border-white/10 bg-white/[0.04] p-3 md:rounded-[24px] md:p-4">
-              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Ficha técnica</div>
-              <div className="mt-3">
-                <InfoLine label="Região" value={dados.cidade} />
-                <InfoLine label="Status" value={dados.emServico ? 'Em serviço' : 'Disponível'} />
-                <InfoLine label="Agenda" value={dados.agendaAberta ? 'Aberta para pedidos' : 'Fechada no momento'} />
-                <InfoLine label="Verificação" value={dados.perfilVerificado ? 'Perfil verificado' : 'Em validação'} />
+            <section className="overflow-hidden rounded-[18px] border border-blue-300/15 bg-[linear-gradient(135deg,rgba(11,115,255,0.12),rgba(255,217,26,0.06))] p-3 md:rounded-[26px] md:p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-200">Ficha técnica</div>
+                  <h3 className="mt-1 text-base font-black text-white md:text-lg">Dados rápidos do perfil</h3>
+                </div>
+                <span className="rounded-full border border-yellow-300/30 bg-yellow-300/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-yellow-100">
+                  Premium
+                </span>
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <FichaCard icon="📍" label="Região" value={dados.cidade} tone="blue" />
+                <FichaCard icon={dados.emServico ? '⚡' : '✅'} label="Status" value={dados.emServico ? 'Em serviço' : 'Disponível'} tone={dados.emServico ? 'yellow' : 'emerald'} />
+                <FichaCard icon="📅" label="Agenda" value={dados.agendaAberta ? 'Aberta para pedidos' : 'Fechada no momento'} tone={dados.agendaAberta ? 'blue' : 'slate'} />
+                <FichaCard icon="🛡️" label="Confiança" value={dados.perfilVerificado ? 'Perfil verificado' : 'Em validação'} tone={dados.perfilVerificado ? 'emerald' : 'slate'} />
               </div>
             </section>
 
@@ -436,6 +503,47 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
                 </ServicePanel>
               ) : null}
             </div>
+
+            {dados.portfolio.length ? (
+              <section className="rounded-[18px] border border-white/10 bg-white/[0.05] p-3 md:rounded-[26px] md:p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-200">Portfólio</div>
+                    <h3 className="mt-1 text-base font-black text-white md:text-lg">Trabalhos oferecidos</h3>
+                  </div>
+                  <span className="rounded-full border border-yellow-300/30 bg-yellow-300/12 px-3 py-1 text-[10px] font-black text-yellow-100">
+                    {dados.portfolio.length}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {dados.portfolio.map((item) => (
+                    <div key={item.id} className="rounded-[16px] border border-white/10 bg-white/[0.04] p-3">
+                      {item.fotos?.length ? (
+                        <div className="mb-3 grid grid-cols-5 gap-1.5">
+                          {item.fotos.slice(0, 5).map((foto, index) => (
+                            <div
+                              key={`${item.id}_${index}`}
+                              className={[
+                                'bg-cover bg-center shadow-[0_14px_34px_rgba(0,0,0,0.22)] ring-1 ring-white/10',
+                                index === 0 ? 'col-span-2 row-span-2 aspect-square rounded-[14px]' : 'aspect-square rounded-xl',
+                              ].join(' ')}
+                              style={{ backgroundImage: `url(${foto})` }}
+                              aria-label="Foto do trabalho"
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="line-clamp-2 text-sm font-black text-white">{item.titulo}</div>
+                      {item.descricao ? <p className="mt-1 line-clamp-2 text-xs font-semibold leading-relaxed text-slate-400">{item.descricao}</p> : null}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {item.categoria ? <span className="rounded-full border border-blue-300/20 bg-blue-400/10 px-2.5 py-1 text-[10px] font-black text-blue-100">{item.categoria}</span> : null}
+                        {item.valor ? <span className="rounded-full border border-yellow-300/25 bg-yellow-300/10 px-2.5 py-1 text-[10px] font-black text-yellow-100">{item.valor}</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </main>
 
           <aside className="space-y-2.5 md:space-y-3">

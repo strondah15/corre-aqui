@@ -42,6 +42,7 @@ const initialProfile = {
   preco: "",
   profRegiao: "",
   profExperiencia: "",
+  profPortfolio: [],
   plano: "Free",
   statusProfissional: "disponivel",
   ocupadoAte: "",
@@ -178,6 +179,46 @@ function pickFoto(...vals) {
   return vals.map((v) => String(v || "").trim()).find(isFotoValor) || "";
 }
 
+function normalizePortfolioFotos(data = {}) {
+  const raw = [
+    ...(Array.isArray(data.fotos) ? data.fotos : []),
+    ...(Array.isArray(data.photos) ? data.photos : []),
+    ...(Array.isArray(data.imagens) ? data.imagens : []),
+    data.fotoURL,
+    data.imageURL,
+    data.imagemURL,
+    data.photoURL,
+  ];
+
+  return Array.from(new Set(raw.map((foto) => String(foto || "").trim()).filter(isFotoValor))).slice(0, 5);
+}
+
+function normalizePortfolio(value) {
+  const list = Array.isArray(value)
+    ? value
+    : value && typeof value === "object"
+      ? Object.values(value)
+      : [];
+
+  return list
+    .map((item, index) => {
+      const data = item && typeof item === "object" ? item : {};
+      const fotos = normalizePortfolioFotos(data);
+      return {
+        id: String(data.id || data.key || `portfolio_${index}`),
+        titulo: String(data.titulo || data.title || "").trim(),
+        descricao: String(data.descricao || data.description || "").trim(),
+        valor: String(data.valor || data.preco || data.price || "").trim(),
+        categoria: String(data.categoria || data.category || "").trim(),
+        fotoURL: fotos[0] || "",
+        fotos,
+        fotoImgBbId: String(data.fotoImgBbId || data.imageId || "").trim(),
+      };
+    })
+    .filter((item) => item.titulo || item.descricao || item.valor || item.categoria || item.fotos.length)
+    .slice(0, 12);
+}
+
 function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error(message)), ms);
@@ -188,10 +229,22 @@ function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
   });
 }
 
-export default function PerfilDrawer({ open, onClose, uid }) {
+export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil" }) {
   const [tab, setTab] = useState("perfil");
+  const [profSection, setProfSection] = useState("");
 
   const [profile, setProfile] = useState(initialProfile);
+  const [portfolioDraft, setPortfolioDraft] = useState({
+    titulo: "",
+    descricao: "",
+    valor: "",
+    categoria: "",
+    fotoURL: "",
+    fotos: [],
+    fotoImgBbId: "",
+  });
+  const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
+  const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -236,6 +289,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
   }, [open, uid]);
 
   useEffect(() => {
+    if (!open) return;
+    setTab(initialTab || "perfil");
+    setProfSection("");
+  }, [open, initialTab]);
+
+  useEffect(() => {
     if (!open || !uid) return;
 
     const userRef = ref(database, userBasePath);
@@ -261,6 +320,14 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       });
 
       const profileData = data.profile || {};
+      const portfolioSalvo = normalizePortfolio(
+        profileData.profPortfolio ||
+          data.profPortfolio ||
+          profileData.portfolio ||
+          data.portfolio ||
+          profileData.profissional?.portfolio ||
+          data.profissional?.portfolio,
+      );
       const fotoPrincipal = pickFoto(
         data.fotoURL,
         profileData.fotoURL,
@@ -285,6 +352,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         photoURL: prev.photoURL || fotoPrincipal,
         avatar: prev.avatar || fotoPrincipal || avatarEmoji || "",
         avatarEmoji: prev.avatarEmoji || avatarEmoji,
+        profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
       }));
 
       if (!settingsLoadedRef.current) {
@@ -311,6 +379,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           const data = snap.val() || {};
           const corre = data.corre || {};
           const profissional = data.profissional || {};
+          const portfolioSalvo = normalizePortfolio(
+            data.profPortfolio ||
+              data.portfolio ||
+              profissional.portfolio ||
+              profissional.profPortfolio,
+          );
           const fotoPrincipal = pickFoto(
             data.fotoURL,
             data.avatar,
@@ -348,6 +422,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             statusProfissional: data.statusProfissional || data.profissional?.statusProfissional || prev.statusProfissional || "disponivel",
             ocupadoAte: data.ocupadoAte || data.profissional?.ocupadoAte || prev.ocupadoAte || "",
             agendaAberta: data.agendaAberta ?? data.profissional?.agendaAberta ?? prev.agendaAberta ?? true,
+            profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
           };
         });
       }
@@ -663,6 +738,106 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     await handleProfilePhotoUpload(file);
   }
 
+  async function handlePortfolioPhotoUpload(file) {
+    const currentUser = auth.currentUser;
+    const currentUid = currentUser?.uid || "";
+    const currentFotos = Array.isArray(portfolioDraft.fotos)
+      ? portfolioDraft.fotos
+      : normalizePortfolioFotos(portfolioDraft);
+
+    setPortfolioPhotoError("");
+
+    if (!currentUid) {
+      setPortfolioPhotoError("Entre novamente para anexar a foto.");
+      return;
+    }
+
+    if (uid && currentUid !== uid) {
+      setPortfolioPhotoError("Sessao diferente do perfil aberto. Entre novamente.");
+      return;
+    }
+
+    if (!file?.type?.startsWith("image/")) {
+      setPortfolioPhotoError("Escolha um arquivo de imagem.");
+      return;
+    }
+
+    if (file.size > PHOTO_MAX_BYTES) {
+      setPortfolioPhotoError("Escolha uma imagem de ate 2 MB.");
+      return;
+    }
+
+    if (currentFotos.length >= 5) {
+      setPortfolioPhotoError("Voce pode anexar ate 5 fotos por trabalho.");
+      return;
+    }
+
+    try {
+      setPortfolioPhotoUploading(true);
+      const idToken = await currentUser.getIdToken(true);
+      const uploaded = await promiseComTimeout(
+        uploadProfilePhotoToImgBB(file, {
+          uid: currentUid,
+          idToken,
+        }),
+        30000,
+        "portfolio_upload_timeout",
+      );
+
+      setPortfolioDraft((prev) => ({
+        ...prev,
+        fotoURL: prev.fotoURL || uploaded.url,
+        fotos: [...new Set([...(Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)), uploaded.url])].slice(0, 5),
+        fotoImgBbId: uploaded.imageId || "",
+      }));
+    } catch (error) {
+      const code = String(error?.code || error?.message || "");
+      setPortfolioPhotoError(
+        error?.message === "portfolio_upload_timeout"
+          ? "A foto demorou para enviar. Tente novamente."
+          : error?.message === "foto_grande"
+            ? "Escolha uma imagem de ate 2 MB."
+            : code.toLowerCase().includes("permission") || code.toLowerCase().includes("auth")
+              ? "Entre novamente para anexar a foto."
+              : "Nao foi possivel anexar a foto.",
+      );
+    } finally {
+      setPortfolioPhotoUploading(false);
+    }
+  }
+
+  async function alterarFotoPortfolio(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length) return;
+
+    const currentFotos = Array.isArray(portfolioDraft.fotos)
+      ? portfolioDraft.fotos
+      : normalizePortfolioFotos(portfolioDraft);
+    const vagas = Math.max(0, 5 - currentFotos.length);
+
+    if (vagas <= 0) {
+      setPortfolioPhotoError("Voce pode anexar ate 5 fotos por trabalho.");
+      return;
+    }
+
+    for (const file of files.slice(0, vagas)) {
+      await handlePortfolioPhotoUpload(file);
+    }
+  }
+
+  function removerFotoPortfolioDraft(fotoURL) {
+    setPortfolioDraft((prev) => {
+      const fotos = (Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)).filter((foto) => foto !== fotoURL);
+      return {
+        ...prev,
+        fotos,
+        fotoURL: fotos[0] || "",
+      };
+    });
+    setPortfolioPhotoError("");
+  }
+
   const salvar = async () => {
     if (!uid) return;
 
@@ -670,6 +845,8 @@ export default function PerfilDrawer({ open, onClose, uid }) {
     setSalvo(false);
 
     try {
+      const profPortfolio = normalizePortfolio(profile.profPortfolio);
+
       const corre = {
         ativo: !!profile.isCorre,
         titulo: profile.correTitulo || "Corre rápido",
@@ -691,6 +868,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         statusProfissional: profile.statusProfissional || "disponivel",
         ocupadoAte: profile.ocupadoAte || "",
         agendaAberta: profile.agendaAberta !== false,
+        portfolio: profPortfolio,
       };
 
       const mapSettings = {
@@ -727,6 +905,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
         avatar: fotoPrincipal || profile.avatarEmoji || "",
+        profPortfolio,
         corre: {
           ...corre,
           fotoURL: fotoPrincipal || null,
@@ -775,6 +954,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         photoURL: fotoPrincipal || null,
         avatar: fotoPrincipal || profile.avatarEmoji || "",
         avatarEmoji: profile.avatarEmoji || "",
+        profPortfolio,
         cidade: profile.cidade || "",
         bio: profile.bio || "",
         isCorre: !!profile.isCorre,
@@ -868,6 +1048,66 @@ export default function PerfilDrawer({ open, onClose, uid }) {
       : pushPermission === "denied"
         ? "border-rose-200 bg-rose-50 text-rose-700"
         : "border-amber-200 bg-amber-50 text-amber-700";
+  const professionalMode = tab === "profissional";
+  const taxaConclusaoProf = serviceStats.total
+    ? Math.max(0, Math.round(((serviceStats.total - serviceStats.problemas) / serviceStats.total) * 100))
+    : 0;
+  const portfolioItems = normalizePortfolio(profile.profPortfolio);
+  const portfolioDraftFotos = normalizePortfolioFotos(portfolioDraft);
+  const profPages = {
+    perfilPublico: {
+      title: "Meu perfil publico",
+      desc: "Dados que aparecem para clientes.",
+    },
+    portfolio: {
+      title: "Portfolio de servicos",
+      desc: "Adicione trabalhos para os clientes conhecerem seu servico.",
+    },
+    avaliacoes: {
+      title: "Avaliacoes",
+      desc: "Reputacao, nota e historico de confianca.",
+    },
+    config: {
+      title: "Configuracoes",
+      desc: "Disponibilidade, agenda e visibilidade.",
+    },
+    ajuda: {
+      title: "Central de ajuda",
+      desc: "Boas praticas para trabalhar com seguranca.",
+    },
+  };
+  const profPage = profPages[profSection] || profPages.perfilPublico;
+  const updatePortfolioDraft = (field, value) => {
+    setPortfolioDraft((prev) => ({ ...prev, [field]: value }));
+  };
+  const adicionarPortfolioItem = () => {
+    const fotos = normalizePortfolioFotos(portfolioDraft);
+    const item = {
+      id: `portfolio_${Date.now()}`,
+      titulo: portfolioDraft.titulo.trim(),
+      descricao: portfolioDraft.descricao.trim(),
+      valor: portfolioDraft.valor.trim(),
+      categoria: portfolioDraft.categoria.trim(),
+      fotoURL: fotos[0] || "",
+      fotos,
+      fotoImgBbId: portfolioDraft.fotoImgBbId || "",
+    };
+
+    if (!item.titulo && !item.descricao && !item.valor && !item.categoria && !item.fotos.length) return;
+
+    setProfile((prev) => ({
+      ...prev,
+      profPortfolio: [...normalizePortfolio(prev.profPortfolio), item].slice(0, 12),
+    }));
+    setPortfolioDraft({ titulo: "", descricao: "", valor: "", categoria: "", fotoURL: "", fotos: [], fotoImgBbId: "" });
+    setPortfolioPhotoError("");
+  };
+  const removerPortfolioItem = (id) => {
+    setProfile((prev) => ({
+      ...prev,
+      profPortfolio: normalizePortfolio(prev.profPortfolio).filter((item) => item.id !== id),
+    }));
+  };
 
   return (
     <div className="fixed inset-0 z-[100000] bg-slate-950">
@@ -880,14 +1120,12 @@ export default function PerfilDrawer({ open, onClose, uid }) {
         initial={{ opacity: 0, scale: 0.985 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ type: "spring", stiffness: 120, damping: 18 }}
-        className="
-          fixed inset-0 h-screen w-screen
-          bg-white text-slate-950
-          border-0
-          shadow-[0_30px_120px_rgba(15,23,42,0.35)]
-          overflow-y-auto
-        "
+        className={[
+          "fixed inset-0 h-screen w-screen border-0 shadow-[0_30px_120px_rgba(15,23,42,0.35)] overflow-y-auto",
+          professionalMode ? "bg-[#050b12] text-white" : "bg-white text-slate-950",
+        ].join(" ")}
       >
+        {!professionalMode && (
         <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
           <div className="mx-auto w-full max-w-7xl px-3 py-2.5 md:px-8 md:py-4 flex items-center justify-between gap-3">
             <div>
@@ -909,9 +1147,11 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             </button>
           </div>
         </div>
+        )}
 
-        <div className="mx-auto w-full max-w-7xl p-2.5 md:p-6">
+        <div className={professionalMode ? "mx-auto min-h-screen w-full max-w-5xl p-3 pb-24 md:p-6 md:pb-28" : "mx-auto w-full max-w-7xl p-2.5 md:p-6"}>
           {/* FOTO + HEADER */}
+          {!professionalMode && (
           <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#0b73ff_0%,#18bfd2_48%,#ffe36b_100%)] p-3 text-white shadow-[0_22px_70px_rgba(37,99,235,0.22)] md:rounded-[36px] md:p-6">
             <div className="flex flex-col items-center text-center">
               <label className={["cursor-pointer relative group", fotoSalvando ? "pointer-events-none opacity-80" : ""].join(" ")}>
@@ -1031,8 +1271,10 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               />
             </div>
           </div>
+          )}
 
           {/* MENU DO PERFIL */}
+          {!professionalMode && (
           <div className="mt-3 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.10)] md:mt-5 md:rounded-[30px] md:p-2">
             <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6 md:gap-2">
               {["perfil", "corre", "profissional", "config", "monetizacao", "patentes"].map(
@@ -1058,6 +1300,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
               )}
             </div>
           </div>
+          )}
 
           {/* PERFIL */}
           {tab === "perfil" && (
@@ -1535,61 +1778,174 @@ export default function PerfilDrawer({ open, onClose, uid }) {
 
           {/* PROFISSIONAL */}
           {tab === "profissional" && (
-            <div className="mt-3 rounded-[20px] bg-[#0b1628] border border-white/10 p-3 space-y-3 md:mt-5 md:rounded-[28px] md:p-4 md:space-y-4">
-              <label className="flex items-center justify-between gap-3 rounded-xl bg-slate-900/70 border border-white/10 px-3 py-3 md:gap-4 md:rounded-2xl md:px-4">
-                <div>
-                  <div className="text-sm font-extrabold text-white">
-                    Modo profissional
+            <div className="min-h-[calc(100dvh-7rem)] space-y-3 md:space-y-4">
+              {!profSection ? (
+              <>
+              <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[#0b1628] p-3 text-white shadow-[0_22px_70px_rgba(15,23,42,0.20)] md:rounded-[32px] md:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/10 text-lg font-black transition hover:bg-white/15"
+                    title="Voltar para perfil"
+                  >
+                    ←
+                  </button>
+                  <div className="text-sm font-black md:text-base">Perfil profissional</div>
+                  <button
+                    type="button"
+                    onClick={() => setProfSection("config")}
+                    className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/10 text-lg font-black transition hover:bg-white/15"
+                    title="Configurações"
+                  >
+                    ⚙
+                  </button>
+                </div>
+
+                <div className="mt-5 flex flex-col items-center text-center">
+                  {fotoPrincipal ? (
+                    <div
+                      className="h-20 w-20 rounded-full border-4 border-white/15 bg-cover bg-center shadow-[0_16px_38px_rgba(0,0,0,0.28)] md:h-24 md:w-24"
+                      style={{ backgroundImage: `url(${JSON.stringify(fotoPrincipal)})` }}
+                      aria-label="Foto do perfil profissional"
+                    />
+                  ) : (
+                    <div className="grid h-20 w-20 place-items-center rounded-full border-4 border-white/15 bg-white/90 text-3xl text-blue-700 shadow-[0_16px_38px_rgba(0,0,0,0.28)] md:h-24 md:w-24">
+                      {profile.avatarEmoji || "👤"}
+                    </div>
+                  )}
+
+                  <div className="mt-3 text-xl font-black md:text-2xl">
+                    {profile.nome || "Seu nome"}
+                    {perfilVerificadoOficial ? <span className="ml-1 text-[#ffd91a]">✓</span> : null}
                   </div>
-                  <div className="text-xs text-slate-400">
-                    Apareça na lista de profissionais para clientes.
+
+                  <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5 text-xs font-bold text-slate-300">
+                    <span className="rounded-full bg-[#ffd91a] px-2.5 py-1 font-black text-blue-950">
+                      {serviceStats.notaMedia ? `★ ${serviceStats.notaMedia.toFixed(1)}` : "Sem nota"}
+                      {serviceStats.avaliacoes ? ` (${serviceStats.avaliacoes})` : ""}
+                    </span>
+                    <span>{profile.titulo || "Profissional local"}</span>
+                  </div>
+
+                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-500/12 px-3 py-1 text-xs font-black text-emerald-300">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.75)]" />
+                    {profile.statusProfissional === "em_servico" ? "Em serviço" : profile.visivel ? "Online" : "Oculto"}
+                  </div>
+
+                  <div className="mt-5 grid w-full grid-cols-3 divide-x divide-white/10">
+                    <div className="px-2">
+                      <div className="text-xl font-black md:text-2xl">{serviceStats.comoProfissional || serviceStats.comoCorre}</div>
+                      <div className="text-[10px] font-bold text-slate-400 md:text-xs">Serviços</div>
+                    </div>
+                    <div className="px-2">
+                      <div className="text-xl font-black md:text-2xl">
+                        {serviceStats.notaMedia ? serviceStats.notaMedia.toFixed(1) : "--"} <span className="text-[#ffd91a]">★</span>
+                      </div>
+                      <div className="text-[10px] font-bold text-slate-400 md:text-xs">Avaliação</div>
+                    </div>
+                    <div className="px-2">
+                      <div className="text-xl font-black md:text-2xl">
+                        {serviceStats.total ? Math.max(0, Math.round(((serviceStats.total - serviceStats.problemas) / serviceStats.total) * 100)) : 0}%
+                      </div>
+                      <div className="text-[10px] font-bold text-slate-400 md:text-xs">Concluídos</div>
+                    </div>
                   </div>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={profile.isProfissional}
-                  onChange={(e) =>
-                    setProfile((p) => ({
-                      ...p,
-                      isProfissional: e.target.checked,
-                    }))
-                  }
-                  className="w-5 h-5 accent-blue-600"
-                />
-              </label>
+              </section>
 
-              {profile.isProfissional && (
-                <div className="space-y-3 md:space-y-4">
+              <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-2">
+                {[
+                  ["perfilPublico", "👤", "Meu perfil público", "Como clientes veem seu perfil."],
+                  ["portfolio", "▣", "Portfólio de serviços", "Serviços, preço, região e experiência."],
+                  ["avaliacoes", "★", "Avaliações", "Nota, histórico e reputação."],
+                  ["config", "⚙", "Configurações", "Disponibilidade e agenda."],
+                  ["ajuda", "?", "Central de ajuda", "Boas práticas e segurança."],
+                ].map(([id, icon, label, desc]) => {
+                  const active = profSection === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setProfSection(id)}
+                      className={[
+                        "flex w-full items-center gap-3 rounded-[18px] px-3 py-3 text-left transition md:rounded-[22px] md:px-4",
+                        active ? "bg-blue-50 text-blue-950" : "text-slate-700 hover:bg-slate-50",
+                      ].join(" ")}
+                    >
+                      <span className={["grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-base", active ? "bg-[#ffd91a]" : "bg-slate-100"].join(" ")}>
+                        {icon}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-black md:text-base">{label}</span>
+                        <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500">{desc}</span>
+                      </span>
+                      <span className="text-xl font-black text-slate-400">›</span>
+                    </button>
+                  );
+                })}
+              </section>
 
-                  <Field label="Título profissional">
-                    <input
-                      value={profile.titulo}
-                      onChange={(e) =>
-                        setProfile((p) => ({ ...p, titulo: e.target.value }))
-                      }
-                      placeholder="Ex: Eletricista, serviçodor, diarista..."
-                      className={inputClass()}
-                    />
-                  </Field>
+              </>
+              ) : (
+              <>
+              <section className="rounded-[24px] border border-white/10 bg-[#0b1628] p-3 text-white shadow-[0_18px_45px_rgba(15,23,42,0.16)] md:rounded-[30px] md:p-4">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setProfSection("")}
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/10 text-lg font-black transition hover:bg-white/15"
+                    title="Voltar"
+                  >
+                    ←
+                  </button>
+                  <div className="min-w-0">
+                    <div className="truncate text-base font-black">{profPage.title}</div>
+                    <div className="mt-0.5 truncate text-xs font-semibold text-slate-400">{profPage.desc}</div>
+                  </div>
+                </div>
+              </section>
 
-                  <Field label="Descrição do serviço">
-                    <textarea
-                      value={profile.descricao}
-                      onChange={(e) =>
-                        setProfile((p) => ({ ...p, descricao: e.target.value }))
-                      }
-                      placeholder="Conte o que você faz, região que atende e diferenciais."
-                      className={inputClass("min-h-20 resize-y md:min-h-28")}
-                    />
-                  </Field>
+              {profSection === "perfilPublico" && (
+                <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                  <div className="mb-3">
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Meu perfil público</div>
+                    <div className="mt-1 text-sm font-bold text-slate-500">Essas informações aparecem para clientes quando procuram um profissional.</div>
+                  </div>
+                  <div className="space-y-3 md:space-y-4">
+                    <Field label="Título profissional">
+                      <input
+                        value={profile.titulo}
+                        onChange={(e) => setProfile((p) => ({ ...p, titulo: e.target.value }))}
+                        placeholder="Ex: Eletricista, diarista, técnico..."
+                        className={inputClass()}
+                      />
+                    </Field>
 
+                    <Field label="Descrição do serviço">
+                      <textarea
+                        value={profile.descricao}
+                        onChange={(e) => setProfile((p) => ({ ...p, descricao: e.target.value }))}
+                        placeholder="Conte o que você faz, região que atende e diferenciais."
+                        className={inputClass("min-h-20 resize-y md:min-h-28")}
+                      />
+                    </Field>
+                  </div>
+
+                </section>
+              )}
+
+              {profSection === "portfolio" && (
+                <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                  <div className="mb-3">
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Portfólio de serviços</div>
+                    <div className="mt-1 text-sm font-bold text-slate-500">Organize o que você oferece sem criar uma tela pesada.</div>
+                  </div>
                   <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
                     <Field label="Preço base">
                       <input
                         value={profile.preco}
-                        onChange={(e) =>
-                          setProfile((p) => ({ ...p, preco: e.target.value }))
-                        }
+                        onChange={(e) => setProfile((p) => ({ ...p, preco: e.target.value }))}
                         placeholder="Ex: 50"
                         inputMode="decimal"
                         className={inputClass()}
@@ -1599,29 +1955,17 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <Field label="WhatsApp">
                       <input
                         value={profile.whatsapp}
-                        onChange={(e) =>
-                          setProfile((p) => ({
-                            ...p,
-                            whatsapp: e.target.value,
-                          }))
-                        }
+                        onChange={(e) => setProfile((p) => ({ ...p, whatsapp: e.target.value }))}
                         placeholder="21999999999"
                         inputMode="tel"
                         className={inputClass()}
                       />
                     </Field>
-                  </div>
 
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
                     <Field label="Região profissional">
                       <input
                         value={profile.profRegiao}
-                        onChange={(e) =>
-                          setProfile((p) => ({
-                            ...p,
-                            profRegiao: e.target.value,
-                          }))
-                        }
+                        onChange={(e) => setProfile((p) => ({ ...p, profRegiao: e.target.value }))}
                         placeholder="Ex: Baixada, Centro, Zona Norte"
                         className={inputClass()}
                       />
@@ -1630,18 +1974,228 @@ export default function PerfilDrawer({ open, onClose, uid }) {
                     <Field label="Experiência profissional">
                       <input
                         value={profile.profExperiencia}
-                        onChange={(e) =>
-                          setProfile((p) => ({
-                            ...p,
-                            profExperiencia: e.target.value,
-                          }))
-                        }
+                        onChange={(e) => setProfile((p) => ({ ...p, profExperiencia: e.target.value }))}
                         placeholder="Ex: 5 anos como eletricista"
                         className={inputClass()}
                       />
                     </Field>
                   </div>
-                </div>
+
+                  <div className="mt-3 rounded-[20px] border border-blue-100 bg-blue-50 p-3 md:rounded-[24px] md:p-4">
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Adicionar trabalho</div>
+                    <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                      <input
+                        value={portfolioDraft.titulo}
+                        onChange={(e) => updatePortfolioDraft("titulo", e.target.value)}
+                        placeholder="Nome do trabalho"
+                        className={inputClass()}
+                      />
+                      <input
+                        value={portfolioDraft.valor}
+                        onChange={(e) => updatePortfolioDraft("valor", e.target.value)}
+                        placeholder="Valor ou faixa"
+                        className={inputClass()}
+                      />
+                      <input
+                        value={portfolioDraft.categoria}
+                        onChange={(e) => updatePortfolioDraft("categoria", e.target.value)}
+                        placeholder="Categoria"
+                        className={inputClass()}
+                      />
+                      <input
+                        value={portfolioDraft.descricao}
+                        onChange={(e) => updatePortfolioDraft("descricao", e.target.value)}
+                        placeholder="Descricao curta"
+                        className={inputClass()}
+                      />
+                    </div>
+                    <div className="mt-3 rounded-[18px] border border-white bg-white/80 p-2.5">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-black text-blue-950">Fotos do servico feito</div>
+                          <div className="mt-0.5 text-xs font-semibold text-slate-500">Anexe ate 5 fotos para mostrar acabamento e resultado.</div>
+                        </div>
+                        <label className={["grid h-10 cursor-pointer place-items-center rounded-2xl bg-white px-4 text-xs font-black text-blue-700 shadow-sm ring-1 ring-blue-100 transition active:scale-[0.98]", portfolioPhotoUploading || portfolioDraftFotos.length >= 5 ? "pointer-events-none opacity-60" : ""].join(" ")}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
+                            className="hidden"
+                            onChange={alterarFotoPortfolio}
+                          />
+                          {portfolioPhotoUploading ? "Enviando..." : portfolioDraftFotos.length ? `Anexar mais (${portfolioDraftFotos.length}/5)` : "Anexar fotos"}
+                        </label>
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-5 gap-1.5">
+                        {Array.from({ length: 5 }).map((_, index) => {
+                          const foto = portfolioDraftFotos[index];
+                          return (
+                            <div key={foto || index} className="relative grid aspect-square place-items-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-[10px] font-black text-slate-400">
+                              {foto ? (
+                                <>
+                                  <span
+                                    className="h-full w-full bg-cover bg-center"
+                                    style={{ backgroundImage: `url(${foto})` }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removerFotoPortfolioDraft(foto)}
+                                    className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-slate-950/80 text-[10px] font-black text-white"
+                                    aria-label="Remover foto"
+                                  >
+                                    ×
+                                  </button>
+                                </>
+                              ) : (
+                                "+"
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="mt-1">
+                        {portfolioPhotoError ? (
+                          <div className="mt-1 text-xs font-black text-rose-600">{portfolioPhotoError}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={adicionarPortfolioItem}
+                      className="mt-3 h-11 w-full rounded-2xl bg-blue-700 px-4 text-sm font-black text-white shadow-[0_12px_28px_rgba(37,99,235,0.20)] transition hover:bg-blue-800 active:scale-[0.98]"
+                    >
+                      Adicionar ao portfolio
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    {portfolioItems.length ? (
+                      portfolioItems.map((item) => (
+                        <div key={item.id} className="rounded-[18px] border border-slate-200 bg-slate-50 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="line-clamp-2 text-sm font-black text-blue-950">{item.titulo || "Trabalho sem titulo"}</div>
+                              {item.descricao ? <div className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600">{item.descricao}</div> : null}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removerPortfolioItem(item.id)}
+                              className="shrink-0 rounded-xl border border-rose-200 bg-white px-3 py-1 text-xs font-black text-rose-600"
+                            >
+                              Remover
+                            </button>
+                          </div>
+                          {item.fotos?.length ? (
+                            <div className="mt-2 grid grid-cols-5 gap-1.5">
+                              {item.fotos.slice(0, 5).map((foto, index) => (
+                                <div
+                                  key={`${item.id}_foto_${index}`}
+                                  className="aspect-square rounded-xl bg-cover bg-center shadow-sm ring-1 ring-slate-200"
+                                  style={{ backgroundImage: `url(${foto})` }}
+                                  aria-label="Foto do trabalho"
+                                />
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {item.categoria ? <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-slate-600">{item.categoria}</span> : null}
+                            {item.valor ? <span className="rounded-full bg-[#ffd91a] px-2.5 py-1 text-[11px] font-black text-blue-950">{item.valor}</span> : null}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500">
+                        Nenhum trabalho cadastrado ainda.
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {profSection === "avaliacoes" && (
+                <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                  <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Avaliações</div>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {[
+                      ["Nota", serviceStats.notaMedia ? `${serviceStats.notaMedia.toFixed(1)} ★` : "--"],
+                      ["Avaliações", serviceStats.avaliacoes],
+                      ["Problemas", serviceStats.problemas],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-[18px] border border-slate-100 bg-slate-50 px-2 py-3 text-center">
+                        <div className="text-lg font-black text-blue-950">{value}</div>
+                        <div className="mt-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3 text-xs font-bold leading-relaxed text-slate-600">
+                    As avaliações aparecem após serviços concluídos. Quanto mais histórico positivo, mais confiança o perfil transmite.
+                  </div>
+                </section>
+              )}
+
+              {profSection === "config" && (
+                <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                  <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
+                    <div>
+                      <div className="text-sm font-black text-blue-950">Modo profissional</div>
+                      <div className="text-xs font-semibold text-slate-500">Apareça na lista de profissionais para clientes.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={profile.isProfissional}
+                      onChange={(e) => setProfile((p) => ({ ...p, isProfissional: e.target.checked }))}
+                      className="h-5 w-5 accent-blue-600"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
+                    <div>
+                      <div className="text-sm font-black text-blue-950">Agenda aberta</div>
+                      <div className="text-xs font-semibold text-slate-500">Permite receber solicitações de horário.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={profile.agendaAberta}
+                      onChange={(e) => setProfile((p) => ({ ...p, agendaAberta: e.target.checked }))}
+                      className="h-5 w-5 accent-blue-600"
+                    />
+                  </label>
+
+                  <Field label="Status profissional">
+                    <select
+                      value={profile.statusProfissional}
+                      onChange={(e) => setProfile((p) => ({ ...p, statusProfissional: e.target.value }))}
+                      className={inputClass()}
+                    >
+                      <option value="disponivel">Disponível</option>
+                      <option value="em_servico">Em serviço</option>
+                      <option value="oculto">Oculto</option>
+                    </select>
+                  </Field>
+                </section>
+              )}
+
+              {profSection === "ajuda" && (
+                <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                  <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Central de ajuda</div>
+                  <div className="mt-3 grid gap-2">
+                    {[
+                      "Mantenha o combinado no chat do app.",
+                      "Confirme valor, horário e endereço antes de sair.",
+                      "Finalize o serviço apenas quando o cliente confirmar.",
+                      "Use Problema com serviço se algo sair do combinado.",
+                    ].map((item) => (
+                      <div key={item} className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+              </>
               )}
             </div>
           )}
@@ -1684,6 +2238,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
             </div>
           )}
 
+          {(!professionalMode || profSection) && (
           <button
             onClick={salvar}
             disabled={salvando || fotoSalvando}
@@ -1699,6 +2254,7 @@ export default function PerfilDrawer({ open, onClose, uid }) {
           >
             {fotoSalvando ? "Salvando foto…" : salvando ? "Salvando…" : salvo ? "Salvo ✅" : "Salvar"}
           </button>
+          )}
 
           <div className="h-8" />
 

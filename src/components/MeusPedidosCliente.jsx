@@ -150,104 +150,141 @@ export default function MeusPedidosCliente({
     return 'Acompanhe os próximos passos pelo chat.'
   }
 
-  const badgeStatus = (status) => {
-    const s = String(status || 'aberto').toLowerCase()
+  const getPedidoVisual = (pedidoOuStatus) => {
+    const pedido = typeof pedidoOuStatus === 'object' ? pedidoOuStatus : { status: pedidoOuStatus }
+    const s = String(pedido?.status || 'aberto').toLowerCase()
 
-    if (s === 'aberto') {
-      return (
-        <span className="relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-[11px] font-black uppercase tracking-[0.12em] shadow-[0_0_22px_rgba(16,185,129,0.45)] animate-pulse overflow-hidden">
-          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-70" />
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.95)]" />
-          </span>
-          <span className="relative ">ABERTO</span>
-        </span>
-      )
+    if (pedido?.problemaServico) {
+      return {
+        icon: '🛡️',
+        label: 'PROBLEMA',
+        card: 'border-red-200 ring-1 ring-red-100',
+        stripe: 'from-red-500 via-rose-400 to-orange-300',
+        chip: 'border-red-200 bg-red-50 text-red-700',
+        dot: 'bg-red-500',
+      }
     }
 
     if (s === 'aceito') {
-      return (
-        <span className="text-[11px] px-2 py-1 rounded-full bg-amber-400/15 border border-amber-400/20 text-amber-300 font-semibold">
-          ACEITO
-        </span>
-      )
+      return {
+        icon: '⚡',
+        label: 'EM ANDAMENTO',
+        card: 'border-amber-200 ring-1 ring-amber-100',
+        stripe: 'from-amber-400 via-yellow-300 to-blue-400',
+        chip: 'border-amber-200 bg-amber-50 text-amber-700',
+        dot: 'bg-amber-400',
+      }
     }
 
     if (s === 'concluido') {
-      return (
-        <span className="text-[11px] px-2 py-1 rounded-full bg-sky-500/15 border border-sky-400/30 text-sky-300 font-semibold">
-          ENTREGUE
-        </span>
-      )
+      return {
+        icon: '✓',
+        label: pedido?.avaliacao ? 'AVALIADO' : 'CONCLUÍDO',
+        card: 'border-sky-200 ring-1 ring-sky-100',
+        stripe: 'from-sky-500 via-blue-500 to-cyan-300',
+        chip: 'border-sky-200 bg-sky-50 text-sky-700',
+        dot: 'bg-sky-500',
+      }
     }
 
     if (s === 'cancelado') {
-      return (
-        <span className="text-[11px] px-2 py-1 rounded-full bg-slate-600/50 border border-slate-500 text-slate-200 font-semibold">
-          CANCELADO
-        </span>
-      )
+      return {
+        icon: '×',
+        label: 'CANCELADO',
+        card: 'border-slate-200',
+        stripe: 'from-slate-400 via-slate-300 to-slate-200',
+        chip: 'border-slate-200 bg-slate-100 text-slate-600',
+        dot: 'bg-slate-400',
+      }
     }
 
+    return {
+      icon: '●',
+      label: 'ABERTO',
+      card: 'border-emerald-200 ring-1 ring-emerald-100',
+      stripe: 'from-emerald-500 via-teal-300 to-yellow-300',
+      chip: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+      dot: 'bg-emerald-500',
+    }
+  }
+
+  const badgeStatus = (pedidoOuStatus) => {
+    const visual = getPedidoVisual(pedidoOuStatus)
+
     return (
-      <span className="text-[11px] px-2 py-1 rounded-full bg-slate-700 border border-slate-600 text-white font-semibold">
-        {s.toUpperCase()}
+      <span className={['inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] md:text-[11px]', visual.chip].join(' ')}>
+        <span className={['h-2 w-2 rounded-full shadow-[0_0_12px_rgba(15,23,42,0.16)]', visual.dot].join(' ')} />
+        {visual.label}
       </span>
     )
   }
 
+  const resumoCards = [
+    { label: 'Abertos', value: totalAbertos, icon: '●', tone: 'from-emerald-50 to-teal-50 text-emerald-700 border-emerald-100' },
+    { label: 'Andamento', value: totalAceitos, icon: '⚡', tone: 'from-amber-50 to-yellow-50 text-amber-700 border-amber-100' },
+    { label: 'Concluídos', value: totalConcluidos, icon: '✓', tone: 'from-sky-50 to-blue-50 text-blue-700 border-sky-100' },
+    { label: 'Avaliar', value: totalAvaliacoesPendentes, icon: '★', tone: 'from-yellow-50 to-orange-50 text-orange-700 border-yellow-100' },
+    { label: 'Problemas', value: totalProblemas, icon: '!', tone: 'from-red-50 to-rose-50 text-red-700 border-red-100' },
+  ]
+
+  const filtrosHistorico = [
+    ['todos', 'Todos', meusPedidos.length],
+    ['aberto', 'Abertos', totalAbertos],
+    ['andamento', 'Em andamento', totalAceitos],
+    ['concluidos', 'Concluídos', totalConcluidos],
+    ['cancelados', 'Cancelados', totalCancelados],
+  ]
+
   return (
-    <div className="mt-2 rounded-[20px] p-2.5 bg-[#0f172a] border border-slate-700 shadow-2xl shadow-black/40 md:mt-4 md:rounded-[1.8rem] md:p-4">
-      <div className="mb-2.5 flex items-center justify-between rounded-xl bg-[#1e293b] border border-slate-600 px-3 py-2 shadow-lg shadow-black/20 md:mb-4 md:rounded-2xl md:py-2.5">
-        <div className="text-sm font-semibold text-white">
-          Histórico de serviços
-        </div>
-        <div className="text-xs text-slate-400">
-          {meusPedidos.length} pedido{meusPedidos.length === 1 ? '' : 's'}
-        </div>
-      </div>
-
-      <div className="mb-2.5 grid grid-cols-5 gap-1 md:mb-4 md:gap-2">
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-sm font-black text-white md:text-lg">{totalAbertos}</div>
-          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">Abertos</div>
-        </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-sm font-black text-amber-300 md:text-lg">{totalAceitos}</div>
-          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">Andam.</div>
-        </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-sm font-black text-sky-300 md:text-lg">{totalConcluidos}</div>
-          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">Concl.</div>
-        </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-sm font-black text-amber-200 md:text-lg">{totalAvaliacoesPendentes}</div>
-          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">A avaliar</div>
-        </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-900 px-1.5 py-1.5 md:rounded-2xl md:px-3 md:py-3">
-          <div className="text-sm font-black text-red-300 md:text-lg">{totalProblemas}</div>
-          <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">Problemas</div>
+    <div className="mt-1 overflow-hidden rounded-[28px] border border-white/70 bg-white text-slate-950 shadow-[0_24px_80px_rgba(15,23,42,0.22)] md:mt-3 md:rounded-[34px]">
+      <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0b73ff_0%,#15b8d0_48%,#ffd91a_115%)] p-4 text-white md:p-6">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-[46px] bg-yellow-200/30 rotate-12 md:h-56 md:w-56 md:rounded-[64px]" />
+        <div className="relative flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-white/70 md:text-xs">Meus pedidos</div>
+            <div className="mt-1 text-2xl font-black leading-none md:text-4xl">Histórico de serviços</div>
+            <div className="mt-2 max-w-sm text-xs font-bold text-white/78 md:text-sm">
+              Acompanhe cada etapa: aberto, em andamento, concluído, avaliação e suporte.
+            </div>
+          </div>
+          <div className="shrink-0 rounded-[22px] bg-white/92 px-3 py-2 text-right text-blue-950 shadow-[0_14px_28px_rgba(15,23,42,0.16)] md:px-4 md:py-3">
+            <div className="text-2xl font-black leading-none md:text-3xl">{meusPedidos.length}</div>
+            <div className="mt-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+              pedido{meusPedidos.length === 1 ? '' : 's'}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="mb-2.5 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:mb-4 md:gap-2 [&::-webkit-scrollbar]:hidden">
-        {[
-          ['todos', 'Todos', meusPedidos.length],
-          ['aberto', 'Abertos', totalAbertos],
-          ['andamento', 'Em andamento', totalAceitos],
-          ['concluidos', 'Concluidos', totalConcluidos],
-          ['cancelados', 'Cancelados', totalCancelados],
-        ].map(([id, label, count]) => (
+      <div className="bg-slate-50 p-3 md:p-5">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-5 md:gap-3">
+        {resumoCards.map((item) => (
+          <div
+            key={item.label}
+            className={['rounded-[18px] border bg-gradient-to-br p-3 shadow-[0_10px_26px_rgba(15,23,42,0.07)] md:rounded-[22px] md:p-4', item.tone].join(' ')}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-white/90 text-base shadow-sm">{item.icon}</span>
+              <span className="text-2xl font-black leading-none md:text-3xl">{item.value}</span>
+            </div>
+            <div className="mt-2 truncate text-[10px] font-black uppercase tracking-[0.12em] opacity-75 md:text-[11px]">
+              {item.label}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:mt-5 [&::-webkit-scrollbar]:hidden">
+        {filtrosHistorico.map(([id, label, count]) => (
           <button
             key={id}
             type="button"
             onClick={() => setHistoricoFiltro(id)}
             className={[
-              'shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-black transition active:scale-[0.97] md:px-4 md:py-2 md:text-xs',
+              'shrink-0 rounded-full border px-3.5 py-2 text-[11px] font-black transition active:scale-[0.97] md:px-4 md:text-xs',
               historicoFiltro === id
-                ? 'border-yellow-300 bg-[#ffd91a] text-blue-950 shadow-[0_10px_20px_rgba(250,204,21,0.18)]'
-                : 'border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800',
+                ? 'border-[#ffd91a] bg-[#ffd91a] text-blue-950 shadow-[0_10px_20px_rgba(250,204,21,0.20)]'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700',
             ].join(' ')}
           >
             {label} <span className="opacity-70">{count}</span>
@@ -256,16 +293,19 @@ export default function MeusPedidosCliente({
       </div>
 
       {meusPedidos.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-600 bg-[#1e293b] p-3 text-sm font-semibold text-slate-200 md:rounded-2xl md:p-4">
+        <div className="mt-3 rounded-[22px] border border-dashed border-blue-200 bg-white p-4 text-sm font-black text-slate-600 md:p-5">
           Você ainda não criou pedidos.
         </div>
       ) : pedidosFiltrados.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-600 bg-[#1e293b] p-3 text-sm font-semibold text-slate-200 md:rounded-2xl md:p-4">
+        <div className="mt-3 rounded-[22px] border border-dashed border-blue-200 bg-white p-4 text-sm font-black text-slate-600 md:p-5">
           Nenhum pedido nesse status.
         </div>
       ) : (
-        <div className="space-y-2 md:space-y-3">
-          {pedidosFiltrados.map((p, index) => (
+        <div className="mt-3 space-y-3 md:mt-5 md:space-y-4">
+          {pedidosFiltrados.map((p, index) => {
+            const visual = getPedidoVisual(p)
+
+            return (
             <motion.div
               key={p.id}
               initial={{ opacity: 0, y: 20 }}
@@ -274,84 +314,80 @@ export default function MeusPedidosCliente({
               whileHover={{ scale: 1.01, y: -2 }}
               whileTap={{ scale: 0.985 }}
               className={[
-                "relative overflow-hidden rounded-[18px] p-2.5 bg-[#1e293b] border border-slate-600 transition-colors duration-200 hover:bg-[#263449] select-none shadow-lg shadow-black/30 md:rounded-2xl md:p-4",
-                String(p?.status || 'aberto').toLowerCase() === 'aberto'
-                  ? "border-emerald-500/50 ring-1 ring-emerald-500/30 shadow-lg shadow-emerald-900/30"
-                  : "",
+                'relative overflow-hidden rounded-[24px] border bg-white p-3 pl-4 text-slate-950 shadow-[0_14px_36px_rgba(15,23,42,0.08)] transition-colors duration-200 hover:bg-white select-none md:rounded-[28px] md:p-5 md:pl-6',
+                visual.card,
               ].join(" ")}
             >
-              {String(p?.status || 'aberto').toLowerCase() === 'aberto' && (
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-lime-300 to-emerald-500" />
-              )}
+              <div className={['pointer-events-none absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b', visual.stripe].join(' ')} />
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-emerald-300 md:mb-2 md:gap-2 md:text-[10px] md:tracking-[0.18em]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
-                    Pedido ativo
+                  <div className={['mb-1.5 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] md:mb-2 md:gap-2 md:text-[10px] md:tracking-[0.18em]', visual.chip].join(' ')}>
+                    <span className={['h-1.5 w-1.5 rounded-full', visual.dot].join(' ')} />
+                    {visual.label}
                   </div>
-                  <div className="line-clamp-2 break-words text-base font-black leading-tight text-white md:line-clamp-1 md:text-lg">
+                  <div className="line-clamp-2 break-words text-lg font-black leading-tight text-slate-950 md:line-clamp-1 md:text-2xl">
                     {p?.titulo || 'Pedido sem título'}
                   </div>
 
                   {p?.descricao && String(p.descricao).trim().toLowerCase() !== String(p?.titulo || '').trim().toLowerCase() ? (
-                    <div className="mt-1 line-clamp-1 select-text text-xs text-slate-200 md:line-clamp-2 md:text-sm">
+                    <div className="mt-1 line-clamp-2 select-text text-sm font-semibold text-slate-500 md:text-base">
                       {p.descricao}
                     </div>
                   ) : null}
 
-                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-200 md:mt-3 md:gap-2 md:text-xs">
-                    <span>🕒 Criado: <b className="text-white">{formatDataHora(p?.criadoEm || p?.createdAt || p?.atualizadoEm)}</b></span>
+                  <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] font-bold text-slate-500 md:gap-2 md:text-xs">
+                    <span className="rounded-full bg-slate-100 px-2 py-1">Criado: <b className="text-slate-900">{formatDataHora(p?.criadoEm || p?.createdAt || p?.atualizadoEm)}</b></span>
                     {p?.aceite?.aceitoEm || p?.aceitoEm ? (
-                      <span>✅ Aceito: <b className="text-amber-300">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></span>
+                      <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">Aceito: <b>{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></span>
                     ) : null}
                     {p?.concluidoEm ? (
-                      <span>📦 Concluído: <b className="text-sky-300">{formatDataHora(p?.concluidoEm)}</b></span>
+                      <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-700">Concluído: <b>{formatDataHora(p?.concluidoEm)}</b></span>
                     ) : null}
                     {p?.avaliacao?.nota ? (
-                      <span>★ Avaliação: <b className="text-amber-300">{Number(p.avaliacao.nota).toFixed(1)}</b></span>
+                      <span className="rounded-full bg-yellow-50 px-2 py-1 text-yellow-700">Avaliação: <b>{Number(p.avaliacao.nota).toFixed(1)}</b></span>
                     ) : null}
                   </div>
                 </div>
 
-                {badgeStatus(p?.status)}
+                {badgeStatus(p)}
               </div>
 
               {p?.problemaServico ? (
-                <div className="mt-2.5 rounded-xl border border-red-400/25 bg-red-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-red-100 md:mt-3 md:rounded-2xl md:px-3 md:py-2 md:text-xs">
+                <div className="mt-3 rounded-[18px] border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-black text-red-700 md:text-xs">
                   Problema registrado: {p.problemaServico?.status || 'aberto'}
                 </div>
               ) : null}
 
-              <div className="mt-2.5 rounded-xl border border-sky-400/20 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-100 md:mt-3 md:rounded-2xl md:px-3 md:py-2 md:text-xs">
-                <span className="font-black uppercase tracking-[0.14em] text-sky-300">Próximo passo</span>
-                <span className="ml-2 font-semibold text-slate-100">{proximoPassoPedido(p)}</span>
+              <div className="mt-3 rounded-[18px] border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-950 md:text-xs">
+                <span className="font-black uppercase tracking-[0.14em] text-blue-700">Próximo passo</span>
+                <span className="ml-2 font-bold text-slate-700">{proximoPassoPedido(p)}</span>
               </div>
 
-              <StatusFluxoServico pedido={p} tone="dark" className="mt-2 hidden md:block" />
+              <StatusFluxoServico pedido={p} tone="light" className="mt-3 hidden md:block" />
 
-              <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs text-slate-200 md:mt-3 md:gap-2 md:text-sm">
+              <div className="mt-3 flex flex-wrap gap-1.5 text-xs font-bold text-slate-600 md:gap-2 md:text-sm">
                 {p?.valor != null && Number.isFinite(Number(p.valor)) ? (
-                  <span>
-                    💰 <b className="text-white">R$ {Number(p.valor).toFixed(2)}</b>
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">
+                    Valor <b>R$ {Number(p.valor).toFixed(2)}</b>
                   </span>
                 ) : null}
 
                 {p?.aceite?.nome ? (
-                  <span>
-                    🙋 Aceito por <b className="text-white">{p.aceite.nome}</b>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                    Aceito por <b className="text-slate-950">{p.aceite.nome}</b>
                     {p?.aceite?.aceitoEm || p?.aceitoEm ? (
-                      <> · <b className="text-amber-300">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></>
+                      <> · <b className="text-amber-700">{formatDataHora(p?.aceite?.aceitoEm || p?.aceitoEm)}</b></>
                     ) : null}
                   </span>
                 ) : (
-                  <span>⏳ Aguardando alguém aceitar</span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1">Aguardando alguém aceitar</span>
                 )}
               </div>
 
-              <div className="mt-2.5 flex flex-wrap gap-1.5 md:mt-3 md:gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {p?.aceite?.id ? (
                   <motion.button
-                    className="rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 active:scale-[0.98] md:px-3 md:text-sm"
+                    className="rounded-full bg-blue-700 px-3.5 py-2 text-xs font-black text-white shadow-[0_10px_22px_rgba(37,99,235,0.22)] transition hover:bg-blue-800 active:scale-[0.98] md:text-sm"
                     onClick={() => {
                       setPedidoAlcance(null)
                       onAbrirChat?.(p)
@@ -364,7 +400,7 @@ export default function MeusPedidosCliente({
 
                 {String(p?.status || 'aberto').toLowerCase() === 'aberto' && !p?.aceite?.id ? (
                   <motion.button
-                    className="rounded-xl bg-gradient-to-r from-fuchsia-600 to-blue-600 px-2.5 py-1.5 text-xs font-black text-white shadow-md shadow-blue-500/25 transition hover:brightness-110 active:scale-[0.98] md:px-3 md:text-sm"
+                    className="rounded-full border border-slate-200 bg-slate-100 px-3.5 py-2 text-xs font-black text-slate-500 transition active:scale-[0.98] md:text-sm"
                     onClick={() =>
                       avisar({
                         type: 'info',
@@ -381,7 +417,7 @@ export default function MeusPedidosCliente({
 
                 {String(p?.status || '').toLowerCase() === 'aceito' && p?.criador?.id === meuId ? (
                   <motion.button
-                    className="rounded-xl bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 active:scale-[0.98] md:px-3 md:text-sm"
+                    className="rounded-full bg-emerald-600 px-3.5 py-2 text-xs font-black text-white shadow-[0_10px_22px_rgba(16,185,129,0.22)] transition hover:bg-emerald-700 active:scale-[0.98] md:text-sm"
                     onClick={() => {
                       if (typeof onConfirmarServicoFeito === 'function') {
                         onConfirmarServicoFeito(p)
@@ -397,7 +433,7 @@ export default function MeusPedidosCliente({
 
                 {podeAvaliar(p) ? (
                   <motion.button
-                    className="rounded-xl bg-amber-400 px-2.5 py-1.5 text-xs font-black text-slate-950 shadow-md shadow-amber-500/20 transition hover:bg-amber-300 active:scale-[0.98] md:px-3 md:text-sm"
+                    className="rounded-full bg-[#ffd91a] px-3.5 py-2 text-xs font-black text-blue-950 shadow-[0_10px_22px_rgba(250,204,21,0.24)] transition hover:bg-yellow-300 active:scale-[0.98] md:text-sm"
                     onClick={() => onAvaliarServico?.(p)}
                     type="button"
                   >
@@ -407,7 +443,7 @@ export default function MeusPedidosCliente({
 
                 {podeRelatarProblema(p) ? (
                   <motion.button
-                    className="rounded-xl border border-red-400/25 bg-red-500/15 px-2.5 py-1.5 text-xs font-black text-red-100 transition hover:bg-red-500/20 active:scale-[0.98] md:px-3 md:text-sm"
+                    className="rounded-full border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-black text-red-700 transition hover:bg-red-100 active:scale-[0.98] md:text-sm"
                     onClick={() => onProblemaServico?.(p)}
                     type="button"
                   >
@@ -417,7 +453,7 @@ export default function MeusPedidosCliente({
 
                 {p?.local?.lat != null && p?.local?.lng != null ? (
                   <motion.button
-                    className="rounded-xl border border-slate-600 bg-slate-700 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-600 active:scale-[0.98] md:px-3 md:text-sm"
+                    className="rounded-full border border-blue-100 bg-blue-50 px-3.5 py-2 text-xs font-black text-blue-700 transition hover:bg-blue-100 active:scale-[0.98] md:text-sm"
                     onClick={() => onVerMapa?.(p)}
                     type="button"
                   >
@@ -426,7 +462,8 @@ export default function MeusPedidosCliente({
                 ) : null}
               </div>
             </motion.div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -489,6 +526,7 @@ export default function MeusPedidosCliente({
         </div>
       ) : null}
 
+      </div>
     </div>
   )
 }
