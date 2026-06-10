@@ -438,27 +438,8 @@ export default function ClienteHome({
         </section>
       </div>
 
-      <div className="-mt-3 bg-white px-4 pt-3 md:rounded-t-[30px] md:px-8 md:pt-6">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
-          {[
-            ['🛵', 'Corre rápido', () => setModo('corre')],
-            ['⚡', 'No horário', () => setModo('profissional')],
-            ['🛡️', 'Seguro', () => onAbrirPerfil?.()],
-            ['💬', 'Chat', () => setModo('profissional')],
-          ].map(([icon, label, action]) => (
-            <button
-              key={label}
-              type="button"
-              onClick={action}
-              className="flex shrink-0 items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1.5 text-xs font-black text-slate-950 transition active:scale-[0.97] md:px-4 md:py-2.5 md:text-base"
-            >
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-[#ffd91a] text-sm shadow-[0_6px_14px_rgba(245,158,11,0.18)] md:h-8 md:w-8 md:text-base">{icon}</span>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-3 flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:mt-7 md:gap-7 [&::-webkit-scrollbar]:hidden">
+      <div className="-mt-2 bg-white px-4 pt-2 md:rounded-t-[30px] md:px-8 md:pt-5">
+        <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-7 [&::-webkit-scrollbar]:hidden">
           {categoriasRapidas.map((cat) => {
             const ativo = catId === cat.id
             return (

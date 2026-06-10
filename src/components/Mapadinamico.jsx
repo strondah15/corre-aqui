@@ -556,7 +556,9 @@ const getValorPedido = (value) => {
 const getLatLngFrom = (obj) => {
   const lat = toNum(obj?.local?.lat ?? obj?.latitude ?? obj?.lat)
   const lng = toNum(obj?.local?.lng ?? obj?.longitude ?? obj?.lng)
-  return lat != null && lng != null ? { lat, lng } : null
+  if (lat == null || lng == null) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+  return { lat, lng }
 }
 
 const distanceKmBetween = (from, to) => {
@@ -577,7 +579,8 @@ const formatDistancePedido = (pedido, userNode) => {
   if (!pedidoLocal) return 'Sem local'
   const meuLocal = getLatLngFrom(userNode)
   const km = distanceKmBetween(meuLocal, pedidoLocal)
-  if (km == null) return 'Com local'
+  if (km == null) return 'Distância indisponível'
+  if (!Number.isFinite(km) || km > 150) return 'Distância indisponível'
   if (km < 1) return `${Math.max(100, Math.round(km * 1000))} m`
   return `${km.toFixed(km >= 10 ? 0 : 1).replace('.', ',')} km`
 }
@@ -598,10 +601,129 @@ const formatTempoPostado = (value) => {
 const formatDataCurtaPedido = (value) => {
   const ms = getMs(value)
   if (!ms) return 'Sem data'
-  return new Date(ms).toLocaleDateString('pt-BR', {
+  const data = new Date(ms)
+  const hoje = new Date()
+  const amanha = new Date()
+  amanha.setDate(hoje.getDate() + 1)
+  const hora = data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  if (data.toDateString() === hoje.toDateString()) return `Hoje ${hora}`
+  if (data.toDateString() === amanha.toDateString()) return `Amanhã ${hora}`
+  return data.toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
   })
+}
+
+const getPedidoCardTheme = ({ categoriaId, categoriaLabel, titulo, index = 0 }) => {
+  const text = `${categoriaId || ''} ${categoriaLabel || ''} ${titulo || ''}`.toLowerCase()
+  const themes = {
+    entregas: {
+      icon: '🛵',
+      accent: '#16a34a',
+      soft: '#e8f8ed',
+      wave: '#dff3df',
+      badge: 'bg-green-600',
+    },
+    carreto: {
+      icon: '📦',
+      accent: '#f97316',
+      soft: '#fff1e7',
+      wave: '#ffe0c2',
+      badge: 'bg-orange-500',
+    },
+    mudanca: {
+      icon: '📦',
+      accent: '#f97316',
+      soft: '#fff1e7',
+      wave: '#ffe0c2',
+      badge: 'bg-orange-500',
+    },
+    tecnologia: {
+      icon: '📶',
+      accent: '#7c3aed',
+      soft: '#f0e9ff',
+      wave: '#eadcff',
+      badge: 'bg-violet-600',
+    },
+    limpeza: {
+      icon: '🧹',
+      accent: '#ec4899',
+      soft: '#fff0f7',
+      wave: '#ffd8e9',
+      badge: 'bg-pink-500',
+    },
+    beleza: {
+      icon: '✨',
+      accent: '#f59e0b',
+      soft: '#fff7dd',
+      wave: '#ffefbf',
+      badge: 'bg-amber-500',
+    },
+    reparos: {
+      icon: '🔧',
+      accent: '#2563eb',
+      soft: '#eaf2ff',
+      wave: '#dceaff',
+      badge: 'bg-blue-600',
+    },
+    pets: {
+      icon: '🐾',
+      accent: '#92400e',
+      soft: '#f7eee5',
+      wave: '#ead9c8',
+      badge: 'bg-amber-800',
+    },
+    aulas: {
+      icon: '📘',
+      accent: '#6d28d9',
+      soft: '#f0e9ff',
+      wave: '#e7dcff',
+      badge: 'bg-violet-600',
+    },
+    construcao: {
+      icon: '🏠',
+      accent: '#f59e0b',
+      soft: '#fff8e1',
+      wave: '#ffe9ad',
+      badge: 'bg-yellow-500',
+    },
+    jardinagem: {
+      icon: '🌿',
+      accent: '#16a34a',
+      soft: '#edf9e8',
+      wave: '#e0f2d5',
+      badge: 'bg-green-600',
+    },
+    eventos: {
+      icon: '🎈',
+      accent: '#ec4899',
+      soft: '#fff0f6',
+      wave: '#ffd8e8',
+      badge: 'bg-pink-500',
+    },
+    geral: {
+      icon: '⚡',
+      accent: '#2563eb',
+      soft: '#eef5ff',
+      wave: '#dceaff',
+      badge: 'bg-blue-600',
+    },
+  }
+
+  if (text.includes('entrega') || text.includes('encomenda')) return themes.entregas
+  if (text.includes('carreto') || text.includes('mudan')) return themes.carreto
+  if (text.includes('tecnologia') || text.includes('internet') || text.includes('roteador') || text.includes('tomada')) return themes.tecnologia
+  if (text.includes('limpeza') || text.includes('faxina')) return themes.limpeza
+  if (text.includes('beleza') || text.includes('maquiagem') || text.includes('escova')) return themes.beleza
+  if (text.includes('reparo') || text.includes('consert') || text.includes('instalar') || text.includes('ventilador')) return themes.reparos
+  if (text.includes('pet') || text.includes('cachorro')) return themes.pets
+  if (text.includes('aula') || text.includes('educa')) return themes.aulas
+  if (text.includes('constru') || text.includes('telhado') || text.includes('pintar') || text.includes('pintura')) return themes.construcao
+  if (text.includes('jard') || text.includes('grama')) return themes.jardinagem
+  if (text.includes('evento') || text.includes('decora')) return themes.eventos
+
+  const fallback = [themes.geral, themes.entregas, themes.carreto, themes.tecnologia, themes.limpeza, themes.beleza]
+  return fallback[index % fallback.length]
 }
 
 function ProfessionalOverview({
@@ -2361,7 +2483,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       `}</style>
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      {modoApp === 'corre' && tab === 'corre' && !isMapOpen && mostrarBuscaCorreFlutuante ? (
+      {modoApp === 'corre' && tab === 'corre' && !isMapOpen && !openIA && mostrarBuscaCorreFlutuante ? (
         <div className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.55rem)] z-[99960] px-3 md:hidden">
           <label className="mx-auto flex h-11 max-w-[430px] items-center gap-2 rounded-[18px] border border-blue-100 bg-white/96 px-3 text-sm font-black text-slate-700 shadow-[0_14px_38px_rgba(15,23,42,0.18)] backdrop-blur-xl">
             <span className="text-lg text-blue-600">⌕</span>
@@ -2902,7 +3024,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 items-start gap-2.5 pb-44 md:gap-3 md:pb-28 xl:grid-cols-2 sm:pb-40">
+            <div className="grid grid-cols-1 items-stretch gap-2.5 pb-44 md:gap-3 md:pb-28 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 sm:pb-40">
               {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
                 <div className="rounded-[24px] bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">
                   Nenhum trabalho para mostrar agora.
@@ -2936,6 +3058,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 const valorNumerico = getValorPedido(p.valor)
                 const temValor = p.valor != null && Number.isFinite(valorNumerico) && valorNumerico > 0
                 const tituloPedido = p.titulo || '(sem titulo)'
+                const pedidoTheme = getPedidoCardTheme({
+                  categoriaId: p?.categoriaId || p?.categoria,
+                  categoriaLabel: catObj?.label,
+                  titulo: tituloPedido,
+                  index,
+                })
                 const distanciaPedido = formatDistancePedido(p, meuUserNode)
                 const tempoPostado = formatTempoPostado(p.criadoEm || p.createdAt || p.atualizadoEm)
                 const dataCurtaPedido = formatDataCurtaPedido(p.criadoEm || p.createdAt || p.atualizadoEm)
@@ -2950,32 +3078,37 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     whileHover={{ y: -3, scale: 1.008 }}
                     whileTap={{ scale: 0.985 }}
                     className={[
-                      "corre-card-clean group relative flex flex-col overflow-hidden rounded-[18px] border border-white/10 bg-[#07111f] text-white",
-                      "shadow-[0_14px_30px_rgba(2,6,23,0.16)] ring-1 ring-slate-950/5 transition md:rounded-[22px]",
-                      cardAberto ? "shadow-[0_20px_54px_rgba(2,6,23,0.22)]" : "",
-                      status === 'aberto' ? "border-blue-500/20" : "",
+                      "corre-card-clean group relative flex min-h-[132px] flex-col overflow-hidden rounded-[16px] border bg-white text-slate-950",
+                      "shadow-[0_10px_24px_rgba(15,23,42,0.10)] ring-1 ring-white/80 transition md:min-h-[136px] md:rounded-[18px]",
+                      cardAberto ? "shadow-[0_20px_48px_rgba(15,23,42,0.16)]" : "",
                       b.destaque ? "border-fuchsia-300/80 ring-2 ring-fuchsia-300/30" : "",
                       b.emergencia ? "border-red-400 ring-2 ring-red-400/55" : "",
                     ].join(" ")}
+                    style={!b.emergencia && !b.destaque ? { borderColor: `${pedidoTheme.accent}24` } : undefined}
                   >
+                    <span className={["absolute left-1.5 top-1.5 z-20 grid h-5 min-w-5 place-items-center rounded-full px-1 text-[10px] font-black text-white shadow-[0_8px_16px_rgba(15,23,42,0.18)]", pedidoTheme.badge].join(" ")}>
+                      {index + 1}
+                    </span>
                     {b.emergencia ? (
                       <div className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-red-500 via-orange-300 to-red-600 shadow-[0_0_36px_rgba(239,68,68,0.95)] animate-pulse" />
                     ) : b.destaque ? (
                       <div className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-fuchsia-500 via-amber-300 to-blue-500 shadow-[0_0_32px_rgba(217,70,239,0.75)]" />
-                    ) : status === 'aberto' ? (
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-blue-600 via-cyan-300 to-[#ffd91a]" />
-                    ) : null}
+                    ) : (
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-1" style={{ backgroundColor: pedidoTheme.accent }} />
+                    )}
                     {b.emergencia ? (
                       <div className="pointer-events-none absolute -right-12 -top-12 h-24 w-24 rounded-full bg-red-400/35 blur-2xl animate-pulse md:h-36 md:w-36" />
                     ) : b.destaque ? (
                       <div className="pointer-events-none absolute -right-12 -top-12 h-24 w-24 rounded-full bg-fuchsia-400/30 blur-2xl md:h-36 md:w-36" />
                     ) : status === 'aberto' ? (
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-blue-500/12 via-cyan-400/8 to-transparent md:h-20" />
+                      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-slate-50 via-white to-transparent md:h-20" />
                     ) : null}
-                    <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-400/15 blur-2xl transition group-hover:bg-cyan-300/20 md:h-36 md:w-36" />
-                    <div className="pointer-events-none absolute -left-12 bottom-6 h-24 w-24 rounded-full bg-yellow-300/12 blur-2xl md:h-32 md:w-32" />
+                    <div className="pointer-events-none absolute -right-8 top-8 h-20 w-20 rounded-full blur-xl transition md:h-24 md:w-24" style={{ backgroundColor: pedidoTheme.soft }} />
+                    <svg className="pointer-events-none absolute inset-x-0 bottom-0 h-11 w-full opacity-95" viewBox="0 0 360 70" preserveAspectRatio="none" aria-hidden="true">
+                      <path d="M0 42 C70 16 112 62 184 39 C246 19 296 42 360 22 L360 70 L0 70 Z" fill={pedidoTheme.wave} />
+                    </svg>
 
-                    <div className="relative z-10 grid grid-cols-[minmax(0,1fr)_auto] gap-3 p-3 md:p-4">
+                    <div className="relative z-10 grid flex-1 grid-cols-[minmax(0,1fr)_auto] gap-2.5 p-3.5 pt-5 md:gap-3 md:p-4 md:pt-5">
                       <button
                         type="button"
                         onClick={() => abrirFichaPedido(p)}
@@ -2986,46 +3119,55 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                             className={[
                               "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em]",
                               status === 'aberto'
-                                ? "bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-300/25"
+                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
                                 : status === 'aceito'
-                                  ? "bg-blue-400/10 text-blue-200 ring-1 ring-blue-300/25"
-                                  : "bg-white/10 text-slate-200 ring-1 ring-white/10",
+                                  ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
+                                  : "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
                             ].join(" ")}
                           >
                             <span className="h-1.5 w-1.5 rounded-full bg-current" />
                             {statusLabel}
                           </span>
-                          <span className="min-w-0 max-w-[150px] truncate rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-slate-200 ring-1 ring-white/10 md:max-w-[220px]">
-                            {catObj ? `${catObj.emoji} ${catObj.label}` : p?.categoriaId ? String(p.categoriaId) : 'Geral'}
+                          <span className="min-w-0 max-w-[150px] truncate text-[10px] font-bold text-slate-500 md:max-w-[220px]">
+                            {catObj ? catObj.label : p?.categoriaId ? String(p.categoriaId) : 'Geral'}
                           </span>
                         </div>
 
-                        <div className="mt-1.5 line-clamp-2 break-words text-[15px] font-black leading-tight text-white md:text-lg">
+                        <div className="mt-2 line-clamp-2 break-words text-lg font-black leading-[1.05] text-slate-950 md:text-[21px]">
                           {tituloPedido}
                         </div>
 
-                        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-slate-300 md:text-xs">
+                        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-slate-500 md:text-xs">
                           <span>{distanciaPedido}</span>
-                          <span className="text-white/25">|</span>
+                          <span className="text-slate-300">•</span>
                           <span>{tempoPostado}</span>
-                          <span className="text-white/25">|</span>
+                          <span className="text-slate-300">•</span>
                           <span>{dataCurtaPedido}</span>
                           {combinaComigo && (
                             <>
-                              <span className="text-white/25">|</span>
-                              <span className="text-emerald-300">Combina com voce</span>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-emerald-700">Combina com voce</span>
                             </>
                           )}
                         </div>
                       </button>
 
-                      <div className="flex shrink-0 flex-col items-end justify-between gap-2 text-right">
-                        <div className="rounded-2xl bg-[#ffd91a] px-3 py-1.5 text-sm font-black text-blue-950 shadow-[0_10px_22px_rgba(250,204,21,0.22)] md:text-base">
+                      <div className="flex shrink-0 flex-col items-end justify-between gap-1.5 text-right">
+                        <div
+                          className="rounded-full px-1.5 py-0.5 text-[12px] font-black text-blue-950 md:text-sm"
+                        >
                           {temValor ? formatMoneyBR(valorNumerico) : 'Combinar'}
+                        </div>
+                        <div
+                          className="grid h-12 w-12 place-items-center rounded-full text-2xl shadow-[0_12px_22px_rgba(15,23,42,0.08)] ring-1 ring-white/80 md:h-14 md:w-14 md:text-3xl"
+                          style={{ backgroundColor: pedidoTheme.soft, color: pedidoTheme.accent }}
+                        >
+                          <span className="drop-shadow-sm">{pedidoTheme.icon}</span>
                         </div>
                         {status === 'aberto' && !cardAberto ? (
                           <button
-                            className="rounded-xl bg-[#ffd91a] px-3 py-1.5 text-[11px] font-black text-blue-950 shadow-sm transition hover:bg-yellow-300 disabled:opacity-60 md:text-xs"
+                            className="rounded-[10px] px-3.5 py-1.5 text-[11px] font-black text-white shadow-[0_12px_22px_rgba(15,23,42,0.16)] transition hover:brightness-105 disabled:opacity-60 md:text-xs"
+                            style={{ backgroundColor: pedidoTheme.accent }}
                             onClick={(event) => {
                               event.stopPropagation()
                               abrirFichaPedido(p)
@@ -3036,7 +3178,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                             {aceitandoId === p.id ? '...' : 'Aceitar'}
                           </button>
                         ) : (
-                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-200 ring-1 ring-white/10">
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 ring-1 ring-slate-200">
                             {statusLabel}
                           </span>
                         )}
@@ -3516,7 +3658,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       
 
 
-      {modoApp === 'cliente' && !isMapOpen && (
+      {modoApp === 'cliente' && !isMapOpen && !openIA && (
         <div
           className={[
             'fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[99980] px-3 pointer-events-none transition-all duration-300 ease-out will-change-transform md:inset-x-auto md:right-6 md:bottom-6 md:px-0',
@@ -4031,7 +4173,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         onClose={() => setAgendaClienteUser(null)}
       />
 
-      {modoApp === 'corre' && (
+      {modoApp === 'corre' && !openIA && (
         <BottomBar
           active={tab === 'corre' ? 'inicio' : tab}
           onTab={onBottomTab}
