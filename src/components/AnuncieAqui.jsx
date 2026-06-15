@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 const WHATSAPP_ANUNCIO_URL =
-  "https://wa.me/5500000000000?text=Tenho%20interesse%20em%20anunciar%20no%20Corre%20Aqui";
+  process.env.NEXT_PUBLIC_WHATSAPP_ANUNCIO_URL?.trim() || "";
 
 const opcoesAnuncio = [
   {
@@ -30,10 +30,12 @@ const opcoesAnuncio = [
 
 export default function AnuncieAqui({ open, onClose }) {
   const [mostrarOpcoes, setMostrarOpcoes] = useState(false);
+  const anuncioWhatsappAtivo = Boolean(WHATSAPP_ANUNCIO_URL);
 
   if (!open) return null;
 
   const abrirWhatsApp = () => {
+    if (!anuncioWhatsappAtivo) return;
     window.open(WHATSAPP_ANUNCIO_URL, "_blank", "noopener,noreferrer");
   };
 
@@ -106,9 +108,12 @@ export default function AnuncieAqui({ open, onClose }) {
           <button
             type="button"
             onClick={abrirWhatsApp}
-            className="rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-3 text-sm font-black text-white shadow-[0_16px_44px_rgba(37,99,235,0.34)] transition active:scale-[0.98]"
+            disabled={!anuncioWhatsappAtivo}
+            className={`rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-3 text-sm font-black text-white shadow-[0_16px_44px_rgba(37,99,235,0.34)] transition active:scale-[0.98] ${
+              anuncioWhatsappAtivo ? "" : "cursor-not-allowed opacity-60"
+            }`}
           >
-            Entrar no pré-cadastro
+            {anuncioWhatsappAtivo ? "Entrar no pre-cadastro" : "Pre-cadastro em breve"}
           </button>
           <button
             type="button"

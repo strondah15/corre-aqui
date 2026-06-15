@@ -250,7 +250,7 @@ export default function ModalIA({ open, onClose, abrirCriacaoManual, meuNome: me
                 >
                   {CATEGORIES.map((c) => (
                     <option key={c.id} value={c.id} className="bg-[#07111f] text-white">
-                      {c.label}
+                      {c.emoji} {c.label}
                     </option>
                   ))}
                 </select>

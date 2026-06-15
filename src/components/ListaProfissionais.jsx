@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ref, onValue, query, limitToLast } from 'firebase/database'
 import { database } from '@/lib/firebase'
 import CardProfissional from './CardProfissional'
-import { CATEGORIES } from '@/constants/categories'
+import { CATEGORIES, categoryMatches, getCategoryById } from '@/constants/categories'
 
 
 const safeStr = (v) => String(v || '').trim()
@@ -194,11 +194,11 @@ export default function ListaProfissionais({
 
   const categoriasFiltro = useMemo(() => {
     const base = Array.isArray(CATEGORIES) ? CATEGORIES : []
-    return [{ id: '', label: 'Todos', emoji: '✨' }, ...base]
+    return [{ id: '', label: 'Todos', emoji: '✨', accent: '#0f172a' }, ...base]
   }, [])
 
   const categoriaLabel = useMemo(() => {
-    const c = CATEGORIES.find((x) => x.id === categoriaLocal)
+    const c = getCategoryById(categoriaLocal)
     return c ? `${c.emoji} ${c.label}` : ''
   }, [categoriaLocal])
 
@@ -224,7 +224,7 @@ export default function ListaProfissionais({
               : Array.isArray(u.profCategorias)
                 ? u.profCategorias
                 : []
-          if (!cats.includes(categoriaLocal)) return false
+          if (!cats.some((cat) => categoryMatches(cat, categoriaLocal))) return false
         }
 
         if (!t) return true
@@ -306,9 +306,10 @@ export default function ListaProfissionais({
                   className={[
                     'shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-black transition-all duration-200 active:scale-[0.96] md:px-3.5 md:py-2 md:text-xs',
                     ativo
-                      ? 'border-white bg-white text-slate-950 shadow-lg shadow-black/15'
+                      ? 'border-white text-white shadow-lg shadow-black/15'
                       : 'border-white/12 bg-white/8 text-slate-200 hover:bg-white/12 hover:text-white',
                   ].join(' ')}
+                  style={ativo ? { backgroundColor: cat.accent || '#ffffff' } : undefined}
                 >
                   <span className="mr-1">{cat.emoji}</span>
                   {cat.label}

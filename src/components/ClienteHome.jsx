@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CATEGORIES } from '@/constants/categories'
+import { CATEGORIES, categoryMatches, getCategoryById } from '@/constants/categories'
 import ListaProfissionais from './ListaProfissionais'
 
 const glass =
@@ -40,7 +40,7 @@ const getGoogleFoto = (u) => safeStr(
 )
 
 const getLabelCategoria = (id) => {
-  const c = CATEGORIES.find((x) => x.id === id)
+  const c = getCategoryById(id)
   return c ? `${c.emoji} ${c.label}` : '—'
 }
 
@@ -159,7 +159,7 @@ function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
   const categoriaId = modo === 'corre'
     ? item?.correCategorias?.[0] || item?.profCategorias?.[0] || 'servicos_gerais'
     : item?.profCategorias?.[0] || 'servicos_gerais'
-  const categoria = CATEGORIES.find((cat) => cat.id === categoriaId)
+  const categoria = getCategoryById(categoriaId)
   const titulo = modo === 'corre'
     ? safeStr(item?.correTitulo) || 'Corre rápido'
     : safeStr(item?.profResumo) || 'Serviço profissional'
@@ -253,7 +253,7 @@ export default function ClienteHome({
     .slice(0, 2)
     .map((parte) => parte[0]?.toUpperCase())
     .join('') || 'CA'
-  const categoriasRapidas = useMemo(() => [{ id: '', label: 'Todos', emoji: '✨' }, ...(CATEGORIES || []).slice(0, 7)], [])
+  const categoriasRapidas = useMemo(() => [{ id: '', label: 'Todos', emoji: '✨', accent: '#0f172a', soft: '#eef5ff' }, ...(CATEGORIES || [])], [])
 
   const providers = useMemo(() => {
     const list = Array.isArray(onlineUsers) ? onlineUsers : []
@@ -272,7 +272,7 @@ export default function ClienteHome({
           const cats = modo === 'corre' ? (p.correCategorias || []) : (p.profCategorias || [])
           // Se o corre ainda não cadastrou segmentos, ele continua aparecendo em "serviços gerais".
           if (modo === 'corre' && cats.length === 0 && catId === 'servicos_gerais') return true
-          return cats.includes(catId)
+          return cats.some((cat) => categoryMatches(cat, catId))
         })
       : base
 
@@ -449,10 +449,16 @@ export default function ClienteHome({
                 onClick={() => setCatId(cat.id)}
                 className="w-[58px] shrink-0 text-center md:w-[92px]"
               >
-                <span className={[
-                  'mx-auto grid h-14 w-14 place-items-center rounded-[20px] text-2xl shadow-[0_12px_24px_rgba(15,23,42,0.08)] md:h-20 md:w-20 md:rounded-[28px] md:text-4xl',
-                  ativo ? 'bg-[#ffd91a] ring-2 ring-blue-500/35' : 'bg-blue-50',
-                ].join(' ')}>
+                <span
+                  className={[
+                    'mx-auto grid h-14 w-14 place-items-center rounded-[20px] text-2xl shadow-[0_12px_24px_rgba(15,23,42,0.08)] md:h-20 md:w-20 md:rounded-[28px] md:text-4xl',
+                    ativo ? 'ring-2 ring-blue-500/35' : 'ring-1 ring-slate-200/80',
+                  ].join(' ')}
+                  style={{
+                    backgroundColor: ativo ? cat.accent || '#ffd91a' : cat.soft || '#eff6ff',
+                    color: ativo ? '#ffffff' : cat.accent || '#0f172a',
+                  }}
+                >
                   {cat.emoji}
                 </span>
                 <span className="mt-1.5 block line-clamp-2 text-[11px] font-bold leading-tight text-slate-800 md:text-sm">
@@ -666,9 +672,10 @@ export default function ClienteHome({
                 className={[
                   'shrink-0 rounded-full border px-2.5 py-1.5 text-[11px] font-black transition active:scale-[0.97] md:px-3.5 md:py-2 md:text-xs',
                   ativo
-                    ? 'border-white bg-white text-slate-950 shadow-lg shadow-black/15'
+                    ? 'border-white text-white shadow-lg shadow-black/15'
                     : 'border-white/12 bg-white/8 text-slate-200 hover:bg-white/12',
                 ].join(' ')}
+                style={ativo ? { backgroundColor: cat.accent || '#ffffff' } : undefined}
               >
                 <span className="mr-1">{cat.emoji}</span>
                 {cat.label}

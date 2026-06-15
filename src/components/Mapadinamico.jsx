@@ -52,7 +52,7 @@ import ListaProfissionais from '@/components/ListaProfissionais'
 import PerfilPublico from '@/components/PerfilPublico'
 
 // ✅ CATEGORIAS
-import { CATEGORIES } from '@/constants/categories'
+import { CATEGORIES, categoryMatches, getCanonicalCategoryId, getCategoryById } from '@/constants/categories'
 
 const MapinhaModal = dynamic(() => import('./MapinhaModal'), { ssr: false })
 
@@ -67,6 +67,20 @@ const toNum = (v) => {
 const isFotoValor = (v) => /^(https?:\/\/|data:image\/|blob:|\/)/i.test(String(v || '').trim())
 
 const pickFoto = (...vals) => vals.map((v) => String(v || '').trim()).find(isFotoValor) || ''
+
+const compactCategoryLabel = (label, max = 12) => {
+  const text = String(label || '').trim()
+  if (!text || text.length <= max) return text
+  return `${text.slice(0, max).trim()}...`
+}
+
+const DEBUG_PRESENCE =
+  process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEBUG_PRESENCE === 'true'
+
+function debugPresence(message, data = {}) {
+  if (!DEBUG_PRESENCE) return
+  console.log(`[PRESENCE] ${message}`, data)
+}
 
 function CorreHeroSpeedIcon({ className = '' }) {
   return (
@@ -148,19 +162,19 @@ const normalizeLocal = (p) => {
 async function getMyLocation() {
   return await new Promise((resolve) => {
     if (!navigator.geolocation) {
-      console.log('[PRESENCE] localizacao negada/indisponivel', { motivo: 'geolocation indisponivel' })
+      debugPresence('localizacao negada/indisponivel', { motivo: 'geolocation indisponivel' })
       return resolve(null)
     }
 
     try {
       navigator.permissions?.query?.({ name: 'geolocation' }).then((permission) => {
-        console.log('[PRESENCE] localizacao permissao', { state: permission?.state || 'desconhecido' })
+        debugPresence('localizacao permissao', { state: permission?.state || 'desconhecido' })
       }).catch(() => {})
     } catch {}
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        console.log('[PRESENCE] localizacao permitida', {
+        debugPresence('localizacao permitida', {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         })
@@ -170,7 +184,7 @@ async function getMyLocation() {
         })
       },
       (error) => {
-        console.log('[PRESENCE] localizacao negada', {
+        debugPresence('localizacao negada', {
           code: error?.code || null,
           message: error?.message || 'sem detalhe',
         })
@@ -615,6 +629,34 @@ const formatDataCurtaPedido = (value) => {
 }
 
 const getPedidoCardTheme = ({ categoriaId, categoriaLabel, titulo, index = 0 }) => {
+  const categoryMeta = getCategoryById(categoriaId)
+  if (categoryMeta) {
+    const badgeById = {
+      servicos_gerais: 'bg-blue-600',
+      entregas: 'bg-green-600',
+      compras: 'bg-sky-600',
+      casa: 'bg-yellow-500',
+      reparos: 'bg-blue-600',
+      limpeza: 'bg-pink-500',
+      beleza: 'bg-amber-500',
+      aulas: 'bg-violet-600',
+      pets: 'bg-amber-800',
+      tecnologia: 'bg-violet-600',
+      transporte: 'bg-blue-700',
+      mudancas: 'bg-orange-500',
+      eventos: 'bg-pink-500',
+      midia: 'bg-cyan-600',
+      cuidados: 'bg-pink-600',
+    }
+    return {
+      icon: categoryMeta.emoji,
+      accent: categoryMeta.accent,
+      soft: categoryMeta.soft,
+      wave: categoryMeta.wave,
+      badge: badgeById[categoryMeta.id] || 'bg-blue-600',
+    }
+  }
+
   const text = `${categoriaId || ''} ${categoriaLabel || ''} ${titulo || ''}`.toLowerCase()
   const themes = {
     entregas: {
@@ -1155,15 +1197,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
     if (meuId) {
       const agoraPresence = Date.now()
-      console.log('[PRESENCE] uid atual', meuId)
-      console.log(`[PRESENCE] salvando online true em presence/${meuId}`, { origem: 'modoApp' })
+      debugPresence('uid atual', meuId)
+      debugPresence(`salvando online true em presence/${meuId}`, { origem: 'modoApp' })
       update(ref(database, `presence/${meuId}`), {
         modoAtual: modoApp,
         online: true,
         lastSeen: agoraPresence,
         updatedAt: agoraPresence,
       })
-        .then(() => console.log('[PRESENCE] salvou online com sucesso', { uid: meuId, origem: 'modoApp' }))
+        .then(() => debugPresence('salvou online com sucesso', { uid: meuId, origem: 'modoApp' }))
         .catch((error) => console.error('[PRESENCE] erro ao salvar presença', error))
     }
   }, [meuId, modoApp])
@@ -1268,8 +1310,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
     const userRef = ref(database, `presence/${meuId}`)
     const connectedRef = ref(database, '.info/connected')
-    console.log('[PRESENCE] uid atual', meuId)
-    console.log('[PRESENCE] usando caminho correto', `presence/${meuId}`)
+    debugPresence('uid atual', meuId)
+    debugPresence('usando caminho correto', `presence/${meuId}`)
 
     const getAvatarPatch = () => {
       const patch = {}
@@ -1286,7 +1328,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       if (cancelled) return
 
       const agoraPresence = Date.now()
-      console.log(`[PRESENCE] salvando online true em presence/${meuId}`, {
+      debugPresence(`salvando online true em presence/${meuId}`, {
         origem: 'Mapadinamico/writeOnline',
         temLocal: false,
       })
@@ -1301,7 +1343,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         updatedAt: agoraPresence,
         ...getAvatarPatch(),
       })
-      console.log('[PRESENCE] salvou online com sucesso', { uid: meuId, origem: 'Mapadinamico/writeOnline' })
+      debugPresence('salvou online com sucesso', { uid: meuId, origem: 'Mapadinamico/writeOnline' })
 
       const local = await getMyLocation()
       if (cancelled || !local) return
@@ -1312,7 +1354,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         longitude: local.lng,
         updatedAt: Date.now(),
       })
-      console.log('[PRESENCE] local salvo', local)
+      debugPresence('local salvo', local)
     }
 
     const writeOffline = async () => {
@@ -1321,7 +1363,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
     const offConnected = onValue(connectedRef, async (snap) => {
       const connected = !!snap.val()
-      console.log('[PRESENCE] conectado .info/connected', { uid: meuId, connected, origem: 'Mapadinamico' })
+      debugPresence('conectado .info/connected', { uid: meuId, connected, origem: 'Mapadinamico' })
       if (!connected || cancelled) return
 
       try {
@@ -1343,7 +1385,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
     const heartbeat = setInterval(async () => {
       const agoraPresence = Date.now()
-      console.log(`[PRESENCE] salvando online true em presence/${meuId}`, {
+      debugPresence(`salvando online true em presence/${meuId}`, {
         origem: 'Mapadinamico/heartbeat',
         temLocal: false,
       })
@@ -1354,12 +1396,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         updatedAt: agoraPresence,
         ...getAvatarPatch(),
       })
-        .then(() => console.log('[PRESENCE] salvou online com sucesso', { uid: meuId, origem: 'Mapadinamico/heartbeat' }))
+        .then(() => debugPresence('salvou online com sucesso', { uid: meuId, origem: 'Mapadinamico/heartbeat' }))
         .catch((error) => console.error('[PRESENCE] erro ao salvar presença', error))
 
       const local = await getMyLocation()
       if (cancelled || !local) return
-      console.log(`[PRESENCE] salvando online true em presence/${meuId}`, {
+      debugPresence(`salvando online true em presence/${meuId}`, {
         origem: 'Mapadinamico/heartbeat/local',
         temLocal: !!local,
       })
@@ -1369,7 +1411,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         longitude: local.lng,
         updatedAt: Date.now(),
       })
-        .then(() => console.log('[PRESENCE] local salvo', local))
+        .then(() => debugPresence('local salvo', local))
         .catch((error) => console.error('[PRESENCE] erro ao salvar presença', error))
     }, 15000)
 
@@ -1470,12 +1512,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
      4) Ler /presence (online)
   ======================= */
   useEffect(() => {
-    console.log('[PRESENCE] lendo presence', { path: 'presence', origem: 'Mapadinamico' })
+    debugPresence('lendo presence', { path: 'presence', origem: 'Mapadinamico' })
     const off = onValue(
       ref(database, 'presence'),
       (snap) => {
         const raw = snap.val() || {}
-        console.log('[PRESENCE] total bruto de children em /presence', {
+        debugPresence('total bruto de children em /presence', {
           total: Object.keys(raw).length,
           origem: 'Mapadinamico',
         })
@@ -1624,8 +1666,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const getCatObj = (id) => {
     if (!id) return null
-    const found = (CATEGORIES || []).find((c) => String(c.id) === String(id))
-    return found || null
+    return getCategoryById(id)
   }
 
   const corresFiltrados = useMemo(() => {
@@ -1639,11 +1680,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         if (filtro === 'meus' && p?.aceite?.id !== meuId) return false
         if (filtro === 'finalizados' && String(p?.status || '').toLowerCase() !== 'concluido') return false
 
-        const cat = p?.categoriaId ?? p?.categoria ?? null
+        const cat = p?.categoriaId ?? p?.categoria ?? p?.category ?? null
         if (categoriaFiltro === 'sem') {
           if (cat) return false
         } else if (categoriaFiltro !== 'todas') {
-          if (String(cat || '') !== String(categoriaFiltro)) return false
+          if (!categoryMatches(cat, categoriaFiltro)) return false
         }
 
         if (busca.trim()) {
@@ -1666,6 +1707,45 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         return tb - ta
       })
   }, [corres, filtro, busca, meuId, categoriaFiltro, isProfissional])
+
+  const categoriaPedidosCount = useMemo(() => {
+    const counts = { todas: 0, sem: 0 }
+    ;(CATEGORIES || []).forEach((cat) => {
+      counts[cat.id] = 0
+    })
+
+    ;(corres || []).forEach((p) => {
+      const modo = String(p?.modoPedido || 'geral').toLowerCase()
+      if (modo === 'profissional' && !isProfissional) return
+
+      const status = String(p?.status || 'aberto').toLowerCase()
+      if (filtro === 'abertos' && status !== 'aberto') return
+      if (filtro === 'meus' && p?.aceite?.id !== meuId) return
+      if (filtro === 'finalizados' && status !== 'concluido') return
+
+      if (busca.trim()) {
+        const t = busca.trim().toLowerCase()
+        const hay =
+          (p.titulo || '').toLowerCase().includes(t) ||
+          (p.descricao || '').toLowerCase().includes(t) ||
+          (p.criador?.nome || '').toLowerCase().includes(t)
+        if (!hay) return
+      }
+
+      counts.todas += 1
+      const rawCat = p?.categoriaId ?? p?.categoria ?? p?.category ?? null
+      if (!rawCat) {
+        counts.sem += 1
+        return
+      }
+
+      const canonical = getCanonicalCategoryId(rawCat)
+      if (counts[canonical] == null) counts[canonical] = 0
+      counts[canonical] += 1
+    })
+
+    return counts
+  }, [corres, filtro, busca, meuId, isProfissional])
 
   const resumoCorre = useMemo(() => {
     const lista = Array.isArray(corres) ? corres : []
@@ -2914,27 +2994,39 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             {/* Painel de filtros do Corre */}
             <div className="mb-3 md:mb-8">
               <div>
-                <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:mt-7 md:grid md:grid-cols-8 md:gap-5 md:overflow-visible md:pb-0 [&::-webkit-scrollbar]:hidden">
-                  {[{ id: 'todas', label: 'Todos', emoji: '✨' }, ...(CATEGORIES || []).slice(0, 7)].map((cat) => {
+                <div className="flex gap-1.5 overflow-x-auto pt-1.5 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] md:mt-6 md:gap-2 md:pt-2 [&::-webkit-scrollbar]:hidden">
+                  {[{ id: 'todas', label: 'Todos', emoji: '✨', accent: '#0f172a', soft: '#eaf2ff' }, ...(CATEGORIES || [])].map((cat) => {
                     const ativo = categoriaFiltro === cat.id
+                    const totalCategoria = categoriaPedidosCount[cat.id] || 0
+                    const labelCompacto = compactCategoryLabel(cat.label)
+                    const contador = totalCategoria > 99 ? '99+' : totalCategoria
                     return (
                       <button
                         key={cat.id}
                         type="button"
                         onClick={() => setCategoriaFiltro(cat.id)}
-                        className="group w-[58px] shrink-0 text-center md:w-auto"
+                        className="group w-[58px] shrink-0 pt-1 text-center md:w-[68px]"
+                        aria-label={`Filtrar por ${cat.label}. ${totalCategoria} pedido${totalCategoria === 1 ? '' : 's'}.`}
+                        title={cat.label}
                       >
                         <span
                           className={[
-                            'mx-auto grid h-12 w-12 place-items-center rounded-[18px] text-2xl shadow-[0_10px_20px_rgba(15,23,42,0.07)] transition group-active:scale-95 md:h-20 md:w-20 md:rounded-[28px] md:text-4xl',
-                            ativo
-                              ? 'bg-[#ffd91a] text-blue-950 ring-2 ring-blue-500/35'
-                              : 'bg-blue-50 text-slate-700 group-hover:bg-blue-100',
+                            'relative mx-auto grid h-10 w-10 place-items-center rounded-[15px] text-[1.2rem] shadow-[0_10px_20px_rgba(15,23,42,0.07)] transition group-active:scale-95 md:h-12 md:w-12 md:rounded-[18px] md:text-2xl',
+                            ativo ? 'ring-2 ring-blue-500/45' : 'ring-1 ring-slate-200/80',
                           ].join(' ')}
+                          style={{
+                            backgroundColor: ativo ? cat.accent || '#ffd91a' : cat.soft || '#eff6ff',
+                            color: ativo ? '#ffffff' : cat.accent || '#0f172a',
+                          }}
                         >
                           {cat.emoji}
+                          <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-950 px-1.5 text-[9px] font-black leading-none text-white ring-2 ring-white md:h-[21px] md:min-w-[21px] md:text-[10px]">
+                            {contador}
+                          </span>
                         </span>
-                        <span className="mt-1 block truncate text-[10px] font-black text-slate-700 md:mt-2 md:text-sm">{cat.label}</span>
+                        <span className="mt-1.5 block overflow-hidden text-ellipsis whitespace-nowrap text-[9px] font-black leading-tight text-slate-700 md:text-[10px]">
+                          {labelCompacto}
+                        </span>
                       </button>
                     )
                   })}
@@ -3078,13 +3170,22 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     whileHover={{ y: -3, scale: 1.008 }}
                     whileTap={{ scale: 0.985 }}
                     className={[
-                      "corre-card-clean group relative flex min-h-[132px] flex-col overflow-hidden rounded-[16px] border bg-white text-slate-950",
-                      "shadow-[0_10px_24px_rgba(15,23,42,0.10)] ring-1 ring-white/80 transition md:min-h-[136px] md:rounded-[18px]",
+                      "corre-card-clean group relative flex min-h-[132px] flex-col overflow-hidden rounded-[16px] border-[1.5px] bg-white text-slate-950",
+                      "shadow-[0_12px_26px_rgba(15,23,42,0.14)] ring-1 ring-slate-300/70 transition md:min-h-[136px] md:rounded-[18px]",
                       cardAberto ? "shadow-[0_20px_48px_rgba(15,23,42,0.16)]" : "",
                       b.destaque ? "border-fuchsia-300/80 ring-2 ring-fuchsia-300/30" : "",
                       b.emergencia ? "border-red-400 ring-2 ring-red-400/55" : "",
                     ].join(" ")}
-                    style={!b.emergencia && !b.destaque ? { borderColor: `${pedidoTheme.accent}24` } : undefined}
+                    style={
+                      !b.emergencia && !b.destaque
+                        ? {
+                            borderColor: `${pedidoTheme.accent}70`,
+                            boxShadow: cardAberto
+                              ? '0 20px 48px rgba(15,23,42,0.18), 0 0 0 1px rgba(15,23,42,0.08)'
+                              : `0 12px 26px rgba(15,23,42,0.14), 0 0 0 1px ${pedidoTheme.accent}24`,
+                          }
+                        : undefined
+                    }
                   >
                     <span className={["absolute left-1.5 top-1.5 z-20 grid h-5 min-w-5 place-items-center rounded-full px-1 text-[10px] font-black text-white shadow-[0_8px_16px_rgba(15,23,42,0.18)]", pedidoTheme.badge].join(" ")}>
                       {index + 1}

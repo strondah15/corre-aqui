@@ -21,6 +21,10 @@ let vinhetaJaRodouNoRuntime = false
 let googleRedirectPromise = null
 const USER_READ_TIMEOUT_MS = 7000
 const AUTH_NULL_GRACE_MS = 2200
+const DEBUG_AUTH =
+  process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true'
+const DEBUG_PRESENCE =
+  process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEBUG_PRESENCE === 'true'
 
 function esperar(ms, valor = null) {
   return new Promise((resolve) => {
@@ -65,14 +69,20 @@ function marcarBoasVindasVistas() {
 }
 
 function debugAuth(evento, dados = {}) {
+  if (!DEBUG_AUTH) return
   console.log(`[CorreAqui Auth] ${evento}`, dados)
+}
+
+function debugPresence(message, data = {}) {
+  if (!DEBUG_PRESENCE) return
+  console.log(`[PRESENCE] ${message}`, data)
 }
 
 async function salvarUsuarioBasico(user) {
   if (!user?.uid) return {}
 
   try {
-    console.log('[PRESENCE] uid atual', user.uid)
+    debugPresence('uid atual', user.uid)
     let modoAtual = ''
     try {
       const modoSalvo = String(localStorage.getItem('modoApp') || '').toLowerCase()
@@ -141,12 +151,12 @@ async function salvarUsuarioBasico(user) {
       Object.entries(presencePayload).filter(([, value]) => value !== undefined)
     )
 
-    console.log(`[PRESENCE] salvando online true em presence/${user.uid}`, {
+    debugPresence(`salvando online true em presence/${user.uid}`, {
       origem: 'LoginGate/salvarUsuarioBasico',
       path: `presence/${user.uid}`,
     })
     const salvarPresencePromise = update(ref(database, `presence/${user.uid}`), presencePatch)
-      .then(() => console.log('[PRESENCE] salvou online com sucesso', { uid: user.uid, origem: 'LoginGate/salvarUsuarioBasico' }))
+      .then(() => debugPresence('salvou online com sucesso', { uid: user.uid, origem: 'LoginGate/salvarUsuarioBasico' }))
       .catch((error) => {
         console.error('[PRESENCE] erro ao salvar presença', error)
         throw error

@@ -5,13 +5,15 @@ const HEARTBEAT_MS = 15_000;
 const LOCATION_REFRESH_MS = 60_000;
 export const ONLINE_TTL_MS = 60_000;
 const DEBUG_PREFIX = "[PRESENCE]";
+export const DEBUG_PRESENCE_ENABLED =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_DEBUG_PRESENCE === "true";
 
 function isBrowser() {
   return typeof window !== "undefined";
 }
 
 function debugPresence(message, data) {
-  if (!isBrowser()) return;
+  if (!isBrowser() || !DEBUG_PRESENCE_ENABLED) return;
   if (data === undefined) {
     console.log(`${DEBUG_PREFIX} ${message}`);
     return;

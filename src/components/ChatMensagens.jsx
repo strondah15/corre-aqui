@@ -583,7 +583,7 @@ export default function ChatMensagens({
   const outroInicial = safeName(outroNome, 'C').slice(0, 1).toUpperCase()
   const podeEnviarMensagem = Boolean(texto.trim() || anexoSelecionado)
   const containerClass = modoPagina
-    ? 'relative z-10 flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[#050b12] text-white'
+    ? 'fixed inset-0 z-[100000] flex h-[100svh] min-h-0 w-screen flex-col overflow-hidden bg-[#050b12] text-white supports-[height:100dvh]:h-[100dvh]'
     : 'relative z-[9999] flex h-[min(86dvh,760px)] max-h-[calc(100dvh-1rem)] w-full max-w-[780px] flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#050b12] text-white shadow-[0_30px_100px_rgba(0,0,0,0.45)] sm:rounded-[30px]'
 
   return (
@@ -665,7 +665,7 @@ export default function ChatMensagens({
 
       <div
         ref={chatRef}
-        className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_30%),linear-gradient(180deg,#050b12_0%,#06111f_100%)] px-3 py-3 sm:px-5 sm:py-5"
+        className="min-h-0 flex-1 overscroll-contain overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_30%),linear-gradient(180deg,#050b12_0%,#06111f_100%)] px-3 py-3 sm:px-5 sm:py-5"
       >
         {mensagens.length === 0 ? (
           <div className="grid h-full min-h-[150px] place-items-center text-center sm:min-h-[240px]">

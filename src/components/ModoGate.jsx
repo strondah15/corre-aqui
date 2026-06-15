@@ -17,10 +17,10 @@ const modes = {
   },
   corre: {
     title: 'Quero trabalhar',
-    label: 'Corre',
+    label: 'Corres + Pro',
     icon: '⚡',
-    description: 'Fique disponível, aceite pedidos e combine o serviço.',
-    bullets: ['Disponibilidade', 'Pedidos perto', '100% do combinado'],
+    description: 'Ative seus corres rápidos e seus serviços profissionais no mesmo lugar.',
+    bullets: ['Corres rápidos', 'Serviços profissionais', 'Agenda e chat'],
   },
 }
 
@@ -76,7 +76,7 @@ export default function ModoGate() {
             O que você precisa agora?
           </h1>
           <p className="mt-1.5 text-xs leading-snug text-white/80 md:mt-2 md:text-sm md:leading-relaxed">
-            Escolha um caminho. Você pode trocar depois quando quiser.
+            Escolha se vai pedir ajuda ou trabalhar. Você pode trocar depois quando quiser.
           </p>
         </div>
 
@@ -131,17 +131,18 @@ export default function ModoGate() {
             onClick={continuar}
             className="mt-4 h-12 w-full rounded-[18px] bg-[#ffd91a] text-sm font-black text-blue-950 shadow-[0_16px_38px_rgba(245,158,11,0.24)] transition active:scale-[0.98] md:mt-5 md:h-14 md:rounded-[22px]"
           >
-            Entrar como {current.label}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setOpenPerfilGlobal(true)}
-            className="mt-2 h-10 w-full rounded-[16px] border border-blue-100 bg-white text-xs font-bold text-blue-700 transition hover:bg-blue-50 md:mt-3 md:h-12 md:rounded-[20px] md:text-sm"
-          >
-            Perfil e configurações
+            {selectedMode === 'cliente' ? 'Entrar como cliente' : 'Entrar para trabalhar'}
           </button>
         </section>
+
+        <button
+          type="button"
+          onClick={() => setOpenPerfilGlobal(true)}
+          className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-[18px] border border-white/35 bg-white/16 text-xs font-black text-white shadow-[0_12px_30px_rgba(15,23,42,0.14)] backdrop-blur-xl transition hover:bg-white/22 active:scale-[0.98] md:h-12 md:rounded-[20px] md:text-sm"
+        >
+          <span aria-hidden="true">⚙</span>
+          <span>Perfil e configurações</span>
+        </button>
 
         <PerfilDrawer
           open={openPerfilGlobal}

@@ -12,8 +12,11 @@ import {
 } from '@/lib/authGoogle'
 
 let loginRedirectPromise = null
+const DEBUG_AUTH =
+  process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true'
 
 function debugAuth(evento, dados = {}) {
+  if (!DEBUG_AUTH) return
   console.log(`[CorreAqui Auth /login] ${evento}`, dados)
 }
 

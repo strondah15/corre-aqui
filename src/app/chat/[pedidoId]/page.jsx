@@ -136,8 +136,8 @@ function ChatPageContent() {
   const outroUser = getOutroUser(pedido, conversa, authUser?.uid)
 
   return (
-    <main className="h-[100dvh] overflow-hidden bg-[#050b12] text-white">
-      <div className="flex h-full w-full flex-col">
+    <main className="fixed inset-0 z-[100000] h-[100svh] overflow-hidden bg-[#050b12] text-white supports-[height:100dvh]:h-[100dvh]">
+      <div className="relative h-full min-h-0 w-full overflow-hidden">
         {pedidoId && authUser?.uid ? (
           <ChatMensagens
             pedidoId={pedidoId}
@@ -152,7 +152,7 @@ function ChatPageContent() {
             onToast={setToast}
           />
         ) : (
-          <div className="grid flex-1 place-items-center rounded-[28px] border border-white/10 bg-white/[0.045] p-6 text-center">
+          <div className="grid h-full place-items-center bg-[#050b12] p-6 text-center">
             <div>
               <div className="text-xl font-black text-white">Conversa indisponível</div>
               <p className="mt-2 text-sm text-slate-400">

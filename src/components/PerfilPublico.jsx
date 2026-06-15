@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ref, push, set, serverTimestamp } from 'firebase/database'
 import { database } from '@/lib/firebase'
-import { CATEGORIES } from '@/constants/categories'
+import { getCategoryById } from '@/constants/categories'
 
 function addDaysInput(days) {
   const d = new Date()
@@ -280,7 +280,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       user.servicos,
       profile.servicos
     )
-      .map((id) => CATEGORIES.find((cat) => cat.id === id) || { id, label: id.replace(/_/g, ' '), emoji: '' })
+      .map((id) => getCategoryById(id) || { id, label: id.replace(/_/g, ' '), emoji: '' })
       .slice(0, 6)
 
     const historico = normalizeList(user.historicoServicos, profile.historicoServicos, user.servicosRecentes, trustStats.historico)

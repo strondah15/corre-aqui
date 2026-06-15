@@ -12,9 +12,19 @@ import { ref, update, serverTimestamp } from "firebase/database";
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
 const REDIRECT_PENDING_KEY = "correaqui:googleRedirectPending";
+const DEBUG_AUTH =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_DEBUG_AUTH === "true";
+const DEBUG_PRESENCE =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_DEBUG_PRESENCE === "true";
 
 function debugAuth(evento, dados = {}) {
+  if (!DEBUG_AUTH) return;
   console.log(`[CorreAqui Auth] ${evento}`, dados);
+}
+
+function debugPresence(message, data = {}) {
+  if (!DEBUG_PRESENCE) return;
+  console.log(`[PRESENCE] ${message}`, data);
 }
 
 function esperar(ms, valor = null) {
@@ -61,7 +71,7 @@ async function salvarPerfilGoogle(user) {
 
   try {
     const agoraPresence = Date.now();
-    console.log(`[PRESENCE] salvando online true em presence/${user.uid}`, {
+    debugPresence(`salvando online true em presence/${user.uid}`, {
       origem: "authGoogle/salvarPerfilGoogle",
       path: `presence/${user.uid}`,
     });
@@ -78,7 +88,7 @@ async function salvarPerfilGoogle(user) {
       }),
       esperar(1800),
     ]);
-    console.log("[PRESENCE] salvou online com sucesso", {
+    debugPresence("salvou online com sucesso", {
       uid: user.uid,
       origem: "authGoogle/salvarPerfilGoogle",
     });

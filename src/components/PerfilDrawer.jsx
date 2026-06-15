@@ -56,7 +56,7 @@ const initialProfile = {
 const tabLabel = {
   perfil: "Perfil",
   corre: "Corre",
-  profissional: "Profissional",
+  profissional: "Corre/Pro",
   config: "Ajustes",
   monetizacao: "Em breve",
   patentes: "Patentes",
@@ -179,6 +179,60 @@ function pickFoto(...vals) {
   return vals.map((v) => String(v || "").trim()).find(isFotoValor) || "";
 }
 
+function formatMoneyBR(value) {
+  const n = Number(value || 0);
+  return n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+  });
+}
+
+function getValorPedido(pedido = {}) {
+  const raw =
+    pedido.valor ??
+    pedido.valorCombinado ??
+    pedido.valor_combinado ??
+    pedido.preco ??
+    pedido["preço"] ??
+    pedido.orcamento ??
+    pedido["orçamento"] ??
+    pedido.budget ??
+    0;
+
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : 0;
+
+  const normalized = String(raw || "")
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getMs(value) {
+  if (!value) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === "object") {
+    const seconds = value.seconds ?? value._seconds;
+    if (Number.isFinite(Number(seconds))) return Number(seconds) * 1000;
+  }
+  return 0;
+}
+
+function formatDataCurta(value) {
+  const ms = getMs(value);
+  if (!ms) return "Data nao informada";
+  return new Date(ms).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
 function normalizePortfolioFotos(data = {}) {
   const raw = [
     ...(Array.isArray(data.fotos) ? data.fotos : []),
@@ -271,6 +325,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
     problemas: 0,
     notaMedia: null,
     avaliacoes: 0,
+    ganhosCorreTotal: 0,
+    ganhosProfTotal: 0,
+    ganhosTotal: 0,
+    ganhosCorreSemana: 0,
+    ganhosProfSemana: 0,
+    ganhosSemana: 0,
+    ticketMedioCorre: 0,
+    ticketMedioProf: 0,
+    ganhosRecentes: [],
   });
   const [accountStats, setAccountStats] = useState({
     xp: 0,
@@ -447,7 +510,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
     const pedidosRef = ref(database, "pedidos");
     return onValue(pedidosRef, (snap) => {
       const data = snap.val() || {};
-      const pedidos = Object.values(data);
+      const pedidos = Object.entries(data).map(([id, value]) => ({
+        id,
+        ...(value && typeof value === "object" ? value : {}),
+      }));
       let total = 0;
       let comoCorre = 0;
       let comoCliente = 0;
@@ -455,16 +521,33 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       let problemas = 0;
       let notaSoma = 0;
       let avaliacoes = 0;
+      let ganhosCorreTotal = 0;
+      let ganhosProfTotal = 0;
+      let ganhosCorreSemana = 0;
+      let ganhosProfSemana = 0;
+      const ganhosRecentes = [];
+      const inicioSemana = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
       pedidos.forEach((p) => {
         const souCliente = p?.criador?.id === uid;
         const souCorre = p?.aceite?.id === uid;
         const concluido = String(p?.status || "").toLowerCase() === "concluido";
         const modoProfissional = String(p?.modoPedido || "").toLowerCase() === "profissional";
+        const valorPedido = getValorPedido(p);
+        const dataConclusao = p?.concluidoEm || p?.atualizadoEm || p?.aceitoEm || p?.criadoEm;
+        const msConclusao = getMs(dataConclusao);
 
         if (concluido && (souCliente || souCorre)) total += 1;
-        if (concluido && souCorre && modoProfissional) comoProfissional += 1;
-        if (concluido && souCorre && !modoProfissional) comoCorre += 1;
+        if (concluido && souCorre && modoProfissional) {
+          comoProfissional += 1;
+          ganhosProfTotal += valorPedido;
+          if (msConclusao >= inicioSemana) ganhosProfSemana += valorPedido;
+        }
+        if (concluido && souCorre && !modoProfissional) {
+          comoCorre += 1;
+          ganhosCorreTotal += valorPedido;
+          if (msConclusao >= inicioSemana) ganhosCorreSemana += valorPedido;
+        }
         if (concluido && souCliente) comoCliente += 1;
         if ((souCliente || souCorre) && p?.problemaServico) problemas += 1;
 
@@ -473,7 +556,20 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
           notaSoma += nota;
           avaliacoes += 1;
         }
+
+        if (concluido && souCorre) {
+          ganhosRecentes.push({
+            id: p.id,
+            titulo: p.titulo || p.tipo || "Servico concluido",
+            valor: valorPedido,
+            tipo: modoProfissional ? "Profissional" : "Corre",
+            data: dataConclusao,
+            ms: msConclusao,
+          });
+        }
       });
+
+      const ganhosTotal = ganhosCorreTotal + ganhosProfTotal;
 
       setServiceStats({
         total,
@@ -483,6 +579,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         problemas,
         notaMedia: avaliacoes ? notaSoma / avaliacoes : null,
         avaliacoes,
+        ganhosCorreTotal,
+        ganhosProfTotal,
+        ganhosTotal,
+        ganhosCorreSemana,
+        ganhosProfSemana,
+        ganhosSemana: ganhosCorreSemana + ganhosProfSemana,
+        ticketMedioCorre: comoCorre ? ganhosCorreTotal / comoCorre : 0,
+        ticketMedioProf: comoProfissional ? ganhosProfTotal / comoProfissional : 0,
+        ganhosRecentes: ganhosRecentes.sort((a, b) => (b.ms || 0) - (a.ms || 0)).slice(0, 6),
       });
     });
   }, [open, uid]);
@@ -1059,13 +1164,25 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       title: "Meu perfil publico",
       desc: "Dados que aparecem para clientes.",
     },
+    corre: {
+      title: "Perfil de Corre",
+      desc: "Configure seus corres rapidos.",
+    },
     portfolio: {
       title: "Portfolio de servicos",
       desc: "Adicione trabalhos para os clientes conhecerem seu servico.",
     },
+    ganhos: {
+      title: "Ganhos",
+      desc: "Resumo dos valores combinados.",
+    },
     avaliacoes: {
       title: "Avaliacoes",
       desc: "Reputacao, nota e historico de confianca.",
+    },
+    patentes: {
+      title: "Patentes Corre/Pro",
+      desc: "Evolucao por servicos concluidos.",
     },
     config: {
       title: "Configuracoes",
@@ -1225,10 +1342,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                   </span>
                 )}
 
-                <Patente tipo="corre" nivel={nivelCorreAtual} size="sm" />
-                {profile.isProfissional && nivelProfAtual > 0 ? (
-                  <Patente tipo="prof" nivel={nivelProfAtual} size="sm" />
-                ) : null}
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-1.5 w-full md:mt-5 md:gap-2">
@@ -1276,8 +1389,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
           {/* MENU DO PERFIL */}
           {!professionalMode && (
           <div className="mt-3 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.10)] md:mt-5 md:rounded-[30px] md:p-2">
-            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6 md:gap-2">
-              {["perfil", "corre", "profissional", "config", "monetizacao", "patentes"].map(
+            <div className="grid grid-cols-3 gap-1.5 md:gap-2">
+              {["perfil", "config", "monetizacao"].map(
                 (t) => (
                   <button
                     key={t}
@@ -1667,6 +1780,31 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                 />
               </label>
 
+              <section className="rounded-[18px] border border-white/10 bg-white/[0.06] p-3 text-white md:rounded-[24px] md:p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-yellow-200">Ganhos como Corre</div>
+                    <div className="mt-1 text-2xl font-black leading-none md:text-3xl">
+                      {formatMoneyBR(serviceStats.ganhosCorreTotal)}
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-[#ffd91a] px-3 py-1 text-xs font-black text-blue-950">
+                    {serviceStats.comoCorre} concluído{serviceStats.comoCorre === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2">
+                    <div className="text-sm font-black">{formatMoneyBR(serviceStats.ganhosCorreSemana)}</div>
+                    <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Semana</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2">
+                    <div className="text-sm font-black">{formatMoneyBR(serviceStats.ticketMedioCorre)}</div>
+                    <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Ticket médio</div>
+                  </div>
+                </div>
+              </section>
+
               {profile.isCorre && (
                 <div className="space-y-3 md:space-y-4">
                   <Field label="Título do Corre">
@@ -1791,7 +1929,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                   >
                     ←
                   </button>
-                  <div className="text-sm font-black md:text-base">Perfil profissional</div>
+                  <div className="text-sm font-black md:text-base">Perfil Corre/Profissional</div>
                   <button
                     type="button"
                     onClick={() => setProfSection("config")}
@@ -1833,23 +1971,18 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                     {profile.statusProfissional === "em_servico" ? "Em serviço" : profile.visivel ? "Online" : "Oculto"}
                   </div>
 
-                  <div className="mt-5 grid w-full grid-cols-3 divide-x divide-white/10">
-                    <div className="px-2">
-                      <div className="text-xl font-black md:text-2xl">{serviceStats.comoProfissional || serviceStats.comoCorre}</div>
-                      <div className="text-[10px] font-bold text-slate-400 md:text-xs">Serviços</div>
-                    </div>
-                    <div className="px-2">
-                      <div className="text-xl font-black md:text-2xl">
-                        {serviceStats.notaMedia ? serviceStats.notaMedia.toFixed(1) : "--"} <span className="text-[#ffd91a]">★</span>
+                  <div className="mt-5 grid w-full grid-cols-2 gap-2 md:grid-cols-4">
+                    {[
+                      ["Ganhos", formatMoneyBR(serviceStats.ganhosTotal)],
+                      ["Como Corre", formatMoneyBR(serviceStats.ganhosCorreTotal)],
+                      ["Como Pro", formatMoneyBR(serviceStats.ganhosProfTotal)],
+                      ["Serviços", serviceStats.comoCorre + serviceStats.comoProfissional],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.06] px-2 py-2">
+                        <div className="truncate text-base font-black md:text-lg">{value}</div>
+                        <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">{label}</div>
                       </div>
-                      <div className="text-[10px] font-bold text-slate-400 md:text-xs">Avaliação</div>
-                    </div>
-                    <div className="px-2">
-                      <div className="text-xl font-black md:text-2xl">
-                        {serviceStats.total ? Math.max(0, Math.round(((serviceStats.total - serviceStats.problemas) / serviceStats.total) * 100)) : 0}%
-                      </div>
-                      <div className="text-[10px] font-bold text-slate-400 md:text-xs">Concluídos</div>
-                    </div>
+                    ))}
                   </div>
                 </div>
               </section>
@@ -1857,8 +1990,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
               <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-2">
                 {[
                   ["perfilPublico", "👤", "Meu perfil público", "Como clientes veem seu perfil."],
+                  ["corre", "⚡", "Perfil de Corre", "Título, transporte e disponibilidade."],
+                  ["ganhos", "💰", "Ganhos dos corres", "Valores combinados e concluídos."],
                   ["portfolio", "▣", "Portfólio de serviços", "Serviços, preço, região e experiência."],
                   ["avaliacoes", "★", "Avaliações", "Nota, histórico e reputação."],
+                  ["patentes", "🏆", "Patentes Corre/Pro", "Níveis de experiência e confiança."],
                   ["config", "⚙", "Configurações", "Disponibilidade e agenda."],
                   ["ajuda", "?", "Central de ajuda", "Boas práticas e segurança."],
                 ].map(([id, icon, label, desc]) => {
@@ -1932,6 +2068,153 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                     </Field>
                   </div>
 
+                </section>
+              )}
+
+              {profSection === "corre" && (
+                <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Perfil de Corre</div>
+                    <div className="mt-1 text-sm font-bold text-slate-500">Essas informações aparecem para clientes quando procuram corres rápidos.</div>
+                  </div>
+
+                  <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
+                    <div>
+                      <div className="text-sm font-black text-blue-950">Modo Corre ativo</div>
+                      <div className="text-xs font-semibold text-slate-500">Apareça para bicos rápidos, compras, entregas e serviços do bairro.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={profile.isCorre}
+                      onChange={(e) => setProfile((p) => ({ ...p, isCorre: e.target.checked }))}
+                      className="h-5 w-5 accent-blue-600"
+                    />
+                  </label>
+
+                  <Field label="Título do Corre">
+                    <input
+                      value={profile.correTitulo}
+                      onChange={(e) => setProfile((p) => ({ ...p, correTitulo: e.target.value }))}
+                      placeholder="Ex: Faço entregas, compras e pequenos serviços"
+                      className={inputClass()}
+                    />
+                  </Field>
+
+                  <Field label="Resumo do Corre">
+                    <textarea
+                      value={profile.correBio}
+                      onChange={(e) => setProfile((p) => ({ ...p, correBio: e.target.value }))}
+                      placeholder="Conte que tipo de corre você faz, como trabalha e sua experiência."
+                      className={inputClass("min-h-20 resize-y md:min-h-28")}
+                    />
+                  </Field>
+
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
+                    <Field label="Transporte">
+                      <select
+                        value={profile.correTransporte}
+                        onChange={(e) => setProfile((p) => ({ ...p, correTransporte: e.target.value }))}
+                        className={inputClass()}
+                      >
+                        <option value="" className="text-black">Selecione</option>
+                        <option value="A pé" className="text-black">🚶 A pé</option>
+                        <option value="Bike" className="text-black">🚲 Bike</option>
+                        <option value="Moto" className="text-black">🏍️ Moto</option>
+                        <option value="Carro" className="text-black">🚗 Carro</option>
+                        <option value="Van" className="text-black">🚐 Van</option>
+                      </select>
+                    </Field>
+
+                    <Field label="Região que atende">
+                      <input
+                        value={profile.correRegiao}
+                        onChange={(e) => setProfile((p) => ({ ...p, correRegiao: e.target.value }))}
+                        placeholder="Ex: Centro, bairros próximos"
+                        className={inputClass()}
+                      />
+                    </Field>
+
+                    <Field label="Disponibilidade">
+                      <input
+                        value={profile.correDisponibilidade}
+                        onChange={(e) => setProfile((p) => ({ ...p, correDisponibilidade: e.target.value }))}
+                        placeholder="Ex: Noites, fins de semana, qualquer hora"
+                        className={inputClass()}
+                      />
+                    </Field>
+
+                    <Field label="Experiência">
+                      <input
+                        value={profile.correExperiencia}
+                        onChange={(e) => setProfile((p) => ({ ...p, correExperiencia: e.target.value }))}
+                        placeholder="Ex: 2 anos fazendo entregas e compras"
+                        className={inputClass()}
+                      />
+                    </Field>
+                  </div>
+                </section>
+              )}
+
+              {profSection === "ganhos" && (
+                <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Ganhos dos corres</div>
+                    <div className="mt-1 text-sm font-bold text-slate-500">Resumo calculado pelos pedidos concluídos e pelo valor combinado no app.</div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    {[
+                      ["Total", formatMoneyBR(serviceStats.ganhosTotal)],
+                      ["Corre", formatMoneyBR(serviceStats.ganhosCorreTotal)],
+                      ["Pro", formatMoneyBR(serviceStats.ganhosProfTotal)],
+                      ["Semana", formatMoneyBR(serviceStats.ganhosSemana)],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-[18px] border border-blue-100 bg-blue-50 px-3 py-3">
+                        <div className="truncate text-base font-black text-blue-950 md:text-lg">{value}</div>
+                        <div className="mt-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-blue-700/70">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 md:rounded-[24px] md:p-4">
+                    <div className="text-sm font-black text-blue-950">Resumo</div>
+                    <div className="mt-3 grid gap-2">
+                      {[
+                        ["Serviços como Corre", serviceStats.comoCorre],
+                        ["Ticket médio Corre", formatMoneyBR(serviceStats.ticketMedioCorre)],
+                        ["Serviços como Pro", serviceStats.comoProfissional],
+                        ["Ticket médio Pro", formatMoneyBR(serviceStats.ticketMedioProf)],
+                      ].map(([label, value]) => (
+                        <div key={label} className="flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-2">
+                          <span className="text-xs font-bold text-slate-500">{label}</span>
+                          <span className="text-sm font-black text-blue-950">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 md:rounded-[24px] md:p-4">
+                    <div className="text-sm font-black text-blue-950">Ganhos recentes</div>
+                    <div className="mt-3 grid gap-2">
+                      {serviceStats.ganhosRecentes.length ? (
+                        serviceStats.ganhosRecentes.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-2.5">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-black text-slate-900">{item.titulo}</div>
+                              <div className="mt-0.5 text-xs font-semibold text-slate-500">{item.tipo} · {formatDataCurta(item.data)}</div>
+                            </div>
+                            <div className="shrink-0 rounded-full bg-[#ffd91a] px-3 py-1 text-xs font-black text-blue-950">
+                              {formatMoneyBR(item.valor)}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-4 text-center text-sm font-bold text-slate-500">
+                          Serviços concluídos com valor combinado aparecem aqui.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </section>
               )}
 
@@ -2136,6 +2419,22 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                 </section>
               )}
 
+              {profSection === "patentes" && (
+                <section className="rounded-[24px] border border-white/10 bg-[#050b12] p-3 shadow-[0_18px_45px_rgba(15,23,42,0.18)] md:rounded-[30px] md:p-5">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Patente tipo="corre" nivel={nivelCorreAtual} size="sm" />
+                    {profile.isProfissional && nivelProfAtual > 0 ? (
+                      <Patente tipo="prof" nivel={nivelProfAtual} size="sm" />
+                    ) : null}
+                  </div>
+                  <PainelPatentes
+                    accountStats={accountStats}
+                    serviceStats={serviceStats}
+                    isProfissional={profile.isProfissional}
+                  />
+                </section>
+              )}
+
               {profSection === "config" && (
                 <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
                   <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
@@ -2258,16 +2557,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
 
           <div className="h-8" />
 
-          {/* PATENTES */}
-          {tab === "patentes" && (
-            <div className="mt-5">
-              <PainelPatentes
-                accountStats={accountStats}
-                serviceStats={serviceStats}
-                isProfissional={profile.isProfissional}
-              />
-            </div>
-          )}
         </div>
 
         

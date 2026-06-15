@@ -3,19 +3,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { onValue, ref } from 'firebase/database'
 import { database } from '@/lib/firebase'
-import { splitUsuariosOnline } from '@/lib/presence'
+import { DEBUG_PRESENCE_ENABLED, splitUsuariosOnline } from '@/lib/presence'
+
+function debugPresence(message, data = {}) {
+  if (!DEBUG_PRESENCE_ENABLED) return
+  console.log(`[PRESENCE] ${message}`, data)
+}
 
 export default function UsuariosOnline() {
   const [usersObj, setUsersObj] = useState({})
 
   useEffect(() => {
     const usersRef = ref(database, 'presence')
-    console.log('[PRESENCE] lendo presence', { path: 'presence', origem: 'UsuariosOnline' })
+    debugPresence('lendo presence', { path: 'presence', origem: 'UsuariosOnline' })
     const off = onValue(
       usersRef,
       (snap) => {
         const raw = snap.val() || {}
-        console.log('[PRESENCE] total bruto de children em /presence', {
+        debugPresence('total bruto de children em /presence', {
           total: Object.keys(raw).length,
           origem: 'UsuariosOnline',
         })

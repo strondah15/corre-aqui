@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { CATEGORIES } from '@/constants/categories'
+import { getCategoryById } from '@/constants/categories'
 
 function safeUrl(u) {
   const s = String(u || '').trim()
@@ -200,7 +200,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
     )
 
     return ids
-      .map((id) => CATEGORIES.find((cat) => cat.id === id) || { id, label: id.replace(/_/g, ' '), emoji: '' })
+      .map((id) => getCategoryById(id) || { id, label: id.replace(/_/g, ' '), emoji: '' })
       .slice(0, 3)
   }, [corre?.categorias, item?.correCategorias, item?.profCategorias, item?.servicos, prof?.categorias, prof?.profCategorias, profile?.correCategorias, profile?.profCategorias, profile?.servicos])
 
