@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CATEGORIES, categoryMatches, getCategoryById } from '@/constants/categories'
 import ListaProfissionais from './ListaProfissionais'
 
@@ -148,7 +148,7 @@ const normalizeProvider = (u) => {
   }
 }
 
-function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
+const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
   const nome = safeStr(item?.nome) || 'Profissional'
   const iniciais = nome
     .split(/\s+/)
@@ -165,12 +165,18 @@ function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
     : safeStr(item?.profResumo) || 'Serviço profissional'
   const regiao = safeStr(item?.correRegiao || item?.profCidadeAtende || item?.regiao) || 'Perto de você'
   const preco = safeStr(item?.profPrecoBase || item?.correPreco || item?.precoBase) || 'A combinar'
+  const avatarStyle = useMemo(
+    () => (item?.fotoURL ? { backgroundImage: `url("${item.fotoURL}")` } : undefined),
+    [item]
+  )
+  const handleAbrir = useCallback(() => onAbrirPerfil?.(item), [item, onAbrirPerfil])
+  const handleAgendar = useCallback(() => onAgendar?.(item), [item, onAgendar])
 
   return (
     <article className="w-[154px] shrink-0 overflow-hidden rounded-[22px] border border-slate-100 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.11)] md:w-[190px] md:rounded-[26px]">
       <button
         type="button"
-        onClick={() => onAbrirPerfil?.(item)}
+        onClick={handleAbrir}
         className="block w-full text-left"
       >
         <div className="relative grid h-28 place-items-center bg-gradient-to-br from-amber-50 via-cyan-50 to-emerald-50 md:h-36">
@@ -178,7 +184,7 @@ function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
             <div
               aria-label={nome}
               className="h-16 w-16 rounded-[24px] bg-cover bg-center ring-4 ring-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] md:h-20 md:w-20 md:rounded-[28px]"
-              style={{ backgroundImage: `url("${item.fotoURL}")` }}
+              style={avatarStyle}
             />
           ) : (
             <div className="grid h-16 w-16 place-items-center rounded-[24px] bg-slate-950 text-lg font-black text-white ring-4 ring-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] md:h-20 md:w-20 md:rounded-[28px] md:text-xl">
@@ -210,14 +216,14 @@ function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
       <div className="grid grid-cols-2 gap-1 border-t border-slate-100 p-2">
         <button
           type="button"
-          onClick={() => onAbrirPerfil?.(item)}
+          onClick={handleAbrir}
           className="h-8 rounded-xl bg-slate-950 text-[11px] font-black text-white"
         >
           Ver
         </button>
         <button
           type="button"
-          onClick={() => onAgendar?.(item)}
+          onClick={handleAgendar}
           className="h-8 rounded-xl bg-[#ffd91a] text-[11px] font-black text-slate-950"
         >
           Agendar
@@ -225,7 +231,7 @@ function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
       </div>
     </article>
   )
-}
+})
 
 export default function ClienteHome({
   meuNome = 'Anônimo',
@@ -288,6 +294,24 @@ export default function ClienteHome({
 
     return bySearch.slice(0, 60)
   }, [providers, modo, busca, catId])
+
+  const providerCounts = useMemo(() => {
+    return providers.reduce(
+      (acc, provider) => {
+        if (provider.isCorre) acc.corre += 1
+        if (provider.isProfissional) acc.profissional += 1
+        return acc
+      },
+      { corre: 0, profissional: 0 }
+    )
+  }, [providers])
+
+  const destaqueProviders = useMemo(
+    () => (list.length ? list : providers).slice(0, 8),
+    [list, providers]
+  )
+
+  const renderLegacyHidden = false
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -476,7 +500,7 @@ export default function ClienteHome({
             className="min-h-[112px] rounded-[24px] bg-gradient-to-br from-yellow-300 via-amber-300 to-blue-500 p-4 text-left shadow-[0_14px_30px_rgba(37,99,235,0.18)] md:min-h-[150px] md:rounded-[30px] md:p-6"
           >
             <div className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-800">Corres</div>
-            <div className="mt-1 text-2xl font-black leading-none text-slate-950 md:text-4xl">{providers.filter((p) => p.isCorre).length}</div>
+            <div className="mt-1 text-2xl font-black leading-none text-slate-950 md:text-4xl">{providerCounts.corre}</div>
             <div className="mt-1 text-xs font-black text-slate-800 md:text-sm">disponíveis</div>
           </button>
           <button
@@ -485,7 +509,7 @@ export default function ClienteHome({
             className="min-h-[112px] rounded-[24px] bg-gradient-to-br from-cyan-100 via-blue-200 to-sky-500 p-4 text-left shadow-[0_14px_30px_rgba(37,99,235,0.2)] md:min-h-[150px] md:rounded-[30px] md:p-6"
           >
             <div className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-800">Profissionais</div>
-            <div className="mt-1 text-2xl font-black leading-none text-slate-950 md:text-4xl">{providers.filter((p) => p.isProfissional).length}</div>
+            <div className="mt-1 text-2xl font-black leading-none text-slate-950 md:text-4xl">{providerCounts.profissional}</div>
             <div className="mt-1 text-xs font-black text-slate-800 md:text-sm">com ficha</div>
           </button>
         </div>
@@ -506,7 +530,7 @@ export default function ClienteHome({
           </div>
 
           <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
-            {(list.length ? list : providers).slice(0, 8).map((item) => (
+            {destaqueProviders.map((item) => (
               <ProviderMiniCard
                 key={item.uid}
                 item={item}
@@ -559,6 +583,7 @@ export default function ClienteHome({
               categoriaId={catId}
               search={busca}
               limit={200}
+              itemsSource={providers}
               onAbrirPerfil={onAbrirPerfil}
               onAgendar={onAgendar}
               showHeader={false}
@@ -569,6 +594,7 @@ export default function ClienteHome({
       </div>
     </div>
 
+    {renderLegacyHidden ? (
     <div className="hidden">
       <div className={`rounded-[20px] p-2.5 md:rounded-[28px] md:p-5 ${glass}`}>
         <div className="flex items-center justify-between gap-2.5 md:gap-4">
@@ -715,6 +741,7 @@ export default function ClienteHome({
             categoriaId={catId}
             search={busca}
             limit={200}
+            itemsSource={providers}
             onAbrirPerfil={onAbrirPerfil}
             onAgendar={onAgendar}
             showHeader={false}
@@ -723,6 +750,7 @@ export default function ClienteHome({
         </div>
       </div>
     </div>
+    ) : null}
     </>
   )
 

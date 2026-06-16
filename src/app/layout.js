@@ -13,11 +13,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://corre-aqui.app";
+const appDescription = "Corre Aqui conecta clientes, corres e profissionais locais para resolver pedidos, servicos e conversas com mais seguranca.";
+
 export const metadata = {
+  metadataBase: new URL(siteUrl),
   applicationName: "Corre Aqui",
-  title: "Corre Aqui",
-  description: "Corre Aqui - encontre alguém perto para resolver hoje",
+  title: {
+    default: "Corre Aqui",
+    template: "%s | Corre Aqui",
+  },
+  description: appDescription,
   manifest: "/manifest.webmanifest",
+  keywords: [
+    "Corre Aqui",
+    "servicos locais",
+    "corres",
+    "profissionais",
+    "pedidos",
+    "chat",
+  ],
+  authors: [{ name: "Corre Aqui" }],
+  creator: "Corre Aqui",
+  publisher: "Corre Aqui",
   appleWebApp: {
     capable: true,
     title: "Corre Aqui",
@@ -33,6 +51,32 @@ export const metadata = {
     ],
     shortcut: "/corre-aqui-icon-192.png",
     apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    url: "/",
+    siteName: "Corre Aqui",
+    title: "Corre Aqui",
+    description: appDescription,
+    images: [
+      {
+        url: "/corre-aqui-icon-512.png",
+        width: 512,
+        height: 512,
+        alt: "Corre Aqui",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "Corre Aqui",
+    description: appDescription,
+    images: ["/corre-aqui-icon-512.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 

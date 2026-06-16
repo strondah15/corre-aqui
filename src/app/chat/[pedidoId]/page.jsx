@@ -8,6 +8,9 @@ import { auth, database } from '@/lib/firebase'
 import LoginGate from '@/components/LoginGate'
 import ChatMensagens from '@/components/ChatMensagens'
 
+const LIST_STATE_PREFIX = 'correAqui:listState:v2'
+const LIST_RETURN_FLAG = 'correAqui:returningToList'
+
 function pickNome(...values) {
   return values.map((value) => String(value || '').trim()).find(Boolean) || 'Você'
 }
@@ -111,6 +114,16 @@ function ChatPageContent() {
   const voltarParaOrigem = useCallback(() => {
     const modoUrl = String(searchParams?.get('voltar') || '').toLowerCase()
     if (modoUrl === 'cliente' || modoUrl === 'corre') {
+      try {
+        const stateKey = `${LIST_STATE_PREFIX}:${modoUrl}`
+        if (sessionStorage.getItem(stateKey)) {
+          if (process.env.NODE_ENV !== 'production') console.time('back-list')
+          sessionStorage.setItem(LIST_RETURN_FLAG, stateKey)
+          router.back()
+          return
+        }
+      } catch {}
+
       router.replace(`/${modoUrl}`)
       return
     }

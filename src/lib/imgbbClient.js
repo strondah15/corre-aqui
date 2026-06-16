@@ -1,4 +1,69 @@
 const IMGBB_MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
+const IMGBB_MAX_SOURCE_PHOTO_BYTES = 8 * 1024 * 1024
+const PROFILE_PHOTO_MAX_SIDE = 1280
+const PROFILE_PHOTO_QUALITY = 0.82
+
+function canCompressImage(file) {
+  const type = String(file?.type || '').toLowerCase()
+  return typeof window !== 'undefined' && /^image\/(png|jpe?g|webp)$/.test(type)
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('image_load_failed'))
+    }
+    img.src = url
+  })
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob)
+        else reject(new Error('image_compress_failed'))
+      },
+      type,
+      quality
+    )
+  })
+}
+
+async function compressProfilePhoto(file) {
+  if (!canCompressImage(file)) return file
+
+  const img = await loadImageFromFile(file)
+  const width = Number(img.naturalWidth || img.width || 0)
+  const height = Number(img.naturalHeight || img.height || 0)
+  if (!width || !height) return file
+
+  const scale = Math.min(1, PROFILE_PHOTO_MAX_SIDE / Math.max(width, height))
+  const targetWidth = Math.max(1, Math.round(width * scale))
+  const targetHeight = Math.max(1, Math.round(height * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = targetWidth
+  canvas.height = targetHeight
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return file
+  ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
+
+  const outputType = file.type === 'image/png' ? 'image/jpeg' : file.type || 'image/jpeg'
+  const blob = await canvasToBlob(canvas, outputType, PROFILE_PHOTO_QUALITY)
+  if (!blob || blob.size >= file.size) return file
+
+  const ext = outputType.includes('webp') ? 'webp' : outputType.includes('png') ? 'png' : 'jpg'
+  const baseName = String(file.name || 'avatar').replace(/\.[^.]+$/, '')
+  return new File([blob], `${baseName}.${ext}`, { type: outputType })
+}
 
 function normalizeUploadResponse(data, status = 200) {
   if (data?.ok === false) {
@@ -68,11 +133,15 @@ export async function uploadProfilePhotoToImgBB(file, { uid, idToken, onProgress
   if (!uid) throw new Error('auth_missing')
   if (!idToken) throw new Error('auth_missing')
   if (!file?.type?.startsWith('image/')) throw new Error('tipo_invalido')
-  if (file.size > IMGBB_MAX_PROFILE_PHOTO_BYTES) throw new Error('foto_grande')
+  if (file.size > IMGBB_MAX_SOURCE_PHOTO_BYTES) throw new Error('foto_grande')
+
+  onProgress?.(4)
+  const uploadFile = await compressProfilePhoto(file).catch(() => file)
+  if (uploadFile.size > IMGBB_MAX_PROFILE_PHOTO_BYTES) throw new Error('foto_grande')
 
   const form = new FormData()
   form.append('uid', uid)
-  form.append('image', file)
+  form.append('image', uploadFile)
 
   if (typeof XMLHttpRequest !== 'undefined') {
     return uploadWithProgress(form, { idToken, onProgress })

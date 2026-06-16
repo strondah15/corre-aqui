@@ -188,13 +188,34 @@ export async function ativarPushNotifications(uid) {
 
 function mensagemErroPushApi(data, fallback = 'Nao consegui enviar o push de teste agora.') {
   const reason = data?.reason || data?.error || ''
+  const code = data?.code || data?.failures?.[0]?.code || ''
+
+  if (reason === 'invalid_push_response') {
+    return `A rota de push respondeu sem JSON valido (HTTP ${data?.status || 'erro'}). Veja o terminal do servidor.`
+  }
 
   if (reason === 'firebase_admin_not_configured') {
     return 'Firebase Admin nao esta configurado no servidor da Vercel.'
   }
 
+  if (reason === 'firebase_admin_init_failed') {
+    return 'Firebase Admin falhou ao iniciar. Confira FIREBASE_ADMIN_PRIVATE_KEY, FIREBASE_ADMIN_CLIENT_EMAIL e FIREBASE_ADMIN_PROJECT_ID.'
+  }
+
+  if (reason === 'fcm_project_mismatch' || code === 'messaging/mismatched-credential') {
+    return 'O token FCM e a credencial Admin parecem ser de projetos Firebase diferentes.'
+  }
+
+  if (reason === 'fcm_auth_error' || code === 'messaging/third-party-auth-error') {
+    return 'O FCM recusou a credencial do servidor. Confira Cloud Messaging e permissoes do Firebase Admin.'
+  }
+
+  if (code === 'messaging/invalid-registration-token' || code === 'messaging/registration-token-not-registered') {
+    return 'Token FCM antigo ou invalido. Desative e ative as notificacoes novamente.'
+  }
+
   if (reason === 'no_push_tokens') {
-    return 'Token não encontrado.'
+    return 'Token FCM nao encontrado. Toque em Ativar notificacoes e teste novamente.'
   }
 
   if (reason === 'user_notifications_disabled') {
@@ -210,10 +231,10 @@ function mensagemErroPushApi(data, fallback = 'Nao consegui enviar o push de tes
   }
 
   if (data?.failureCount && Array.isArray(data.failures) && data.failures.length) {
-    return `${fallback} (${data.failures[0]?.code || 'fcm_failed'})`
+    return `${fallback} (${code || 'fcm_failed'})`
   }
 
-  return reason ? `${fallback} (${reason})` : fallback
+  return reason || code ? `${fallback} (${reason || code})` : fallback
 }
 
 export async function testarPushNotification(uid) {
@@ -240,7 +261,14 @@ export async function testarPushNotification(uid) {
       prioridade: 'alta',
     }),
   })
-  const data = await response.json().catch(() => ({}))
+  const raw = await response.text().catch(() => '')
+  let data = {}
+
+  try {
+    data = raw ? JSON.parse(raw) : {}
+  } catch {
+    data = { ok: false, reason: 'invalid_push_response', status: response.status }
+  }
 
   if (!response.ok || data?.ok === false) {
     throw new Error(mensagemErroPushApi(data))

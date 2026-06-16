@@ -1,13 +1,17 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref, runTransaction, serverTimestamp, set, update } from 'firebase/database'
 import LoginGate from '@/components/LoginGate'
-import MapinhaModal from '@/components/MapinhaModal'
 import { auth, database } from '@/lib/firebase'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
+
+const MapinhaModal = dynamic(() => import('@/components/MapinhaModal'), { ssr: false })
+const LIST_STATE_PREFIX = 'correAqui:listState:v2'
+const LIST_RETURN_FLAG = 'correAqui:returningToList'
 
 function getMs(value) {
   if (!value) return 0
@@ -162,7 +166,19 @@ function PedidoDetalhe() {
   }, [status])
 
   const voltarParaLista = () => {
-    router.replace(voltar === 'cliente' ? '/cliente' : '/corre')
+    const fallback = voltar === 'cliente' ? '/cliente' : '/corre'
+
+    try {
+      const stateKey = `${LIST_STATE_PREFIX}:${voltar === 'cliente' ? 'cliente' : 'corre'}`
+      if (sessionStorage.getItem(stateKey)) {
+        if (process.env.NODE_ENV !== 'production') console.time('back-list')
+        sessionStorage.setItem(LIST_RETURN_FLAG, stateKey)
+        router.back()
+        return
+      }
+    } catch {}
+
+    router.replace(fallback)
   }
 
   const abrirChat = () => {

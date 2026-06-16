@@ -58,6 +58,20 @@ export default function CadastroPage() {
 
   async function sair() {
     await signOut(auth).catch(() => {})
+    try {
+      ;[
+        'meuId',
+        'meuNome',
+        'cadastroCompleto',
+        'fotoURL',
+        'fotoUrl',
+        'avatarURL',
+        'avatarEmoji',
+        'visivelNoMapa',
+        'notifsAtivas',
+      ].forEach((key) => window.localStorage.removeItem(key))
+      if (uid) window.localStorage.removeItem(`cadastroCompleto:${uid}`)
+    } catch {}
     router.replace('/')
   }
 

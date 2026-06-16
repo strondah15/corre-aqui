@@ -1,39 +1,53 @@
 import React, { useEffect, useState } from 'react';
-import { View, Dimensions, Alert } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { ref, onValue } from 'firebase/database';
+import { onValue, ref } from 'firebase/database';
 import { database, firebaseConfigReady } from '../lib/firebase';
+
+function hasCoords(pedido) {
+  return Number.isFinite(pedido.latitude) && Number.isFinite(pedido.longitude);
+}
 
 export default function MapaMobile() {
   const [location, setLocation] = useState(null);
   const [pedidos, setPedidos] = useState([]);
+  const [erro, setErro] = useState('');
 
   useEffect(() => {
+    let active = true;
+
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
+      if (!active) return;
+
       if (status !== 'granted') {
-        Alert.alert('Permissão negada', 'Ative a localização para usar o app.');
+        Alert.alert('Permissao negada', 'Ative a localizacao para usar o app.');
+        setErro('Permissao de localizacao negada.');
         return;
       }
 
       const loc = await Location.getCurrentPositionAsync({});
-      setLocation(loc.coords);
-    })();
+      if (active) setLocation(loc.coords);
+    })().catch(() => {
+      if (active) setErro('Nao foi possivel carregar sua localizacao.');
+    });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
     if (!firebaseConfigReady || !database) {
-      Alert.alert(
-        'Configuração pendente',
-        'Defina as variáveis EXPO_PUBLIC_FIREBASE_* para carregar o mapa mobile.'
-      );
+      setErro('Defina as variaveis EXPO_PUBLIC_FIREBASE_* para carregar o mapa mobile.');
       return undefined;
     }
 
     const pedidosRef = ref(database, 'pedidos');
-    const off = onValue(pedidosRef, (snapshot) => {
-      try {
+    const off = onValue(
+      pedidosRef,
+      (snapshot) => {
         const data = snapshot.val() || {};
         const lista = Object.entries(data)
           .map(([id, pedido]) => {
@@ -41,29 +55,33 @@ export default function MapaMobile() {
             return {
               id,
               ...pedido,
-              latitude: local?.lat,
-              longitude: local?.lng,
+              latitude: Number(local?.lat),
+              longitude: Number(local?.lng),
             };
           })
-          .filter((pedido) => pedido.latitude && pedido.longitude);
+          .filter(hasCoords);
 
         setPedidos(lista);
-      } catch (err) {
-        console.error('Erro ao carregar pedidos:', err);
+        setErro('');
+      },
+      (error) => {
+        const code = String(error?.code || error?.message || '');
+        setErro(
+          code.includes('PERMISSION_DENIED')
+            ? 'Entre com uma conta autorizada para ver os pedidos no mobile.'
+            : 'Nao foi possivel carregar os pedidos agora.'
+        );
       }
-    });
+    );
 
     return () => off();
   }, []);
 
   return (
-    <View style={{ flex: 1 }}>
-      {location && (
+    <View style={styles.container}>
+      {location ? (
         <MapView
-          style={{
-            width: Dimensions.get('window').width,
-            height: Dimensions.get('window').height,
-          }}
+          style={StyleSheet.absoluteFillObject}
           initialRegion={{
             latitude: location.latitude,
             longitude: location.longitude,
@@ -84,7 +102,7 @@ export default function MapaMobile() {
             />
           ))}
 
-          {pedidos[0]?.latitude && (
+          {hasCoords(pedidos[0] || {}) ? (
             <Polyline
               coordinates={[
                 {
@@ -99,9 +117,65 @@ export default function MapaMobile() {
               strokeColor="#2563eb"
               strokeWidth={4}
             />
-          )}
+          ) : null}
         </MapView>
-      )}
+      ) : null}
+
+      {!location && !erro ? (
+        <View style={styles.center}>
+          <ActivityIndicator color="#0b73ff" />
+          <Text style={styles.centerText}>Carregando mapa...</Text>
+        </View>
+      ) : null}
+
+      {erro ? (
+        <View style={styles.messageBox}>
+          <Text style={styles.messageTitle}>Mapa indisponivel</Text>
+          <Text style={styles.messageText}>{erro}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#07111f',
+  },
+  center: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  centerText: {
+    color: '#cbd5e1',
+    fontWeight: '800',
+  },
+  messageBox: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 28,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  messageTitle: {
+    color: '#0f172a',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  messageText: {
+    marginTop: 4,
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+});

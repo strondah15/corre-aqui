@@ -76,6 +76,11 @@ const compactCategoryLabel = (label, max = 12) => {
 
 const DEBUG_PRESENCE =
   process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEBUG_PRESENCE === 'true'
+const DEBUG_NAV_PERF = process.env.NODE_ENV !== 'production'
+const LIST_STATE_PREFIX = 'correAqui:listState:v2'
+const LIST_RETURN_FLAG = 'correAqui:returningToList'
+let pedidosCache = []
+let pedidosCacheReady = false
 
 function debugPresence(message, data = {}) {
   if (!DEBUG_PRESENCE) return
@@ -938,7 +943,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [fotoURL, setFotoURL] = useState('')
   const [avatarEmoji, setAvatarEmoji] = useState('')
 
-  const [corres, setCorres] = useState([])
+  const [corres, setCorres] = useState(() => (pedidosCacheReady ? pedidosCache : []))
   const [cardAbertoId, setCardAbertoId] = useState(null)
 
   const [filtro, setFiltro] = useState('abertos')
@@ -978,8 +983,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const notificacoesVistasRef = useRef(new Set())
   const showToast = useCallback((t) => setToast({ ms: 2800, ...t }), [])
 
-  const [loadingPedidos, setLoadingPedidos] = useState(true)
+  const [loadingPedidos, setLoadingPedidos] = useState(() => !pedidosCacheReady)
   const [erroPedidos, setErroPedidos] = useState(null)
+  const [abrindoPedidoId, setAbrindoPedidoId] = useState(null)
 
   const [aceitandoId, setAceitandoId] = useState(null)
   const [cancelandoId, setCancelandoId] = useState(null)
@@ -1005,7 +1011,87 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [bottomBarsHidden, setBottomBarsHidden] = useState(false)
   const [mostrarBuscaCorreFlutuante, setMostrarBuscaCorreFlutuante] = useState(false)
   const lastScrollYRef = useRef(0)
+  const lastListStateSaveAtRef = useRef(0)
   const buscaCorreTopoRef = useRef(null)
+  const listStateKey = useMemo(() => `${LIST_STATE_PREFIX}:${initialMode}`, [initialMode])
+
+  const saveListState = useCallback((markReturning = false) => {
+    if (typeof window === 'undefined') return
+
+    try {
+      window.sessionStorage.setItem(
+        listStateKey,
+        JSON.stringify({
+          modoApp,
+          tab,
+          filtro,
+          busca,
+          categoriaFiltro,
+          clientePainelBaixo,
+          cardAbertoId,
+          scrollY: window.scrollY || document.documentElement.scrollTop || 0,
+          ts: Date.now(),
+        })
+      )
+
+      if (markReturning) {
+        window.sessionStorage.setItem(LIST_RETURN_FLAG, listStateKey)
+      }
+    } catch {}
+  }, [busca, cardAbertoId, categoriaFiltro, clientePainelBaixo, filtro, listStateKey, modoApp, tab])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    try {
+      const raw = window.sessionStorage.getItem(listStateKey)
+      const saved = raw ? JSON.parse(raw) : null
+      if (!saved || Date.now() - Number(saved.ts || 0) > 10 * 60 * 1000) return
+
+      if (saved.modoApp === 'cliente' || saved.modoApp === 'corre') setModoApp(saved.modoApp)
+      if (saved.tab) setTab(saved.tab)
+      if (saved.filtro) setFiltro(saved.filtro)
+      if (typeof saved.busca === 'string') setBusca(saved.busca)
+      if (saved.categoriaFiltro) setCategoriaFiltro(saved.categoriaFiltro)
+      if (typeof saved.clientePainelBaixo === 'string') setClientePainelBaixo(saved.clientePainelBaixo)
+      setCardAbertoId(saved.cardAbertoId || null)
+
+      const finishRestore = () => {
+        window.scrollTo({ top: Number(saved.scrollY || 0), left: 0, behavior: 'auto' })
+        if (DEBUG_NAV_PERF && window.sessionStorage.getItem(LIST_RETURN_FLAG) === listStateKey) {
+          console.timeEnd('back-list')
+          window.sessionStorage.removeItem(LIST_RETURN_FLAG)
+        }
+      }
+
+      window.requestAnimationFrame(() => window.requestAnimationFrame(finishRestore))
+    } catch {}
+  }, [listStateKey])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    let frame = 0
+    const onSaveScroll = () => {
+      const now = Date.now()
+      if (now - lastListStateSaveAtRef.current < 350) return
+      lastListStateSaveAtRef.current = now
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        saveListState(false)
+      })
+    }
+    const onPageHide = () => saveListState(false)
+
+    window.addEventListener('pagehide', onPageHide)
+    window.addEventListener('scroll', onSaveScroll, { passive: true })
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('scroll', onSaveScroll)
+    }
+  }, [saveListState])
 
   /* =======================
      ✅ VOLTAR LIMPO PRA TELA DAS ABAS
@@ -1452,7 +1538,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
      3) Ler pedidos
   ======================= */
   useEffect(() => {
-    setLoadingPedidos(true)
+    if (pedidosCacheReady) {
+      setCorres(pedidosCache)
+      setLoadingPedidos(false)
+    } else {
+      setLoadingPedidos(true)
+    }
     setErroPedidos(null)
 
     const pedidosRef = ref(database, 'pedidos')
@@ -1478,6 +1569,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           return (tb || 0) - (ta || 0)
         })
 
+        pedidosCache = lista
+        pedidosCacheReady = true
         setCorres(lista)
         setLoadingPedidos(false)
         setErroPedidos(null)
@@ -1664,10 +1757,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return (corres || []).filter((p) => String(p?.criador?.id || '') === String(meuId)).length
   }, [corres, meuId])
 
-  const getCatObj = (id) => {
+  const getCatObj = useCallback((id) => {
     if (!id) return null
     return getCategoryById(id)
-  }
+  }, [])
+
+  const buscaTerm = useMemo(() => busca.trim().toLowerCase(), [busca])
 
   const corresFiltrados = useMemo(() => {
     return (corres || [])
@@ -1687,8 +1782,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           if (!categoryMatches(cat, categoriaFiltro)) return false
         }
 
-        if (busca.trim()) {
-          const t = busca.trim().toLowerCase()
+        if (buscaTerm) {
+          const t = buscaTerm
           const hay =
             (p.titulo || '').toLowerCase().includes(t) ||
             (p.descricao || '').toLowerCase().includes(t) ||
@@ -1706,7 +1801,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         const tb = getMs(b?.criadoEm || b?.createdAt || b?.atualizadoEm || 0)
         return tb - ta
       })
-  }, [corres, filtro, busca, meuId, categoriaFiltro, isProfissional])
+  }, [corres, filtro, buscaTerm, meuId, categoriaFiltro, isProfissional])
 
   const categoriaPedidosCount = useMemo(() => {
     const counts = { todas: 0, sem: 0 }
@@ -1723,8 +1818,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       if (filtro === 'meus' && p?.aceite?.id !== meuId) return
       if (filtro === 'finalizados' && status !== 'concluido') return
 
-      if (busca.trim()) {
-        const t = busca.trim().toLowerCase()
+      if (buscaTerm) {
+        const t = buscaTerm
         const hay =
           (p.titulo || '').toLowerCase().includes(t) ||
           (p.descricao || '').toLowerCase().includes(t) ||
@@ -1745,7 +1840,28 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
 
     return counts
-  }, [corres, filtro, busca, meuId, isProfissional])
+  }, [corres, filtro, buscaTerm, meuId, isProfissional])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof router.prefetch !== 'function' || modoApp !== 'corre') return undefined
+
+    const pedidosVisiveis = (corresFiltrados || []).slice(0, 12)
+    if (!pedidosVisiveis.length) return undefined
+
+    const run = () => {
+      pedidosVisiveis.forEach((pedido) => {
+        if (pedido?.id) router.prefetch(`/pedido/${encodeURIComponent(String(pedido.id))}?voltar=${modoApp}`)
+      })
+    }
+
+    if ('requestIdleCallback' in window) {
+      const idleId = window.requestIdleCallback(run, { timeout: 1200 })
+      return () => window.cancelIdleCallback?.(idleId)
+    }
+
+    const timer = window.setTimeout(run, 300)
+    return () => window.clearTimeout(timer)
+  }, [corresFiltrados, modoApp, router])
 
   const resumoCorre = useMemo(() => {
     const lista = Array.isArray(corres) ? corres : []
@@ -2429,17 +2545,50 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     setTab('corre')
   }
 
-  const abrirFichaPedido = (pedido) => {
+  const abrirFichaPedido = useCallback((pedido) => {
     if (!pedido?.id) return
-    router.push(`/pedido/${encodeURIComponent(String(pedido.id))}?voltar=${modoApp}`)
-  }
+    const href = `/pedido/${encodeURIComponent(String(pedido.id))}?voltar=${modoApp}`
+    if (DEBUG_NAV_PERF) console.time('open-card')
+    saveListState(false)
+    setAbrindoPedidoId(pedido.id)
+    router.prefetch?.(href)
+    router.push(href)
+    if (DEBUG_NAV_PERF) {
+      window.requestAnimationFrame(() => console.timeEnd('open-card'))
+    }
+  }, [modoApp, router, saveListState])
 
-  const abrirChatFocado = (pedido) => {
+  const abrirChatFocado = useCallback((pedido) => {
     if (!pedido?.id) return
+    saveListState(false)
     setClientePainelBaixo('')
     setChatPedido(null)
     router.push(`/chat/${encodeURIComponent(String(pedido.id))}?voltar=${modoApp}`)
-  }
+  }, [modoApp, router, saveListState])
+
+  const abrirPerfilCliente = useCallback((u) => {
+    if (!u) {
+      setPerfilInitialTab('perfil')
+      setOpenPerfil(true)
+      return
+    }
+
+    setUsuarioSelecionado(u)
+    showToast({
+      type: 'info',
+      title: u?.nome || u?.profile?.nome || 'Perfil',
+      message:
+        u?.profResumo ||
+        u?.correResumo ||
+        u?.profissional?.descricao ||
+        u?.profile?.descricao ||
+        'Ficha selecionada.',
+    })
+  }, [showToast])
+
+  const abrirAgendaCliente = useCallback((u) => {
+    setAgendaClienteUser(u)
+  }, [])
 
   const glassCard = 'bg-white/10  border border-white/10 shadow-xl shadow-black/30'
 
@@ -2948,27 +3097,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               }}
               onAbrirPedidos={() => setClientePainelBaixo('meusPedidos')}
               onAbrirNotificacoes={() => setClientePainelBaixo('notificacoes')}
-              onAbrirPerfil={(u) => {
-                if (!u) {
-                  setPerfilInitialTab('perfil')
-                  setOpenPerfil(true)
-                  return
-                }
-                setUsuarioSelecionado(u)
-                showToast({
-                  type: 'info',
-                  title: u?.nome || u?.profile?.nome || 'Perfil',
-                  message:
-                    u?.profResumo ||
-                    u?.correResumo ||
-                    u?.profissional?.descricao ||
-                    u?.profile?.descricao ||
-                    'Ficha selecionada.',
-                })
-              }}
-              onAgendar={(u) => {
-                setAgendaClienteUser(u)
-              }}
+              onAbrirPerfil={abrirPerfilCliente}
+              onAgendar={abrirAgendaCliente}
             />
 
             <AvisoCorreAceito
@@ -3131,6 +3261,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                 const b = boostInfo(p)
                 const cardAberto = cardAbertoId === p.id
+                const abrindoEstePedido = abrindoPedidoId === p.id
 
                 const catObj = getCatObj(p?.categoriaId || p?.categoria)
                 const combinaComigo =
@@ -3163,7 +3294,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 return (
                   <motion.div
                     key={p.id}
-                    layout
                     initial={{ opacity: 0, y: 22, scale: 0.985 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ duration: 0.34, delay: Math.min(index * 0.055, 0.35), ease: 'easeOut' }}
@@ -3171,7 +3301,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     whileTap={{ scale: 0.985 }}
                     className={[
                       "corre-card-clean group relative flex min-h-[132px] flex-col overflow-hidden rounded-[16px] border-[1.5px] bg-white text-slate-950",
-                      "shadow-[0_12px_26px_rgba(15,23,42,0.14)] ring-1 ring-slate-300/70 transition md:min-h-[136px] md:rounded-[18px]",
+                      "shadow-[0_12px_26px_rgba(15,23,42,0.14)] ring-1 ring-slate-300/70 transition [content-visibility:auto] [contain-intrinsic-size:160px] md:min-h-[136px] md:rounded-[18px]",
                       cardAberto ? "shadow-[0_20px_48px_rgba(15,23,42,0.16)]" : "",
                       b.destaque ? "border-fuchsia-300/80 ring-2 ring-fuchsia-300/30" : "",
                       b.emergencia ? "border-red-400 ring-2 ring-red-400/55" : "",
@@ -3213,6 +3343,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       <button
                         type="button"
                         onClick={() => abrirFichaPedido(p)}
+                        aria-busy={abrindoEstePedido}
                         className="min-w-0 text-left"
                       >
                         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -3273,10 +3404,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                               event.stopPropagation()
                               abrirFichaPedido(p)
                             }}
-                            disabled={aceitandoId === p.id}
+                            disabled={aceitandoId === p.id || abrindoEstePedido}
+                            aria-busy={abrindoEstePedido}
                             type="button"
                           >
-                            {aceitandoId === p.id ? '...' : 'Aceitar'}
+                            {abrindoEstePedido ? 'Abrindo...' : aceitandoId === p.id ? '...' : 'Aceitar'}
                           </button>
                         ) : (
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 ring-1 ring-slate-200">

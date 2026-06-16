@@ -601,7 +601,11 @@ export default function ChatMensagens({
 
           <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-white/10 bg-gradient-to-br from-blue-500 to-emerald-400 shadow-[0_10px_26px_rgba(14,165,233,0.22)] sm:h-11 sm:w-11">
             {outroFoto ? (
-              <img src={outroFoto} alt="" className="h-full w-full object-cover" />
+              <div
+                className="h-full w-full bg-cover bg-center"
+                style={{ backgroundImage: `url(${JSON.stringify(outroFoto)})` }}
+                aria-hidden="true"
+              />
             ) : (
               <div className="grid h-full w-full place-items-center text-sm font-black text-white sm:text-base">{outroInicial}</div>
             )}

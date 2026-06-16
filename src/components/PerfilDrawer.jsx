@@ -20,6 +20,23 @@ const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
   ssr: false,
 });
 
+const defaultPrivacy = {
+  profileVisible: true,
+  shareLocationDuringActiveJob: true,
+  showOnlineStatus: true,
+  allowPublicContact: false,
+};
+
+function normalizePrivacy(value = {}, fallback = {}) {
+  return {
+    profileVisible: value.profileVisible ?? fallback.profileVisible ?? true,
+    shareLocationDuringActiveJob:
+      value.shareLocationDuringActiveJob ?? fallback.shareLocationDuringActiveJob ?? true,
+    showOnlineStatus: value.showOnlineStatus ?? fallback.showOnlineStatus ?? true,
+    allowPublicContact: value.allowPublicContact ?? fallback.allowPublicContact ?? false,
+  };
+}
+
 const initialProfile = {
   nome: "",
   cidade: "",
@@ -51,6 +68,7 @@ const initialProfile = {
   mapAoVivo: false,
   mapLimiteOnline: 30,
   animacoes: true,
+  privacy: defaultPrivacy,
 };
 
 const tabLabel = {
@@ -168,7 +186,7 @@ function maskCpfSalvo(value) {
   return `***.***.***-${digits.slice(-2)}`;
 }
 
-const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+const PHOTO_SOURCE_MAX_BYTES = 8 * 1024 * 1024;
 
 function isFotoValor(v) {
   const s = String(v || "").trim();
@@ -317,6 +335,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
   const [cpfDraft, setCpfDraft] = useState("");
   const [cpfSalvoMask, setCpfSalvoMask] = useState("");
   const [cpfAviso, setCpfAviso] = useState("");
+  const [privacyAviso, setPrivacyAviso] = useState("");
   const [serviceStats, setServiceStats] = useState({
     total: 0,
     comoCorre: 0,
@@ -366,6 +385,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       const settings = data.settings || {};
       const settingsMapa = settings.mapa || {};
       const settingsUi = settings.ui || {};
+      const privacyData = normalizePrivacy(data.privacy, {
+        profileVisible: data.visivel ?? data.profile?.visivel,
+        showOnlineStatus: data.showOnlineStatus ?? data.profile?.showOnlineStatus,
+      });
 
       const servicosCorre = Number(data.servicosCorre ?? data["serviçosCorre"] ?? 0);
       const servicosProf = Number(data.servicosProf ?? data["serviçosProf"] ?? 0);
@@ -416,6 +439,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         avatar: prev.avatar || fotoPrincipal || avatarEmoji || "",
         avatarEmoji: prev.avatarEmoji || avatarEmoji,
         profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
+        visivel: privacyData.profileVisible,
+        privacy: privacyData,
       }));
 
       if (!settingsLoadedRef.current) {
@@ -425,6 +450,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
           mapAoVivo: settingsMapa.aoVivo ?? prev.mapAoVivo,
           mapLimiteOnline: settingsMapa.limiteOnline ?? prev.mapLimiteOnline,
           animacoes: settingsUi.animacoes ?? prev.animacoes,
+          privacy: privacyData,
+          visivel: privacyData.profileVisible,
         }));
         settingsLoadedRef.current = true;
       }
@@ -486,6 +513,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
             ocupadoAte: data.ocupadoAte || data.profissional?.ocupadoAte || prev.ocupadoAte || "",
             agendaAberta: data.agendaAberta ?? data.profissional?.agendaAberta ?? prev.agendaAberta ?? true,
             profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
+            privacy: prev.privacy || defaultPrivacy,
           };
         });
       }
@@ -739,8 +767,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       return;
     }
 
-    if (file.size > PHOTO_MAX_BYTES) {
-      setPhotoError("Escolha uma imagem de ate 2 MB.");
+    if (file.size > PHOTO_SOURCE_MAX_BYTES) {
+      setPhotoError("Escolha uma imagem de ate 8 MB. O app comprime antes de enviar.");
       return;
     }
 
@@ -867,8 +895,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       return;
     }
 
-    if (file.size > PHOTO_MAX_BYTES) {
-      setPortfolioPhotoError("Escolha uma imagem de ate 2 MB.");
+    if (file.size > PHOTO_SOURCE_MAX_BYTES) {
+      setPortfolioPhotoError("Escolha uma imagem de ate 8 MB. O app comprime antes de enviar.");
       return;
     }
 
@@ -987,9 +1015,18 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         animacoes: profile.animacoes !== false,
         atualizadoEm: serverTimestamp(),
       };
+      const privacySettings = normalizePrivacy(profile.privacy, {
+        profileVisible: profile.visivel,
+      });
+      const privacyPayload = {
+        ...privacySettings,
+        atualizadoEm: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
 
       const fotoPrincipal = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
       const profilePublic = { ...profile };
+      delete profilePublic.privacy;
       delete profilePublic.cpf;
       delete profilePublic.cpfDigits;
       delete profilePublic.cpfVerificacao;
@@ -1062,6 +1099,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         profPortfolio,
         cidade: profile.cidade || "",
         bio: profile.bio || "",
+        visivel: privacySettings.profileVisible,
+        privacy: privacyPayload,
         isCorre: !!profile.isCorre,
         corre: {
           ...corre,
@@ -1080,6 +1119,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         statusProfissional: profile.statusProfissional || "disponivel",
         ocupadoAte: profile.ocupadoAte || "",
         agendaAberta: profile.agendaAberta !== false,
+        showOnlineStatus: privacySettings.showOnlineStatus,
+        allowPublicContact: privacySettings.allowPublicContact,
         assinatura: {
           plano: profile.plano || "Free",
           origem: "perfil",
@@ -1102,6 +1143,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         cidade: profile.cidade || "",
         isCorre: !!profile.isCorre,
         isProfissional: !!profile.isProfissional,
+        visivel: privacySettings.profileVisible,
+        showOnlineStatus: privacySettings.showOnlineStatus,
+        allowPublicContact: privacySettings.allowPublicContact,
         plano: profile.plano || "Free",
         statusProfissional: profile.statusProfissional || "disponivel",
         ocupadoAte: profile.ocupadoAte || "",
@@ -1153,6 +1197,23 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       : pushPermission === "denied"
         ? "border-rose-200 bg-rose-50 text-rose-700"
         : "border-amber-200 bg-amber-50 text-amber-700";
+  const privacy = normalizePrivacy(profile.privacy, {
+    profileVisible: profile.visivel,
+  });
+  const setPrivacyPreference = (field, value) => {
+    setPrivacyAviso("");
+    setProfile((prev) => {
+      const nextPrivacy = {
+        ...normalizePrivacy(prev.privacy, { profileVisible: prev.visivel }),
+        [field]: value,
+      };
+      return {
+        ...prev,
+        privacy: nextPrivacy,
+        ...(field === "profileVisible" ? { visivel: value } : {}),
+      };
+    });
+  };
   const professionalMode = tab === "profissional";
   const taxaConclusaoProf = serviceStats.total
     ? Math.max(0, Math.round(((serviceStats.total - serviceStats.problemas) / serviceStats.total) * 100))
@@ -1194,6 +1255,21 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
     },
   };
   const profPage = profPages[profSection] || profPages.perfilPublico;
+  const drawerPages = {
+    perfil: {
+      title: "Meu perfil",
+      desc: "Dados pessoais, confiança e verificação.",
+    },
+    config: {
+      title: "Ajustes",
+      desc: "Presença, notificações, mapa e experiência.",
+    },
+    monetizacao: {
+      title: "Planos",
+      desc: "Recursos, anúncios e benefícios do Corre Aqui.",
+    },
+  };
+  const drawerPage = drawerPages[tab] || drawerPages.perfil;
   const updatePortfolioDraft = (field, value) => {
     setPortfolioDraft((prev) => ({ ...prev, [field]: value }));
   };
@@ -1247,10 +1323,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
           <div className="mx-auto w-full max-w-7xl px-3 py-2.5 md:px-8 md:py-4 flex items-center justify-between gap-3">
             <div>
               <div className="text-base font-extrabold text-blue-950 md:text-lg">
-                Meu perfil
+                {drawerPage.title}
               </div>
               <div className="text-[11px] font-semibold text-slate-500 md:text-xs">
-                Perfil, confiança, notificações e preferências.
+                {drawerPage.desc}
               </div>
             </div>
 
@@ -1311,7 +1387,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                 {profile.cidade || "Cidade não informada"}
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 md:mt-4 md:gap-2">
+              <div className="hidden">
                 <span
                   className={`px-3 py-1.5 rounded-full text-xs font-black border ${
                     profile.visivel
@@ -1344,7 +1420,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
 
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-1.5 w-full md:mt-5 md:gap-2">
+              <div className="hidden">
                 <div className="rounded-[18px] border border-white/55 bg-white/88 px-2 py-2 text-blue-950 shadow-[0_12px_24px_rgba(15,23,42,0.10)] md:rounded-2xl md:px-3 md:py-3">
                   <div className="text-base font-black md:text-lg">{serviceStats.total}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
@@ -1367,7 +1443,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                 </div>
               </div>
 
-              <div className="mt-1.5 grid grid-cols-2 gap-1.5 w-full text-left md:mt-2 md:gap-2">
+              <div className="hidden">
                 <div className="rounded-[18px] border border-white/40 bg-white/28 px-2.5 py-1.5 md:rounded-2xl md:px-3 md:py-2">
                   <div className="text-sm font-black text-white">{serviceStats.comoCorre}</div>
                   <div className="text-[10px] font-bold uppercase tracking-wide text-white/70">Como corre</div>
@@ -1586,8 +1662,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                     </div>
                     <input
                       type="checkbox"
-                      checked={profile.visivel}
-                      onChange={(e) => setProfile((p) => ({ ...p, visivel: e.target.checked }))}
+                      checked={privacy.profileVisible}
+                      onChange={(e) => setPrivacyPreference("profileVisible", e.target.checked)}
                       className="h-5 w-5 accent-emerald-500"
                     />
                   </label>
@@ -1722,6 +1798,145 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                   </label>
                 </section>
               </div>
+
+              <section className="rounded-[24px] border border-blue-100 bg-white p-3 shadow-[0_16px_38px_rgba(37,99,235,0.10)] md:rounded-[30px] md:p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Privacidade</div>
+                    <div className="mt-1 text-sm font-bold text-slate-500">
+                      Controle como seu perfil, localizacao e status aparecem no Corre Aqui.
+                    </div>
+                  </div>
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blue-50 text-xl text-blue-700 ring-1 ring-blue-100">
+                    🔒
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 md:rounded-[24px] md:p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-lg shadow-sm">👁️</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-slate-950">Visibilidade do perfil</div>
+                        <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                          Publico aparece quando voce estiver disponivel. Privado nao entra em listas publicas.
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 rounded-2xl bg-white p-1 ring-1 ring-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => setPrivacyPreference("profileVisible", true)}
+                            className={[
+                              "h-10 rounded-xl text-xs font-black transition active:scale-[0.98]",
+                              privacy.profileVisible ? "bg-blue-600 text-white shadow-[0_10px_22px_rgba(37,99,235,0.22)]" : "text-slate-500",
+                            ].join(" ")}
+                          >
+                            Publico
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPrivacyPreference("profileVisible", false)}
+                            className={[
+                              "h-10 rounded-xl text-xs font-black transition active:scale-[0.98]",
+                              !privacy.profileVisible ? "bg-slate-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)]" : "text-slate-500",
+                            ].join(" ")}
+                          >
+                            Privado
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 md:rounded-[24px] md:p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-lg shadow-sm">📍</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-slate-950">Localizacao</div>
+                        <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                          Sua localizacao so deve ser usada durante um corre ativo.
+                        </div>
+                        <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                          <span className="text-xs font-black text-slate-700">Compartilhar durante corre ativo</span>
+                          <input
+                            type="checkbox"
+                            checked={privacy.shareLocationDuringActiveJob}
+                            onChange={(e) => setPrivacyPreference("shareLocationDuringActiveJob", e.target.checked)}
+                            className="h-5 w-5 accent-blue-600"
+                          />
+                        </label>
+                        <div className="mt-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+                          Nunca compartilhar em segundo plano.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 md:rounded-[24px] md:p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-lg shadow-sm">🟢</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-slate-950">Status online</div>
+                        <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                          Escolha se outras pessoas podem ver que voce esta disponivel.
+                        </div>
+                        <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                          <span className="text-xs font-black text-slate-700">
+                            {privacy.showOnlineStatus ? "Mostrar status disponivel" : "Ocultar status online"}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={privacy.showOnlineStatus}
+                            onChange={(e) => setPrivacyPreference("showOnlineStatus", e.target.checked)}
+                            className="h-5 w-5 accent-emerald-500"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 md:rounded-[24px] md:p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-lg shadow-sm">🔒</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-slate-950">Dados pessoais</div>
+                        <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                          Documentos e dados sensiveis ficam protegidos na area privada da conta.
+                        </div>
+                        <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                          <span className="text-xs font-black text-slate-700">Permitir contato publico</span>
+                          <input
+                            type="checkbox"
+                            checked={privacy.allowPublicContact}
+                            onChange={(e) => setPrivacyPreference("allowPublicContact", e.target.checked)}
+                            className="h-5 w-5 accent-blue-600"
+                          />
+                        </label>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <button
+                            type="button"
+                            onClick={() => setPrivacyAviso("Em breve voce podera consultar um resumo dos seus dados salvos.")}
+                            className="h-10 rounded-xl bg-blue-600 px-3 text-xs font-black text-white transition hover:bg-blue-500 md:rounded-2xl"
+                          >
+                            Ver meus dados
+                          </button>
+                          <button
+                            type="button"
+                            disabled
+                            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-400 md:rounded-2xl"
+                          >
+                            Excluir conta em breve
+                          </button>
+                        </div>
+                        {privacyAviso ? (
+                          <div className="mt-2 rounded-2xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-blue-800">
+                            {privacyAviso}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
               <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_16px_38px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
                 <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Experiência</div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ref, onValue, query, limitToLast } from 'firebase/database'
 import { database } from '@/lib/firebase'
 import CardProfissional from './CardProfissional'
@@ -8,6 +8,8 @@ import { CATEGORIES, categoryMatches, getCategoryById } from '@/constants/catego
 
 
 const safeStr = (v) => String(v || '').trim()
+let profissionaisCache = []
+let profissionaisCacheReady = false
 
 function getFotoPersonalizada(user = {}, profile = {}, profissional = {}) {
   return safeStr(
@@ -47,11 +49,13 @@ function getFotoURL(user = {}, profile = {}, profissional = {}, avatarEmoji = ''
 }
 
 function normalizeUsers(raw) {
-  const obj = raw || {}
+  const entries = Array.isArray(raw)
+    ? raw.map((value, index) => [value?.uid || value?.id || `provider_${index}`, value])
+    : Object.entries(raw || {})
 
   // ✅ mantém tudo que já existe e cria campos "planos" para a lista funcionar
   // mesmo quando os dados estão salvos em users/{uid}/profile ou users/{uid}/profissional
-  return Object.entries(obj).map(([uid, v]) => {
+  return entries.map(([uid, v]) => {
     const user = v || {}
     const profile = user.profile || {}
     const profissional = user.profissional || {}
@@ -153,15 +157,21 @@ export default function ListaProfissionais({
   categoriaId = '', // filtra por categoria
   search = '',
   limit = 200,
+  itemsSource = null,
   onAbrirPerfil,
   onAgendar,
   showHeader = true,
   compact = false,
 }) {
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
+  const hasExternalItems = Array.isArray(itemsSource)
+  const [items, setItems] = useState(() => (profissionaisCacheReady ? profissionaisCache : []))
+  const [loading, setLoading] = useState(() => !hasExternalItems && !profissionaisCacheReady)
   const [buscaLocal, setBuscaLocal] = useState(search || '')
   const [categoriaLocal, setCategoriaLocal] = useState(categoriaId || '')
+  const sourceItems = useMemo(
+    () => (hasExternalItems ? normalizeUsers(itemsSource) : items),
+    [hasExternalItems, itemsSource, items]
+  )
 
   // Mantém compatível com o Mapadinamico: se o pai mandar busca/categoria,
   // a lista atualiza; se não mandar, o próprio componente controla tudo.
@@ -174,6 +184,11 @@ export default function ListaProfissionais({
   }, [categoriaId])
 
   useEffect(() => {
+    if (hasExternalItems) {
+      setLoading(false)
+      return undefined
+    }
+
     setLoading(true)
 
     // ✅ leitura simples (depois otimizamos com índices / queries)
@@ -183,6 +198,8 @@ export default function ListaProfissionais({
       usersRef,
       (snap) => {
         const list = normalizeUsers(snap.val())
+        profissionaisCache = list
+        profissionaisCacheReady = true
         setItems(list)
         setLoading(false)
       },
@@ -190,7 +207,7 @@ export default function ListaProfissionais({
     )
 
     return () => off()
-  }, [limit])
+  }, [hasExternalItems, limit])
 
   const categoriasFiltro = useMemo(() => {
     const base = Array.isArray(CATEGORIES) ? CATEGORIES : []
@@ -204,7 +221,7 @@ export default function ListaProfissionais({
 
   const filtrados = useMemo(() => {
     const t = String(buscaLocal || '').trim().toLowerCase()
-    return (items || [])
+    return (sourceItems || [])
       .filter((u) => {
         const isProf = !!u.isProfissional
         const isCorre = !!u.isCorre
@@ -253,14 +270,14 @@ export default function ListaProfissionais({
         return nome.includes(t) || resumo.includes(t) || cidade.includes(t) || titulo.includes(t) || transporte.includes(t)
       })
       .sort((a, b) => Number(b.updatedAt || b.updatedAtMs || 0) - Number(a.updatedAt || a.updatedAtMs || 0))
-  }, [items, mode, categoriaLocal, buscaLocal])
+  }, [sourceItems, mode, categoriaLocal, buscaLocal])
 
-  const openWhatsapp = (u) => {
+  const openWhatsapp = useCallback((u) => {
     const w = String(u?.profWhats || '').replace(/[^\d]/g, '')
     if (!w) return
     const url = `https://wa.me/55${w}`
-    window.open(url, '_blank', 'noreferrer')
-  }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }, [])
 
   const glass =
     'bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.22)] ring-1 ring-white/5 backdrop-blur-xl'

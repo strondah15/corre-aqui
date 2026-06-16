@@ -11,7 +11,9 @@ export default function PWARegister() {
 
     const register = () => {
       getServiceWorkerRegistration().catch((error) => {
-        console.debug('[Corre Aqui] Service worker push nao registrou:', error?.message || error)
+        if (process.env.NODE_ENV !== 'production') {
+          console.debug('[Corre Aqui] Service worker push nao registrou:', error?.message || error)
+        }
       })
     }
 

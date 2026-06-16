@@ -49,6 +49,26 @@ function canSendForPedido({ actorUid, toUid, pedido }) {
   return actorIsParticipant && targetIsParticipant && actorUid !== toUid
 }
 
+function pushErrorPayload(error, fallbackReason = 'push_send_failed') {
+  const code = String(error?.code || '')
+  const message = String(error?.message || '').slice(0, 240)
+  const reason =
+    code === 'app/invalid-credential' || code === 'app/invalid-app-options'
+      ? 'firebase_admin_init_failed'
+      : code === 'messaging/mismatched-credential'
+        ? 'fcm_project_mismatch'
+        : code === 'messaging/third-party-auth-error'
+          ? 'fcm_auth_error'
+          : fallbackReason
+
+  return {
+    ok: false,
+    reason,
+    code,
+    message,
+  }
+}
+
 async function disableInvalidTokens(db, toUid, tokenEntries, responses) {
   const updates = {}
   const now = Date.now()
@@ -70,130 +90,152 @@ async function disableInvalidTokens(db, toUid, tokenEntries, responses) {
 }
 
 export async function POST(request) {
-  if (!isFirebaseAdminConfigured()) {
-    return NextResponse.json({
-      ok: false,
-      skipped: true,
-      reason: 'firebase_admin_not_configured',
+  try {
+    if (!isFirebaseAdminConfigured()) {
+      return NextResponse.json({
+        ok: false,
+        skipped: true,
+        reason: 'firebase_admin_not_configured',
+      })
+    }
+
+    const authorization = request.headers.get('authorization') || ''
+    const idToken = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : ''
+
+    if (!idToken) {
+      return NextResponse.json({ ok: false, error: 'missing_auth_token' }, { status: 401 })
+    }
+
+    let body = {}
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400 })
+    }
+
+    const toUid = text(body.toUid || body.userId, '', 128)
+    const pedidoId = text(body.pedidoId, '', 128)
+
+    if (!toUid) {
+      return NextResponse.json({ ok: false, error: 'missing_target' }, { status: 400 })
+    }
+
+    let adminAuth
+    let db
+    let messaging
+    try {
+      adminAuth = getFirebaseAdminAuth()
+      db = getFirebaseAdminDatabase()
+      messaging = getFirebaseAdminMessaging()
+    } catch (error) {
+      console.error('[push/send] Firebase Admin init failed:', error)
+      return NextResponse.json(pushErrorPayload(error, 'firebase_admin_init_failed'), { status: 500 })
+    }
+
+    let decoded
+    try {
+      decoded = await adminAuth.verifyIdToken(idToken)
+    } catch {
+      return NextResponse.json({ ok: false, error: 'invalid_auth_token' }, { status: 401 })
+    }
+
+    const actorUid = String(decoded.uid || '')
+    const isSelfTest =
+      !pedidoId &&
+      toUid === actorUid &&
+      (body.test === true || body.tipo === 'push_teste' || body.type === 'push_teste')
+
+    if (!isSelfTest) {
+      if (!pedidoId) {
+        return NextResponse.json({ ok: false, error: 'missing_pedido' }, { status: 400 })
+      }
+
+      const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).get()
+      const pedido = pedidoSnap.val()
+
+      if (!pedido || !canSendForPedido({ actorUid, toUid, pedido })) {
+        return NextResponse.json({ ok: false, error: 'forbidden_push_context' }, { status: 403 })
+      }
+    }
+
+    const userSnap = await db.ref(`users/${toUid}`).get()
+    const user = userSnap.val() || {}
+    const userPrivateSnap = await db.ref(`userPrivate/${toUid}`).get()
+    const userPrivate = userPrivateSnap.val() || {}
+
+    if (
+      user?.profile?.notificacoes === false ||
+      user?.notificacoes === false ||
+      user?.push?.enabled === false ||
+      userPrivate?.push?.enabled === false
+    ) {
+      return NextResponse.json({ ok: false, skipped: true, reason: 'user_notifications_disabled' })
+    }
+
+    const pushTokens = userPrivate?.pushTokens || {}
+    const tokenEntries = Object.entries(pushTokens)
+      .map(([key, value]) => ({ key, token: value?.token, enabled: value?.enabled !== false }))
+      .filter((entry) => entry.enabled && typeof entry.token === 'string' && entry.token.length > 20)
+
+    if (!tokenEntries.length) {
+      return NextResponse.json({ ok: false, skipped: true, reason: 'no_push_tokens' })
+    }
+
+    const title = text(body.titulo || body.title, 'Corre Aqui', 80)
+    const message = text(body.mensagem || body.body || body.message, 'Voce tem uma nova atualizacao.', 180)
+    const url = resolveClickUrl(body)
+    const tag = text(body.tag, `corre-aqui-${pedidoId || `teste-${actorUid}`}-${body.tipo || body.type || 'push'}`, 120)
+    const data = stringData({
+      tipo: body.tipo || body.type || 'notificacao',
+      pedidoId,
+      conversaId: body.conversaId || pedidoId,
+      acao: body.acao || 'ver_notificacoes',
+      url,
+      title,
+      body: message,
+      icon: '/corre-aqui-icon-192.png',
+      badge: '/corre-aqui-icon-192.png',
+      tag,
+      requireInteraction: body.prioridade === 'alta',
     })
-  }
 
-  const authorization = request.headers.get('authorization') || ''
-  const idToken = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : ''
-
-  if (!idToken) {
-    return NextResponse.json({ ok: false, error: 'missing_auth_token' }, { status: 401 })
-  }
-
-  let body = {}
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400 })
-  }
-
-  const toUid = text(body.toUid || body.userId, '', 128)
-  const pedidoId = text(body.pedidoId, '', 128)
-
-  if (!toUid) {
-    return NextResponse.json({ ok: false, error: 'missing_target' }, { status: 400 })
-  }
-
-  const auth = getFirebaseAdminAuth()
-  const db = getFirebaseAdminDatabase()
-  const messaging = getFirebaseAdminMessaging()
-
-  let decoded
-  try {
-    decoded = await auth.verifyIdToken(idToken)
-  } catch {
-    return NextResponse.json({ ok: false, error: 'invalid_auth_token' }, { status: 401 })
-  }
-
-  const actorUid = String(decoded.uid || '')
-  const isSelfTest = !pedidoId && toUid === actorUid && (body.test === true || body.tipo === 'push_teste' || body.type === 'push_teste')
-
-  if (!isSelfTest) {
-    if (!pedidoId) {
-      return NextResponse.json({ ok: false, error: 'missing_pedido' }, { status: 400 })
+    let result
+    try {
+      result = await messaging.sendEachForMulticast({
+        tokens: tokenEntries.map((entry) => entry.token),
+        data,
+        webpush: {
+          headers: {
+            Urgency: body.prioridade === 'alta' ? 'high' : 'normal',
+            TTL: '86400',
+          },
+          fcmOptions: {
+            link: url,
+          },
+        },
+      })
+    } catch (error) {
+      console.error('[push/send] FCM send failed:', error)
+      return NextResponse.json(pushErrorPayload(error), { status: 502 })
     }
 
-    const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).get()
-    const pedido = pedidoSnap.val()
+    await disableInvalidTokens(db, toUid, tokenEntries, result.responses || [])
+    const failures = (result.responses || [])
+      .map((response, index) => ({
+        tokenKey: tokenEntries[index]?.key,
+        code: response?.error?.code,
+        message: response?.error?.message,
+      }))
+      .filter((failure) => failure.code)
 
-    if (!pedido || !canSendForPedido({ actorUid, toUid, pedido })) {
-      return NextResponse.json({ ok: false, error: 'forbidden_push_context' }, { status: 403 })
-    }
+    return NextResponse.json({
+      ok: result.successCount > 0,
+      successCount: result.successCount,
+      failureCount: result.failureCount,
+      failures: failures.slice(0, 5),
+    })
+  } catch (error) {
+    console.error('[push/send] Unexpected error:', error)
+    return NextResponse.json(pushErrorPayload(error), { status: 500 })
   }
-
-  const userSnap = await db.ref(`users/${toUid}`).get()
-  const user = userSnap.val() || {}
-  const userPrivateSnap = await db.ref(`userPrivate/${toUid}`).get()
-  const userPrivate = userPrivateSnap.val() || {}
-
-  if (
-    user?.profile?.notificacoes === false ||
-    user?.notificacoes === false ||
-    user?.push?.enabled === false ||
-    userPrivate?.push?.enabled === false
-  ) {
-    return NextResponse.json({ ok: false, skipped: true, reason: 'user_notifications_disabled' })
-  }
-
-  const pushTokens = userPrivate?.pushTokens || {}
-  const tokenEntries = Object.entries(pushTokens)
-    .map(([key, value]) => ({ key, token: value?.token, enabled: value?.enabled !== false }))
-    .filter((entry) => entry.enabled && typeof entry.token === 'string' && entry.token.length > 20)
-
-  if (!tokenEntries.length) {
-    return NextResponse.json({ ok: false, skipped: true, reason: 'no_push_tokens' })
-  }
-
-  const title = text(body.titulo || body.title, 'Corre Aqui', 80)
-  const message = text(body.mensagem || body.body || body.message, 'Você tem uma nova atualização.', 180)
-  const url = resolveClickUrl(body)
-  const tag = text(body.tag, `corre-aqui-${pedidoId || `teste-${actorUid}`}-${body.tipo || body.type || 'push'}`, 120)
-  const data = stringData({
-    tipo: body.tipo || body.type || 'notificacao',
-    pedidoId,
-    conversaId: body.conversaId || pedidoId,
-    acao: body.acao || 'ver_notificacoes',
-    url,
-    title,
-    body: message,
-    icon: '/corre-aqui-icon-192.png',
-    badge: '/corre-aqui-icon-192.png',
-    tag,
-    requireInteraction: body.prioridade === 'alta',
-  })
-
-  const result = await messaging.sendEachForMulticast({
-    tokens: tokenEntries.map((entry) => entry.token),
-    data,
-    webpush: {
-      headers: {
-        Urgency: body.prioridade === 'alta' ? 'high' : 'normal',
-        TTL: '86400',
-      },
-      fcmOptions: {
-        link: url,
-      },
-    },
-  })
-
-  await disableInvalidTokens(db, toUid, tokenEntries, result.responses || [])
-  const failures = (result.responses || [])
-    .map((response, index) => ({
-      tokenKey: tokenEntries[index]?.key,
-      code: response?.error?.code,
-      message: response?.error?.message,
-    }))
-    .filter((failure) => failure.code)
-
-  return NextResponse.json({
-    ok: result.successCount > 0,
-    successCount: result.successCount,
-    failureCount: result.failureCount,
-    failures: failures.slice(0, 5),
-  })
 }

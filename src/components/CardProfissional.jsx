@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo } from 'react'
-import { motion } from 'framer-motion'
+import { memo, useCallback, useMemo } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import { getCategoryById } from '@/constants/categories'
 
 function safeUrl(u) {
@@ -96,7 +96,8 @@ function getAgendaStatus(item) {
   return { status, ocupadoAte, agendaAberta, emServico }
 }
 
-export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
+function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
+  const shouldReduceMotion = useReducedMotion()
   const profile = item?.profile || {}
   const prof = item?.profissional || profile?.profissional || {}
   const corre = item?.corre || profile?.corre || {}
@@ -213,21 +214,28 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
 
   const statusLabel = agendaStatus.emServico ? 'Em serviço' : agendaStatus.agendaAberta ? 'Disponível' : 'Agenda fechada'
   const statusTone = agendaStatus.emServico ? 'amber' : agendaStatus.agendaAberta ? 'emerald' : 'slate'
+  const avatarStyle = useMemo(
+    () => (fotoURL ? { backgroundImage: `url(${JSON.stringify(fotoURL)})` } : undefined),
+    [fotoURL]
+  )
+  const handleAbrir = useCallback(() => onAbrir?.(item), [item, onAbrir])
+  const handleAgendar = useCallback(() => onAgendar?.(item), [item, onAgendar])
+  const handleWhatsapp = useCallback(() => onWhatsapp?.(item), [item, onWhatsapp])
 
   return (
     <motion.article
-      initial={{ opacity: 0, y: 18 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-      whileHover={{ y: -4 }}
-      className="group relative flex h-full min-h-[248px] flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white p-2.5 text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/[0.03] md:min-h-[360px] md:rounded-[28px] md:p-4 md:shadow-[0_18px_48px_rgba(15,23,42,0.14)]"
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 18 }}
+      animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={shouldReduceMotion ? undefined : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={shouldReduceMotion ? undefined : { y: -4 }}
+      className="group relative flex h-full min-h-[248px] flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white p-2.5 text-slate-950 shadow-[0_12px_30px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/[0.03] [content-visibility:auto] [contain-intrinsic-size:360px] md:min-h-[360px] md:rounded-[28px] md:p-4 md:shadow-[0_18px_48px_rgba(15,23,42,0.14)]"
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-slate-50 via-emerald-50/70 to-transparent md:h-24" />
 
       <div className="relative flex items-start gap-2.5 md:gap-3">
         <div
           className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-2xl border border-white bg-slate-100 bg-cover bg-center text-xl shadow-[0_10px_22px_rgba(15,23,42,0.14)] ring-[3px] ring-slate-100 md:h-16 md:w-16 md:rounded-[22px] md:text-3xl md:shadow-[0_14px_34px_rgba(15,23,42,0.16)] md:ring-4"
-          style={fotoURL ? { backgroundImage: `url(${JSON.stringify(fotoURL)})` } : undefined}
+          style={avatarStyle}
           aria-label={nome}
         >
           {fotoURL ? <span className="sr-only">{nome}</span> : emoji}
@@ -343,7 +351,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
 
         <button
           type="button"
-          onClick={() => onAbrir?.(item)}
+          onClick={handleAbrir}
           className="h-10 rounded-xl bg-slate-950 px-3 text-xs font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] transition hover:bg-black active:scale-[0.98] md:h-11 md:rounded-2xl md:px-4 md:text-sm md:shadow-[0_12px_28px_rgba(15,23,42,0.18)]"
         >
           Ver ficha técnica
@@ -352,7 +360,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => onAgendar?.(item)}
+            onClick={handleAgendar}
             disabled={!agendaStatus.agendaAberta}
             className="h-9 rounded-xl border border-violet-200 bg-violet-50 px-2.5 text-[11px] font-black text-violet-700 transition hover:bg-violet-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 md:h-10 md:rounded-2xl md:px-3 md:text-xs"
             title={agendaStatus.agendaAberta ? 'Agendar serviço' : 'Agenda fechada'}
@@ -361,7 +369,7 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
           </button>
           <button
             type="button"
-            onClick={() => onWhatsapp?.(item)}
+            onClick={handleWhatsapp}
             disabled={!whats}
             className="h-9 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-black text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 md:h-10 md:rounded-2xl md:px-3 md:text-xs"
             title={whats ? 'Chamar no WhatsApp' : 'WhatsApp não informado'}
@@ -373,3 +381,5 @@ export default function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar 
     </motion.article>
   )
 }
+
+export default memo(CardProfissional)

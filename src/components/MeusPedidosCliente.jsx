@@ -1,8 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+
+const CLIENTE_LIST_STATE_KEY = 'correAqui:listState:v2:cliente'
 
 function getMs(value) {
   if (!value) return 0
@@ -198,23 +200,41 @@ export default function MeusPedidosCliente({
     })
   }, [filtro, meusPedidos])
 
-  const filtros = [
-    ['todos', 'Todos', totals.todos],
-    ['andamento', 'Em andamento', totals.andamento],
-    ['concluidos', 'Concluidos', totals.concluidos],
-    ['cancelados', 'Cancelados', totals.cancelados],
-  ]
+  const filtros = useMemo(
+    () => [
+      ['todos', 'Todos', totals.todos],
+      ['andamento', 'Em andamento', totals.andamento],
+      ['concluidos', 'Concluidos', totals.concluidos],
+      ['cancelados', 'Cancelados', totals.cancelados],
+    ],
+    [totals.andamento, totals.cancelados, totals.concluidos, totals.todos]
+  )
 
-  const abrirDetalhes = (pedido) => {
+  const abrirDetalhes = useCallback((pedido) => {
     if (!pedido?.id) return
+    try {
+      if (process.env.NODE_ENV !== 'production') console.time('open-card')
+      sessionStorage.setItem(
+        CLIENTE_LIST_STATE_KEY,
+        JSON.stringify({
+          modoApp: 'cliente',
+          clientePainelBaixo: 'meusPedidos',
+          scrollY: window.scrollY || document.documentElement.scrollTop || 0,
+          ts: Date.now(),
+        })
+      )
+    } catch {}
     router.push(`/pedido/${encodeURIComponent(String(pedido.id))}?voltar=cliente`)
-  }
+    if (process.env.NODE_ENV !== 'production') {
+      window.requestAnimationFrame(() => console.timeEnd('open-card'))
+    }
+  }, [router])
 
-  const avisarEmBreve = (titulo, message) => {
+  const avisarEmBreve = useCallback((titulo, message) => {
     if (typeof onToast === 'function') {
       onToast({ type: 'info', title: titulo, message })
     }
-  }
+  }, [onToast])
 
   return (
     <section className="mx-auto w-full max-w-3xl overflow-hidden rounded-[24px] border border-white/10 bg-[#07111f] text-white shadow-[0_24px_80px_rgba(0,0,0,0.35)] md:rounded-[30px]">

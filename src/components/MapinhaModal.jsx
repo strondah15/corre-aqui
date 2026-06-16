@@ -95,8 +95,22 @@ function isValidLoc(loc) {
 function safeUrl(u) {
   const s = String(u || "").trim();
   if (!s) return "";
-  if (!/^(https?:\/\/|data:image\/|blob:)/i.test(s)) return "";
-  return s;
+  if (/^https?:\/\//i.test(s) || /^blob:/i.test(s)) return s;
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(s)) return s;
+  return "";
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/`/g, "&#96;");
 }
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
@@ -136,6 +150,8 @@ function getAvatarIcon({ fotoURL, emoji, kind }) {
   }
 
   const size = 44;
+  const safeFotoURL = escapeAttr(safeUrl(fotoURL));
+  const safeEmoji = escapeHtml(emoji || "🙂");
 
   const ring =
     kind === "profissional"
@@ -169,10 +185,10 @@ function getAvatarIcon({ fotoURL, emoji, kind }) {
       -webkit-backdrop-filter: blur(8px);
     ">
       ${
-        fotoURL
-          ? `<img src="${fotoURL}" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;display:block;" />`
+        safeFotoURL
+          ? `<img src="${safeFotoURL}" referrerpolicy="no-referrer" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />`
           : `<div style="font-size:20px;line-height:1;filter:drop-shadow(0 8px 14px rgba(0,0,0,.55));">${
-              emoji || "🙂"
+              safeEmoji
             }</div>`
       }
       <span style="

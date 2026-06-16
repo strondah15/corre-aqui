@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "corre-aqui-mobile",
-    "slug": "corre-aqui-mobile",
+    "name": "Corre Aqui",
+    "slug": "corre-aqui",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "correaquimobile",
+    "scheme": "correaqui",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
