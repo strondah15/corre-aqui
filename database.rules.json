@@ -13,6 +13,14 @@
           ".write": "auth != null && auth.uid === $uid",
           ".validate": "!newData.exists() || (newData.child('profileVisible').isBoolean() && newData.child('shareLocationDuringActiveJob').isBoolean() && newData.child('showOnlineStatus').isBoolean() && newData.child('allowPublicContact').isBoolean())"
         },
+        "portfolio": {
+          ".indexOn": ["ativo", "categoriaId", "updatedAt"],
+          "$serviceId": {
+            ".read": "auth != null && (auth.uid === $uid || data.child('ativo').val() === true)",
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "!newData.exists() || (newData.child('id').isString() && newData.child('nome').isString() && newData.child('ativo').isBoolean())"
+          }
+        },
         "admin": { ".validate": "newData.val() === data.val()" },
         "role": { ".validate": "newData.val() === data.val()" },
         "cpf": { ".validate": "newData.val() === data.val()" },

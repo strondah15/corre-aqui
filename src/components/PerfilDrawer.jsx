@@ -15,6 +15,7 @@ import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import PainelPatentes from "./PainelPatentes";
 import Patente, { calcularPatentePorServicos } from "./Patente";
+import { CATEGORIES, getCategoryById } from "@/constants/categories";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
   ssr: false,
@@ -157,6 +158,133 @@ function Field({ label, children, hint }) {
   );
 }
 
+const switchTone = {
+  blue: {
+    focus: "peer-focus-visible:ring-blue-100",
+    onTrack: "border-blue-950/60 bg-blue-950 text-cyan-100",
+    onKnob: "bg-blue-600 text-white",
+  },
+  cyan: {
+    focus: "peer-focus-visible:ring-cyan-100",
+    onTrack: "border-blue-950/60 bg-cyan-950 text-cyan-100",
+    onKnob: "bg-cyan-500 text-white",
+  },
+  emerald: {
+    focus: "peer-focus-visible:ring-emerald-100",
+    onTrack: "border-blue-950/60 bg-emerald-950 text-emerald-100",
+    onKnob: "bg-emerald-600 text-white",
+  },
+  violet: {
+    focus: "peer-focus-visible:ring-violet-100",
+    onTrack: "border-blue-950/60 bg-violet-950 text-violet-100",
+    onKnob: "bg-violet-600 text-white",
+  },
+};
+
+function ToggleSwitch({ checked, onChange, label, tone = "blue" }) {
+  const visual = switchTone[tone] || switchTone.blue;
+
+  return (
+    <span className="relative inline-flex shrink-0">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        aria-label={label}
+        className="peer sr-only"
+      />
+      <span
+        aria-hidden="true"
+        className={[
+          "pointer-events-none flex h-10 w-[92px] items-center rounded-full border-2 p-1 text-[11px] font-black shadow-[0_10px_22px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.08)] transition peer-focus-visible:ring-4 peer-active:scale-[0.98]",
+          checked ? visual.onTrack : "border-blue-950/55 bg-slate-900 text-rose-300",
+          visual.focus,
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "grid h-8 w-8 place-items-center rounded-full shadow-[0_5px_12px_rgba(0,0,0,0.24)]",
+            checked ? visual.onKnob : "bg-slate-800 text-white",
+          ].join(" ")}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+            {checked ? (
+              <>
+                <path d="M15 6 9 12l6 6" />
+                <path d="M9 12h10" />
+              </>
+            ) : (
+              <>
+                <path d="m9 6 6 6-6 6" />
+                <path d="M5 12h10" />
+              </>
+            )}
+          </svg>
+        </span>
+        <span className="ml-auto mr-2 tracking-wide">{checked ? "ON" : "OFF"}</span>
+      </span>
+    </span>
+  );
+}
+
+function ProfMenuIcon({ id }) {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2.4",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+
+  const icons = {
+    perfilPublico: (
+      <>
+        <path {...common} d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+        <path {...common} d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+      </>
+    ),
+    corre: <path {...common} d="M13 2 5 14h6l-1 8 9-13h-6l1-7Z" />,
+    portfolio: (
+      <>
+        <path {...common} d="M8 7V5.5A2.5 2.5 0 0 1 10.5 3h3A2.5 2.5 0 0 1 16 5.5V7" />
+        <path {...common} d="M4 7h16v12.5A1.5 1.5 0 0 1 18.5 21h-13A1.5 1.5 0 0 1 4 19.5V7Z" />
+        <path {...common} d="M4 12h16" />
+        <path {...common} d="M10 12v2h4v-2" />
+      </>
+    ),
+    avaliacoes: <path {...common} d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.2l-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" />,
+    patentes: (
+      <>
+        <path {...common} d="M8 4h8v3a4 4 0 0 1-8 0V4Z" />
+        <path {...common} d="M8 6H5a3 3 0 0 0 3 3" />
+        <path {...common} d="M16 6h3a3 3 0 0 1-3 3" />
+        <path {...common} d="M12 11v5" />
+        <path {...common} d="M9 20h6" />
+        <path {...common} d="M10 16h4v4h-4z" />
+      </>
+    ),
+    config: (
+      <>
+        <path {...common} d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+        <path {...common} d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2.1 2.1 0 0 1-2.97 2.97l-.04-.04A1.8 1.8 0 0 0 14.8 19.6a1.8 1.8 0 0 0-1.3 1.73V21.4a2.1 2.1 0 0 1-4.2 0v-.06A1.8 1.8 0 0 0 8 19.6a1.8 1.8 0 0 0-1.98.36l-.04.04a2.1 2.1 0 0 1-2.97-2.97l.04-.04A1.8 1.8 0 0 0 3.4 15a1.8 1.8 0 0 0-1.73-1.3H1.6a2.1 2.1 0 0 1 0-4.2h.06A1.8 1.8 0 0 0 3.4 8a1.8 1.8 0 0 0-.36-1.98L3 5.98a2.1 2.1 0 0 1 2.97-2.97l.04.04A1.8 1.8 0 0 0 8 3.4a1.8 1.8 0 0 0 1.3-1.73V1.6a2.1 2.1 0 0 1 4.2 0v.06A1.8 1.8 0 0 0 14.8 3.4a1.8 1.8 0 0 0 1.98-.36l.04-.04a2.1 2.1 0 0 1 2.97 2.97l-.04.04A1.8 1.8 0 0 0 19.4 8a1.8 1.8 0 0 0 1.73 1.3h.06a2.1 2.1 0 0 1 0 4.2h-.06A1.8 1.8 0 0 0 19.4 15Z" />
+      </>
+    ),
+    ajuda: (
+      <>
+        <path {...common} d="M21 12a9 9 0 1 1-4.2-7.62" />
+        <path {...common} d="M9.4 9a3 3 0 1 1 4.8 2.4c-1 .7-1.4 1.2-1.4 2.2" />
+        <path {...common} d="M12 17.7h.01" />
+      </>
+    ),
+  };
+
+  return (
+    <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+      {icons[id] || icons.perfilPublico}
+    </svg>
+  );
+}
+
 function inputClass(extra = "") {
   return [
     "w-full rounded-xl md:rounded-2xl bg-white border border-slate-200",
@@ -265,6 +393,29 @@ function normalizePortfolioFotos(data = {}) {
   return Array.from(new Set(raw.map((foto) => String(foto || "").trim()).filter(isFotoValor))).slice(0, 5);
 }
 
+function createEmptyPortfolioDraft() {
+  return {
+    id: "",
+    nome: "",
+    titulo: "",
+    descricao: "",
+    valor: "",
+    preco: "",
+    faixaPreco: "",
+    categoria: "",
+    categoriaId: "",
+    categoriaNome: "",
+    tempoMedio: "",
+    regiao: "",
+    atendeDomicilio: true,
+    urgente: false,
+    ativo: true,
+    fotoURL: "",
+    fotos: [],
+    fotoImgBbId: "",
+  };
+}
+
 function normalizePortfolio(value) {
   const list = Array.isArray(value)
     ? value
@@ -276,19 +427,77 @@ function normalizePortfolio(value) {
     .map((item, index) => {
       const data = item && typeof item === "object" ? item : {};
       const fotos = normalizePortfolioFotos(data);
+      const categoriaId = String(data.categoriaId || data.categoryId || "").trim();
+      const categoriaMeta = getCategoryById(categoriaId);
+      const categoriaNome = String(data.categoriaNome || data.categoryName || data.categoria || data.category || categoriaMeta?.label || "").trim();
+      const nome = String(data.nome || data.titulo || data.title || "").trim();
+      const preco = String(data.preco || data.valor || data.price || "").trim();
+      const faixaPreco = String(data.faixaPreco || data.valor || data.priceRange || preco || "").trim();
       return {
         id: String(data.id || data.key || `portfolio_${index}`),
-        titulo: String(data.titulo || data.title || "").trim(),
+        nome,
+        titulo: nome,
+        categoriaId,
+        categoriaNome,
         descricao: String(data.descricao || data.description || "").trim(),
-        valor: String(data.valor || data.preco || data.price || "").trim(),
-        categoria: String(data.categoria || data.category || "").trim(),
+        preco,
+        faixaPreco,
+        valor: faixaPreco || preco,
+        categoria: categoriaNome,
+        tempoMedio: String(data.tempoMedio || data.tempo || data.duration || "").trim(),
+        regiao: String(data.regiao || data.regiaoAtendimento || data.region || "").trim(),
+        atendeDomicilio: data.atendeDomicilio ?? data.domicilio ?? true,
+        urgente: data.urgente ?? data.urgent ?? false,
+        ativo: data.ativo ?? data.active ?? true,
         fotoURL: fotos[0] || "",
         fotos,
         fotoImgBbId: String(data.fotoImgBbId || data.imageId || "").trim(),
+        createdAt: data.createdAt || data.criadoEm || null,
+        updatedAt: data.updatedAt || data.atualizadoEm || null,
       };
     })
-    .filter((item) => item.titulo || item.descricao || item.valor || item.categoria || item.fotos.length)
+    .filter((item) => item.nome || item.descricao || item.valor || item.categoria || item.fotos.length)
     .slice(0, 12);
+}
+
+function toPortfolioFirebaseItem(item = {}) {
+  const id = String(item.id || `portfolio_${Date.now()}`).trim();
+  const categoriaMeta = getCategoryById(item.categoriaId || item.categoria);
+  const categoriaId = String(item.categoriaId || categoriaMeta?.id || "").trim();
+  const categoriaNome = String(item.categoriaNome || categoriaMeta?.label || item.categoria || "").trim();
+  const nome = String(item.nome || item.titulo || "").trim();
+  const preco = String(item.preco || "").trim();
+  const faixaPreco = String(item.faixaPreco || item.valor || preco || "").trim();
+
+  return {
+    id,
+    nome,
+    titulo: nome,
+    categoriaId,
+    categoriaNome,
+    categoria: categoriaNome,
+    preco,
+    faixaPreco,
+    valor: faixaPreco || preco,
+    descricao: String(item.descricao || "").trim(),
+    tempoMedio: String(item.tempoMedio || "").trim(),
+    fotos: normalizePortfolioFotos(item),
+    fotoURL: normalizePortfolioFotos(item)[0] || "",
+    regiao: String(item.regiao || "").trim(),
+    atendeDomicilio: item.atendeDomicilio !== false,
+    urgente: item.urgente === true,
+    ativo: item.ativo !== false,
+    createdAt: item.createdAt || serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
+function portfolioListToMap(items = []) {
+  return normalizePortfolio(items).reduce((acc, item) => {
+    const normalized = toPortfolioFirebaseItem(item);
+    if (normalized.id) acc[normalized.id] = normalized;
+    return acc;
+  }, {});
 }
 
 function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
@@ -306,15 +515,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
   const [profSection, setProfSection] = useState("");
 
   const [profile, setProfile] = useState(initialProfile);
-  const [portfolioDraft, setPortfolioDraft] = useState({
-    titulo: "",
-    descricao: "",
-    valor: "",
-    categoria: "",
-    fotoURL: "",
-    fotos: [],
-    fotoImgBbId: "",
-  });
+  const [portfolioDraft, setPortfolioDraft] = useState(createEmptyPortfolioDraft);
+  const [portfolioEditingId, setPortfolioEditingId] = useState("");
+  const [portfolioStarterActive, setPortfolioStarterActive] = useState(false);
   const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
   const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -363,6 +566,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
     patenteProf: 0,
   });
   const settingsLoadedRef = useRef(false);
+  const drawerScrollRef = useRef(null);
+  const portfolioFormRef = useRef(null);
+  const portfolioFirstInputRef = useRef(null);
 
   const userBasePath = useMemo(() => (uid ? `users/${uid}` : ""), [uid]);
 
@@ -615,7 +821,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         ganhosSemana: ganhosCorreSemana + ganhosProfSemana,
         ticketMedioCorre: comoCorre ? ganhosCorreTotal / comoCorre : 0,
         ticketMedioProf: comoProfissional ? ganhosProfTotal / comoProfissional : 0,
-        ganhosRecentes: ganhosRecentes.sort((a, b) => (b.ms || 0) - (a.ms || 0)).slice(0, 6),
+        ganhosRecentes: ganhosRecentes.sort((a, b) => (b.ms || 0) - (a.ms || 0)).slice(0, 12),
       });
     });
   }, [open, uid]);
@@ -979,6 +1185,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
 
     try {
       const profPortfolio = normalizePortfolio(profile.profPortfolio);
+      const portfolioMap = portfolioListToMap(profPortfolio);
 
       const corre = {
         ativo: !!profile.isCorre,
@@ -1001,7 +1208,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         statusProfissional: profile.statusProfissional || "disponivel",
         ocupadoAte: profile.ocupadoAte || "",
         agendaAberta: profile.agendaAberta !== false,
-        portfolio: profPortfolio,
+        portfolio: portfolioMap,
+        profPortfolio,
       };
 
       const mapSettings = {
@@ -1048,6 +1256,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         photoURL: fotoPrincipal || null,
         avatar: fotoPrincipal || profile.avatarEmoji || "",
         profPortfolio,
+        portfolio: portfolioMap,
         corre: {
           ...corre,
           fotoURL: fotoPrincipal || null,
@@ -1097,6 +1306,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         avatar: fotoPrincipal || profile.avatarEmoji || "",
         avatarEmoji: profile.avatarEmoji || "",
         profPortfolio,
+        portfolio: portfolioMap,
         cidade: profile.cidade || "",
         bio: profile.bio || "",
         visivel: privacySettings.profileVisible,
@@ -1233,10 +1443,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       title: "Portfolio de servicos",
       desc: "Adicione trabalhos para os clientes conhecerem seu servico.",
     },
-    ganhos: {
-      title: "Ganhos",
-      desc: "Resumo dos valores combinados.",
-    },
     avaliacoes: {
       title: "Avaliacoes",
       desc: "Reputacao, nota e historico de confianca.",
@@ -1271,28 +1477,100 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
   };
   const drawerPage = drawerPages[tab] || drawerPages.perfil;
   const updatePortfolioDraft = (field, value) => {
+    setPortfolioPhotoError("");
     setPortfolioDraft((prev) => ({ ...prev, [field]: value }));
+  };
+  const prepararPrimeiroServico = () => {
+    setPortfolioEditingId("");
+    setPortfolioPhotoError("");
+    setPortfolioStarterActive(true);
+    setPortfolioDraft({
+      ...createEmptyPortfolioDraft(),
+      regiao: profile.profRegiao || profile.cidade || "",
+      ativo: true,
+      atendeDomicilio: true,
+    });
+
+    window.setTimeout(() => {
+      const drawer = drawerScrollRef.current;
+      const form = portfolioFormRef.current;
+
+      if (drawer && form) {
+        const drawerBox = drawer.getBoundingClientRect();
+        const formBox = form.getBoundingClientRect();
+        const targetTop = Math.max(0, drawer.scrollTop + formBox.top - drawerBox.top - 18);
+        drawer.scrollTo({ top: targetTop, behavior: "smooth" });
+      } else {
+        form?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      window.setTimeout(() => {
+        portfolioFirstInputRef.current?.focus();
+      }, 180);
+    }, 60);
   };
   const adicionarPortfolioItem = () => {
     const fotos = normalizePortfolioFotos(portfolioDraft);
+    const categoriaMeta = getCategoryById(portfolioDraft.categoriaId || portfolioDraft.categoria);
+    const categoriaId = String(portfolioDraft.categoriaId || categoriaMeta?.id || "").trim();
+    const categoriaNome = String(portfolioDraft.categoriaNome || categoriaMeta?.label || portfolioDraft.categoria || "").trim();
+    const id = portfolioEditingId || portfolioDraft.id || `portfolio_${Date.now()}`;
     const item = {
-      id: `portfolio_${Date.now()}`,
-      titulo: portfolioDraft.titulo.trim(),
+      id,
+      nome: String(portfolioDraft.nome || portfolioDraft.titulo || "").trim(),
+      titulo: String(portfolioDraft.nome || portfolioDraft.titulo || "").trim(),
       descricao: portfolioDraft.descricao.trim(),
-      valor: portfolioDraft.valor.trim(),
-      categoria: portfolioDraft.categoria.trim(),
+      preco: portfolioDraft.preco.trim(),
+      faixaPreco: String(portfolioDraft.faixaPreco || portfolioDraft.valor || portfolioDraft.preco || "").trim(),
+      valor: String(portfolioDraft.faixaPreco || portfolioDraft.valor || portfolioDraft.preco || "").trim(),
+      categoriaId,
+      categoriaNome,
+      categoria: categoriaNome,
+      tempoMedio: portfolioDraft.tempoMedio.trim(),
+      regiao: String(portfolioDraft.regiao || profile.profRegiao || profile.cidade || "").trim(),
+      atendeDomicilio: portfolioDraft.atendeDomicilio !== false,
+      urgente: portfolioDraft.urgente === true,
+      ativo: portfolioDraft.ativo !== false,
       fotoURL: fotos[0] || "",
       fotos,
       fotoImgBbId: portfolioDraft.fotoImgBbId || "",
+      createdAt: portfolioDraft.createdAt || Date.now(),
+      updatedAt: Date.now(),
     };
 
-    if (!item.titulo && !item.descricao && !item.valor && !item.categoria && !item.fotos.length) return;
+    if (!item.nome && !item.descricao && !item.valor && !item.categoria && !item.fotos.length) {
+      setPortfolioPhotoError("Preencha pelo menos o nome do serviço para adicionar.");
+      portfolioFirstInputRef.current?.focus();
+      return;
+    }
 
     setProfile((prev) => ({
       ...prev,
-      profPortfolio: [...normalizePortfolio(prev.profPortfolio), item].slice(0, 12),
+      profPortfolio: [
+        ...normalizePortfolio(prev.profPortfolio).filter((current) => current.id !== id),
+        item,
+      ].slice(0, 12),
     }));
-    setPortfolioDraft({ titulo: "", descricao: "", valor: "", categoria: "", fotoURL: "", fotos: [], fotoImgBbId: "" });
+    setPortfolioDraft(createEmptyPortfolioDraft());
+    setPortfolioEditingId("");
+    setPortfolioStarterActive(false);
+    setPortfolioPhotoError("");
+  };
+  const editarPortfolioItem = (item) => {
+    const normalized = normalizePortfolio([item])[0] || item;
+    setPortfolioDraft({
+      ...createEmptyPortfolioDraft(),
+      ...normalized,
+      nome: normalized.nome || normalized.titulo || "",
+      titulo: normalized.nome || normalized.titulo || "",
+      valor: normalized.valor || normalized.faixaPreco || normalized.preco || "",
+      faixaPreco: normalized.faixaPreco || normalized.valor || "",
+      categoria: normalized.categoria || normalized.categoriaNome || "",
+      categoriaNome: normalized.categoriaNome || normalized.categoria || "",
+      fotos: normalizePortfolioFotos(normalized),
+    });
+    setPortfolioEditingId(normalized.id || "");
+    setPortfolioStarterActive(false);
     setPortfolioPhotoError("");
   };
   const removerPortfolioItem = (id) => {
@@ -1300,6 +1578,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       ...prev,
       profPortfolio: normalizePortfolio(prev.profPortfolio).filter((item) => item.id !== id),
     }));
+    if (portfolioEditingId === id) {
+      setPortfolioEditingId("");
+      setPortfolioDraft(createEmptyPortfolioDraft());
+    }
   };
 
   return (
@@ -1310,6 +1592,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       />
 
       <motion.aside
+        ref={drawerScrollRef}
         initial={{ opacity: 0, scale: 0.985 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ type: "spring", stiffness: 120, damping: 18 }}
@@ -1660,11 +1943,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       <div className="text-sm font-extrabold text-slate-950">Visível no mapa</div>
                       <div className="text-xs font-semibold text-slate-500">Permite aparecer como disponível para clientes próximos.</div>
                     </div>
-                    <input
-                      type="checkbox"
+                    <ToggleSwitch
                       checked={privacy.profileVisible}
-                      onChange={(e) => setPrivacyPreference("profileVisible", e.target.checked)}
-                      className="h-5 w-5 accent-emerald-500"
+                      onChange={(checked) => setPrivacyPreference("profileVisible", checked)}
+                      label="Alterar visibilidade no mapa"
+                      tone="emerald"
                     />
                   </label>
 
@@ -1673,11 +1956,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       <div className="text-sm font-extrabold text-slate-950">Notificações</div>
                       <div className="text-xs font-semibold text-slate-500">Pedidos, chat, aceite, conclusão e avaliações.</div>
                     </div>
-                    <input
-                      type="checkbox"
+                    <ToggleSwitch
                       checked={profile.notificacoes}
-                      onChange={(e) => setProfile((p) => ({ ...p, notificacoes: e.target.checked }))}
-                      className="h-5 w-5 accent-blue-600"
+                      onChange={(checked) => setProfile((p) => ({ ...p, notificacoes: checked }))}
+                      label="Alterar notificacoes"
+                      tone="blue"
                     />
                   </label>
 
@@ -1755,11 +2038,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       <div className="text-sm font-extrabold text-slate-950">Mostrar pessoas online</div>
                       <div className="text-xs font-semibold text-slate-500">Mantido desligado para o mapa ficar mais limpo.</div>
                     </div>
-                    <input
-                      type="checkbox"
+                    <ToggleSwitch
                       checked={profile.mapMostrarOnline}
-                      onChange={(e) => setProfile((p) => ({ ...p, mapMostrarOnline: e.target.checked }))}
-                      className="h-5 w-5 accent-cyan-500"
+                      onChange={(checked) => setProfile((p) => ({ ...p, mapMostrarOnline: checked }))}
+                      label="Mostrar pessoas online"
+                      tone="cyan"
                     />
                   </label>
 
@@ -1768,11 +2051,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       <div className="text-sm font-extrabold text-slate-950">Atualização ao vivo</div>
                       <div className="text-xs font-semibold text-slate-500">Atualiza marcadores automaticamente quando ativado.</div>
                     </div>
-                    <input
-                      type="checkbox"
+                    <ToggleSwitch
                       checked={profile.mapAoVivo}
-                      onChange={(e) => setProfile((p) => ({ ...p, mapAoVivo: e.target.checked }))}
-                      className="h-5 w-5 accent-cyan-500"
+                      onChange={(checked) => setProfile((p) => ({ ...p, mapAoVivo: checked }))}
+                      label="Alterar atualizacao ao vivo"
+                      tone="cyan"
                     />
                   </label>
 
@@ -1857,11 +2140,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                         </div>
                         <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200">
                           <span className="text-xs font-black text-slate-700">Compartilhar durante corre ativo</span>
-                          <input
-                            type="checkbox"
+                          <ToggleSwitch
                             checked={privacy.shareLocationDuringActiveJob}
-                            onChange={(e) => setPrivacyPreference("shareLocationDuringActiveJob", e.target.checked)}
-                            className="h-5 w-5 accent-blue-600"
+                            onChange={(checked) => setPrivacyPreference("shareLocationDuringActiveJob", checked)}
+                            label="Compartilhar localizacao durante corre ativo"
+                            tone="blue"
                           />
                         </label>
                         <div className="mt-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
@@ -1883,11 +2166,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                           <span className="text-xs font-black text-slate-700">
                             {privacy.showOnlineStatus ? "Mostrar status disponivel" : "Ocultar status online"}
                           </span>
-                          <input
-                            type="checkbox"
+                          <ToggleSwitch
                             checked={privacy.showOnlineStatus}
-                            onChange={(e) => setPrivacyPreference("showOnlineStatus", e.target.checked)}
-                            className="h-5 w-5 accent-emerald-500"
+                            onChange={(checked) => setPrivacyPreference("showOnlineStatus", checked)}
+                            label="Mostrar status online"
+                            tone="emerald"
                           />
                         </label>
                       </div>
@@ -1904,11 +2187,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                         </div>
                         <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200">
                           <span className="text-xs font-black text-slate-700">Permitir contato publico</span>
-                          <input
-                            type="checkbox"
+                          <ToggleSwitch
                             checked={privacy.allowPublicContact}
-                            onChange={(e) => setPrivacyPreference("allowPublicContact", e.target.checked)}
-                            className="h-5 w-5 accent-blue-600"
+                            onChange={(checked) => setPrivacyPreference("allowPublicContact", checked)}
+                            label="Permitir contato publico"
+                            tone="blue"
                           />
                         </label>
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -1945,11 +2228,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                     <div className="text-sm font-extrabold text-slate-950">Animações da interface</div>
                     <div className="text-xs font-semibold text-slate-500">Mantém transições e feedbacks de XP/patente mais vivos.</div>
                   </div>
-                  <input
-                    type="checkbox"
+                  <ToggleSwitch
                     checked={profile.animacoes}
-                    onChange={(e) => setProfile((p) => ({ ...p, animacoes: e.target.checked }))}
-                    className="h-5 w-5 accent-violet-500"
+                    onChange={(checked) => setProfile((p) => ({ ...p, animacoes: checked }))}
+                    label="Alterar animacoes da interface"
+                    tone="violet"
                   />
                 </label>
               </section>
@@ -1985,40 +2268,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                     Apareça para bicos rápidos e pedidos do bairro.
                   </div>
                 </div>
-                <input
-                  type="checkbox"
+                <ToggleSwitch
                   checked={profile.isCorre}
-                  onChange={(e) =>
-                    setProfile((p) => ({ ...p, isCorre: e.target.checked }))
-                  }
-                  className="w-5 h-5 accent-blue-600"
+                  onChange={(checked) => setProfile((p) => ({ ...p, isCorre: checked }))}
+                  label="Ativar curriculo de Corre"
+                  tone="blue"
                 />
               </label>
-
-              <section className="rounded-[18px] border border-white/10 bg-white/[0.06] p-3 text-white md:rounded-[24px] md:p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-yellow-200">Ganhos como Corre</div>
-                    <div className="mt-1 text-2xl font-black leading-none md:text-3xl">
-                      {formatMoneyBR(serviceStats.ganhosCorreTotal)}
-                    </div>
-                  </div>
-                  <span className="rounded-full bg-[#ffd91a] px-3 py-1 text-xs font-black text-blue-950">
-                    {serviceStats.comoCorre} concluído{serviceStats.comoCorre === 1 ? "" : "s"}
-                  </span>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2">
-                    <div className="text-sm font-black">{formatMoneyBR(serviceStats.ganhosCorreSemana)}</div>
-                    <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Semana</div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.055] px-3 py-2">
-                    <div className="text-sm font-black">{formatMoneyBR(serviceStats.ticketMedioCorre)}</div>
-                    <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400">Ticket médio</div>
-                  </div>
-                </div>
-              </section>
 
               {profile.isCorre && (
                 <div className="space-y-3 md:space-y-4">
@@ -2202,17 +2458,16 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                 </div>
               </section>
 
-              <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-2">
+              <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-3">
                 {[
-                  ["perfilPublico", "👤", "Meu perfil público", "Como clientes veem seu perfil."],
-                  ["corre", "⚡", "Perfil de Corre", "Título, transporte e disponibilidade."],
-                  ["ganhos", "💰", "Ganhos dos corres", "Valores combinados e concluídos."],
-                  ["portfolio", "▣", "Portfólio de serviços", "Serviços, preço, região e experiência."],
-                  ["avaliacoes", "★", "Avaliações", "Nota, histórico e reputação."],
-                  ["patentes", "🏆", "Patentes Corre/Pro", "Níveis de experiência e confiança."],
-                  ["config", "⚙", "Configurações", "Disponibilidade e agenda."],
-                  ["ajuda", "?", "Central de ajuda", "Boas práticas e segurança."],
-                ].map(([id, icon, label, desc]) => {
+                  ["perfilPublico", "Meu perfil público", "Como clientes veem seu perfil.", "from-purple-500 via-violet-500 to-indigo-700"],
+                  ["corre", "Perfil de Corre", "Título, transporte e disponibilidade.", "from-yellow-300 via-orange-400 to-orange-600"],
+                  ["portfolio", "Portfólio de serviços", "Serviços, preço, região e experiência.", "from-sky-400 via-blue-500 to-blue-700"],
+                  ["avaliacoes", "Avaliações", "Nota, histórico e reputação.", "from-yellow-300 via-amber-400 to-orange-500"],
+                  ["patentes", "Patentes Corre/Pro", "Níveis de experiência e confiança.", "from-yellow-300 via-amber-400 to-orange-500"],
+                  ["config", "Configurações", "Disponibilidade e agenda.", "from-slate-300 via-slate-500 to-slate-700"],
+                  ["ajuda", "Central de ajuda", "Boas práticas e segurança.", "from-emerald-300 via-teal-500 to-emerald-700"],
+                ].map(([id, label, desc, tone]) => {
                   const active = profSection === id;
                   return (
                     <button
@@ -2220,18 +2475,18 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       type="button"
                       onClick={() => setProfSection(id)}
                       className={[
-                        "flex w-full items-center gap-3 rounded-[18px] px-3 py-3 text-left transition md:rounded-[22px] md:px-4",
-                        active ? "bg-blue-50 text-blue-950" : "text-slate-700 hover:bg-slate-50",
+                        "group flex w-full items-center gap-4 rounded-[20px] px-3 py-4 text-left transition md:rounded-[24px] md:px-5 md:py-5",
+                        active ? "bg-blue-50 text-blue-950 ring-1 ring-blue-100" : "text-slate-700 hover:bg-slate-50",
                       ].join(" ")}
                     >
-                      <span className={["grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-base", active ? "bg-[#ffd91a]" : "bg-slate-100"].join(" ")}>
-                        {icon}
+                      <span className={["grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-gradient-to-br text-white shadow-[0_14px_28px_rgba(15,23,42,0.16)] transition group-hover:scale-[1.02] md:h-16 md:w-16 md:rounded-[22px]", tone].join(" ")}>
+                        <ProfMenuIcon id={id} />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block text-sm font-black md:text-base">{label}</span>
-                        <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500">{desc}</span>
+                        <span className="block text-lg font-black leading-tight text-slate-950 md:text-xl">{label}</span>
+                        <span className="mt-1 block text-sm font-semibold leading-snug text-slate-500 md:text-base">{desc}</span>
                       </span>
-                      <span className="text-xl font-black text-slate-400">›</span>
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-3xl font-light text-slate-500 transition group-hover:bg-slate-100 group-hover:text-blue-700">›</span>
                     </button>
                   );
                 })}
@@ -2298,11 +2553,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       <div className="text-sm font-black text-blue-950">Modo Corre ativo</div>
                       <div className="text-xs font-semibold text-slate-500">Apareça para bicos rápidos, compras, entregas e serviços do bairro.</div>
                     </div>
-                    <input
-                      type="checkbox"
+                    <ToggleSwitch
                       checked={profile.isCorre}
-                      onChange={(e) => setProfile((p) => ({ ...p, isCorre: e.target.checked }))}
-                      className="h-5 w-5 accent-blue-600"
+                      onChange={(checked) => setProfile((p) => ({ ...p, isCorre: checked }))}
+                      label="Ativar modo Corre"
+                      tone="blue"
                     />
                   </label>
 
@@ -2370,245 +2625,399 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                 </section>
               )}
 
-              {profSection === "ganhos" && (
-                <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
-                  <div>
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Ganhos dos corres</div>
-                    <div className="mt-1 text-sm font-bold text-slate-500">Resumo calculado pelos pedidos concluídos e pelo valor combinado no app.</div>
+              {profSection === "portfolio" && (
+                <section className="overflow-hidden rounded-[26px] border border-blue-950/12 bg-white p-3 shadow-[0_22px_70px_rgba(15,23,42,0.10)] ring-1 ring-blue-950/5 md:rounded-[34px] md:p-5">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[18px] bg-blue-700 text-xl text-white shadow-[0_14px_30px_rgba(37,99,235,0.24)]">
+                        ▣
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-black leading-tight text-blue-950 md:text-2xl">Seu portfólio profissional</h3>
+                        <p className="mt-1 text-xs font-bold text-slate-500 md:text-sm">Mostre seus serviços, preços e trabalhos feitos.</p>
+                        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">
+                          <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+                          {portfolioItems.length} serviços cadastrados
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[18px] border border-blue-100 bg-blue-50/70 p-3 md:w-[260px]">
+                      <div className="flex items-start gap-2">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blue-700 shadow-sm">✧</span>
+                        <div>
+                          <div className="text-xs font-black text-blue-700">Dica rápida</div>
+                          <p className="mt-0.5 text-[11px] font-bold leading-snug text-slate-500">
+                            Perfis com fotos reais recebem até 3x mais contatos.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
                     {[
-                      ["Total", formatMoneyBR(serviceStats.ganhosTotal)],
-                      ["Corre", formatMoneyBR(serviceStats.ganhosCorreTotal)],
-                      ["Pro", formatMoneyBR(serviceStats.ganhosProfTotal)],
-                      ["Semana", formatMoneyBR(serviceStats.ganhosSemana)],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-[18px] border border-blue-100 bg-blue-50 px-3 py-3">
-                        <div className="truncate text-base font-black text-blue-950 md:text-lg">{value}</div>
-                        <div className="mt-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-blue-700/70">{label}</div>
-                      </div>
+                      {
+                        icon: "R$",
+                        label: "Preço base",
+                        value: profile.preco,
+                        placeholder: "R$ 50,00",
+                        hint: "Valor mínimo de referência",
+                        onChange: (value) => setProfile((p) => ({ ...p, preco: value })),
+                        tone: "bg-emerald-500 text-white",
+                        inputMode: "decimal",
+                      },
+                      {
+                        icon: "☎",
+                        label: "WhatsApp",
+                        value: profile.whatsapp,
+                        placeholder: "(21) 3778-1502",
+                        hint: "Para clientes te chamarem",
+                        onChange: (value) => setProfile((p) => ({ ...p, whatsapp: value })),
+                        tone: "bg-emerald-500 text-white",
+                        inputMode: "tel",
+                      },
+                      {
+                        icon: "⌖",
+                        label: "Região",
+                        value: profile.profRegiao,
+                        placeholder: "Nova Iguaçu - RJ",
+                        hint: "Onde você atua",
+                        onChange: (value) => setProfile((p) => ({ ...p, profRegiao: value })),
+                        tone: "bg-blue-600 text-white",
+                        inputMode: "text",
+                      },
+                      {
+                        icon: "★",
+                        label: "Experiência",
+                        value: profile.profExperiencia,
+                        placeholder: "5 anos",
+                        hint: "Na sua área de atuação",
+                        onChange: (value) => setProfile((p) => ({ ...p, profExperiencia: value })),
+                        tone: "bg-[#ffd91a] text-blue-950",
+                        inputMode: "text",
+                      },
+                    ].map((card) => (
+                      <label key={card.label} className="group block rounded-[18px] border border-slate-100 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-100">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={["grid h-9 w-9 place-items-center rounded-2xl text-xs font-black shadow-sm", card.tone].join(" ")}>
+                            {card.icon}
+                          </span>
+                          <span className="grid h-8 w-8 place-items-center rounded-full text-slate-300 transition group-focus-within:bg-blue-50 group-focus-within:text-blue-700">✎</span>
+                        </div>
+                        <div className="mt-2 text-[11px] font-black text-slate-500">{card.label}</div>
+                        <input
+                          value={card.value}
+                          onChange={(e) => card.onChange(e.target.value)}
+                          placeholder={card.placeholder}
+                          inputMode={card.inputMode}
+                          aria-label={`Editar ${card.label}`}
+                          className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black text-blue-950 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                        />
+                        <div className="mt-1 text-[10px] font-bold text-slate-400">{card.hint}</div>
+                      </label>
                     ))}
                   </div>
 
-                  <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 md:rounded-[24px] md:p-4">
-                    <div className="text-sm font-black text-blue-950">Resumo</div>
-                    <div className="mt-3 grid gap-2">
-                      {[
-                        ["Serviços como Corre", serviceStats.comoCorre],
-                        ["Ticket médio Corre", formatMoneyBR(serviceStats.ticketMedioCorre)],
-                        ["Serviços como Pro", serviceStats.comoProfissional],
-                        ["Ticket médio Pro", formatMoneyBR(serviceStats.ticketMedioProf)],
-                      ].map(([label, value]) => (
-                        <div key={label} className="flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-2">
-                          <span className="text-xs font-bold text-slate-500">{label}</span>
-                          <span className="text-sm font-black text-blue-950">{value}</span>
+                  <div
+                    ref={portfolioFormRef}
+                    className={[
+                      "mt-4 scroll-mt-6 rounded-[22px] border bg-white p-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] transition md:p-4",
+                      portfolioStarterActive ? "border-blue-300 ring-4 ring-blue-100" : "border-slate-100",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="grid h-10 w-10 place-items-center rounded-full bg-blue-700 text-2xl font-black text-white shadow-[0_12px_24px_rgba(37,99,235,0.24)]">
+                        +
+                      </span>
+                      <div>
+                        <div className="text-sm font-black text-blue-950">
+                          {portfolioEditingId ? "Editar serviço" : portfolioStarterActive ? "Cadastrar primeiro serviço" : "Adicionar novo serviço"}
                         </div>
-                      ))}
+                        <div className="text-xs font-semibold text-slate-500">Preencha os dados do serviço que você oferece</div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="rounded-[20px] border border-slate-100 bg-slate-50 p-3 md:rounded-[24px] md:p-4">
-                    <div className="text-sm font-black text-blue-950">Ganhos recentes</div>
-                    <div className="mt-3 grid gap-2">
-                      {serviceStats.ganhosRecentes.length ? (
-                        serviceStats.ganhosRecentes.map((item) => (
-                          <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-2.5">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-black text-slate-900">{item.titulo}</div>
-                              <div className="mt-0.5 text-xs font-semibold text-slate-500">{item.tipo} · {formatDataCurta(item.data)}</div>
-                            </div>
-                            <div className="shrink-0 rounded-full bg-[#ffd91a] px-3 py-1 text-xs font-black text-blue-950">
-                              {formatMoneyBR(item.valor)}
+                    <div className="mt-4 grid grid-cols-1 gap-2.5 md:grid-cols-3">
+                      <Field label="Nome do serviço">
+                        <input
+                          ref={portfolioFirstInputRef}
+                          value={portfolioDraft.nome || portfolioDraft.titulo}
+                          onChange={(e) => updatePortfolioDraft("nome", e.target.value)}
+                          placeholder="Ex: Instalação elétrica"
+                          className={inputClass("bg-white")}
+                        />
+                      </Field>
+                      <Field label="Categoria">
+                        <select
+                          value={portfolioDraft.categoriaId}
+                          onChange={(e) => {
+                            const cat = getCategoryById(e.target.value);
+                            setPortfolioDraft((prev) => ({
+                              ...prev,
+                              categoriaId: e.target.value,
+                              categoriaNome: cat?.label || "",
+                              categoria: cat?.label || "",
+                            }));
+                          }}
+                          className={inputClass("bg-white")}
+                        >
+                          <option value="" className="text-black">Selecione</option>
+                          {CATEGORIES.map((cat) => (
+                            <option key={cat.id} value={cat.id} className="text-black">{cat.emoji} {cat.label}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Valor ou faixa">
+                        <input
+                          value={portfolioDraft.faixaPreco || portfolioDraft.valor}
+                          onChange={(e) => updatePortfolioDraft("faixaPreco", e.target.value)}
+                          placeholder="Ex: R$ 100 - R$ 200"
+                          className={inputClass("bg-white")}
+                        />
+                      </Field>
+                      <Field label="Descrição curta">
+                        <input
+                          value={portfolioDraft.descricao}
+                          onChange={(e) => updatePortfolioDraft("descricao", e.target.value)}
+                          placeholder="Descreva seu serviço em poucas palavras"
+                          className={inputClass("bg-white")}
+                        />
+                      </Field>
+                      <Field label="Tempo médio">
+                        <input
+                          value={portfolioDraft.tempoMedio}
+                          onChange={(e) => updatePortfolioDraft("tempoMedio", e.target.value)}
+                          placeholder="Ex: 2 horas"
+                          className={inputClass("bg-white")}
+                        />
+                      </Field>
+                      <Field label="Região de atendimento">
+                        <input
+                          value={portfolioDraft.regiao}
+                          onChange={(e) => updatePortfolioDraft("regiao", e.target.value)}
+                          placeholder="Ex: Nova Iguaçu - RJ"
+                          className={inputClass("bg-white")}
+                        />
+                      </Field>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-[1fr_2.2fr]">
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 lg:grid-cols-1">
+                        {[
+                          ["atendeDomicilio", "Atende em domicílio?"],
+                          ["urgente", "Serviço urgente?"],
+                          ["ativo", "Ativo na vitrine?"],
+                        ].map(([field, label]) => (
+                          <div key={field} className="rounded-[16px] border border-slate-100 bg-slate-50 p-3">
+                            <div className="text-xs font-black text-blue-950">{label}</div>
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              {[true, false].map((value) => (
+                                <button
+                                  key={String(value)}
+                                  type="button"
+                                  onClick={() => updatePortfolioDraft(field, value)}
+                                  className={[
+                                    "h-9 rounded-full border text-xs font-black transition active:scale-[0.98]",
+                                    portfolioDraft[field] === value
+                                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                                      : "border-slate-200 bg-white text-slate-500",
+                                  ].join(" ")}
+                                >
+                                  {value ? "Sim" : "Não"}
+                                </button>
+                              ))}
                             </div>
                           </div>
-                        ))
-                      ) : (
-                        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-4 text-center text-sm font-bold text-slate-500">
-                          Serviços concluídos com valor combinado aparecem aqui.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {profSection === "portfolio" && (
-                <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
-                  <div className="mb-3">
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Portfólio de serviços</div>
-                    <div className="mt-1 text-sm font-bold text-slate-500">Organize o que você oferece sem criar uma tela pesada.</div>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
-                    <Field label="Preço base">
-                      <input
-                        value={profile.preco}
-                        onChange={(e) => setProfile((p) => ({ ...p, preco: e.target.value }))}
-                        placeholder="Ex: 50"
-                        inputMode="decimal"
-                        className={inputClass()}
-                      />
-                    </Field>
-
-                    <Field label="WhatsApp">
-                      <input
-                        value={profile.whatsapp}
-                        onChange={(e) => setProfile((p) => ({ ...p, whatsapp: e.target.value }))}
-                        placeholder="21999999999"
-                        inputMode="tel"
-                        className={inputClass()}
-                      />
-                    </Field>
-
-                    <Field label="Região profissional">
-                      <input
-                        value={profile.profRegiao}
-                        onChange={(e) => setProfile((p) => ({ ...p, profRegiao: e.target.value }))}
-                        placeholder="Ex: Baixada, Centro, Zona Norte"
-                        className={inputClass()}
-                      />
-                    </Field>
-
-                    <Field label="Experiência profissional">
-                      <input
-                        value={profile.profExperiencia}
-                        onChange={(e) => setProfile((p) => ({ ...p, profExperiencia: e.target.value }))}
-                        placeholder="Ex: 5 anos como eletricista"
-                        className={inputClass()}
-                      />
-                    </Field>
-                  </div>
-
-                  <div className="mt-3 rounded-[20px] border border-blue-100 bg-blue-50 p-3 md:rounded-[24px] md:p-4">
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Adicionar trabalho</div>
-                    <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                      <input
-                        value={portfolioDraft.titulo}
-                        onChange={(e) => updatePortfolioDraft("titulo", e.target.value)}
-                        placeholder="Nome do trabalho"
-                        className={inputClass()}
-                      />
-                      <input
-                        value={portfolioDraft.valor}
-                        onChange={(e) => updatePortfolioDraft("valor", e.target.value)}
-                        placeholder="Valor ou faixa"
-                        className={inputClass()}
-                      />
-                      <input
-                        value={portfolioDraft.categoria}
-                        onChange={(e) => updatePortfolioDraft("categoria", e.target.value)}
-                        placeholder="Categoria"
-                        className={inputClass()}
-                      />
-                      <input
-                        value={portfolioDraft.descricao}
-                        onChange={(e) => updatePortfolioDraft("descricao", e.target.value)}
-                        placeholder="Descricao curta"
-                        className={inputClass()}
-                      />
-                    </div>
-                    <div className="mt-3 rounded-[18px] border border-white bg-white/80 p-2.5">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-black text-blue-950">Fotos do servico feito</div>
-                          <div className="mt-0.5 text-xs font-semibold text-slate-500">Anexe ate 5 fotos para mostrar acabamento e resultado.</div>
-                        </div>
-                        <label className={["grid h-10 cursor-pointer place-items-center rounded-2xl bg-white px-4 text-xs font-black text-blue-700 shadow-sm ring-1 ring-blue-100 transition active:scale-[0.98]", portfolioPhotoUploading || portfolioDraftFotos.length >= 5 ? "pointer-events-none opacity-60" : ""].join(" ")}>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
-                            className="hidden"
-                            onChange={alterarFotoPortfolio}
-                          />
-                          {portfolioPhotoUploading ? "Enviando..." : portfolioDraftFotos.length ? `Anexar mais (${portfolioDraftFotos.length}/5)` : "Anexar fotos"}
-                        </label>
+                        ))}
                       </div>
 
-                      <div className="mt-2 grid grid-cols-5 gap-1.5">
-                        {Array.from({ length: 5 }).map((_, index) => {
-                          const foto = portfolioDraftFotos[index];
-                          return (
-                            <div key={foto || index} className="relative grid aspect-square place-items-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-[10px] font-black text-slate-400">
-                              {foto ? (
-                                <>
-                                  <span
-                                    className="h-full w-full bg-cover bg-center"
-                                    style={{ backgroundImage: `url(${foto})` }}
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => removerFotoPortfolioDraft(foto)}
-                                    className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-slate-950/80 text-[10px] font-black text-white"
-                                    aria-label="Remover foto"
-                                  >
-                                    ×
-                                  </button>
-                                </>
-                              ) : (
-                                "+"
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <div className="rounded-[16px] border border-slate-100 bg-slate-50 p-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <div className="text-xs font-black text-blue-950">Fotos do serviço (até 5)</div>
+                            <div className="text-[11px] font-semibold text-slate-500">Mostre fotos reais dos seus trabalhos</div>
+                          </div>
+                          <label className={["grid h-9 cursor-pointer place-items-center rounded-xl border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 shadow-sm transition active:scale-[0.98]", portfolioPhotoUploading || portfolioDraftFotos.length >= 5 ? "pointer-events-none opacity-60" : ""].join(" ")}>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
+                              className="hidden"
+                              onChange={alterarFotoPortfolio}
+                            />
+                            {portfolioPhotoUploading ? "Enviando..." : "Adicionar"}
+                          </label>
+                        </div>
 
-                      <div className="mt-1">
+                        <div className="mt-3 grid grid-cols-5 gap-2">
+                          {Array.from({ length: 5 }).map((_, index) => {
+                            const foto = portfolioDraftFotos[index];
+                            return (
+                              <div key={foto || index} className={["relative grid aspect-square place-items-center overflow-hidden rounded-[14px] border text-[10px] font-black", foto ? "border-slate-200 bg-slate-100" : "border-dashed border-blue-200 bg-white text-blue-600"].join(" ")}>
+                                {foto ? (
+                                  <>
+                                    <span
+                                      className="h-full w-full bg-cover bg-center"
+                                      style={{ backgroundImage: `url(${foto})` }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removerFotoPortfolioDraft(foto)}
+                                      className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-slate-950/80 text-[10px] font-black text-white"
+                                      aria-label="Remover foto"
+                                    >
+                                      ×
+                                    </button>
+                                  </>
+                                ) : (
+                                  index === 0 ? "+ Adicionar" : "▧"
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                         {portfolioPhotoError ? (
-                          <div className="mt-1 text-xs font-black text-rose-600">{portfolioPhotoError}</div>
+                          <div className="mt-2 text-xs font-black text-rose-600">{portfolioPhotoError}</div>
                         ) : null}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={adicionarPortfolioItem}
-                      className="mt-3 h-11 w-full rounded-2xl bg-blue-700 px-4 text-sm font-black text-white shadow-[0_12px_28px_rgba(37,99,235,0.20)] transition hover:bg-blue-800 active:scale-[0.98]"
-                    >
-                      Adicionar ao portfolio
-                    </button>
+                    <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      {portfolioEditingId ? (
+                        <button
+                          type="button"
+                        onClick={() => {
+                          setPortfolioEditingId("");
+                          setPortfolioStarterActive(false);
+                          setPortfolioDraft(createEmptyPortfolioDraft());
+                        }}
+                          className="h-10 rounded-xl border border-slate-200 bg-white px-5 text-xs font-black text-slate-600 transition active:scale-[0.98]"
+                        >
+                          Cancelar
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={adicionarPortfolioItem}
+                        className="h-10 rounded-xl bg-blue-700 px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]"
+                      >
+                        {portfolioEditingId ? "Salvar serviço" : "Adicionar serviço"}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="mt-3 grid gap-2">
+                  {!portfolioItems.length ? (
+                    <div className="mt-4 flex flex-col gap-3 rounded-[22px] border border-slate-100 bg-white p-4 shadow-[0_14px_36px_rgba(15,23,42,0.07)] md:flex-row md:items-center md:px-8">
+                      <div className="relative h-24 w-32 shrink-0">
+                        <div className="absolute bottom-2 left-5 h-12 w-20 rounded-[18px] bg-blue-600 shadow-[0_14px_28px_rgba(37,99,235,0.20)]" />
+                        <div className="absolute bottom-9 left-9 h-8 w-12 rounded-t-[18px] border-4 border-blue-300" />
+                        <div className="absolute left-4 top-4 rotate-[-18deg] text-2xl">▤</div>
+                        <div className="absolute right-3 top-5 rotate-[18deg] text-3xl">🔧</div>
+                        <div className="absolute bottom-8 left-12 h-3 w-3 rounded-full bg-[#ffd91a]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-blue-950">Você ainda não cadastrou serviços</div>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">Adicione seu primeiro trabalho para aparecer melhor para clientes e aumentar suas chances de receber contatos.</p>
+                        <button
+                          type="button"
+                          onClick={prepararPrimeiroServico}
+                          className="mt-3 h-10 rounded-xl bg-blue-700 px-4 text-xs font-black text-white shadow-[0_10px_22px_rgba(37,99,235,0.22)]"
+                        >
+                          Adicionar meu primeiro serviço
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 rounded-[22px] border border-slate-100 bg-white p-3 shadow-[0_14px_36px_rgba(15,23,42,0.07)] md:p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-black text-blue-950">Seus serviços cadastrados</div>
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">{portfolioItems.length} serviços</span>
+                      </div>
+                      <button type="button" className="h-8 w-fit rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-500">
+                        Mais recentes
+                      </button>
+                    </div>
+
                     {portfolioItems.length ? (
-                      portfolioItems.map((item) => (
-                        <div key={item.id} className="rounded-[18px] border border-slate-200 bg-slate-50 p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="line-clamp-2 text-sm font-black text-blue-950">{item.titulo || "Trabalho sem titulo"}</div>
-                              {item.descricao ? <div className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600">{item.descricao}</div> : null}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removerPortfolioItem(item.id)}
-                              className="shrink-0 rounded-xl border border-rose-200 bg-white px-3 py-1 text-xs font-black text-rose-600"
-                            >
-                              Remover
-                            </button>
-                          </div>
-                          {item.fotos?.length ? (
-                            <div className="mt-2 grid grid-cols-5 gap-1.5">
-                              {item.fotos.slice(0, 5).map((foto, index) => (
-                                <div
-                                  key={`${item.id}_foto_${index}`}
-                                  className="aspect-square rounded-xl bg-cover bg-center shadow-sm ring-1 ring-slate-200"
-                                  style={{ backgroundImage: `url(${foto})` }}
-                                  aria-label="Foto do trabalho"
-                                />
-                              ))}
-                            </div>
-                          ) : null}
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {item.categoria ? <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-slate-600">{item.categoria}</span> : null}
-                            {item.valor ? <span className="rounded-full bg-[#ffd91a] px-2.5 py-1 text-[11px] font-black text-blue-950">{item.valor}</span> : null}
-                          </div>
-                        </div>
-                      ))
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {portfolioItems.map((item) => {
+                          const cover = item.fotos?.[0] || "";
+                          const title = item.nome || item.titulo || "Serviço sem título";
+                          const category = item.categoriaNome || item.categoria || "Serviço";
+                          const price = item.faixaPreco || item.valor || item.preco || "A combinar";
+                          return (
+                            <article key={item.id} className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
+                              <div className="relative h-32 bg-gradient-to-br from-blue-50 via-slate-100 to-emerald-50">
+                                {cover ? (
+                                  <span
+                                    className="block h-full w-full bg-cover bg-center"
+                                    style={{ backgroundImage: `url(${cover})` }}
+                                  />
+                                ) : (
+                                  <div className="grid h-full place-items-center text-3xl text-blue-200">▧</div>
+                                )}
+                                {item.urgente ? (
+                                  <span className="absolute left-2 top-2 rounded-full bg-[#ffd91a] px-2 py-1 text-[10px] font-black text-blue-950">Destaque</span>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => editarPortfolioItem(item)}
+                                  className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-white/95 text-xs font-black text-slate-600 shadow-sm"
+                                  aria-label="Editar serviço"
+                                >
+                                  ⋮
+                                </button>
+                              </div>
+                              <div className="p-3">
+                                <div className="line-clamp-1 text-sm font-black text-blue-950">{title}</div>
+                                <div className="mt-0.5 text-[11px] font-bold text-slate-500">Em {category}</div>
+                                <div className="mt-2 text-sm font-black text-emerald-600">{price}</div>
+                                <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[10px] font-bold text-slate-500">
+                                  {item.regiao ? <span>{item.regiao}</span> : null}
+                                  {item.tempoMedio ? <span>{item.tempoMedio}</span> : null}
+                                  {item.ativo === false ? <span className="text-slate-400">Oculto</span> : null}
+                                </div>
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => editarPortfolioItem(item)}
+                                    className="h-9 rounded-xl border border-blue-100 bg-blue-50 text-xs font-black text-blue-700"
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removerPortfolioItem(item.id)}
+                                    className="h-9 rounded-xl border border-rose-100 bg-rose-50 text-xs font-black text-rose-600"
+                                  >
+                                    Remover
+                                  </button>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
                     ) : (
-                      <div className="rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500">
-                        Nenhum trabalho cadastrado ainda.
+                      <div className="mt-3 rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500">
+                        Nenhum serviço cadastrado ainda.
                       </div>
                     )}
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-2 rounded-[18px] border border-yellow-200 bg-yellow-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-xs font-bold text-yellow-900">
+                      <b>Dica para se destacar:</b> mantenha fotos reais e descrição objetiva para o cliente decidir mais rápido.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setProfSection("perfilPublico")}
+                      className="h-9 rounded-xl bg-[#ffd91a] px-4 text-xs font-black text-blue-950 shadow-sm"
+                    >
+                      Ver meu perfil
+                    </button>
                   </div>
                 </section>
               )}
@@ -2657,11 +3066,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       <div className="text-sm font-black text-blue-950">Modo profissional</div>
                       <div className="text-xs font-semibold text-slate-500">Apareça na lista de profissionais para clientes.</div>
                     </div>
-                    <input
-                      type="checkbox"
+                    <ToggleSwitch
                       checked={profile.isProfissional}
-                      onChange={(e) => setProfile((p) => ({ ...p, isProfissional: e.target.checked }))}
-                      className="h-5 w-5 accent-blue-600"
+                      onChange={(checked) => setProfile((p) => ({ ...p, isProfissional: checked }))}
+                      label="Ativar modo profissional"
+                      tone="blue"
                     />
                   </label>
 
@@ -2670,11 +3079,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       <div className="text-sm font-black text-blue-950">Agenda aberta</div>
                       <div className="text-xs font-semibold text-slate-500">Permite receber solicitações de horário.</div>
                     </div>
-                    <input
-                      type="checkbox"
+                    <ToggleSwitch
                       checked={profile.agendaAberta}
-                      onChange={(e) => setProfile((p) => ({ ...p, agendaAberta: e.target.checked }))}
-                      className="h-5 w-5 accent-blue-600"
+                      onChange={(checked) => setProfile((p) => ({ ...p, agendaAberta: checked }))}
+                      label="Alterar agenda aberta"
+                      tone="blue"
                     />
                   </label>
 

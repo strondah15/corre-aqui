@@ -1008,6 +1008,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [agendaConfirmados, setAgendaConfirmados] = useState(0)
   const [agendaRecusados, setAgendaRecusados] = useState(0)
   const [correDisponivel, setCorreDisponivel] = useState(true)
+  const [ganhosModo, setGanhosModo] = useState('corre')
   const [bottomBarsHidden, setBottomBarsHidden] = useState(false)
   const [mostrarBuscaCorreFlutuante, setMostrarBuscaCorreFlutuante] = useState(false)
   const lastScrollYRef = useRef(0)
@@ -1924,16 +1925,78 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
   }, [corres, meuId])
 
+  const ganhosStatsPorModo = useMemo(() => {
+    const meus = (Array.isArray(corres) ? corres : []).filter((p) => p?.aceite?.id === meuId)
+
+    const buildStats = (modo) => {
+      const modoProf = modo === 'prof'
+      const pedidosModo = meus.filter((p) => {
+        const isProf = String(p?.modoPedido || 'geral').toLowerCase() === 'profissional'
+        return modoProf ? isProf : !isProf
+      })
+      const concluidos = pedidosModo.filter((p) => String(p?.status || '').toLowerCase() === 'concluido')
+      const ativos = pedidosModo.filter((p) => String(p?.status || '').toLowerCase() === 'aceito')
+      const notas = concluidos
+        .map((p) => Number(p?.avaliacao?.nota || p?.avaliacaoNota || 0))
+        .filter((n) => Number.isFinite(n) && n > 0)
+      const ganhosTotal = concluidos.reduce((sum, p) => sum + getValorPedido(p?.valor), 0)
+      const taxaConclusao = pedidosModo.length ? Math.round((concluidos.length / pedidosModo.length) * 100) : 0
+      const notaMedia = notas.length ? notas.reduce((sum, n) => sum + n, 0) / notas.length : 0
+      const ticketMedio = concluidos.length ? ganhosTotal / concluidos.length : 0
+
+      const hoje = new Date()
+      const semana = Array.from({ length: 7 }, (_, idx) => {
+        const d = new Date(hoje)
+        d.setDate(hoje.getDate() - (6 - idx))
+        const key = d.toISOString().slice(0, 10)
+        return {
+          key,
+          label: d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''),
+          value: 0,
+        }
+      })
+      const byKey = Object.fromEntries(semana.map((d) => [d.key, d]))
+
+      concluidos.forEach((p) => {
+        const ms = getMs(p?.concluidoEm || p?.atualizadoEm || p?.aceitoEm || p?.criadoEm)
+        if (!ms) return
+        const key = new Date(ms).toISOString().slice(0, 10)
+        if (byKey[key]) byKey[key].value += getValorPedido(p?.valor)
+      })
+
+      return {
+        label: modoProf ? 'Profissional' : 'Corre',
+        shortLabel: modoProf ? 'Prof' : 'Corre',
+        total: pedidosModo.length,
+        ativos: ativos.length,
+        concluidos: concluidos.length,
+        ganhosTotal,
+        ganhosSemana: semana.reduce((sum, item) => sum + Number(item.value || 0), 0),
+        taxaConclusao,
+        notaMedia,
+        ticketMedio,
+        semana,
+        recentes: concluidos
+          .sort((a, b) => getMs(b?.concluidoEm || b?.atualizadoEm || b?.criadoEm) - getMs(a?.concluidoEm || a?.atualizadoEm || a?.criadoEm))
+          .slice(0, 6),
+      }
+    }
+
+    return {
+      corre: buildStats('corre'),
+      prof: buildStats('prof'),
+    }
+  }, [corres, meuId])
+
+  const ganhosSelecionados = ganhosStatsPorModo[ganhosModo] || ganhosStatsPorModo.corre
+
   const ganhosMaxDia = useMemo(() => {
-    return Math.max(...(profissionalStats?.semana || []).map((dia) => Number(dia.value || 0)), 1)
-  }, [profissionalStats])
+    return Math.max(...(ganhosSelecionados?.semana || []).map((dia) => Number(dia.value || 0)), 1)
+  }, [ganhosSelecionados])
 
   const ganhosRecentes = useMemo(() => {
-    return (Array.isArray(corres) ? corres : [])
-      .filter((p) => p?.aceite?.id === meuId && String(p?.status || '').toLowerCase() === 'concluido')
-      .sort((a, b) => getMs(b?.concluidoEm || b?.atualizadoEm || b?.criadoEm) - getMs(a?.concluidoEm || a?.atualizadoEm || a?.criadoEm))
-      .slice(0, 6)
-  }, [corres, meuId])
+    return ganhosSelecionados?.recentes || []
+  }, [ganhosSelecionados])
 
   async function aceitarCorre(p) {
     if (!meuId) {
@@ -2737,30 +2800,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       ) : null}
 
       <div className="relative z-10 w-full max-w-[1280px] mx-auto px-2.5 pt-0 pb-24 md:px-4 md:py-5 md:pb-32 sm:px-5 lg:px-6">
-        {typeof onBackToMode === 'function' ? (
-          <button
-            onClick={voltarModoLimpo}
-            className="absolute left-0 top-[5.85rem] z-[120] flex h-20 w-12 -translate-x-1/2 items-center justify-center rounded-r-[22px] border-y border-r border-white/35 bg-[#0B1F4D] text-white shadow-[0_18px_34px_rgba(11,31,77,0.34)] transition active:scale-[0.98] md:left-4 md:top-[6.45rem] md:h-24 md:w-14 md:rounded-r-[26px]"
-            type="button"
-            title="Voltar para escolher Cliente ou Corre"
-            aria-label="Trocar modo"
-          >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              className="h-5 w-5 translate-x-3"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M9 7 4 12l5 5" />
-              <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
-            </svg>
-          </button>
-        ) : null}
-
         {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
@@ -2772,6 +2811,30 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               <div className="relative p-4 pb-5 md:p-8 md:pb-10">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5 md:gap-3">
                   <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
+                    {typeof onBackToMode === 'function' ? (
+                      <button
+                        onClick={voltarModoLimpo}
+                        className="grid h-12 w-12 shrink-0 place-items-center rounded-[18px] border border-yellow-200/80 bg-[#ffd91a] text-blue-950 shadow-[0_14px_28px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.58)] transition hover:-translate-y-0.5 active:scale-[0.96] min-[390px]:h-14 min-[390px]:w-14 min-[390px]:rounded-[20px] md:h-16 md:w-16 md:rounded-[24px]"
+                        type="button"
+                        title="Voltar para escolher Cliente ou Corre"
+                        aria-label="Trocar modo"
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          className="h-5 w-5 md:h-6 md:w-6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M15 6 9 12l6 6" />
+                          <path d="M9 12h10" />
+                        </svg>
+                      </button>
+                    ) : null}
+
                     <div className="relative shrink-0">
                       <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-[19px] bg-white text-base font-black text-blue-700 shadow-[0_14px_30px_rgba(15,23,42,0.16)] min-[390px]:h-14 min-[390px]:w-14 min-[390px]:rounded-[22px] min-[390px]:text-lg md:h-20 md:w-20 md:rounded-[30px] md:text-2xl">
                         {fotoURL ? (
@@ -2807,19 +2870,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1.5 md:gap-3">
-                    <button
-                      type="button"
-                      onClick={() => onBottomTab('disponivel')}
-                      title={correDisponivel ? 'Disponivel' : 'Indisponivel'}
-                      className={[
-                        'flex h-10 w-[58px] items-center rounded-full p-1 shadow-[0_12px_26px_rgba(15,23,42,0.14)] transition active:scale-[0.97] min-[390px]:w-[64px] md:h-14 md:w-[96px] md:px-2',
-                        correDisponivel ? 'justify-end bg-emerald-500' : 'justify-start bg-slate-900/65',
-                      ].join(' ')}
-                    >
-                      <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-[10px] font-black text-emerald-600 shadow-[0_8px_18px_rgba(15,23,42,0.18)] md:h-10 md:w-10">
-                        {correDisponivel ? '✓' : '×'}
-                      </span>
-                    </button>
                     <button
                       type="button"
                       onClick={() => setOpenMapaAoVivo(true)}
@@ -2949,7 +2999,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     >
                       ←
                     </button>
-                    <div className="text-sm font-black md:text-base">Meus ganhos</div>
+                    <div className="text-sm font-black md:text-base">Ganhos Corre/Prof</div>
                     <button
                       type="button"
                       onClick={() => {
@@ -2964,24 +3014,40 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   </div>
 
                   <div className="px-4 pt-4 md:px-6 md:pt-5">
-                    <button
-                      type="button"
-                      className="rounded-xl border border-white/10 bg-white/8 px-3 py-2 text-xs font-black text-slate-200"
-                    >
-                      Esta semana
-                    </button>
+                    <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.055] p-1">
+                      {[
+                        ['corre', 'Corre', formatMoneyBR(ganhosStatsPorModo.corre.ganhosTotal)],
+                        ['prof', 'Prof', formatMoneyBR(ganhosStatsPorModo.prof.ganhosTotal)],
+                      ].map(([id, label, value]) => {
+                        const active = ganhosModo === id
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setGanhosModo(id)}
+                            className={[
+                              'rounded-xl px-3 py-2 text-left transition active:scale-[0.98]',
+                              active ? 'bg-[#ffd91a] text-blue-950 shadow-[0_10px_24px_rgba(250,204,21,0.24)]' : 'text-slate-300 hover:bg-white/[0.08]',
+                            ].join(' ')}
+                          >
+                            <span className="block text-xs font-black">{label}</span>
+                            <span className="mt-0.5 block truncate text-[11px] font-black opacity-80">{value}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
 
                   <div className="px-4 pt-5 text-center md:px-6">
                     <div className="text-3xl font-black leading-none text-white md:text-5xl">
-                      {formatMoneyBR(profissionalStats.ganhosSemana)}
+                      {formatMoneyBR(ganhosSelecionados.ganhosSemana)}
                     </div>
-                    <div className="mt-1 text-xs font-bold text-slate-400 md:text-sm">Total de ganhos</div>
+                    <div className="mt-1 text-xs font-bold text-slate-400 md:text-sm">Ganhos da semana em {ganhosSelecionados.label}</div>
                   </div>
 
                   <div className="px-4 pt-5 md:px-6 md:pt-7">
                     <div className="grid h-36 grid-cols-7 items-end gap-2 border-b border-white/10 pb-2 md:h-44 md:gap-4">
-                      {profissionalStats.semana.map((dia) => {
+                      {ganhosSelecionados.semana.map((dia) => {
                         const value = Number(dia.value || 0)
                         const height = Math.max(value > 0 ? 18 : 3, Math.round((value / ganhosMaxDia) * 112))
                         return (
@@ -3009,13 +3075,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                   <div className="p-4 md:p-6">
                     <div className="rounded-[24px] border border-white/10 bg-white/[0.055] p-3 md:rounded-[28px] md:p-4">
-                      <div className="text-sm font-black text-white">Resumo</div>
+                      <div className="text-sm font-black text-white">Resumo de {ganhosSelecionados.label}</div>
                       <div className="mt-3 grid gap-2">
                         {[
-                          ['Serviços realizados', profissionalStats.concluidos || 0],
-                          ['Avaliação média', profissionalStats.notaMedia ? `${profissionalStats.notaMedia.toFixed(1)} ★` : 'Sem nota'],
-                          ['Taxa de conclusão', `${profissionalStats.taxaConclusao || 0}%`],
-                          ['Ticket médio', profissionalStats.ticketMedio ? formatMoneyBR(profissionalStats.ticketMedio) : 'R$ 0,00'],
+                          ['Serviços realizados', ganhosSelecionados.concluidos || 0],
+                          ['Avaliação média', ganhosSelecionados.notaMedia ? `${ganhosSelecionados.notaMedia.toFixed(1)} ★` : 'Sem nota'],
+                          ['Taxa de conclusão', `${ganhosSelecionados.taxaConclusao || 0}%`],
+                          ['Ticket médio', ganhosSelecionados.ticketMedio ? formatMoneyBR(ganhosSelecionados.ticketMedio) : 'R$ 0,00'],
                         ].map(([label, value]) => (
                           <div key={label} className="flex items-center justify-between gap-3 rounded-2xl bg-white/[0.045] px-3 py-2.5">
                             <span className="text-xs font-bold text-slate-300">{label}</span>
@@ -3037,17 +3103,17 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/[0.035] px-4 py-3 md:px-5 md:py-4">
                     <div>
                       <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#ffd91a]">Extrato</div>
-                      <div className="mt-0.5 text-lg font-black text-white md:text-xl">Ganhos recentes</div>
+                      <div className="mt-0.5 text-lg font-black text-white md:text-xl">Ganhos recentes de {ganhosSelecionados.shortLabel}</div>
                     </div>
                     <span className="rounded-full bg-[#ffd91a] px-3 py-1 text-xs font-black text-blue-950">
-                      {formatMoneyBR(profissionalStats.ganhosTotal)}
+                      {formatMoneyBR(ganhosSelecionados.ganhosTotal)}
                     </span>
                   </div>
 
                   <div className="grid gap-2 p-3 md:p-4">
                     {ganhosRecentes.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.035] px-4 py-5 text-center text-sm font-bold text-slate-400">
-                        Serviços concluídos aparecem aqui.
+                        Nenhum ganho de {ganhosSelecionados.label} concluído ainda.
                       </div>
                     ) : (
                       ganhosRecentes.map((p) => (
@@ -3095,10 +3161,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onIrAoVivo={() => {
                 setOpenMapaAoVivo(true)
               }}
-              onAbrirPedidos={() => setClientePainelBaixo('meusPedidos')}
               onAbrirNotificacoes={() => setClientePainelBaixo('notificacoes')}
               onAbrirPerfil={abrirPerfilCliente}
               onAgendar={abrirAgendaCliente}
+              onBackToMode={typeof onBackToMode === 'function' ? voltarModoLimpo : undefined}
             />
 
             <AvisoCorreAceito
@@ -4405,6 +4471,39 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         profissional={agendaClienteUser}
         onClose={() => setAgendaClienteUser(null)}
       />
+
+      {modoApp === 'corre' && !openIA && !isMapOpen ? (
+        <button
+          type="button"
+          onClick={() => onBottomTab('disponivel')}
+          aria-pressed={correDisponivel}
+          title={correDisponivel ? 'Você está online' : 'Você está offline'}
+          className={[
+            'fixed right-4 z-[99979] flex flex-col items-center gap-2 transition-all duration-300 active:scale-[0.96] md:right-7',
+            bottomBarsHidden
+              ? 'bottom-[calc(env(safe-area-inset-bottom)+1rem)]'
+              : 'bottom-[calc(env(safe-area-inset-bottom)+5.35rem)] md:bottom-28',
+          ].join(' ')}
+        >
+          <span className="rounded-xl bg-slate-950/88 px-3 py-1.5 text-center text-[11px] font-black leading-tight text-white shadow-[0_10px_28px_rgba(0,0,0,0.28)] ring-1 ring-white/10 backdrop-blur">
+            Você<br />
+            está {correDisponivel ? 'online' : 'offline'}
+          </span>
+          <span
+            className={[
+              'grid h-14 w-14 place-items-center rounded-full border-2 text-white shadow-[0_14px_28px_rgba(15,23,42,0.28),inset_0_1px_0_rgba(255,255,255,0.35)] transition md:h-[60px] md:w-[60px]',
+              correDisponivel
+                ? 'border-emerald-300/70 bg-gradient-to-br from-emerald-400 via-emerald-600 to-green-700'
+                : 'border-slate-500/70 bg-gradient-to-br from-slate-500 via-slate-700 to-slate-950',
+            ].join(' ')}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3v9" />
+              <path d="M6.3 7.2a8 8 0 1 0 11.4 0" />
+            </svg>
+          </span>
+        </button>
+      ) : null}
 
       {modoApp === 'corre' && !openIA && (
         <BottomBar

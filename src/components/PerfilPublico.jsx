@@ -253,17 +253,36 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       prof.portfolio,
       prof.profPortfolio
     )
-      .map((item, index) => ({
-        id: String(item?.id || item?.key || `portfolio_${index}`),
-        titulo: pickText(item?.titulo, item?.title, 'Trabalho cadastrado'),
-        descricao: pickText(item?.descricao, item?.description),
-        valor: pickText(item?.valor, item?.preco, item?.price),
-        categoria: pickText(item?.categoria, item?.category),
-        fotos: normalizePortfolioFotos(item),
-      }))
+      .map((item, index) => {
+        const categoriaId = pickText(item?.categoriaId, item?.categoryId)
+        const categoriaMeta = getCategoryById(categoriaId)
+        const categoriaNome = pickText(item?.categoriaNome, item?.categoryName, item?.categoria, item?.category, categoriaMeta?.label)
+        const nome = pickText(item?.nome, item?.titulo, item?.title, 'Trabalho cadastrado')
+        const preco = pickText(item?.preco, item?.valor, item?.price)
+        const faixaPreco = pickText(item?.faixaPreco, item?.valor, item?.priceRange, preco)
+
+        return {
+          id: String(item?.id || item?.key || `portfolio_${index}`),
+          nome,
+          titulo: nome,
+          descricao: pickText(item?.descricao, item?.description),
+          preco,
+          faixaPreco,
+          valor: faixaPreco || preco,
+          categoriaId,
+          categoriaNome,
+          categoria: categoriaNome,
+          tempoMedio: pickText(item?.tempoMedio, item?.tempo, item?.duration),
+          regiao: pickText(item?.regiao, item?.regiaoAtendimento, item?.region),
+          atendeDomicilio: item?.atendeDomicilio ?? item?.domicilio ?? true,
+          urgente: item?.urgente ?? item?.urgent ?? false,
+          ativo: item?.ativo ?? item?.active ?? true,
+          fotos: normalizePortfolioFotos(item),
+        }
+      })
       .map((item) => ({ ...item, fotoURL: item.fotos[0] || '' }))
-      .filter((item) => item.titulo || item.descricao || item.valor || item.categoria || item.fotos.length)
-      .slice(0, 6)
+      .filter((item) => item.ativo !== false && (item.titulo || item.descricao || item.valor || item.categoria || item.fotos.length))
+      .slice(0, 8)
 
     const correTitulo = pickText(user.correTitulo, corre?.titulo, 'Corre rápido')
     const correTransporte = pickText(user.correTransporte, corre?.transporte)
@@ -505,26 +524,26 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
             </div>
 
             {dados.portfolio.length ? (
-              <section className="rounded-[18px] border border-white/10 bg-white/[0.05] p-3 md:rounded-[26px] md:p-4">
+              <section className="rounded-[18px] border border-white/10 bg-white p-3 text-slate-950 shadow-[0_18px_48px_rgba(0,0,0,0.18)] md:rounded-[26px] md:p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-200">Portfólio</div>
-                    <h3 className="mt-1 text-base font-black text-white md:text-lg">Trabalhos oferecidos</h3>
+                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-700">Portfolio disponivel</div>
+                    <h3 className="mt-1 text-base font-black text-blue-950 md:text-lg">Servicos oferecidos</h3>
                   </div>
-                  <span className="rounded-full border border-yellow-300/30 bg-yellow-300/12 px-3 py-1 text-[10px] font-black text-yellow-100">
+                  <span className="rounded-full border border-yellow-200 bg-[#ffd91a] px-3 py-1 text-[10px] font-black text-blue-950">
                     {dados.portfolio.length}
                   </span>
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {dados.portfolio.map((item) => (
-                    <div key={item.id} className="rounded-[16px] border border-white/10 bg-white/[0.04] p-3">
+                    <div key={item.id} className="overflow-hidden rounded-[16px] border border-slate-200 bg-slate-50 p-2.5 shadow-[0_10px_26px_rgba(15,23,42,0.08)]">
                       {item.fotos?.length ? (
                         <div className="mb-3 grid grid-cols-5 gap-1.5">
                           {item.fotos.slice(0, 5).map((foto, index) => (
                             <div
                               key={`${item.id}_${index}`}
                               className={[
-                                'bg-cover bg-center shadow-[0_14px_34px_rgba(0,0,0,0.22)] ring-1 ring-white/10',
+                                'bg-cover bg-center shadow-[0_10px_24px_rgba(15,23,42,0.12)] ring-1 ring-slate-200',
                                 index === 0 ? 'col-span-2 row-span-2 aspect-square rounded-[14px]' : 'aspect-square rounded-xl',
                               ].join(' ')}
                               style={{ backgroundImage: `url(${foto})` }}
@@ -533,11 +552,43 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
                           ))}
                         </div>
                       ) : null}
-                      <div className="line-clamp-2 text-sm font-black text-white">{item.titulo}</div>
-                      {item.descricao ? <p className="mt-1 line-clamp-2 text-xs font-semibold leading-relaxed text-slate-400">{item.descricao}</p> : null}
+                      <div className="line-clamp-2 text-sm font-black text-blue-950">{item.titulo}</div>
+                      {item.descricao ? <p className="mt-1 line-clamp-2 text-xs font-semibold leading-relaxed text-slate-600">{item.descricao}</p> : null}
                       <div className="mt-2 flex flex-wrap gap-1.5">
-                        {item.categoria ? <span className="rounded-full border border-blue-300/20 bg-blue-400/10 px-2.5 py-1 text-[10px] font-black text-blue-100">{item.categoria}</span> : null}
-                        {item.valor ? <span className="rounded-full border border-yellow-300/25 bg-yellow-300/10 px-2.5 py-1 text-[10px] font-black text-yellow-100">{item.valor}</span> : null}
+                        {item.categoria ? <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">{item.categoria}</span> : null}
+                        {item.valor ? <span className="rounded-full bg-[#ffd91a] px-2.5 py-1 text-[10px] font-black text-blue-950">{item.valor}</span> : null}
+                        {item.tempoMedio ? <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black text-slate-600">{item.tempoMedio}</span> : null}
+                        {item.regiao ? <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black text-slate-600">{item.regiao}</span> : null}
+                        {item.atendeDomicilio ? <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700">Domicilio</span> : null}
+                        {item.urgente ? <span className="rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-700">Urgente</span> : null}
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onPedirServico?.(user)}
+                          className="h-9 rounded-xl bg-blue-700 px-3 text-xs font-black text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)] transition hover:bg-blue-800 active:scale-[0.98]"
+                        >
+                          Chamar
+                        </button>
+                        {dados.whatsappLimpo ? (
+                          <a
+                            href={`https://wa.me/${dados.whatsappLimpo}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="grid h-9 place-items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.98]"
+                          >
+                            WhatsApp
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={abrirAgenda}
+                            disabled={!dados.agendaAberta}
+                            className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 disabled:opacity-50"
+                          >
+                            Agenda
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

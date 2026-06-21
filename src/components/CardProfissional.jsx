@@ -84,6 +84,39 @@ function normalizeCategoryIds(...values) {
   )
 }
 
+function normalizePortfolioEntries(...values) {
+  return values
+    .flatMap((value) => {
+      if (!value) return []
+      if (Array.isArray(value)) return value
+      if (typeof value === 'object') return Object.values(value)
+      return []
+    })
+    .filter(Boolean)
+}
+
+function hasActivePortfolio(item = {}) {
+  const profile = item?.profile || {}
+  const prof = item?.profissional || profile?.profissional || {}
+
+  return normalizePortfolioEntries(
+    item?.portfolio,
+    item?.profPortfolio,
+    profile?.portfolio,
+    profile?.profPortfolio,
+    prof?.portfolio,
+    prof?.profPortfolio
+  ).some((service) => {
+    if (!service || typeof service !== 'object') return false
+    if (service.ativo === false || service.active === false) return false
+    return !!(
+      pickText(service.nome, service.titulo, service.title, service.descricao, service.description, service.valor, service.preco, service.faixaPreco) ||
+      normalizePortfolioEntries(service.fotos, service.photos, service.imagens).some(safeUrl) ||
+      safeUrl(service.fotoURL || service.imageURL || service.imagemURL || service.photoURL)
+    )
+  })
+}
+
 function getAgendaStatus(item) {
   const status =
     item?.statusProfissional ||
@@ -214,6 +247,7 @@ function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
 
   const statusLabel = agendaStatus.emServico ? 'Em serviço' : agendaStatus.agendaAberta ? 'Disponível' : 'Agenda fechada'
   const statusTone = agendaStatus.emServico ? 'amber' : agendaStatus.agendaAberta ? 'emerald' : 'slate'
+  const temPortfolio = useMemo(() => hasActivePortfolio(item), [item])
   const avatarStyle = useMemo(
     () => (fotoURL ? { backgroundImage: `url(${JSON.stringify(fotoURL)})` } : undefined),
     [fotoURL]
@@ -296,6 +330,13 @@ function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
         </div>
       ) : null}
 
+      {temPortfolio ? (
+        <div className="relative mt-2.5 inline-flex w-fit items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700 shadow-sm md:mt-3 md:px-3 md:text-[11px]">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#ffd91a] ring-2 ring-yellow-100" />
+          Portfólio disponível
+        </div>
+      ) : null}
+
       <div className="relative mt-2 space-y-1.5 md:mt-4 md:space-y-2">
         {servicos.map((servico, idx) => (
           <div
@@ -354,7 +395,7 @@ function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
           onClick={handleAbrir}
           className="h-10 rounded-xl bg-slate-950 px-3 text-xs font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] transition hover:bg-black active:scale-[0.98] md:h-11 md:rounded-2xl md:px-4 md:text-sm md:shadow-[0_12px_28px_rgba(15,23,42,0.18)]"
         >
-          Ver ficha técnica
+          {temPortfolio ? 'Ver serviços' : 'Ver ficha técnica'}
         </button>
 
         <div className="grid grid-cols-2 gap-2">

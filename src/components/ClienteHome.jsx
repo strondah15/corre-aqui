@@ -44,6 +44,33 @@ const getLabelCategoria = (id) => {
   return c ? `${c.emoji} ${c.label}` : '—'
 }
 
+const normalizePortfolioEntries = (...values) => values
+  .flatMap((value) => {
+    if (!value) return []
+    if (Array.isArray(value)) return value
+    if (typeof value === 'object') return Object.values(value)
+    return []
+  })
+  .filter(Boolean)
+
+const isActivePortfolioService = (service) => {
+  if (!service || typeof service !== 'object') return false
+  if (service.ativo === false || service.active === false) return false
+  return !!safeStr(
+    service.nome ||
+      service.titulo ||
+      service.title ||
+      service.descricao ||
+      service.description ||
+      service.valor ||
+      service.preco ||
+      service.faixaPreco ||
+      service.fotoURL
+  )
+}
+
+const providerHasPortfolio = (item) => normalizePortfolioEntries(item?.portfolio).some(isActivePortfolioService)
+
 function ClienteHeroMapIcon() {
   return (
     <div className="relative h-16 w-16 min-[390px]:h-20 min-[390px]:w-20 md:h-32 md:w-32" aria-hidden="true">
@@ -123,6 +150,14 @@ const normalizeProvider = (u) => {
   const correTransporte = safeStr(u?.correTransporte || corre?.transporte || '')
   const correDisponibilidade = safeStr(u?.correDisponibilidade || corre?.disponibilidade || '')
   const profExperiencia = safeStr(u?.profExperiencia || u?.profissional?.profExperiencia || u?.profissional?.experiencia || '')
+  const portfolio = normalizePortfolioEntries(
+    u?.portfolio,
+    u?.profPortfolio,
+    u?.profile?.portfolio,
+    u?.profile?.profPortfolio,
+    u?.profissional?.portfolio,
+    u?.profissional?.profPortfolio
+  ).filter(isActivePortfolioService)
 
   return {
     uid,
@@ -143,6 +178,7 @@ const normalizeProvider = (u) => {
     correRegiao,
     correTransporte,
     correDisponibilidade,
+    portfolio,
     regiao: correRegiao || profCidadeAtende,
     local: okLoc ? { lat, lng } : null,
   }
@@ -169,6 +205,7 @@ const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPer
     () => (item?.fotoURL ? { backgroundImage: `url("${item.fotoURL}")` } : undefined),
     [item]
   )
+  const temPortfolio = useMemo(() => providerHasPortfolio(item), [item])
   const handleAbrir = useCallback(() => onAbrirPerfil?.(item), [item, onAbrirPerfil])
   const handleAgendar = useCallback(() => onAgendar?.(item), [item, onAgendar])
 
@@ -194,6 +231,11 @@ const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPer
           <span className="absolute left-2 top-2 rounded-full bg-emerald-500 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
             online
           </span>
+          {temPortfolio ? (
+            <span className="absolute right-2 top-2 rounded-full bg-[#ffd91a] px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-blue-950 shadow-sm">
+              Portfolio
+            </span>
+          ) : null}
         </div>
 
         <div className="p-3 md:p-4">
@@ -219,7 +261,7 @@ const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPer
           onClick={handleAbrir}
           className="h-8 rounded-xl bg-slate-950 text-[11px] font-black text-white"
         >
-          Ver
+          {temPortfolio ? 'Serviços' : 'Ver'}
         </button>
         <button
           type="button"
@@ -237,11 +279,11 @@ export default function ClienteHome({
   meuNome = 'Anônimo',
   onCriarPedido,
   onIrAoVivo,
-  onAbrirPedidos,
   onAbrirNotificacoes,
   onlineUsers = [],
   onAbrirPerfil,
   onAgendar,
+  onBackToMode,
 }) {
   const [modo, setModo] = useState('corre') // corre | profissional
   const [catId, setCatId] = useState('')
@@ -376,6 +418,30 @@ export default function ClienteHome({
         <div className="pointer-events-none absolute -right-14 top-12 h-44 w-44 rounded-[48px] bg-yellow-200/35 rotate-12 md:-right-8 md:top-6 md:h-72 md:w-72 md:rounded-[72px]" />
         <div className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full bg-white/16 md:h-64 md:w-64" />
         <div className="relative flex items-center justify-between gap-3">
+          {typeof onBackToMode === 'function' ? (
+            <button
+              type="button"
+              onClick={onBackToMode}
+              className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[20px] border border-yellow-200/80 bg-[#ffd91a] text-blue-950 shadow-[0_14px_28px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.58)] transition hover:-translate-y-0.5 active:scale-[0.96] md:h-16 md:w-16 md:rounded-[24px]"
+              title="Voltar para escolher Cliente ou Corre"
+              aria-label="Trocar modo"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-5 w-5 md:h-6 md:w-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M15 6 9 12l6 6" />
+                <path d="M9 12h10" />
+              </svg>
+            </button>
+          ) : null}
+
           <button
             type="button"
             onClick={() => onAbrirPerfil?.()}
@@ -401,14 +467,6 @@ export default function ClienteHome({
           </button>
 
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onAbrirPedidos?.()}
-              className="grid h-10 w-10 place-items-center rounded-2xl bg-[#ffd91a] text-xl font-black text-blue-950 shadow-[0_10px_24px_rgba(245,158,11,0.22)] md:h-12 md:w-12 md:rounded-[20px]"
-              title="Pedidos"
-            >
-              📦
-            </button>
             <button
               type="button"
               onClick={() => onIrAoVivo?.()}
