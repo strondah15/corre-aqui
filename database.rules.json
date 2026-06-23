@@ -38,6 +38,16 @@
         ".write": "auth != null && auth.uid === $uid"
       }
     },
+    "publicPortfolio": {
+      ".read": "auth != null",
+      "$uid": {
+        ".indexOn": ["updatedAt", "categoriaId", "profissionalId"],
+        ".write": "auth != null && auth.uid === $uid",
+        "$serviceId": {
+          ".validate": "!newData.exists() || (newData.child('id').isString() && newData.child('nome').isString() && newData.child('profissionalId').val() === $uid && newData.child('ativo').val() === true)"
+        }
+      }
+    },
     "admins": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

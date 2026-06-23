@@ -12,6 +12,26 @@ const floatingSection =
 
 const safeStr = (v) => String(v || '').trim()
 
+const safeUrl = (v) => {
+  const url = safeStr(v)
+  if (!url) return ''
+  if (/^(https?:\/\/|data:image\/|blob:|\/)/i.test(url)) return url
+  return ''
+}
+
+const normalizePortfolioFotos = (item = {}) => {
+  const raw = [
+    ...(Array.isArray(item.fotos) ? item.fotos : []),
+    ...(Array.isArray(item.photos) ? item.photos : []),
+    ...(Array.isArray(item.imagens) ? item.imagens : []),
+    item.fotoURL,
+    item.imageURL,
+    item.imagemURL,
+    item.photoURL,
+  ]
+
+  return Array.from(new Set(raw.map((foto) => safeUrl(foto)).filter(Boolean))).slice(0, 5)
+}
 
 const getFotoPersonalizada = (u) => safeStr(
   u?.fotoURL ||
@@ -56,6 +76,7 @@ const normalizePortfolioEntries = (...values) => values
 const isActivePortfolioService = (service) => {
   if (!service || typeof service !== 'object') return false
   if (service.ativo === false || service.active === false) return false
+  const fotos = normalizePortfolioFotos(service)
   return !!safeStr(
     service.nome ||
       service.titulo ||
@@ -66,44 +87,179 @@ const isActivePortfolioService = (service) => {
       service.preco ||
       service.faixaPreco ||
       service.fotoURL
-  )
+  ) || fotos.length > 0
 }
 
 const providerHasPortfolio = (item) => normalizePortfolioEntries(item?.portfolio).some(isActivePortfolioService)
 
-function ClienteHeroMapIcon() {
+function ClienteMapBackdrop() {
   return (
-    <div className="relative h-16 w-16 min-[390px]:h-20 min-[390px]:w-20 md:h-32 md:w-32" aria-hidden="true">
-      <div className="absolute -bottom-2 -right-2 h-full w-full rounded-[26px] bg-[#ffd91a] opacity-95 shadow-[0_18px_30px_rgba(245,158,11,0.22)] md:rounded-[38px]" />
-      <div className="relative h-full w-full overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#0969ff_0%,#08b9c8_52%,#ffe35c_115%)] shadow-[0_18px_36px_rgba(15,23,42,0.22)] md:rounded-[34px]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(255,255,255,0.22),transparent_24%),radial-gradient(circle_at_82%_86%,rgba(255,217,26,0.34),transparent_36%)]" />
-        <div
-          className="absolute -bottom-5 left-0 h-20 w-[130%] -rotate-[10deg] opacity-45 md:-bottom-7 md:h-28"
-          style={{
-            backgroundImage:
-              'linear-gradient(rgba(255,255,255,0.28) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.28) 1px, transparent 1px)',
-            backgroundSize: '18px 18px',
-          }}
-        />
-        <div className="absolute left-[18%] top-[35%] grid gap-1.5 md:gap-2">
-          <span className="block h-2 w-10 rounded-full bg-white shadow-[0_2px_8px_rgba(255,255,255,0.35)] md:h-3 md:w-14" />
-          <span className="block h-2 w-7 rounded-full bg-white shadow-[0_2px_8px_rgba(255,255,255,0.35)] md:h-3 md:w-10" />
-          <span className="block h-2 w-10 rounded-full bg-white shadow-[0_2px_8px_rgba(255,255,255,0.35)] md:h-3 md:w-14" />
-        </div>
-        <svg
-          viewBox="0 0 120 120"
-          className="absolute right-[11%] top-[18%] h-[64%] w-[52%] drop-shadow-[0_10px_14px_rgba(15,23,42,0.22)]"
-          role="img"
-          aria-label="Localizacao rapida"
-        >
-          <path
-            d="M60 6C38.5 6 21 23.4 21 44.8c0 28.4 33.1 64.4 37.1 68.6a2.6 2.6 0 0 0 3.8 0C65.9 109.2 99 73.2 99 44.8 99 23.4 81.5 6 60 6Zm0 54.6c-9.5 0-17.2-7.6-17.2-17.1S50.5 26.4 60 26.4s17.2 7.6 17.2 17.1S69.5 60.6 60 60.6Z"
-            fill="white"
-          />
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      <div className="absolute inset-0 bg-[#f8fbff]" />
+
+      <div
+        className="absolute inset-0 bg-cover bg-center opacity-100"
+        style={{ backgroundImage: "url('/cliente-home-map-bg.png')" }}
+      />
+
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(255,255,255,.54),transparent_34%),linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.38)_78%,rgba(255,255,255,.78))]" />
+    </div>
+  )
+}
+
+function SearchIcon({ className = 'h-5 w-5' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+      <circle cx="10.8" cy="10.8" r="6.2" stroke="currentColor" strokeWidth="2.2" />
+      <path d="m16 16 4.2 4.2" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
+    </svg>
+  )
+}
+
+function MapMiniIcon({ className = 'h-5 w-5' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+      <path d="m3.8 6.2 5-2.1 6.4 2.1 5-2.1v13.7l-5 2.1-6.4-2.1-5 2.1V6.2Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+      <path d="M8.8 4.1v13.7M15.2 6.2v13.7" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M17.8 8.1c-2 0-3.6 1.6-3.6 3.5 0 2.5 3.1 5.8 3.4 6.1.1.1.3.1.4 0 .4-.4 3.4-3.6 3.4-6.1 0-2-1.6-3.5-3.6-3.5Z" fill="#ffd91a" stroke="white" strokeWidth="1.2" />
+      <circle cx="17.8" cy="11.6" r="1.1" fill="currentColor" />
+    </svg>
+  )
+}
+
+function BellMiniIcon({ className = 'h-5 w-5' }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+      <path d="M18 10.7c0-3.4-2.2-6.1-6-6.1s-6 2.7-6 6.1v2.9l-1.6 2.5h15.2L18 13.6v-2.9Z" fill="#ffd91a" stroke="#f59e0b" strokeLinejoin="round" strokeWidth="1.6" />
+      <path d="M9.6 18.4a2.5 2.5 0 0 0 4.8 0" stroke="#1e3a8a" strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
+  )
+}
+
+function MobileMockStatusBar() {
+  return (
+    <div className="relative z-20 flex items-center justify-between px-0.5 text-[13px] font-black leading-none text-blue-950 md:text-base" aria-hidden="true">
+      <span>22:22</span>
+      <div className="flex items-center gap-2">
+        <svg viewBox="0 0 24 24" className="h-4 w-5" fill="currentColor">
+          <rect x="3" y="14" width="3" height="6" rx="1" />
+          <rect x="8" y="11" width="3" height="9" rx="1" />
+          <rect x="13" y="8" width="3" height="12" rx="1" />
+          <rect x="18" y="5" width="3" height="15" rx="1" />
         </svg>
+        <svg viewBox="0 0 24 24" className="h-4 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.4">
+          <path d="M4 9.5a12.8 12.8 0 0 1 16 0" />
+          <path d="M7.5 13a7.3 7.3 0 0 1 9 0" />
+          <path d="M11.8 17.2h.4" />
+        </svg>
+        <span>83%</span>
       </div>
     </div>
   )
+}
+
+function ClienteHeroMapIcon() {
+  return (
+    <svg viewBox="0 0 96 112" className="h-[58px] w-[50px] opacity-[0.9] drop-shadow-[0_10px_16px_rgba(37,99,235,0.16)] min-[390px]:h-[64px] min-[390px]:w-[56px] md:h-[84px] md:w-[72px]" fill="none" aria-hidden="true">
+      <path d="M48 6c-21 0-38 16.4-38 36.7 0 26.2 32.6 57.6 36.3 61 .9.8 2.5.8 3.4 0 3.7-3.4 36.3-34.8 36.3-61C86 22.4 69 6 48 6Z" fill="#2f80ff" />
+      <path d="M48 17c-14.4 0-26 11.3-26 25.3 0 18 22.3 39.6 24.9 42 .6.6 1.7.6 2.2 0 2.6-2.4 24.9-24 24.9-42C74 28.3 62.4 17 48 17Z" fill="#2563eb" />
+      <circle cx="48" cy="42" r="11" fill="white" />
+    </svg>
+  )
+}
+
+function CategoryTileIcon({ id }) {
+  const common = 'h-9 w-9 md:h-11 md:w-11'
+
+  if (!id) {
+    return (
+      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
+        <rect x="4" y="4" width="6" height="6" rx="1.7" fill="currentColor" />
+        <rect x="14" y="4" width="6" height="6" rx="1.7" fill="currentColor" opacity="0.72" />
+        <rect x="4" y="14" width="6" height="6" rx="1.7" fill="currentColor" opacity="0.72" />
+        <rect x="14" y="14" width="6" height="6" rx="1.7" fill="currentColor" />
+      </svg>
+    )
+  }
+
+  if (id === 'entregas') {
+    return (
+      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
+        <path d="M7.4 14.2h6.2l2.3-4.3h-5.1l-2-3.2H6.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+        <path d="M15.9 9.9h2.4l1.4 4.3h-3.9" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+        <circle cx="7" cy="17" r="2" fill="currentColor" />
+        <circle cx="17" cy="17" r="2" fill="currentColor" />
+      </svg>
+    )
+  }
+
+  if (id === 'compras') {
+    return (
+      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
+        <path d="M4 5h2.2l1.7 9.2h9.7l2-6.4H7.1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.1" />
+        <circle cx="9" cy="18.5" r="1.7" fill="currentColor" />
+        <circle cx="17" cy="18.5" r="1.7" fill="currentColor" />
+      </svg>
+    )
+  }
+
+  if (id === 'casa') {
+    return (
+      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
+        <path d="m4 11 8-6.6 8 6.6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
+        <path d="M6.4 10.4v8.2h11.2v-8.2" stroke="currentColor" strokeLinejoin="round" strokeWidth="2.2" />
+        <path d="M10 18.6v-5h4v5" stroke="currentColor" strokeLinejoin="round" strokeWidth="2.2" />
+      </svg>
+    )
+  }
+
+  if (id === 'reparos') {
+    return (
+      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
+        <path d="M14.8 5.2a5 5 0 0 0 4 6.2L10.2 20a2.2 2.2 0 0 1-3.1-3.1l8.6-8.6a5 5 0 0 0-.9-3.1Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      </svg>
+    )
+  }
+
+  if (id === 'limpeza') {
+    return (
+      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
+        <path d="M14 4 6.5 18.8" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
+        <path d="m6 15 7 3.5" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
+        <path d="M4.8 18.5h8.6v2.2H4.8z" fill="currentColor" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
+      <path d="m13 2-8 11h6l-1 9 8-12h-6l1-8Z" fill="currentColor" />
+    </svg>
+  )
+}
+
+function StatCardArt({ type }) {
+  return (
+    <svg viewBox="0 0 160 96" className="pointer-events-none absolute inset-y-0 right-0 h-full w-32 opacity-55 md:w-[260px]" fill="none" aria-hidden="true">
+      <path d="M0 82c34-32 66-42 96-30 24 10 34 28 64 16" stroke={type === 'corre' ? '#facc15' : '#93c5fd'} strokeWidth="1.1" />
+      <path d="M0 91c34-32 66-42 96-30 24 10 34 28 64 16" stroke={type === 'corre' ? '#facc15' : '#93c5fd'} strokeWidth="1.1" />
+      {type === 'corre' ? (
+        <path d="M116 18c-6.2 0-11.2 4.9-11.2 11 0 7.8 9.6 17.2 10.7 18.3.3.3.8.3 1.1 0 1.1-1.1 10.7-10.5 10.7-18.3 0-6.1-5.1-11-11.3-11Z" stroke="#f59e0b" strokeWidth="2" />
+      ) : (
+        <path d="M105 48c3-8 9.4-12.3 18-12.3S138 40 141 48M123 19.8a8 8 0 1 1 0 16 8 8 0 0 1 0-16Z" stroke="#60a5fa" strokeLinecap="round" strokeWidth="2" />
+      )}
+    </svg>
+  )
+}
+
+function getClientCategoryColor(id, fallback) {
+  const colors = {
+    servicos_gerais: '#facc15',
+    entregas: '#43b96f',
+    compras: '#2f80ff',
+  }
+
+  return colors[id || ''] || (id ? fallback || '#2563eb' : '#2f80ff')
 }
 
 const normalizeProvider = (u) => {
@@ -183,6 +339,167 @@ const normalizeProvider = (u) => {
     local: okLoc ? { lat, lng } : null,
   }
 }
+
+const normalizePortfolioService = (service, provider = {}, index = 0) => {
+  if (!isActivePortfolioService(service)) return null
+
+  const providerUid = safeStr(
+    service.profissionalId ||
+      service.uid ||
+      service.ownerId ||
+      provider.uid ||
+      provider.id
+  )
+  if (!providerUid) return null
+
+  const categoriaId = safeStr(service.categoriaId || service.categoryId)
+  const categoriaMeta = getCategoryById(categoriaId)
+  const categoriaNome = safeStr(
+    service.categoriaNome ||
+      service.categoryName ||
+      service.categoria ||
+      service.category ||
+      categoriaMeta?.label
+  )
+  const fotos = normalizePortfolioFotos(service)
+  const titulo = safeStr(service.nome || service.titulo || service.title || 'Serviço cadastrado')
+  const valor = safeStr(service.faixaPreco || service.valor || service.preco || service.priceRange || service.price)
+  const providerName = safeStr(
+    service.profissionalNome ||
+      service.providerName ||
+      provider.nome ||
+      provider.profile?.nome ||
+      'Profissional'
+  )
+  const providerFoto = safeUrl(service.profissionalFotoURL || service.providerFotoURL || provider.fotoURL || provider.photoURL)
+  const updatedAt = Number(service.updatedAt || service.atualizadoEm || service.createdAt || service.criadoEm || 0) || 0
+
+  return {
+    id: `${providerUid}_${safeStr(service.id || service.key || index)}`,
+    serviceId: safeStr(service.id || service.key || index),
+    profissionalId: providerUid,
+    titulo,
+    descricao: safeStr(service.descricao || service.description),
+    valor,
+    categoriaId,
+    categoriaNome,
+    categoria: categoriaNome,
+    tempoMedio: safeStr(service.tempoMedio || service.tempo || service.duration),
+    regiao: safeStr(service.regiao || service.regiaoAtendimento || service.region || provider.regiao || provider.correRegiao || provider.profCidadeAtende),
+    atendeDomicilio: service.atendeDomicilio ?? service.domicilio ?? true,
+    urgente: service.urgente === true || service.urgent === true,
+    fotos,
+    fotoURL: fotos[0] || '',
+    providerName,
+    providerFoto,
+    isCorre: service.isCorre ?? provider.isCorre ?? false,
+    isProfissional: service.isProfissional ?? provider.isProfissional ?? true,
+    updatedAt,
+    provider: {
+      ...provider,
+      uid: providerUid,
+      id: providerUid,
+      nome: providerName,
+      fotoURL: providerFoto || provider.fotoURL,
+      isCorre: service.isCorre ?? provider.isCorre ?? false,
+      isProfissional: service.isProfissional ?? provider.isProfissional ?? true,
+    },
+  }
+}
+
+const normalizePublicPortfolioServices = (publicPortfolio = {}) => {
+  if (!publicPortfolio || typeof publicPortfolio !== 'object') return []
+
+  return Object.entries(publicPortfolio).flatMap(([uid, services]) =>
+    normalizePortfolioEntries(services).map((service, index) =>
+      normalizePortfolioService(service, {
+        uid,
+        id: uid,
+        nome: service?.profissionalNome || service?.providerName,
+        fotoURL: service?.profissionalFotoURL || service?.providerFotoURL,
+        isCorre: service?.isCorre,
+        isProfissional: service?.isProfissional,
+        regiao: service?.regiao,
+      }, index)
+    )
+  ).filter(Boolean)
+}
+
+const PortfolioServiceCard = memo(function PortfolioServiceCard({ service, onAbrirPerfil, onAgendar }) {
+  const categoria = getCategoryById(service?.categoriaId)
+  const handleAbrir = useCallback(() => onAbrirPerfil?.(service?.provider), [onAbrirPerfil, service])
+  const handleAgendar = useCallback(() => onAgendar?.(service?.provider), [onAgendar, service])
+
+  return (
+    <article className="w-[210px] shrink-0 overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.12)] md:w-[260px]">
+      <button type="button" onClick={handleAbrir} className="block w-full text-left">
+        <div
+          className="relative h-28 bg-gradient-to-br from-blue-50 via-cyan-50 to-yellow-50 bg-cover bg-center md:h-36"
+          style={service?.fotoURL ? { backgroundImage: `url(${JSON.stringify(service.fotoURL)})` } : undefined}
+        >
+          {!service?.fotoURL ? (
+            <div className="grid h-full place-items-center text-4xl">
+              {categoria?.emoji || '⚡'}
+            </div>
+          ) : null}
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-slate-950/58 to-transparent" />
+          {service?.urgente ? (
+            <span className="absolute left-2 top-2 rounded-full bg-[#ffd91a] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-blue-950 shadow-sm">
+              Urgente
+            </span>
+          ) : null}
+          <span className="absolute bottom-2 left-2 rounded-full bg-white/92 px-2.5 py-1 text-[10px] font-black text-blue-700 shadow-sm">
+            {service?.fotos?.length || 0} foto(s)
+          </span>
+        </div>
+
+        <div className="p-3.5">
+          <div className="line-clamp-2 min-h-[38px] text-[15px] font-black leading-tight text-slate-950 md:text-base">
+            {service?.titulo || 'Serviço cadastrado'}
+          </div>
+          {service?.descricao ? (
+            <p className="mt-1 line-clamp-2 min-h-[32px] text-xs font-semibold leading-snug text-slate-500">
+              {service.descricao}
+            </p>
+          ) : null}
+
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
+              {categoria?.emoji ? `${categoria.emoji} ` : ''}{service?.categoriaNome || categoria?.label || 'Serviço'}
+            </span>
+            {service?.valor ? (
+              <span className="rounded-full bg-[#ffd91a] px-2.5 py-1 text-[10px] font-black text-blue-950">
+                {service.valor}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <div
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-950 bg-cover bg-center text-[10px] font-black text-white"
+              style={service?.providerFoto ? { backgroundImage: `url(${JSON.stringify(service.providerFoto)})` } : undefined}
+            >
+              {service?.providerFoto ? <span className="sr-only">{service.providerName}</span> : service?.providerName?.slice(0, 2).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-xs font-black text-slate-800">{service?.providerName}</div>
+              <div className="truncate text-[11px] font-semibold text-slate-500">{service?.regiao || 'Perto de você'}</div>
+            </div>
+          </div>
+        </div>
+      </button>
+
+      <div className="grid grid-cols-2 gap-1 border-t border-slate-100 p-2">
+        <button type="button" onClick={handleAbrir} className="h-9 rounded-xl bg-slate-950 text-[11px] font-black text-white">
+          Ver serviço
+        </button>
+        <button type="button" onClick={handleAgendar} className="h-9 rounded-xl bg-[#ffd91a] text-[11px] font-black text-slate-950">
+          Agendar
+        </button>
+      </div>
+    </article>
+  )
+})
 
 const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
   const nome = safeStr(item?.nome) || 'Profissional'
@@ -281,6 +598,7 @@ export default function ClienteHome({
   onIrAoVivo,
   onAbrirNotificacoes,
   onlineUsers = [],
+  publicPortfolio = {},
   onAbrirPerfil,
   onAgendar,
   onBackToMode,
@@ -348,6 +666,33 @@ export default function ClienteHome({
     )
   }, [providers])
 
+  const portfolioServices = useMemo(() => {
+    const publicServices = normalizePublicPortfolioServices(publicPortfolio)
+    const onlineServices = providers.flatMap((provider) =>
+      normalizePortfolioEntries(provider.portfolio).map((service, index) =>
+        normalizePortfolioService(service, provider, index)
+      )
+    ).filter(Boolean)
+
+    const dedup = new Map()
+    ;[...publicServices, ...onlineServices].forEach((service) => {
+      const key = `${service.profissionalId}_${service.serviceId}`
+      if (!dedup.has(key)) {
+        dedup.set(key, service)
+        return
+      }
+
+      const current = dedup.get(key)
+      if ((service.updatedAt || 0) >= (current.updatedAt || 0)) {
+        dedup.set(key, { ...current, ...service, provider: { ...current.provider, ...service.provider } })
+      }
+    })
+
+    return Array.from(dedup.values())
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      .slice(0, 12)
+  }, [providers, publicPortfolio])
+
   const destaqueProviders = useMemo(
     () => (list.length ? list : providers).slice(0, 8),
     [list, providers]
@@ -392,7 +737,7 @@ export default function ClienteHome({
     {mostrarBuscaFlutuante ? (
       <div className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.55rem)] z-[99960] px-3 md:hidden">
         <label className="mx-auto flex h-11 max-w-[430px] items-center gap-2 rounded-[18px] border border-blue-100 bg-white/96 px-3 text-sm font-black text-slate-700 shadow-[0_14px_38px_rgba(15,23,42,0.18)] backdrop-blur-xl">
-          <span className="text-lg text-blue-600">⌕</span>
+          <SearchIcon className="h-5 w-5 shrink-0 text-blue-600" />
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -413,23 +758,24 @@ export default function ClienteHome({
       </div>
     ) : null}
 
-    <div className="-mx-2.5 -mt-2 min-h-[calc(100dvh-4rem)] overflow-hidden bg-white pb-24 text-slate-950 md:mx-0 md:mt-0 md:min-h-0 md:rounded-[34px] md:pb-8 md:shadow-[0_24px_90px_rgba(0,0,0,0.24)]">
-      <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_45%,#ffe36b_100%)] px-4 pb-5 pt-4 md:px-8 md:pb-10 md:pt-7">
-        <div className="pointer-events-none absolute -right-14 top-12 h-44 w-44 rounded-[48px] bg-yellow-200/35 rotate-12 md:-right-8 md:top-6 md:h-72 md:w-72 md:rounded-[72px]" />
-        <div className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full bg-white/16 md:h-64 md:w-64" />
-        <div className="relative flex items-center justify-between gap-3">
+    <div className="-mx-2.5 -mt-2 min-h-[calc(100dvh-4rem)] overflow-hidden bg-white pb-24 text-slate-950 md:mx-auto md:mt-0 md:min-h-0 md:w-full md:max-w-[1024px] md:rounded-[40px] md:pb-8 md:shadow-[0_24px_90px_rgba(0,0,0,0.18)]">
+      <div className="relative min-h-[405px] overflow-hidden bg-[#f8fbff] px-7 pb-6 pt-5 md:min-h-[820px] md:px-[52px] md:pb-0 md:pt-8">
+        <ClienteMapBackdrop />
+        <MobileMockStatusBar />
+
+        <div className="relative mt-8 flex items-center justify-between gap-2 md:mt-14 md:gap-5">
           {typeof onBackToMode === 'function' ? (
             <button
               type="button"
               onClick={onBackToMode}
-              className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[20px] border border-yellow-200/80 bg-[#ffd91a] text-blue-950 shadow-[0_14px_28px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.58)] transition hover:-translate-y-0.5 active:scale-[0.96] md:h-16 md:w-16 md:rounded-[24px]"
+              className="grid h-[48px] w-[48px] shrink-0 place-items-center rounded-[16px] border border-yellow-200/80 bg-[#ffd91a] text-blue-950 shadow-[0_12px_22px_rgba(245,158,11,0.18),inset_0_1px_0_rgba(255,255,255,0.72)] transition hover:-translate-y-0.5 active:scale-[0.96] min-[390px]:h-[52px] min-[390px]:w-[52px] md:h-24 md:w-24 md:rounded-[30px]"
               title="Voltar para escolher Cliente ou Corre"
               aria-label="Trocar modo"
             >
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
-                className="h-5 w-5 md:h-6 md:w-6"
+                className="h-[18px] w-[18px] md:h-9 md:w-9"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2.8"
@@ -445,10 +791,10 @@ export default function ClienteHome({
           <button
             type="button"
             onClick={() => onAbrirPerfil?.()}
-            className="relative grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[24px] bg-white/92 text-base font-black text-blue-700 shadow-[0_12px_26px_rgba(15,23,42,0.16)] md:h-16 md:w-16 md:rounded-[28px] md:text-xl"
+            className="relative grid h-[62px] w-[62px] shrink-0 place-items-center rounded-full bg-white text-xl font-black text-blue-600 shadow-[0_14px_28px_rgba(37,99,235,0.13)] min-[390px]:h-[66px] min-[390px]:w-[66px] md:h-[136px] md:w-[136px] md:text-[48px]"
             title="Abrir perfil"
           >
-            <span className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-[#ffd91a] ring-4 ring-blue-500" />
+            <span className="absolute right-1 top-0 h-3.5 w-3.5 rounded-full bg-[#ffd91a] ring-[3px] ring-white md:right-4 md:top-0 md:h-6 md:w-6 md:ring-[5px]" />
             {iniciais}
           </button>
 
@@ -457,37 +803,37 @@ export default function ClienteHome({
             onClick={() => onAbrirPerfil?.()}
             className="min-w-0 flex-1 text-left"
           >
-            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white/75 md:text-xs">
+            <div className="truncate whitespace-nowrap text-[8px] font-black uppercase tracking-[0.1em] text-blue-600 min-[390px]:text-[9px] md:text-[20px] md:tracking-[0.18em]">
               Perto de você
             </div>
-            <div className="mt-0.5 flex items-center gap-1 truncate text-lg font-black text-white md:text-2xl">
+            <div className="mt-0.5 flex items-center gap-1 truncate whitespace-nowrap text-[14px] font-black text-blue-950 min-[390px]:text-[16px] md:mt-2 md:text-[32px]">
               <span className="truncate">{nomeExibicao}</span>
-              <span>›</span>
+              <span className="text-blue-700">›</span>
             </div>
           </button>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2 md:gap-6">
             <button
               type="button"
               onClick={() => onIrAoVivo?.()}
-              className="grid h-10 w-10 place-items-center rounded-2xl bg-white/86 text-xl font-black text-blue-700 md:h-12 md:w-12 md:rounded-[20px]"
+              className="grid h-[46px] w-[46px] place-items-center rounded-[17px] bg-white text-blue-700 shadow-[0_12px_24px_rgba(37,99,235,0.11)] min-[390px]:h-[52px] min-[390px]:w-[52px] md:h-24 md:w-24 md:rounded-[28px]"
               title="Mapa"
             >
-              🗺️
+              <MapMiniIcon className="h-[22px] w-[22px] min-[390px]:h-6 min-[390px]:w-6 md:h-10 md:w-10" />
             </button>
             <button
               type="button"
               onClick={() => onAbrirNotificacoes?.()}
-              className="relative grid h-10 w-10 place-items-center rounded-2xl bg-white/86 text-xl font-black text-blue-700 md:h-12 md:w-12 md:rounded-[20px]"
+              className="relative grid h-[46px] w-[46px] place-items-center rounded-[17px] bg-white text-blue-700 shadow-[0_12px_24px_rgba(37,99,235,0.11)] min-[390px]:h-[52px] min-[390px]:w-[52px] md:h-24 md:w-24 md:rounded-[28px]"
               title="Notificações"
             >
-              🔔
+              <BellMiniIcon className="h-[22px] w-[22px] min-[390px]:h-6 min-[390px]:w-6 md:h-10 md:w-10" />
             </button>
           </div>
         </div>
 
-        <label ref={buscaTopoRef} className="relative z-30 mt-3 flex h-12 w-full items-center gap-3 rounded-[20px] border border-white/70 bg-white/92 px-4 text-left text-base font-black text-slate-500 shadow-[0_12px_24px_rgba(15,23,42,0.12)] backdrop-blur md:mt-6 md:h-16 md:max-w-3xl md:px-5 md:text-xl">
-          <span className="text-2xl text-blue-600">⌕</span>
+        <label ref={buscaTopoRef} className="relative z-30 mt-8 flex h-[46px] w-full max-w-[720px] items-center gap-3 rounded-[18px] border border-white/90 bg-white/96 px-4 text-left text-sm font-black text-slate-500 shadow-[0_12px_26px_rgba(37,99,235,0.09)] backdrop-blur md:mt-10 md:h-[94px] md:max-w-none md:gap-8 md:rounded-[28px] md:px-9 md:text-[32px]">
+          <SearchIcon className="h-6 w-6 shrink-0 text-blue-600 md:h-11 md:w-11" />
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -499,51 +845,44 @@ export default function ClienteHome({
           />
         </label>
 
-        <section className="relative mt-3 block w-full overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#ffdd28_0%,#ffe977_45%,#158cff_100%)] text-left shadow-[0_16px_30px_rgba(15,23,42,0.16)] md:mt-6 md:rounded-[34px]">
-          <div className="relative min-h-[116px] p-4 md:min-h-[210px] md:p-8">
-            <div className="absolute -right-8 -top-6 h-32 w-32 rounded-[32px] bg-blue-700/20 rotate-12 md:h-72 md:w-72 md:rounded-[64px]" />
-            <div className="absolute bottom-4 right-3 md:bottom-8 md:right-10">
-              <ClienteHeroMapIcon />
+        <section className="relative z-20 mt-11 min-h-[150px] text-left md:mt-[92px] md:min-h-[330px]">
+          <div className="relative max-w-[520px]">
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-600 md:text-[24px] md:tracking-[0.14em]">
+              Corre Aqui
             </div>
-            <div className="relative max-w-[205px] min-[390px]:max-w-[230px] md:max-w-xl">
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 md:text-xs">
-                Corre Aqui
-              </div>
-              <div className="mt-1 text-[1.7rem] font-black leading-[0.93] text-slate-950 min-[390px]:text-[1.9rem] md:text-6xl">
-                Encontre ajuda perto de você.
-              </div>
-              <p className="mt-3 hidden max-w-[180px] text-xs font-black leading-snug text-blue-950/75 min-[390px]:block md:mt-5 md:max-w-md md:text-base">
-                Crie um pedido pelo botão principal e acompanhe tudo pelo chat.
-              </p>
+            <div className="mt-2 max-w-[265px] text-[25px] font-black leading-[0.98] text-blue-950 min-[390px]:max-w-[300px] min-[390px]:text-[30px] md:mt-5 md:max-w-[460px] md:text-[52px] md:leading-[0.98]">
+              Encontre ajuda perto de você.
             </div>
+            <p className="mt-3 max-w-[230px] text-[12.5px] font-bold leading-[1.36] text-slate-600 min-[390px]:max-w-[250px] min-[390px]:text-[13px] md:mt-6 md:max-w-[420px] md:text-[24px] md:leading-[1.35]">
+              Crie um pedido pelo botão principal e acompanhe tudo pelo chat.
+            </p>
           </div>
         </section>
+        <div className="absolute left-[66%] top-[58%] z-10 -translate-x-1/2 -translate-y-1/2 min-[390px]:left-[68%] min-[390px]:top-[57%] md:left-[70%] md:top-[64%]">
+          <ClienteHeroMapIcon />
+        </div>
       </div>
 
-      <div className="-mt-2 bg-white px-4 pt-2 md:rounded-t-[30px] md:px-8 md:pt-5">
-        <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-7 [&::-webkit-scrollbar]:hidden">
+      <div className="-mt-1 rounded-t-[30px] bg-white px-5 pt-5 md:mt-0 md:rounded-t-none md:px-[52px] md:pt-9">
+        <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-[34px] [&::-webkit-scrollbar]:hidden">
           {categoriasRapidas.map((cat) => {
             const ativo = catId === cat.id
+            const tileColor = getClientCategoryColor(cat.id, cat.accent)
             return (
               <button
                 key={cat.id || 'todos-mobile'}
                 type="button"
                 onClick={() => setCatId(cat.id)}
-                className="w-[58px] shrink-0 text-center md:w-[92px]"
+                className={[
+                  'flex h-[100px] w-[80px] shrink-0 flex-col items-center justify-center rounded-[20px] border bg-white text-center shadow-[0_16px_34px_rgba(37,99,235,0.08)] transition active:scale-[0.97] min-[390px]:h-[112px] min-[390px]:w-[92px] md:h-[202px] md:w-[199px] md:rounded-[30px]',
+                  ativo ? 'border-blue-200 ring-2 ring-blue-500/20' : 'border-slate-100',
+                ].join(' ')}
+                style={{ color: tileColor }}
               >
-                <span
-                  className={[
-                    'mx-auto grid h-14 w-14 place-items-center rounded-[20px] text-2xl shadow-[0_12px_24px_rgba(15,23,42,0.08)] md:h-20 md:w-20 md:rounded-[28px] md:text-4xl',
-                    ativo ? 'ring-2 ring-blue-500/35' : 'ring-1 ring-slate-200/80',
-                  ].join(' ')}
-                  style={{
-                    backgroundColor: ativo ? cat.accent || '#ffd91a' : cat.soft || '#eff6ff',
-                    color: ativo ? '#ffffff' : cat.accent || '#0f172a',
-                  }}
-                >
-                  {cat.emoji}
+                <span className="grid h-12 place-items-center md:h-20">
+                  <CategoryTileIcon id={cat.id} />
                 </span>
-                <span className="mt-1.5 block line-clamp-2 text-[11px] font-bold leading-tight text-slate-800 md:text-sm">
+                <span className="mt-2 block max-w-[72px] text-[11px] font-black leading-[1.08] text-slate-800 md:mt-4 md:max-w-[150px] md:text-[24px]">
                   {cat.label}
                 </span>
               </button>
@@ -551,24 +890,32 @@ export default function ClienteHome({
           })}
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3 md:mt-8 md:gap-5">
+        <div className="mt-5 grid grid-cols-2 gap-3 md:mt-10 md:gap-8">
           <button
             type="button"
             onClick={() => setModo('corre')}
-            className="min-h-[112px] rounded-[24px] bg-gradient-to-br from-yellow-300 via-amber-300 to-blue-500 p-4 text-left shadow-[0_14px_30px_rgba(37,99,235,0.18)] md:min-h-[150px] md:rounded-[30px] md:p-6"
+            className={[
+              'relative min-h-[112px] overflow-hidden rounded-[22px] border p-4 text-left shadow-[0_14px_30px_rgba(245,158,11,0.12)] transition active:scale-[0.98] md:min-h-[238px] md:rounded-[30px] md:p-10',
+              modo === 'corre' ? 'border-yellow-200 bg-[#fff1b8]' : 'border-yellow-100 bg-[#fff7d6]',
+            ].join(' ')}
           >
-            <div className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-800">Corres</div>
-            <div className="mt-1 text-2xl font-black leading-none text-slate-950 md:text-4xl">{providerCounts.corre}</div>
-            <div className="mt-1 text-xs font-black text-slate-800 md:text-sm">disponíveis</div>
+            <StatCardArt type="corre" />
+            <div className="relative text-[11px] font-black uppercase tracking-[0.12em] text-amber-600 md:text-[24px]">Corres</div>
+            <div className="relative mt-3 text-3xl font-black leading-none text-blue-950 md:mt-7 md:text-[64px]">{providerCounts.corre}</div>
+            <div className="relative mt-1 text-sm font-bold text-blue-950 md:text-[24px]">disponíveis</div>
           </button>
           <button
             type="button"
             onClick={() => setModo('profissional')}
-            className="min-h-[112px] rounded-[24px] bg-gradient-to-br from-cyan-100 via-blue-200 to-sky-500 p-4 text-left shadow-[0_14px_30px_rgba(37,99,235,0.2)] md:min-h-[150px] md:rounded-[30px] md:p-6"
+            className={[
+              'relative min-h-[112px] overflow-hidden rounded-[22px] border p-4 text-left shadow-[0_14px_30px_rgba(37,99,235,0.12)] transition active:scale-[0.98] md:min-h-[238px] md:rounded-[30px] md:p-10',
+              modo === 'profissional' ? 'border-blue-200 bg-[#e7f2ff]' : 'border-blue-100 bg-[#edf7ff]',
+            ].join(' ')}
           >
-            <div className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-800">Profissionais</div>
-            <div className="mt-1 text-2xl font-black leading-none text-slate-950 md:text-4xl">{providerCounts.profissional}</div>
-            <div className="mt-1 text-xs font-black text-slate-800 md:text-sm">com ficha</div>
+            <StatCardArt type="profissional" />
+            <div className="relative text-[11px] font-black uppercase tracking-[0.12em] text-blue-600 md:text-[24px]">Profissionais</div>
+            <div className="relative mt-3 text-3xl font-black leading-none text-blue-950 md:mt-7 md:text-[64px]">{providerCounts.profissional}</div>
+            <div className="relative mt-1 text-sm font-bold text-blue-950 md:text-[24px]">com ficha</div>
           </button>
         </div>
 
@@ -604,6 +951,33 @@ export default function ClienteHome({
             ) : null}
           </div>
         </section>
+
+        {portfolioServices.length ? (
+          <section className="mt-6 md:mt-10">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Serviços publicados</h2>
+                <p className="mt-1 text-sm font-semibold text-slate-400">
+                  Fotos, preços e trabalhos adicionados no portfólio.
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-[#ffd91a] px-3 py-1.5 text-[11px] font-black text-blue-950">
+                {portfolioServices.length}
+              </span>
+            </div>
+
+            <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
+              {portfolioServices.map((service) => (
+                <PortfolioServiceCard
+                  key={service.id}
+                  service={service}
+                  onAbrirPerfil={onAbrirPerfil}
+                  onAgendar={onAgendar}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="mt-6 md:mt-10">
           <div className="mb-3 flex items-center justify-between gap-3">

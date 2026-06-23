@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "firebase/auth";
-import { ref, onValue, update, serverTimestamp } from "firebase/database";
+import { ref, onValue, update, set, serverTimestamp } from "firebase/database";
 import { auth, database } from "@/lib/firebase";
 import { uploadProfilePhotoToImgBB } from "@/lib/imgbbClient";
 import {
@@ -279,7 +279,7 @@ function ProfMenuIcon({ id }) {
   };
 
   return (
-    <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-5 w-5 md:h-6 md:w-6" aria-hidden="true">
       {icons[id] || icons.perfilPublico}
     </svg>
   );
@@ -496,6 +496,51 @@ function portfolioListToMap(items = []) {
   return normalizePortfolio(items).reduce((acc, item) => {
     const normalized = toPortfolioFirebaseItem(item);
     if (normalized.id) acc[normalized.id] = normalized;
+    return acc;
+  }, {});
+}
+
+function portfolioListToPublicMap(items = [], profile = {}, uid = "", fotoPrincipal = "") {
+  const nome = String(profile.nome || "").trim();
+  const cidade = String(profile.cidade || profile.profRegiao || profile.correRegiao || "").trim();
+  const isCorre = !!profile.isCorre;
+  const isProfissional = !!profile.isProfissional;
+
+  return normalizePortfolio(items).reduce((acc, item) => {
+    const normalized = toPortfolioFirebaseItem(item);
+    if (!normalized.id || normalized.ativo === false || !normalized.nome) return acc;
+
+    acc[normalized.id] = {
+      id: normalized.id,
+      nome: normalized.nome,
+      titulo: normalized.titulo,
+      descricao: normalized.descricao,
+      categoriaId: normalized.categoriaId,
+      categoriaNome: normalized.categoriaNome,
+      categoria: normalized.categoria,
+      preco: normalized.preco,
+      faixaPreco: normalized.faixaPreco,
+      valor: normalized.valor,
+      tempoMedio: normalized.tempoMedio,
+      fotos: normalized.fotos,
+      fotoURL: normalized.fotoURL,
+      regiao: normalized.regiao || cidade,
+      atendeDomicilio: normalized.atendeDomicilio,
+      urgente: normalized.urgente,
+      ativo: true,
+      profissionalId: uid,
+      uid,
+      profissionalNome: nome,
+      providerName: nome,
+      profissionalFotoURL: fotoPrincipal || "",
+      providerFotoURL: fotoPrincipal || "",
+      cidade,
+      isCorre,
+      isProfissional,
+      createdAt: normalized.createdAt || Date.now(),
+      updatedAt: serverTimestamp(),
+    };
+
     return acc;
   }, {});
 }
@@ -1233,6 +1278,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       };
 
       const fotoPrincipal = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
+      const publicPortfolioMap = privacySettings.profileVisible
+        ? portfolioListToPublicMap(profPortfolio, profile, uid, fotoPrincipal)
+        : {};
       const profilePublic = { ...profile };
       delete profilePublic.privacy;
       delete profilePublic.cpf;
@@ -1339,6 +1387,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         atualizadoEm: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      await set(
+        ref(database, `publicPortfolio/${uid}`),
+        Object.keys(publicPortfolioMap).length ? publicPortfolioMap : null
+      );
 
       console.warn("[PRESENCE] caminho legado detectado", {
         path: `usuariosOnline/${uid}`,
@@ -2458,16 +2511,16 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                 </div>
               </section>
 
-              <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-3">
+              <section className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[24px]">
                 {[
-                  ["perfilPublico", "Meu perfil público", "Como clientes veem seu perfil.", "from-purple-500 via-violet-500 to-indigo-700"],
-                  ["corre", "Perfil de Corre", "Título, transporte e disponibilidade.", "from-yellow-300 via-orange-400 to-orange-600"],
-                  ["portfolio", "Portfólio de serviços", "Serviços, preço, região e experiência.", "from-sky-400 via-blue-500 to-blue-700"],
-                  ["avaliacoes", "Avaliações", "Nota, histórico e reputação.", "from-yellow-300 via-amber-400 to-orange-500"],
-                  ["patentes", "Patentes Corre/Pro", "Níveis de experiência e confiança.", "from-yellow-300 via-amber-400 to-orange-500"],
-                  ["config", "Configurações", "Disponibilidade e agenda.", "from-slate-300 via-slate-500 to-slate-700"],
-                  ["ajuda", "Central de ajuda", "Boas práticas e segurança.", "from-emerald-300 via-teal-500 to-emerald-700"],
-                ].map(([id, label, desc, tone]) => {
+                  ["perfilPublico", "Meu perfil público", "Como clientes veem seu perfil."],
+                  ["corre", "Perfil de Corre", "Título, transporte e disponibilidade."],
+                  ["portfolio", "Portfólio de serviços", "Serviços, preço, região e experiência."],
+                  ["avaliacoes", "Avaliações", "Nota, histórico e reputação."],
+                  ["patentes", "Patentes Corre/Pro", "Níveis de experiência e confiança."],
+                  ["config", "Configurações", "Disponibilidade e agenda."],
+                  ["ajuda", "Central de ajuda", "Boas práticas e segurança."],
+                ].map(([id, label, desc], index, arr) => {
                   const active = profSection === id;
                   return (
                     <button
@@ -2475,18 +2528,19 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       type="button"
                       onClick={() => setProfSection(id)}
                       className={[
-                        "group flex w-full items-center gap-4 rounded-[20px] px-3 py-4 text-left transition md:rounded-[24px] md:px-5 md:py-5",
-                        active ? "bg-blue-50 text-blue-950 ring-1 ring-blue-100" : "text-slate-700 hover:bg-slate-50",
+                        "group flex w-full items-center gap-3 px-4 py-2.5 text-left transition md:gap-4 md:px-5 md:py-3",
+                        index < arr.length - 1 ? "border-b border-slate-100" : "",
+                        active ? "bg-slate-50 text-blue-950" : "text-slate-700 hover:bg-slate-50",
                       ].join(" ")}
                     >
-                      <span className={["grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-gradient-to-br text-white shadow-[0_14px_28px_rgba(15,23,42,0.16)] transition group-hover:scale-[1.02] md:h-16 md:w-16 md:rounded-[22px]", tone].join(" ")}>
+                      <span className="grid h-7 w-7 shrink-0 place-items-center text-slate-600 transition group-hover:text-blue-700 md:h-8 md:w-8">
                         <ProfMenuIcon id={id} />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block text-lg font-black leading-tight text-slate-950 md:text-xl">{label}</span>
-                        <span className="mt-1 block text-sm font-semibold leading-snug text-slate-500 md:text-base">{desc}</span>
+                        <span className="block truncate text-[13px] font-black leading-tight text-slate-950 md:text-base">{label}</span>
+                        <span className="mt-0.5 block truncate text-[11px] font-semibold leading-tight text-slate-500 md:text-sm">{desc}</span>
                       </span>
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-3xl font-light text-slate-500 transition group-hover:bg-slate-100 group-hover:text-blue-700">›</span>
+                      <span className="grid h-6 w-6 shrink-0 place-items-center text-xl font-light text-slate-500 transition group-hover:text-blue-700 md:h-7 md:w-7 md:text-2xl">›</span>
                     </button>
                   );
                 })}

@@ -22,6 +22,7 @@ import {
   serverTimestamp,
   onDisconnect,
   remove,
+  get,
   query,
   limitToLast,
   runTransaction,
@@ -973,6 +974,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [editValor, setEditValor] = useState('')
 
   const [usersObj, setUsersObj] = useState({})
+  const [publicPortfolioObj, setPublicPortfolioObj] = useState({})
   const [meuUserProfile, setMeuUserProfile] = useState(null)
 
   const [toast, setToast] = useState(null)
@@ -1623,6 +1625,26 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     )
     return () => off()
   }, [])
+
+  useEffect(() => {
+    if (!meuId) {
+      setPublicPortfolioObj({})
+      return
+    }
+
+    const off = onValue(
+      ref(database, 'publicPortfolio'),
+      (snap) => {
+        setPublicPortfolioObj(snap.val() || {})
+      },
+      (error) => {
+        console.warn('[PORTFOLIO] erro lendo publicPortfolio', error)
+        setPublicPortfolioObj({})
+      }
+    )
+
+    return () => off()
+  }, [meuId])
 
   const { usuariosOnlineLista, usuariosOnlineMapa } = useMemo(() => {
     return splitUsuariosOnline(usersObj)
@@ -2637,6 +2659,40 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
 
     setUsuarioSelecionado(u)
+
+    const uidPerfil = u?.uid || u?.id || u?.profissionalId
+    if (uidPerfil) {
+      get(ref(database, `users/${uidPerfil}`))
+        .then((snap) => {
+          const full = snap.val()
+          if (!full) return
+
+          setUsuarioSelecionado((current) => {
+            const currentUid = current?.uid || current?.id || current?.profissionalId
+            if (currentUid && currentUid !== uidPerfil) return current
+
+            const profile = full.profile || {}
+            return {
+              ...u,
+              ...full,
+              uid: uidPerfil,
+              id: uidPerfil,
+              online: u?.online ?? full?.online,
+              lastSeen: u?.lastSeen ?? full?.lastSeen,
+              updatedAt: u?.updatedAt ?? full?.updatedAt,
+              local: u?.local ?? full?.local,
+              latitude: u?.latitude ?? full?.latitude,
+              longitude: u?.longitude ?? full?.longitude,
+              portfolio: full?.portfolio || profile?.portfolio || u?.portfolio,
+              profPortfolio: full?.profPortfolio || profile?.profPortfolio || u?.profPortfolio,
+            }
+          })
+        })
+        .catch((error) => {
+          console.warn('[PERFIL] erro lendo users/{uid} para ficha publica', error)
+        })
+    }
+
     showToast({
       type: 'info',
       title: u?.nome || u?.profile?.nome || 'Perfil',
@@ -3157,6 +3213,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             <ClienteHome
               meuNome={meuNome}
               onlineUsers={onlineUsers}
+              publicPortfolio={publicPortfolioObj}
               onCriarPedido={() => setOpenIA(true)}
               onIrAoVivo={() => {
                 setOpenMapaAoVivo(true)
@@ -3960,11 +4017,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       {modoApp === 'cliente' && !isMapOpen && !openIA && (
         <div
           className={[
-            'fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[99980] px-3 pointer-events-none transition-all duration-300 ease-out will-change-transform md:inset-x-auto md:right-6 md:bottom-6 md:px-0',
+            'fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[99980] px-3 pointer-events-none transition-all duration-300 ease-out will-change-transform md:left-1/2 md:right-auto md:bottom-7 md:w-full md:max-w-[1024px] md:-translate-x-1/2 md:px-[52px]',
             bottomBarsHidden ? 'translate-y-[135%] opacity-0' : 'translate-y-0 opacity-100',
           ].join(' ')}
         >
-          <div className="pointer-events-auto mx-auto grid h-[66px] w-full max-w-[430px] grid-cols-[1fr_1fr_72px_1fr_1fr] items-center gap-1 rounded-[28px] border border-slate-200 bg-white px-2 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.22)] backdrop-blur-xl md:h-[70px] md:max-w-[470px] md:border-white/10 md:bg-slate-950/92 md:px-3 md:text-white">
+          <div className="pointer-events-auto mx-auto grid h-[66px] w-full max-w-[430px] grid-cols-[1fr_1fr_72px_1fr_1fr] items-center gap-1 rounded-[28px] border border-slate-200 bg-white px-2 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.22)] backdrop-blur-xl md:h-[146px] md:max-w-none md:grid-cols-[1fr_1fr_132px_1fr_1fr] md:gap-4 md:rounded-[36px] md:border-slate-100 md:bg-white md:px-8 md:text-slate-700">
             <button
               type="button"
               onClick={() => {
@@ -3976,13 +4033,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               }}
               title="Inicio"
               className={[
-                'relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black transition-all duration-200 active:scale-[0.96]',
+                'relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black transition-all duration-200 active:scale-[0.96] md:h-[104px] md:rounded-[30px] md:text-[20px]',
                 !clientePainelBaixo
                   ? 'bg-[#ffd91a] text-blue-950 shadow-[0_10px_24px_rgba(250,204,21,0.24)]'
-                  : 'text-slate-600 hover:bg-slate-100 md:text-slate-300 md:hover:bg-white/[0.1] md:hover:text-white',
+                  : 'text-slate-600 hover:bg-slate-100 md:text-slate-500 md:hover:bg-slate-50 md:hover:text-blue-950',
               ].join(' ')}
             >
-              <svg className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <svg className="h-[22px] w-[22px] md:h-11 md:w-11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M3 11.5 12 4l9 7.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M5.5 10.5V20h13v-9.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M9.5 20v-5h5v5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -3995,13 +4052,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onClick={() => setClientePainelBaixo('meusPedidos')}
               title="Pedidos"
               className={[
-                'relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black transition-all duration-200 active:scale-[0.96]',
+                'relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black transition-all duration-200 active:scale-[0.96] md:h-[104px] md:rounded-[30px] md:text-[20px]',
                 clientePainelBaixo === 'meusPedidos'
                   ? 'bg-[#ffd91a] text-blue-950 shadow-[0_10px_24px_rgba(250,204,21,0.24)]'
-                  : 'text-slate-600 hover:bg-slate-100 md:text-slate-300 md:hover:bg-white/[0.1] md:hover:text-white',
+                  : 'text-slate-600 hover:bg-slate-100 md:text-slate-500 md:hover:bg-slate-50 md:hover:text-blue-950',
               ].join(' ')}
             >
-              <svg className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <svg className="h-[22px] w-[22px] md:h-11 md:w-11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M5 8.5 12 4l7 4.5v7L12 20l-7-4.5v-7Z" stroke="currentColor" strokeWidth="2.1" strokeLinejoin="round" />
                 <path d="m5.5 8.8 6.5 4 6.5-4M12 13v6.5" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -4013,11 +4070,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               type="button"
               onClick={() => setOpenIA(true)}
               title="Novo pedido"
-              className="-mt-8 grid h-[72px] w-[72px] shrink-0 place-items-center rounded-full border-[6px] border-white bg-[#ffd91a] text-blue-950 shadow-[0_18px_38px_rgba(250,204,21,0.34)] transition active:scale-[0.96] md:-mt-9 md:h-[78px] md:w-[78px] md:border-slate-950"
+            className="-mt-8 grid h-[72px] w-[72px] shrink-0 place-items-center rounded-full border-[6px] border-white bg-[#ffd91a] text-blue-950 shadow-[0_18px_38px_rgba(250,204,21,0.34)] transition active:scale-[0.96] md:-mt-[72px] md:h-[116px] md:w-[116px] md:border-[8px] md:border-white"
             >
               <span className="flex flex-col items-center leading-none">
-                <span className="text-2xl font-black leading-none">+</span>
-                <span className="mt-1 text-[9px] font-black">Novo</span>
+                <span className="text-2xl font-black leading-none md:text-[56px]">+</span>
+                <span className="mt-1 text-[9px] font-black md:text-[18px]">Novo</span>
               </span>
             </button>
 
@@ -4026,13 +4083,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onClick={() => setClientePainelBaixo('conversas')}
               title="Conversas"
               className={[
-                'relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black transition-all duration-200 active:scale-[0.96]',
+                'relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black transition-all duration-200 active:scale-[0.96] md:h-[104px] md:rounded-[30px] md:text-[20px]',
                 clientePainelBaixo === 'conversas' || clientePainelBaixo === 'chat'
                   ? 'bg-[#ffd91a] text-blue-950 shadow-[0_10px_24px_rgba(250,204,21,0.24)]'
-                  : 'text-slate-600 hover:bg-slate-100 md:text-slate-300 md:hover:bg-white/[0.1] md:hover:text-white',
+                  : 'text-slate-600 hover:bg-slate-100 md:text-slate-500 md:hover:bg-slate-50 md:hover:text-blue-950',
               ].join(' ')}
             >
-              <svg className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <svg className="h-[22px] w-[22px] md:h-11 md:w-11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M21 11.5a7.5 7.5 0 0 1-9.9 7.1L5 20l1.5-5.3A7.5 7.5 0 1 1 21 11.5Z" stroke="currentColor" strokeWidth="2.1" strokeLinejoin="round" />
                 <path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" />
               </svg>
@@ -4047,9 +4104,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 setOpenPerfil(true)
               }}
               title="Perfil"
-              className="relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black text-slate-600 transition-all duration-200 hover:bg-slate-100 active:scale-[0.96] md:text-slate-300 md:hover:bg-white/[0.1] md:hover:text-white"
+              className="relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black text-slate-600 transition-all duration-200 hover:bg-slate-100 active:scale-[0.96] md:h-[104px] md:rounded-[30px] md:text-[20px] md:text-slate-500 md:hover:bg-slate-50 md:hover:text-blue-950"
             >
-              <svg className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <svg className="h-[22px] w-[22px] md:h-11 md:w-11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" strokeWidth="2.1" />
                 <path d="M4.8 20.5c1.4-4 4-6 7.2-6s5.8 2 7.2 6" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
               </svg>
@@ -4107,15 +4164,42 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       )}
 
       {modoApp === 'cliente' && clientePainelBaixo && (
-        <div className="fixed inset-0 z-[99990] bg-[#0f172a] flex justify-center">
-          <div className="w-full max-w-[900px] h-[100dvh] bg-[#0f172a] text-white shadow-[0_0_40px_rgba(0,0,0,0.45)] flex flex-col">
-            <div className="shrink-0 px-3 pt-3 pb-2.5 bg-[#111827] border-b border-slate-700 shadow-md md:px-4 md:pt-4 md:pb-3">
+        <div
+          className={[
+            'fixed inset-0 z-[99990] flex justify-center',
+            clientePainelBaixo === 'meusPedidos' ? 'bg-slate-100' : 'bg-[#0f172a]',
+          ].join(' ')}
+        >
+          <div
+            className={[
+              'h-[100dvh] w-full shadow-[0_0_40px_rgba(0,0,0,0.25)] flex flex-col',
+              clientePainelBaixo === 'meusPedidos'
+                ? 'max-w-[1560px] bg-white text-slate-950'
+                : 'max-w-[900px] bg-[#0f172a] text-white',
+            ].join(' ')}
+          >
+            <div
+              className={[
+                'shrink-0 px-3 pt-3 pb-2.5 border-b shadow-md md:px-4 md:pt-4 md:pb-3',
+                clientePainelBaixo === 'meusPedidos' ? 'bg-white border-slate-200' : 'bg-[#111827] border-slate-700',
+              ].join(' ')}
+            >
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-300 md:text-xs md:tracking-[0.18em]">
+                  <div
+                    className={[
+                      'text-[10px] font-black uppercase tracking-[0.16em] md:text-xs md:tracking-[0.18em]',
+                      clientePainelBaixo === 'meusPedidos' ? 'text-blue-600' : 'text-blue-300',
+                    ].join(' ')}
+                  >
                     Corre Aqui
                   </div>
-                  <div className="mt-0.5 truncate text-lg font-black text-white md:mt-1 md:text-xl">
+                  <div
+                    className={[
+                      'mt-0.5 truncate text-lg font-black md:mt-1 md:text-xl',
+                      clientePainelBaixo === 'meusPedidos' ? 'text-slate-950' : 'text-white',
+                    ].join(' ')}
+                  >
                     {clientePainelBaixo === 'meusPedidos'
                       ? 'Histórico de serviços'
                       : clientePainelBaixo === 'chat'
@@ -4134,7 +4218,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     setClientePainelBaixo('')
                     if (clientePainelBaixo === 'chat') setChatPedido(null)
                   }}
-                  className="h-9 w-9 rounded-xl bg-[#1e293b] hover:bg-[#263449] text-white font-black border border-slate-700 md:h-11 md:w-11 md:rounded-2xl"
+                  className={[
+                    'h-9 w-9 rounded-xl font-black border transition active:scale-[0.97] md:h-11 md:w-11 md:rounded-2xl',
+                    clientePainelBaixo === 'meusPedidos'
+                      ? 'bg-white text-slate-900 border-slate-200 shadow-sm hover:bg-blue-50'
+                      : 'bg-[#1e293b] hover:bg-[#263449] text-white border-slate-700',
+                  ].join(' ')}
                   aria-label="Fechar"
                 >
                   ✕
@@ -4142,7 +4231,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto overscroll-contain bg-[#0f172a] p-2.5 pb-24 md:p-5 md:pb-28">
+            <div
+              className={[
+                'flex-1 overflow-y-auto overscroll-contain p-2.5 pb-24 md:p-5 md:pb-28',
+                clientePainelBaixo === 'meusPedidos' ? 'bg-slate-50' : 'bg-[#0f172a]',
+              ].join(' ')}
+            >
               {clientePainelBaixo === 'meusPedidos' && (
                 <MeusPedidosCliente
                   meuId={meuId}
