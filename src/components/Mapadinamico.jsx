@@ -975,6 +975,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const [usersObj, setUsersObj] = useState({})
   const [publicPortfolioObj, setPublicPortfolioObj] = useState({})
+  const [registeredUsersObj, setRegisteredUsersObj] = useState({})
   const [meuUserProfile, setMeuUserProfile] = useState(null)
 
   const [toast, setToast] = useState(null)
@@ -1406,9 +1407,48 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       const patch = {}
       const foto = pickFoto(fotoURL)
       const emoji = String(avatarEmoji || '').trim()
+      const profile = meuUserProfile?.profile || {}
+      const privacy = meuUserProfile?.privacy || profile?.privacy || {}
+      const corre = meuUserProfile?.corre || profile?.corre || {}
+      const profissional = meuUserProfile?.profissional || profile?.profissional || {}
+      const profCategorias = Array.isArray(meuUserProfile?.profCategorias)
+        ? meuUserProfile.profCategorias
+        : Array.isArray(profile?.profCategorias)
+          ? profile.profCategorias
+          : []
+      const correCategorias = Array.isArray(meuUserProfile?.correCategorias)
+        ? meuUserProfile.correCategorias
+        : Array.isArray(profile?.correCategorias)
+          ? profile.correCategorias
+          : Array.isArray(corre?.categorias)
+            ? corre.categorias
+            : []
+      const profPortfolio = meuUserProfile?.profPortfolio || meuUserProfile?.portfolio || profile?.profPortfolio || profile?.portfolio || profissional?.profPortfolio || profissional?.portfolio || []
 
       if (foto) patch.fotoURL = foto
       if (emoji) patch.avatarEmoji = emoji
+      patch.photoURL = foto || null
+      patch.avatar = foto || emoji || ''
+      patch.cidade = meuUserProfile?.cidade || profile?.cidade || ''
+      patch.visivel = meuUserProfile?.visivel ?? profile?.visivel ?? true
+      patch.profileVisible = privacy.profileVisible === false && (privacy.profileVisibilityExplicit === true || privacy.profileVisibleExplicit === true) ? false : true
+      patch.profileVisibilityExplicit = privacy.profileVisibilityExplicit === true || privacy.profileVisibleExplicit === true
+      patch.showOnlineStatus = meuUserProfile?.showOnlineStatus ?? privacy.showOnlineStatus ?? true
+      patch.isCorre = !!(meuUserProfile?.isCorre || profile?.isCorre || corre?.ativo)
+      patch.isProfissional = !!(meuUserProfile?.isProfissional || profile?.isProfissional || profissional?.ativo)
+      patch.correCategorias = correCategorias
+      patch.profCategorias = profCategorias
+      patch.correTitulo = meuUserProfile?.correTitulo || profile?.correTitulo || corre?.titulo || ''
+      patch.correResumo = meuUserProfile?.correResumo || profile?.correResumo || corre?.bio || profile?.bio || ''
+      patch.correRegiao = meuUserProfile?.correRegiao || profile?.correRegiao || corre?.regiao || profile?.cidade || ''
+      patch.correTransporte = meuUserProfile?.correTransporte || profile?.correTransporte || corre?.transporte || ''
+      patch.profResumo = meuUserProfile?.profResumo || profile?.profResumo || profile?.descricao || profissional?.descricao || profissional?.titulo || ''
+      patch.profCidadeAtende = meuUserProfile?.profCidadeAtende || profile?.profCidadeAtende || profissional?.regiao || profile?.cidade || ''
+      patch.profPrecoBase = meuUserProfile?.profPrecoBase || profile?.profPrecoBase || profile?.preco || profissional?.preco || ''
+      patch.profWhats = meuUserProfile?.profWhats || profile?.profWhats || profissional?.whatsapp || ''
+      patch.profExperiencia = meuUserProfile?.profExperiencia || profile?.profExperiencia || profissional?.experiencia || ''
+      patch.portfolio = profPortfolio
+      patch.profPortfolio = profPortfolio
 
       return patch
     }
@@ -1516,7 +1556,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       window.removeEventListener('pagehide', onExit)
       onExit()
     }
-  }, [meuId, meuNome, fotoURL, avatarEmoji, correDisponivel])
+  }, [meuId, meuNome, fotoURL, avatarEmoji, correDisponivel, meuUserProfile])
 
   useEffect(() => {
     if (!meuId) {
@@ -1646,11 +1686,39 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [meuId])
 
+  useEffect(() => {
+    if (!meuId) {
+      setRegisteredUsersObj({})
+      return
+    }
+
+    const off = onValue(
+      query(ref(database, 'users'), limitToLast(300)),
+      (snap) => {
+        setRegisteredUsersObj(snap.val() || {})
+      },
+      (error) => {
+        console.warn('[CLIENTE_HOME] erro lendo perfis cadastrados', error)
+        setRegisteredUsersObj({})
+      }
+    )
+
+    return () => off()
+  }, [meuId])
+
   const { usuariosOnlineLista, usuariosOnlineMapa } = useMemo(() => {
     return splitUsuariosOnline(usersObj)
   }, [usersObj])
 
   const onlineUsers = usuariosOnlineLista
+
+  const registeredUsers = useMemo(() => {
+    return Object.entries(registeredUsersObj || {}).map(([uid, value]) => ({
+      uid,
+      id: uid,
+      ...(value || {}),
+    }))
+  }, [registeredUsersObj])
 
   const onlineUsersFiltrados = useMemo(() => {
     const t = buscaUsuarioMapa.trim().toLowerCase()
@@ -3029,16 +3097,23 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
 
             {tab === 'agenda' && (
-              <div className="mb-4 rounded-[32px] overflow-hidden bg-[#020617] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.35)]">
-                <div className="px-4 py-4 border-b border-white/10 bg-gradient-to-br from-[#07111f] to-[#0f172a]">
+              <div className="mb-4">
+                <div className="hidden">
                   <div className="text-xl font-black text-white">📅 Minha agenda</div>
                   <div className="mt-1 text-xs text-slate-400">
                     Solicitações futuras dos clientes. Aceite, recuse e organize sua fila.
                   </div>
                 </div>
 
-                <div className="p-0 bg-[#020617]">
-                  <AgendaProfissional uid={meuId} />
+                <div>
+                  <AgendaProfissional
+                    uid={meuId}
+                    nome={meuNome}
+                    fotoURL={fotoURL}
+                    notificacoesCount={notificacoesNaoLidas}
+                    onAbrirPerfil={() => setOpenPerfil(true)}
+                    onAbrirNotificacoes={() => setTab('inbox')}
+                  />
                 </div>
               </div>
             )}
@@ -3213,6 +3288,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             <ClienteHome
               meuNome={meuNome}
               onlineUsers={onlineUsers}
+              registeredUsers={registeredUsers}
               publicPortfolio={publicPortfolioObj}
               onCriarPedido={() => setOpenIA(true)}
               onIrAoVivo={() => {

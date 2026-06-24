@@ -126,9 +126,11 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
           ) : null}
 
           {tipo === 'agenda' ? (
-            <div className="overflow-hidden rounded-[28px] bg-[#050b12] shadow-[0_18px_55px_rgba(2,6,23,0.22)] md:rounded-[34px]">
-              <AgendaProfissional uid={uid} modo="profissional" />
-            </div>
+            <AgendaProfissional
+              uid={uid}
+              nome={user?.displayName || ''}
+              fotoURL={user?.photoURL || ''}
+            />
           ) : null}
 
           {tipo === 'seguranca' ? (

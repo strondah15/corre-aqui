@@ -112,8 +112,8 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
       <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/16" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.22),transparent_38%)]" />
 
-      <section className="relative w-full max-w-sm text-center">
-        <div className="relative mx-auto h-[240px] w-[240px] sm:h-[320px] sm:w-[320px]">
+      <section className="relative flex min-h-[min(680px,100dvh)] w-full max-w-sm flex-col items-center justify-center px-2 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+1rem)] text-center">
+        <div className="relative mx-auto h-[248px] w-[248px] sm:h-[320px] sm:w-[320px]">
           <div
             className="corre-splash-pulse absolute inset-8 rounded-full bg-blue-700/18 blur-3xl sm:inset-10"
             aria-hidden="true"
@@ -121,7 +121,7 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
 
           <div className="corre-splash-logo absolute inset-0 grid place-items-center">
             <div className="corre-splash-logo-float h-full w-full">
-              <div className="relative h-full w-full scale-[1.28] drop-shadow-[0_28px_60px_rgba(15,23,42,0.28)]">
+              <div className="relative h-full w-full scale-[1.22] drop-shadow-[0_28px_60px_rgba(15,23,42,0.28)]">
                 <div className="corre-splash-pin-aura pointer-events-none absolute inset-[9%]" aria-hidden="true" />
 
                 <Image
@@ -132,10 +132,10 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
                   aria-hidden="true"
                   priority
                   unoptimized
-                  className="corre-splash-pin-base absolute left-[18.4%] top-[3%] h-[88%] w-auto object-contain"
+                  className="corre-splash-pin-base absolute left-1/2 top-[3%] h-[88%] w-auto -translate-x-1/2 object-contain"
                 />
 
-                <div className="corre-splash-runner absolute left-[38.4%] top-[6.6%] w-[45%]">
+                <div className="corre-splash-runner absolute left-[35.8%] top-[6.6%] w-[45%]">
                   <Image
                     src="/boneco_correndo.png"
                     width={420}
@@ -160,12 +160,13 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
             aria-hidden="true"
           />
 
-          <div className="corre-splash-title absolute -bottom-10 left-1/2 w-max -translate-x-1/2 text-center text-2xl font-black tracking-tight text-white drop-shadow-[0_8px_22px_rgba(37,99,235,0.28)] sm:-bottom-14 sm:text-4xl">
-            Corre Aqui
-          </div>
         </div>
 
-        <div className="corre-splash-status mt-16 text-xs font-black uppercase tracking-[0.18em] text-blue-950/70 sm:mt-20">
+        <h1 className="corre-splash-title mt-8 w-full text-center text-[2.45rem] font-black leading-none tracking-[0] text-white drop-shadow-[0_8px_22px_rgba(37,99,235,0.28)] sm:mt-10 sm:text-5xl">
+          Corre Aqui
+        </h1>
+
+        <div className="corre-splash-status mt-16 w-full max-w-[340px] text-center text-[0.78rem] font-black uppercase leading-relaxed tracking-[0.28em] text-blue-950/70 sm:mt-20 sm:text-sm">
           {status}
         </div>
       </section>

@@ -23,14 +23,23 @@ const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
 
 const defaultPrivacy = {
   profileVisible: true,
+  profileVisibilityExplicit: false,
   shareLocationDuringActiveJob: true,
   showOnlineStatus: true,
   allowPublicContact: false,
 };
 
 function normalizePrivacy(value = {}, fallback = {}) {
+  const profileVisibilityExplicit =
+    value.profileVisibilityExplicit ?? value.profileVisibleExplicit ?? fallback.profileVisibilityExplicit ?? false;
+  const profileVisible =
+    value.profileVisible === false && profileVisibilityExplicit !== true
+      ? true
+      : value.profileVisible ?? fallback.profileVisible ?? true;
+
   return {
-    profileVisible: value.profileVisible ?? fallback.profileVisible ?? true,
+    profileVisible,
+    profileVisibilityExplicit,
     shareLocationDuringActiveJob:
       value.shareLocationDuringActiveJob ?? fallback.shareLocationDuringActiveJob ?? true,
     showOnlineStatus: value.showOnlineStatus ?? fallback.showOnlineStatus ?? true,
@@ -637,9 +646,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       const settingsMapa = settings.mapa || {};
       const settingsUi = settings.ui || {};
       const privacyData = normalizePrivacy(data.privacy, {
-        profileVisible: data.visivel ?? data.profile?.visivel,
         showOnlineStatus: data.showOnlineStatus ?? data.profile?.showOnlineStatus,
       });
+      const mapVisible = data.visivel ?? data.profile?.visivel ?? true;
 
       const servicosCorre = Number(data.servicosCorre ?? data["serviçosCorre"] ?? 0);
       const servicosProf = Number(data.servicosProf ?? data["serviçosProf"] ?? 0);
@@ -690,7 +699,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         avatar: prev.avatar || fotoPrincipal || avatarEmoji || "",
         avatarEmoji: prev.avatarEmoji || avatarEmoji,
         profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
-        visivel: privacyData.profileVisible,
+        visivel: mapVisible,
         privacy: privacyData,
       }));
 
@@ -702,7 +711,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
           mapLimiteOnline: settingsMapa.limiteOnline ?? prev.mapLimiteOnline,
           animacoes: settingsUi.animacoes ?? prev.animacoes,
           privacy: privacyData,
-          visivel: privacyData.profileVisible,
+          visivel: mapVisible,
         }));
         settingsLoadedRef.current = true;
       }
@@ -1268,9 +1277,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         animacoes: profile.animacoes !== false,
         atualizadoEm: serverTimestamp(),
       };
-      const privacySettings = normalizePrivacy(profile.privacy, {
-        profileVisible: profile.visivel,
-      });
+      const privacySettings = normalizePrivacy(profile.privacy);
       const privacyPayload = {
         ...privacySettings,
         atualizadoEm: serverTimestamp(),
@@ -1357,7 +1364,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         portfolio: portfolioMap,
         cidade: profile.cidade || "",
         bio: profile.bio || "",
-        visivel: privacySettings.profileVisible,
+        visivel: profile.visivel !== false,
         privacy: privacyPayload,
         isCorre: !!profile.isCorre,
         corre: {
@@ -1406,7 +1413,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         cidade: profile.cidade || "",
         isCorre: !!profile.isCorre,
         isProfissional: !!profile.isProfissional,
-        visivel: privacySettings.profileVisible,
+        visivel: profile.visivel !== false,
+        profileVisible: privacySettings.profileVisible,
+        profileVisibilityExplicit: privacySettings.profileVisibilityExplicit === true,
         showOnlineStatus: privacySettings.showOnlineStatus,
         allowPublicContact: privacySettings.allowPublicContact,
         plano: profile.plano || "Free",
@@ -1460,20 +1469,18 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       : pushPermission === "denied"
         ? "border-rose-200 bg-rose-50 text-rose-700"
         : "border-amber-200 bg-amber-50 text-amber-700";
-  const privacy = normalizePrivacy(profile.privacy, {
-    profileVisible: profile.visivel,
-  });
+  const privacy = normalizePrivacy(profile.privacy);
   const setPrivacyPreference = (field, value) => {
     setPrivacyAviso("");
     setProfile((prev) => {
       const nextPrivacy = {
-        ...normalizePrivacy(prev.privacy, { profileVisible: prev.visivel }),
+        ...normalizePrivacy(prev.privacy),
         [field]: value,
+        ...(field === "profileVisible" ? { profileVisibilityExplicit: true } : {}),
       };
       return {
         ...prev,
         privacy: nextPrivacy,
-        ...(field === "profileVisible" ? { visivel: value } : {}),
       };
     });
   };
@@ -1997,8 +2004,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                       <div className="text-xs font-semibold text-slate-500">Permite aparecer como disponível para clientes próximos.</div>
                     </div>
                     <ToggleSwitch
-                      checked={privacy.profileVisible}
-                      onChange={(checked) => setPrivacyPreference("profileVisible", checked)}
+                      checked={profile.visivel !== false}
+                      onChange={(checked) => setProfile((p) => ({ ...p, visivel: checked }))}
                       label="Alterar visibilidade no mapa"
                       tone="emerald"
                     />

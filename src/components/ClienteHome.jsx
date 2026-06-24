@@ -136,28 +136,6 @@ function BellMiniIcon({ className = 'h-5 w-5' }) {
   )
 }
 
-function MobileMockStatusBar() {
-  return (
-    <div className="relative z-20 flex items-center justify-between px-0.5 text-[13px] font-black leading-none text-blue-950 md:text-base" aria-hidden="true">
-      <span>22:22</span>
-      <div className="flex items-center gap-2">
-        <svg viewBox="0 0 24 24" className="h-4 w-5" fill="currentColor">
-          <rect x="3" y="14" width="3" height="6" rx="1" />
-          <rect x="8" y="11" width="3" height="9" rx="1" />
-          <rect x="13" y="8" width="3" height="12" rx="1" />
-          <rect x="18" y="5" width="3" height="15" rx="1" />
-        </svg>
-        <svg viewBox="0 0 24 24" className="h-4 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.4">
-          <path d="M4 9.5a12.8 12.8 0 0 1 16 0" />
-          <path d="M7.5 13a7.3 7.3 0 0 1 9 0" />
-          <path d="M11.8 17.2h.4" />
-        </svg>
-        <span>83%</span>
-      </div>
-    </div>
-  )
-}
-
 function ClienteHeroMapIcon() {
   return (
     <svg viewBox="0 0 96 112" className="h-[58px] w-[50px] opacity-[0.9] drop-shadow-[0_10px_16px_rgba(37,99,235,0.16)] min-[390px]:h-[64px] min-[390px]:w-[56px] md:h-[84px] md:w-[72px]" fill="none" aria-hidden="true">
@@ -169,71 +147,191 @@ function ClienteHeroMapIcon() {
 }
 
 function CategoryTileIcon({ id }) {
-  const common = 'h-9 w-9 md:h-11 md:w-11'
+  const common = 'h-10 w-10 drop-shadow-[0_8px_14px_rgba(37,99,235,0.12)] md:h-14 md:w-14'
 
   if (!id) {
     return (
-      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
-        <rect x="4" y="4" width="6" height="6" rx="1.7" fill="currentColor" />
-        <rect x="14" y="4" width="6" height="6" rx="1.7" fill="currentColor" opacity="0.72" />
-        <rect x="4" y="14" width="6" height="6" rx="1.7" fill="currentColor" opacity="0.72" />
-        <rect x="14" y="14" width="6" height="6" rx="1.7" fill="currentColor" />
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <rect x="8" y="8" width="13" height="13" rx="4" fill="currentColor" />
+        <rect x="27" y="8" width="13" height="13" rx="4" fill="currentColor" opacity="0.72" />
+        <rect x="8" y="27" width="13" height="13" rx="4" fill="currentColor" opacity="0.72" />
+        <rect x="27" y="27" width="13" height="13" rx="4" fill="currentColor" />
+        <path d="M14.5 14.5h.1M33.5 14.5h.1M14.5 33.5h.1M33.5 33.5h.1" stroke="white" strokeLinecap="round" strokeWidth="3" opacity="0.85" />
+      </svg>
+    )
+  }
+
+  if (id === 'servicos_gerais') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M26.5 4.5 11 27.2h11.2l-2 16.3L37 19.2H25.8l.7-14.7Z" fill="currentColor" />
+        <path d="M25.8 10.8 16.4 24h10.2l-.9 8.2 7.2-10.8H22.7l3.1-10.6Z" fill="white" opacity="0.44" />
       </svg>
     )
   }
 
   if (id === 'entregas') {
     return (
-      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
-        <path d="M7.4 14.2h6.2l2.3-4.3h-5.1l-2-3.2H6.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-        <path d="M15.9 9.9h2.4l1.4 4.3h-3.9" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-        <circle cx="7" cy="17" r="2" fill="currentColor" />
-        <circle cx="17" cy="17" r="2" fill="currentColor" />
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M18 13h14c2.4 0 4.5 1.7 5 4l2.1 9.7H18V13Z" fill="currentColor" opacity="0.18" />
+        <path d="M14 27h20.2l3-9.3h-11l-3-6.1H15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+        <path d="M34.2 17.8h4.1c1.2 0 2.2.8 2.5 2l1.9 7.2H35" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+        <circle cx="14" cy="33" r="5" fill="currentColor" />
+        <circle cx="35" cy="33" r="5" fill="currentColor" />
+        <circle cx="14" cy="33" r="2" fill="white" opacity="0.86" />
+        <circle cx="35" cy="33" r="2" fill="white" opacity="0.86" />
       </svg>
     )
   }
 
   if (id === 'compras') {
     return (
-      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
-        <path d="M4 5h2.2l1.7 9.2h9.7l2-6.4H7.1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.1" />
-        <circle cx="9" cy="18.5" r="1.7" fill="currentColor" />
-        <circle cx="17" cy="18.5" r="1.7" fill="currentColor" />
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M12.4 13.2h27l-3.7 16.5H16.4l-4-20.2H7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+        <path d="M16.8 17.8h17.5l-1.5 7.3H18.2l-1.4-7.3Z" fill="currentColor" opacity="0.2" />
+        <circle cx="18.5" cy="37" r="4.4" fill="currentColor" />
+        <circle cx="34" cy="37" r="4.4" fill="currentColor" />
+        <circle cx="18.5" cy="37" r="1.7" fill="white" opacity="0.86" />
+        <circle cx="34" cy="37" r="1.7" fill="white" opacity="0.86" />
       </svg>
     )
   }
 
   if (id === 'casa') {
     return (
-      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
-        <path d="m4 11 8-6.6 8 6.6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
-        <path d="M6.4 10.4v8.2h11.2v-8.2" stroke="currentColor" strokeLinejoin="round" strokeWidth="2.2" />
-        <path d="M10 18.6v-5h4v5" stroke="currentColor" strokeLinejoin="round" strokeWidth="2.2" />
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="m7.5 23 16.5-14 16.5 14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+        <path d="M12.5 21.5v18h23v-18" fill="currentColor" opacity="0.16" />
+        <path d="M12.5 21.5v18h23v-18" stroke="currentColor" strokeLinejoin="round" strokeWidth="4" />
+        <path d="M20.5 39.5v-10h7v10" stroke="currentColor" strokeLinejoin="round" strokeWidth="4" />
+        <path d="M31 15.2v-5h5v9.2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
       </svg>
     )
   }
 
   if (id === 'reparos') {
     return (
-      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
-        <path d="M14.8 5.2a5 5 0 0 0 4 6.2L10.2 20a2.2 2.2 0 0 1-3.1-3.1l8.6-8.6a5 5 0 0 0-.9-3.1Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M28.8 8.5a9.4 9.4 0 0 0 10.7 10.7L20.2 38.5a5.2 5.2 0 0 1-7.4-7.4L32.1 11.8a9.4 9.4 0 0 0-3.3-3.3Z" fill="currentColor" opacity="0.18" />
+        <path d="M28.8 8.5a9.4 9.4 0 0 0 10.7 10.7L20.2 38.5a5.2 5.2 0 0 1-7.4-7.4L32.1 11.8a9.4 9.4 0 0 0-3.3-3.3Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+        <path d="m15.6 33.8 4.6 4.6" stroke="currentColor" strokeLinecap="round" strokeWidth="4" />
       </svg>
     )
   }
 
   if (id === 'limpeza') {
     return (
-      <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
-        <path d="M14 4 6.5 18.8" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
-        <path d="m6 15 7 3.5" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
-        <path d="M4.8 18.5h8.6v2.2H4.8z" fill="currentColor" />
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M28.5 7 15 35" stroke="currentColor" strokeLinecap="round" strokeWidth="4" />
+        <path d="m14.8 27.5 13 6.2" stroke="currentColor" strokeLinecap="round" strokeWidth="4" />
+        <path d="M10 35h18.2v5H10z" fill="currentColor" />
+        <path d="M13.5 39.5h2.5M20 39.5h2.5" stroke="white" strokeLinecap="round" strokeWidth="2.2" opacity="0.75" />
+      </svg>
+    )
+  }
+
+  if (id === 'beleza') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M16.5 14.5c4.8-8.1 17.9-6 18.2 4.4.3 8.7-8 12.9-16.1 20.6C16 31 11.8 22.4 16.5 14.5Z" fill="currentColor" opacity="0.2" />
+        <path d="M15 14.5c5.2-8.8 19.4-6.5 19.7 4.8.3 9.4-8.7 14-17.6 22.2" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+        <path d="M24 11v9M19.5 15.5h9" stroke="currentColor" strokeLinecap="round" strokeWidth="3" />
+      </svg>
+    )
+  }
+
+  if (id === 'aulas') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M8 15.5 24 8l16 7.5L24 23 8 15.5Z" fill="currentColor" />
+        <path d="M14 20v9.5c0 3.6 4.5 6.5 10 6.5s10-2.9 10-6.5V20" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+        <path d="M40 16v11" stroke="currentColor" strokeLinecap="round" strokeWidth="4" />
+        <path d="M15 16.2 24 20l9-3.8" stroke="white" strokeLinecap="round" strokeWidth="2.4" opacity="0.55" />
+      </svg>
+    )
+  }
+
+  if (id === 'pets') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <circle cx="15" cy="17" r="4.2" fill="currentColor" opacity="0.72" />
+        <circle cx="24" cy="12" r="4.5" fill="currentColor" />
+        <circle cx="33" cy="17" r="4.2" fill="currentColor" opacity="0.72" />
+        <circle cx="17.5" cy="27" r="4.2" fill="currentColor" />
+        <circle cx="30.5" cy="27" r="4.2" fill="currentColor" />
+        <path d="M15 36c0-6 4.3-10.5 9-10.5S33 30 33 36c0 3.2-2.4 5.3-5.5 4.1-2.2-.8-4.8-.8-7 0-3.1 1.2-5.5-.9-5.5-4.1Z" fill="currentColor" opacity="0.88" />
+      </svg>
+    )
+  }
+
+  if (id === 'tecnologia') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <rect x="9" y="11" width="30" height="22" rx="4" fill="currentColor" opacity="0.2" />
+        <rect x="9" y="11" width="30" height="22" rx="4" stroke="currentColor" strokeWidth="4" />
+        <path d="M18 39h12M24 33v6" stroke="currentColor" strokeLinecap="round" strokeWidth="4" />
+        <path d="M16 18h9M16 24h16" stroke="currentColor" strokeLinecap="round" strokeWidth="3" opacity="0.65" />
+      </svg>
+    )
+  }
+
+  if (id === 'transporte') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M10 25.5 14.2 16c.7-1.6 2.2-2.5 3.9-2.5h12c1.7 0 3.2.9 3.9 2.5l4 9.5v9H10v-9Z" fill="currentColor" opacity="0.18" />
+        <path d="M10 25.5 14.2 16c.7-1.6 2.2-2.5 3.9-2.5h12c1.7 0 3.2.9 3.9 2.5l4 9.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+        <path d="M10 25.5h28v9H10v-9Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="4" />
+        <circle cx="17" cy="35" r="3.5" fill="currentColor" />
+        <circle cx="31" cy="35" r="3.5" fill="currentColor" />
+      </svg>
+    )
+  }
+
+  if (id === 'mudancas') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M9 17.5 24 10l15 7.5v16L24 41 9 33.5v-16Z" fill="currentColor" opacity="0.2" />
+        <path d="M9 17.5 24 10l15 7.5M9 17.5 24 25m-15-7.5v16L24 41m0-16 15-7.5M24 25v16m15-23.5v16L24 41" stroke="currentColor" strokeLinejoin="round" strokeWidth="3.4" />
+        <path d="m16 14 15 7.5" stroke="currentColor" strokeLinecap="round" strokeWidth="3.4" opacity="0.75" />
+      </svg>
+    )
+  }
+
+  if (id === 'eventos') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M24 7 28.2 19 41 19.4 30.8 27.1 34.4 39.5 24 32.2 13.6 39.5 17.2 27.1 7 19.4 19.8 19 24 7Z" fill="currentColor" />
+        <path d="M14 8.5v5.5M9.5 13h9M37.5 8.5v5.5M33 13h9" stroke="currentColor" strokeLinecap="round" strokeWidth="3" opacity="0.65" />
+        <path d="m20.5 22.5 3.5-9.3 3.5 9.3" stroke="white" strokeLinecap="round" strokeWidth="2.4" opacity="0.5" />
+      </svg>
+    )
+  }
+
+  if (id === 'midia') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <rect x="8" y="14" width="32" height="24" rx="6" fill="currentColor" opacity="0.2" />
+        <rect x="8" y="14" width="32" height="24" rx="6" stroke="currentColor" strokeWidth="4" />
+        <path d="M17 14l2.8-5h8.4l2.8 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" />
+        <circle cx="24" cy="26" r="6" fill="currentColor" />
+        <circle cx="24" cy="26" r="2.5" fill="white" opacity="0.86" />
+      </svg>
+    )
+  }
+
+  if (id === 'cuidados') {
+    return (
+      <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+        <path d="M24 40s-14-8-14-20.2C10 13.3 15.2 9 20.7 11.2c1.6.6 2.7 1.8 3.3 3 .6-1.2 1.7-2.4 3.3-3C32.8 9 38 13.3 38 19.8 38 32 24 40 24 40Z" fill="currentColor" opacity="0.88" />
+        <path d="M18 24h12M24 18v12" stroke="white" strokeLinecap="round" strokeWidth="4" opacity="0.82" />
       </svg>
     )
   }
 
   return (
-    <svg viewBox="0 0 24 24" className={common} fill="none" aria-hidden="true">
-      <path d="m13 2-8 11h6l-1 9 8-12h-6l1-8Z" fill="currentColor" />
+    <svg viewBox="0 0 48 48" className={common} fill="none" aria-hidden="true">
+      <path d="M26.5 4.5 11 27.2h11.2l-2 16.3L37 19.2H25.8l.7-14.7Z" fill="currentColor" />
+      <path d="M25.8 10.8 16.4 24h10.2l-.9 8.2 7.2-10.8H22.7l3.1-10.6Z" fill="white" opacity="0.44" />
     </svg>
   )
 }
@@ -266,60 +364,102 @@ const normalizeProvider = (u) => {
   const uid = u?.uid || u?.id || null
   if (!uid) return null
 
-  const nome = u?.nome || u?.profile?.nome || 'Usuário'
-  const avatarEmoji = safeStr(u?.avatarEmoji || u?.profile?.avatarEmoji || u?.perfil?.avatarEmoji || '')
+  const profile = u?.profile || {}
+  const privacy = u?.privacy || profile?.privacy || {}
+  const explicitPrivate = privacy.profileVisible === false && (
+    privacy.profileVisibilityExplicit === true ||
+    privacy.profileVisibleExplicit === true
+  )
+  const profileVisible = !explicitPrivate
+  const nome = u?.nome || profile?.nome || 'Usuário'
+  const avatarEmoji = safeStr(u?.avatarEmoji || profile?.avatarEmoji || u?.perfil?.avatarEmoji || '')
   const fotoURL = getFotoPersonalizada(u) || (!avatarEmoji ? getGoogleFoto(u) : '')
 
-  const isCorre = !!(u?.isCorre || u?.profissional?.isCorre)
-  const isProfissional = !!(u?.isProfissional || u?.profissional?.isProfissional)
+  const isCorre = !!(
+    u?.isCorre ||
+    profile?.isCorre ||
+    u?.corre?.ativo ||
+    profile?.corre?.ativo ||
+    u?.profissional?.isCorre ||
+    u?.correTitulo ||
+    profile?.correTitulo ||
+    (Array.isArray(u?.correCategorias) && u.correCategorias.length > 0) ||
+    (Array.isArray(profile?.correCategorias) && profile.correCategorias.length > 0)
+  )
+  const isProfissional = !!(
+    u?.isProfissional ||
+    profile?.isProfissional ||
+    u?.profissional?.ativo ||
+    profile?.profissional?.ativo ||
+    u?.profissional?.isProfissional ||
+    u?.profResumo ||
+    profile?.profResumo ||
+    profile?.titulo ||
+    profile?.descricao ||
+    u?.profPortfolio ||
+    profile?.profPortfolio ||
+    u?.portfolio ||
+    profile?.portfolio ||
+    (Array.isArray(u?.profCategorias) && u.profCategorias.length > 0) ||
+    (Array.isArray(profile?.profCategorias) && profile.profCategorias.length > 0)
+  )
 
   const profCategorias = Array.isArray(u?.profCategorias)
     ? u.profCategorias
+    : Array.isArray(profile?.profCategorias)
+      ? profile.profCategorias
     : Array.isArray(u?.profissional?.profCategorias)
       ? u.profissional.profCategorias
+      : Array.isArray(profile?.profissional?.profCategorias)
+        ? profile.profissional.profCategorias
       : []
 
-  const profResumo = safeStr(u?.profResumo || u?.profissional?.profResumo || '')
+  const profResumo = safeStr(u?.profResumo || profile?.profResumo || profile?.descricao || profile?.titulo || u?.profissional?.profResumo || u?.profissional?.descricao || u?.profissional?.titulo || profile?.profissional?.descricao || profile?.profissional?.titulo || '')
   const profCidadeAtende = safeStr(
-    u?.profCidadeAtende || u?.profissional?.profCidadeAtende || u?.profile?.cidade || ''
+    u?.profCidadeAtende || profile?.profCidadeAtende || u?.profissional?.profCidadeAtende || profile?.profissional?.regiao || profile?.cidade || ''
   )
-  const profPrecoBase = safeStr(u?.profPrecoBase || u?.profissional?.profPrecoBase || '')
-  const profWhats = safeStr(u?.profWhats || u?.profissional?.profWhats || '')
+  const profPrecoBase = safeStr(u?.profPrecoBase || profile?.profPrecoBase || profile?.preco || u?.profissional?.profPrecoBase || u?.profissional?.preco || profile?.profissional?.preco || '')
+  const profWhats = safeStr(u?.profWhats || profile?.profWhats || u?.profissional?.profWhats || u?.profissional?.whatsapp || profile?.profissional?.whatsapp || '')
 
   const local = u?.local || null
   const lat = Number(local?.lat)
   const lng = Number(local?.lng)
   const okLoc = Number.isFinite(lat) && Number.isFinite(lng)
 
-  const corre = u?.corre || u?.profile?.corre || {}
+  const corre = u?.corre || profile?.corre || {}
   const correCategorias = Array.isArray(u?.correCategorias)
     ? u.correCategorias
-    : Array.isArray(u?.profile?.correCategorias)
-      ? u.profile.correCategorias
+    : Array.isArray(profile?.correCategorias)
+      ? profile.correCategorias
       : Array.isArray(corre?.categorias)
         ? corre.categorias
         : []
 
   const correTitulo = safeStr(u?.correTitulo || corre?.titulo || 'Corre rápido')
-  const correResumo = safeStr(u?.correResumo || corre?.bio || u?.profile?.bio || '')
-  const correRegiao = safeStr(u?.correRegiao || corre?.regiao || profCidadeAtende || u?.profile?.cidade || '')
+  const correResumo = safeStr(u?.correResumo || profile?.correResumo || corre?.bio || profile?.bio || '')
+  const correRegiao = safeStr(u?.correRegiao || profile?.correRegiao || corre?.regiao || profCidadeAtende || profile?.cidade || '')
   const correTransporte = safeStr(u?.correTransporte || corre?.transporte || '')
   const correDisponibilidade = safeStr(u?.correDisponibilidade || corre?.disponibilidade || '')
   const profExperiencia = safeStr(u?.profExperiencia || u?.profissional?.profExperiencia || u?.profissional?.experiencia || '')
   const portfolio = normalizePortfolioEntries(
     u?.portfolio,
     u?.profPortfolio,
-    u?.profile?.portfolio,
-    u?.profile?.profPortfolio,
+    profile?.portfolio,
+    profile?.profPortfolio,
     u?.profissional?.portfolio,
-    u?.profissional?.profPortfolio
+    u?.profissional?.profPortfolio,
+    profile?.profissional?.portfolio,
+    profile?.profissional?.profPortfolio
   ).filter(isActivePortfolioService)
 
   return {
     uid,
+    id: uid,
     nome,
     fotoURL,
     avatarEmoji,
+    online: u?.online === true,
+    profileVisible,
     isCorre,
     isProfissional,
     profCategorias,
@@ -503,6 +643,7 @@ const PortfolioServiceCard = memo(function PortfolioServiceCard({ service, onAbr
 
 const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPerfil, onAgendar }) {
   const nome = safeStr(item?.nome) || 'Profissional'
+  const isOnline = item?.online === true
   const iniciais = nome
     .split(/\s+/)
     .filter(Boolean)
@@ -545,8 +686,11 @@ const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPer
               {item?.avatarEmoji || iniciais}
             </div>
           )}
-          <span className="absolute left-2 top-2 rounded-full bg-emerald-500 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
-            online
+          <span className={[
+            'absolute left-2 top-2 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white',
+            isOnline ? 'bg-emerald-500' : 'bg-slate-500',
+          ].join(' ')}>
+            {isOnline ? 'online' : 'perfil'}
           </span>
           {temPortfolio ? (
             <span className="absolute right-2 top-2 rounded-full bg-[#ffd91a] px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-blue-950 shadow-sm">
@@ -598,6 +742,7 @@ export default function ClienteHome({
   onIrAoVivo,
   onAbrirNotificacoes,
   onlineUsers = [],
+  registeredUsers = [],
   publicPortfolio = {},
   onAbrirPerfil,
   onAgendar,
@@ -621,26 +766,94 @@ export default function ClienteHome({
     .join('') || 'CA'
   const categoriasRapidas = useMemo(() => [{ id: '', label: 'Todos', emoji: '✨', accent: '#0f172a', soft: '#eef5ff' }, ...(CATEGORIES || [])], [])
 
-  const providers = useMemo(() => {
+  const onlineProviders = useMemo(() => {
     const list = Array.isArray(onlineUsers) ? onlineUsers : []
-    return list.map(normalizeProvider).filter(Boolean)
+    return list.map((item) => normalizeProvider({ ...item, online: true })).filter(Boolean)
   }, [onlineUsers])
 
-  const list = useMemo(() => {
+  const registeredProviders = useMemo(() => {
+    const list = Array.isArray(registeredUsers) ? registeredUsers : []
+    return list
+      .map((item) => normalizeProvider({ ...item, online: false }))
+      .filter((provider) => provider && provider.profileVisible !== false && (provider.isCorre || provider.isProfissional))
+  }, [registeredUsers])
+
+  const portfolioProviders = useMemo(() => {
+    const byUid = new Map()
+    normalizePublicPortfolioServices(publicPortfolio).forEach((service) => {
+      const uid = service.profissionalId
+      if (!uid) return
+      const current = byUid.get(uid) || {
+        uid,
+        id: uid,
+        nome: service.providerName || 'Profissional',
+        fotoURL: service.providerFoto || '',
+        isCorre: service.isCorre === true,
+        isProfissional: true,
+        profCategorias: [],
+        correCategorias: [],
+        profResumo: service.descricao || service.titulo || '',
+        profCidadeAtende: service.regiao || '',
+        profPrecoBase: service.valor || '',
+        portfolio: [],
+        online: false,
+        profileVisible: true,
+      }
+      const categorias = new Set([...(current.profCategorias || [])])
+      if (service.categoriaId) categorias.add(service.categoriaId)
+      byUid.set(uid, {
+        ...current,
+        nome: current.nome || service.providerName || 'Profissional',
+        fotoURL: current.fotoURL || service.providerFoto || '',
+        profCidadeAtende: current.profCidadeAtende || service.regiao || '',
+        profPrecoBase: current.profPrecoBase || service.valor || '',
+        profCategorias: Array.from(categorias),
+        portfolio: [...(current.portfolio || []), service],
+      })
+    })
+    return Array.from(byUid.values()).map(normalizeProvider).filter(Boolean)
+  }, [publicPortfolio])
+
+  const providers = useMemo(() => {
+    const byUid = new Map()
+    portfolioProviders.forEach((provider) => {
+      byUid.set(provider.uid, provider)
+    })
+    registeredProviders.forEach((provider) => {
+      const current = byUid.get(provider.uid) || {}
+      byUid.set(provider.uid, {
+        ...current,
+        ...provider,
+        portfolio: provider.portfolio?.length ? provider.portfolio : current.portfolio || [],
+      })
+    })
+    onlineProviders.forEach((provider) => {
+      const current = byUid.get(provider.uid) || {}
+      byUid.set(provider.uid, {
+        ...current,
+        ...provider,
+        portfolio: provider.portfolio?.length ? provider.portfolio : current.portfolio || [],
+        profileVisible: current.profileVisible === false || provider.profileVisible === false ? false : true,
+        online: true,
+      })
+    })
+
+    return Array.from(byUid.values()).filter((provider) => (
+      provider.profileVisible !== false && (provider.isCorre || provider.isProfissional)
+    ))
+  }, [onlineProviders, registeredProviders, portfolioProviders])
+
+  const allFilteredProviders = useMemo(() => {
     const t = busca.trim().toLowerCase()
 
-    const base = providers.filter((p) =>
-      modo === 'corre' ? p.isCorre : p.isProfissional
-    )
-
     const byCat = catId
-      ? base.filter((p) => {
-          const cats = modo === 'corre' ? (p.correCategorias || []) : (p.profCategorias || [])
-          // Se o corre ainda não cadastrou segmentos, ele continua aparecendo em "serviços gerais".
-          if (modo === 'corre' && cats.length === 0 && catId === 'servicos_gerais') return true
-          return cats.some((cat) => categoryMatches(cat, catId))
+      ? providers.filter((p) => {
+          const correCats = Array.isArray(p.correCategorias) ? p.correCategorias : []
+          const profCats = Array.isArray(p.profCategorias) ? p.profCategorias : []
+          if (p.isCorre && correCats.length === 0 && catId === 'servicos_gerais') return true
+          return [...correCats, ...profCats].some((cat) => categoryMatches(cat, catId))
         })
-      : base
+      : providers
 
     const bySearch = !t
       ? byCat
@@ -653,16 +866,27 @@ export default function ClienteHome({
         })
 
     return bySearch.slice(0, 60)
-  }, [providers, modo, busca, catId])
+  }, [providers, busca, catId])
+
+  const list = useMemo(() => {
+    return allFilteredProviders.filter((p) =>
+      modo === 'corre' ? p.isCorre : p.isProfissional
+    )
+  }, [allFilteredProviders, modo])
+
+  const onlineList = useMemo(() => allFilteredProviders.filter((provider) => provider.online === true), [allFilteredProviders])
+  const offlineList = useMemo(() => allFilteredProviders.filter((provider) => provider.online !== true), [allFilteredProviders])
 
   const providerCounts = useMemo(() => {
     return providers.reduce(
       (acc, provider) => {
         if (provider.isCorre) acc.corre += 1
         if (provider.isProfissional) acc.profissional += 1
+        if (provider.online && provider.isCorre) acc.correOnline += 1
+        if (provider.online && provider.isProfissional) acc.profissionalOnline += 1
         return acc
       },
-      { corre: 0, profissional: 0 }
+      { corre: 0, profissional: 0, correOnline: 0, profissionalOnline: 0 }
     )
   }, [providers])
 
@@ -694,8 +918,13 @@ export default function ClienteHome({
   }, [providers, publicPortfolio])
 
   const destaqueProviders = useMemo(
-    () => (list.length ? list : providers).slice(0, 8),
-    [list, providers]
+    () => onlineList.slice(0, 8),
+    [onlineList]
+  )
+
+  const offlineProviders = useMemo(
+    () => offlineList.slice(0, 12),
+    [offlineList]
   )
 
   const renderLegacyHidden = false
@@ -761,9 +990,8 @@ export default function ClienteHome({
     <div className="-mx-2.5 -mt-2 min-h-[calc(100dvh-4rem)] overflow-hidden bg-white pb-24 text-slate-950 md:mx-auto md:mt-0 md:min-h-0 md:w-full md:max-w-[1024px] md:rounded-[40px] md:pb-8 md:shadow-[0_24px_90px_rgba(0,0,0,0.18)]">
       <div className="relative min-h-[405px] overflow-hidden bg-[#f8fbff] px-7 pb-6 pt-5 md:min-h-[820px] md:px-[52px] md:pb-0 md:pt-8">
         <ClienteMapBackdrop />
-        <MobileMockStatusBar />
 
-        <div className="relative mt-8 flex items-center justify-between gap-2 md:mt-14 md:gap-5">
+        <div className="relative mt-3 flex items-center justify-between gap-2 md:mt-14 md:gap-5">
           {typeof onBackToMode === 'function' ? (
             <button
               type="button"
@@ -902,7 +1130,7 @@ export default function ClienteHome({
             <StatCardArt type="corre" />
             <div className="relative text-[11px] font-black uppercase tracking-[0.12em] text-amber-600 md:text-[24px]">Corres</div>
             <div className="relative mt-3 text-3xl font-black leading-none text-blue-950 md:mt-7 md:text-[64px]">{providerCounts.corre}</div>
-            <div className="relative mt-1 text-sm font-bold text-blue-950 md:text-[24px]">disponíveis</div>
+            <div className="relative mt-1 text-sm font-bold text-blue-950 md:text-[24px]">cadastrados</div>
           </button>
           <button
             type="button"
@@ -919,46 +1147,13 @@ export default function ClienteHome({
           </button>
         </div>
 
-        <section className="mt-7 md:mt-10">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Melhores perto</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-400">{modo === 'corre' ? 'Corres rápidos disponíveis' : 'Profissionais para contratar'}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onIrAoVivo?.()}
-              className="shrink-0 text-sm font-black text-slate-950"
-            >
-              Ver mapa ›
-            </button>
-          </div>
-
-          <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
-            {destaqueProviders.map((item) => (
-              <ProviderMiniCard
-                key={item.uid}
-                item={item}
-                modo={modo}
-                onAbrirPerfil={onAbrirPerfil}
-                onAgendar={onAgendar}
-              />
-            ))}
-            {!providers.length ? (
-              <div className="w-full rounded-[22px] bg-slate-50 p-4 text-sm font-bold text-slate-500">
-                Assim que houver perfis online, eles aparecem aqui.
-              </div>
-            ) : null}
-          </div>
-        </section>
-
         {portfolioServices.length ? (
-          <section className="mt-6 md:mt-10">
+          <section className="mt-7 md:mt-10">
             <div className="flex items-end justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Serviços publicados</h2>
+                <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Serviços do portfólio</h2>
                 <p className="mt-1 text-sm font-semibold text-slate-400">
-                  Fotos, preços e trabalhos adicionados no portfólio.
+                  Trabalhos com fotos, preço e descrição cadastrados pelos perfis.
                 </p>
               </div>
               <span className="shrink-0 rounded-full bg-[#ffd91a] px-3 py-1.5 text-[11px] font-black text-blue-950">
@@ -980,9 +1175,70 @@ export default function ClienteHome({
         ) : null}
 
         <section className="mt-6 md:mt-10">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Online agora</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-400">{onlineList.length} perfil(is) online agora</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onIrAoVivo?.()}
+              className="shrink-0 text-sm font-black text-slate-950"
+            >
+              Ver mapa ›
+            </button>
+          </div>
+
+          <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
+            {destaqueProviders.map((item) => (
+              <ProviderMiniCard
+                key={item.uid}
+                item={item}
+                modo={item.isCorre && (!item.isProfissional || modo === 'corre') ? 'corre' : 'profissional'}
+                onAbrirPerfil={onAbrirPerfil}
+                onAgendar={onAgendar}
+              />
+            ))}
+            {!onlineList.length ? (
+              <div className="w-full rounded-[22px] bg-slate-50 p-4 text-sm font-bold text-slate-500">
+                Ninguém online nesta categoria agora. Veja os perfis cadastrados abaixo.
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        {offlineProviders.length ? (
+          <section className="mt-6 md:mt-10">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Perfis cadastrados</h2>
+                <p className="mt-1 text-sm font-semibold text-slate-400">
+                  Aparecem mesmo offline para o cliente conhecer e chamar depois.
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-blue-50 px-3 py-1.5 text-[11px] font-black text-blue-700">
+                {offlineList.length}
+              </span>
+            </div>
+
+            <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
+              {offlineProviders.map((item) => (
+                <ProviderMiniCard
+                  key={item.uid}
+                  item={item}
+                  modo={item.isCorre && (!item.isProfissional || modo === 'corre') ? 'corre' : 'profissional'}
+                  onAbrirPerfil={onAbrirPerfil}
+                  onAgendar={onAgendar}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="mt-6 md:mt-10">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Todos disponíveis</h2>
+              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Todos os perfis</h2>
               <p className="mt-1 text-sm font-semibold text-slate-400">{list.length} encontrado(s)</p>
             </div>
             <div className="grid grid-cols-2 rounded-full bg-slate-100 p-1">
