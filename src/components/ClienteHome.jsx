@@ -366,7 +366,17 @@ const normalizeProvider = (u) => {
 
   const profile = u?.profile || {}
   const privacy = u?.privacy || profile?.privacy || {}
-  const explicitPrivate = privacy.profileVisible === false && (
+  const explicitProfileVisible = u?.profileVisible ?? profile?.profileVisible ?? privacy.profileVisible
+  const explicitProfileVisibility = (
+    privacy.profileVisibilityExplicit === true ||
+    privacy.profileVisibleExplicit === true ||
+    u?.profileVisibilityExplicit === true ||
+    u?.profileVisibleExplicit === true ||
+    profile?.profileVisibilityExplicit === true ||
+    profile?.profileVisibleExplicit === true
+  )
+  const explicitPrivate = explicitProfileVisible === false && (
+    explicitProfileVisibility ||
     privacy.profileVisibilityExplicit === true ||
     privacy.profileVisibleExplicit === true
   )
@@ -875,7 +885,6 @@ export default function ClienteHome({
   }, [allFilteredProviders, modo])
 
   const onlineList = useMemo(() => allFilteredProviders.filter((provider) => provider.online === true), [allFilteredProviders])
-  const offlineList = useMemo(() => allFilteredProviders.filter((provider) => provider.online !== true), [allFilteredProviders])
 
   const providerCounts = useMemo(() => {
     return providers.reduce(
@@ -920,11 +929,6 @@ export default function ClienteHome({
   const destaqueProviders = useMemo(
     () => onlineList.slice(0, 8),
     [onlineList]
-  )
-
-  const offlineProviders = useMemo(
-    () => offlineList.slice(0, 12),
-    [offlineList]
   )
 
   const renderLegacyHidden = false
@@ -1147,6 +1151,39 @@ export default function ClienteHome({
           </button>
         </div>
 
+        <section className="mt-7 md:mt-10">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Online agora</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-400">Veja quem pode aceitar seu pedido imediatamente.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onIrAoVivo?.()}
+              className="shrink-0 text-sm font-black text-slate-950"
+            >
+              Ver mapa &rsaquo;
+            </button>
+          </div>
+
+          <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
+            {destaqueProviders.map((item) => (
+              <ProviderMiniCard
+                key={item.uid}
+                item={item}
+                modo={item.isCorre && (!item.isProfissional || modo === 'corre') ? 'corre' : 'profissional'}
+                onAbrirPerfil={onAbrirPerfil}
+                onAgendar={onAgendar}
+              />
+            ))}
+            {!onlineList.length ? (
+              <div className="w-full rounded-[22px] bg-slate-50 p-4 text-sm font-bold text-slate-500">
+                Ningu&eacute;m online agora. Veja os perfis cadastrados abaixo.
+              </div>
+            ) : null}
+          </div>
+        </section>
+
         {portfolioServices.length ? (
           <section className="mt-7 md:mt-10">
             <div className="flex items-end justify-between gap-3">
@@ -1175,71 +1212,10 @@ export default function ClienteHome({
         ) : null}
 
         <section className="mt-6 md:mt-10">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Online agora</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-400">{onlineList.length} perfil(is) online agora</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onIrAoVivo?.()}
-              className="shrink-0 text-sm font-black text-slate-950"
-            >
-              Ver mapa ›
-            </button>
-          </div>
-
-          <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
-            {destaqueProviders.map((item) => (
-              <ProviderMiniCard
-                key={item.uid}
-                item={item}
-                modo={item.isCorre && (!item.isProfissional || modo === 'corre') ? 'corre' : 'profissional'}
-                onAbrirPerfil={onAbrirPerfil}
-                onAgendar={onAgendar}
-              />
-            ))}
-            {!onlineList.length ? (
-              <div className="w-full rounded-[22px] bg-slate-50 p-4 text-sm font-bold text-slate-500">
-                Ninguém online nesta categoria agora. Veja os perfis cadastrados abaixo.
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        {offlineProviders.length ? (
-          <section className="mt-6 md:mt-10">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Perfis cadastrados</h2>
-                <p className="mt-1 text-sm font-semibold text-slate-400">
-                  Aparecem mesmo offline para o cliente conhecer e chamar depois.
-                </p>
-              </div>
-              <span className="shrink-0 rounded-full bg-blue-50 px-3 py-1.5 text-[11px] font-black text-blue-700">
-                {offlineList.length}
-              </span>
-            </div>
-
-            <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
-              {offlineProviders.map((item) => (
-                <ProviderMiniCard
-                  key={item.uid}
-                  item={item}
-                  modo={item.isCorre && (!item.isProfissional || modo === 'corre') ? 'corre' : 'profissional'}
-                  onAbrirPerfil={onAbrirPerfil}
-                  onAgendar={onAgendar}
-                />
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        <section className="mt-6 md:mt-10">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Todos os perfis</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-400">{list.length} encontrado(s)</p>
+              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Profissionais e Corres</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-400">Explore pessoas cadastradas na sua regi&atilde;o.</p>
             </div>
             <div className="grid grid-cols-2 rounded-full bg-slate-100 p-1">
               <button

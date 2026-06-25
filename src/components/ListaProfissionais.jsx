@@ -269,7 +269,11 @@ export default function ListaProfissionais({
         const transporte = String(u.correTransporte || '').toLowerCase()
         return nome.includes(t) || resumo.includes(t) || cidade.includes(t) || titulo.includes(t) || transporte.includes(t)
       })
-      .sort((a, b) => Number(b.updatedAt || b.updatedAtMs || 0) - Number(a.updatedAt || a.updatedAtMs || 0))
+      .sort((a, b) => {
+        const onlineDiff = Number(b.online === true) - Number(a.online === true)
+        if (onlineDiff) return onlineDiff
+        return Number(b.updatedAt || b.updatedAtMs || 0) - Number(a.updatedAt || a.updatedAtMs || 0)
+      })
   }, [sourceItems, mode, categoriaLocal, buscaLocal])
 
   const openWhatsapp = useCallback((u) => {

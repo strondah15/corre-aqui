@@ -48,6 +48,14 @@
         }
       }
     },
+    "publicProfiles": {
+      ".read": "auth != null",
+      ".indexOn": ["updatedAt", "isCorre", "isProfissional", "profileVisible"],
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "!newData.exists() || (newData.child('uid').val() === $uid && newData.child('nome').isString() && newData.child('profileVisible').val() === true && !newData.child('cpf').exists() && !newData.child('cpfDigits').exists() && !newData.child('cpfMasked').exists() && !newData.child('cpfStatus').exists() && !newData.child('cpfVerificacao').exists() && !newData.child('documento').exists() && !newData.child('documentoVerificacao').exists() && !newData.child('admin').exists() && !newData.child('role').exists() && !newData.child('pushTokens').exists())"
+      }
+    },
     "admins": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

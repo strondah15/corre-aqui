@@ -246,13 +246,14 @@ function ProfMenuIcon({ id }) {
   };
 
   const icons = {
-    perfilPublico: (
+    perfilProfissional: (
       <>
         <path {...common} d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
         <path {...common} d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+        <path {...common} d="M16.5 5.5h3" />
+        <path {...common} d="M18 4v3" />
       </>
     ),
-    corre: <path {...common} d="M13 2 5 14h6l-1 8 9-13h-6l1-7Z" />,
     portfolio: (
       <>
         <path {...common} d="M8 7V5.5A2.5 2.5 0 0 1 10.5 3h3A2.5 2.5 0 0 1 16 5.5V7" />
@@ -289,7 +290,7 @@ function ProfMenuIcon({ id }) {
 
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 md:h-6 md:w-6" aria-hidden="true">
-      {icons[id] || icons.perfilPublico}
+      {icons[id] || icons.perfilProfissional}
     </svg>
   );
 }
@@ -552,6 +553,69 @@ function portfolioListToPublicMap(items = [], profile = {}, uid = "", fotoPrinci
 
     return acc;
   }, {});
+}
+
+function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", privacySettings = defaultPrivacy, profPortfolio = []) {
+  const corre = {
+    ativo: !!profile.isCorre,
+    titulo: profile.correTitulo || "Corre rapido",
+    bio: profile.correBio || profile.bio || "",
+    transporte: profile.correTransporte || "",
+    regiao: profile.correRegiao || profile.cidade || "",
+    disponibilidade: profile.correDisponibilidade || "",
+    experiencia: profile.correExperiencia || "",
+  };
+  const profissional = {
+    ativo: !!profile.isProfissional,
+    titulo: profile.titulo || "",
+    descricao: profile.descricao || "",
+    preco: profile.preco || "",
+    whatsapp: profile.whatsapp || "",
+    regiao: profile.profRegiao || profile.cidade || "",
+    experiencia: profile.profExperiencia || "",
+    statusProfissional: profile.statusProfissional || "disponivel",
+    ocupadoAte: profile.ocupadoAte || "",
+    agendaAberta: profile.agendaAberta !== false,
+  };
+
+  return {
+    uid,
+    id: uid,
+    nome: String(profile.nome || "").trim() || "Profissional",
+    fotoURL: fotoPrincipal || null,
+    photoURL: fotoPrincipal || null,
+    avatar: fotoPrincipal || profile.avatarEmoji || "",
+    avatarEmoji: profile.avatarEmoji || "",
+    cidade: profile.cidade || "",
+    bio: profile.bio || "",
+    visivel: profile.visivel !== false,
+    profileVisible: privacySettings.profileVisible !== false,
+    profileVisibilityExplicit: privacySettings.profileVisibilityExplicit === true,
+    showOnlineStatus: privacySettings.showOnlineStatus !== false,
+    allowPublicContact: privacySettings.allowPublicContact === true,
+    isCorre: !!profile.isCorre,
+    isProfissional: !!profile.isProfissional,
+    correCategorias: Array.isArray(profile.correCategorias) ? profile.correCategorias : [],
+    profCategorias: Array.isArray(profile.profCategorias) ? profile.profCategorias : [],
+    correTitulo: corre.titulo,
+    correResumo: corre.bio,
+    correRegiao: corre.regiao,
+    correTransporte: corre.transporte,
+    profResumo: profissional.descricao || profissional.titulo,
+    profCidadeAtende: profissional.regiao,
+    profPrecoBase: profissional.preco,
+    profWhats: profissional.whatsapp,
+    profExperiencia: profissional.experiencia,
+    corre,
+    profissional,
+    profPortfolio,
+    portfolio: portfolioListToMap(profPortfolio),
+    plano: profile.plano || "Free",
+    statusProfissional: profile.statusProfissional || "disponivel",
+    agendaAberta: profile.agendaAberta !== false,
+    updatedAt: serverTimestamp(),
+    atualizadoEm: serverTimestamp(),
+  };
 }
 
 function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
@@ -1288,6 +1352,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       const publicPortfolioMap = privacySettings.profileVisible
         ? portfolioListToPublicMap(profPortfolio, profile, uid, fotoPrincipal)
         : {};
+      const publicProfilePayload = privacySettings.profileVisible
+        ? profileToPublicProfile(profile, uid, fotoPrincipal, privacySettings, profPortfolio)
+        : null;
       const profilePublic = { ...profile };
       delete profilePublic.privacy;
       delete profilePublic.cpf;
@@ -1399,6 +1466,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
         ref(database, `publicPortfolio/${uid}`),
         Object.keys(publicPortfolioMap).length ? publicPortfolioMap : null
       );
+      await set(ref(database, `publicProfiles/${uid}`), publicProfilePayload);
 
       console.warn("[PRESENCE] caminho legado detectado", {
         path: `usuariosOnline/${uid}`,
@@ -1490,14 +1558,22 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
     : 0;
   const portfolioItems = normalizePortfolio(profile.profPortfolio);
   const portfolioDraftFotos = normalizePortfolioFotos(portfolioDraft);
+  const selectedWorkMode = profile.isCorre && profile.isProfissional
+    ? "ambos"
+    : profile.isProfissional
+      ? "profissional"
+      : "corre";
+  const setProfessionalWorkMode = (mode) => {
+    setProfile((prev) => ({
+      ...prev,
+      isCorre: mode === "corre" || mode === "ambos",
+      isProfissional: mode === "profissional" || mode === "ambos",
+    }));
+  };
   const profPages = {
-    perfilPublico: {
-      title: "Meu perfil publico",
-      desc: "Dados que aparecem para clientes.",
-    },
-    corre: {
-      title: "Perfil de Corre",
-      desc: "Configure seus corres rapidos.",
+    perfilProfissional: {
+      title: "Meu perfil profissional",
+      desc: "Como voce trabalha no Corre Aqui.",
     },
     portfolio: {
       title: "Portfolio de servicos",
@@ -1520,7 +1596,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       desc: "Boas praticas para trabalhar com seguranca.",
     },
   };
-  const profPage = profPages[profSection] || profPages.perfilPublico;
+  const profPage = profPages[profSection] || profPages.perfilProfissional;
   const drawerPages = {
     perfil: {
       title: "Meu perfil",
@@ -2520,13 +2596,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
 
               <section className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[24px]">
                 {[
-                  ["perfilPublico", "Meu perfil público", "Como clientes veem seu perfil."],
-                  ["corre", "Perfil de Corre", "Título, transporte e disponibilidade."],
+                  ["perfilProfissional", "Meu perfil profissional", "Como voce trabalha no Corre Aqui."],
                   ["portfolio", "Portfólio de serviços", "Serviços, preço, região e experiência."],
                   ["avaliacoes", "Avaliações", "Nota, histórico e reputação."],
-                  ["patentes", "Patentes Corre/Pro", "Níveis de experiência e confiança."],
-                  ["config", "Configurações", "Disponibilidade e agenda."],
-                  ["ajuda", "Central de ajuda", "Boas práticas e segurança."],
+                  ["patentes", "Patentes", "Niveis de experiencia e confianca."],
+                  ["config", "Configurações", "Conta, seguranca e privacidade."],
+                  ["ajuda", "Ajuda", "Duvidas e suporte."],
                 ].map(([id, label, desc], index, arr) => {
                   const active = profSection === id;
                   return (
@@ -2573,115 +2648,204 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                 </div>
               </section>
 
-              {profSection === "perfilPublico" && (
-                <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
-                  <div className="mb-3">
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Meu perfil público</div>
-                    <div className="mt-1 text-sm font-bold text-slate-500">Essas informações aparecem para clientes quando procuram um profissional.</div>
-                  </div>
-                  <div className="space-y-3 md:space-y-4">
-                    <Field label="Título profissional">
-                      <input
-                        value={profile.titulo}
-                        onChange={(e) => setProfile((p) => ({ ...p, titulo: e.target.value }))}
-                        placeholder="Ex: Eletricista, diarista, técnico..."
-                        className={inputClass()}
-                      />
-                    </Field>
-
-                    <Field label="Descrição do serviço">
-                      <textarea
-                        value={profile.descricao}
-                        onChange={(e) => setProfile((p) => ({ ...p, descricao: e.target.value }))}
-                        placeholder="Conte o que você faz, região que atende e diferenciais."
-                        className={inputClass("min-h-20 resize-y md:min-h-28")}
-                      />
-                    </Field>
-                  </div>
-
-                </section>
-              )}
-
-              {profSection === "corre" && (
-                <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
+              {profSection === "perfilProfissional" && (
+                <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 text-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
                   <div>
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Perfil de Corre</div>
-                    <div className="mt-1 text-sm font-bold text-slate-500">Essas informações aparecem para clientes quando procuram corres rápidos.</div>
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Meu perfil profissional</div>
+                    <div className="mt-1 text-sm font-bold text-slate-500">Escolha como deseja trabalhar e preencha apenas o essencial.</div>
                   </div>
 
-                  <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
-                    <div>
-                      <div className="text-sm font-black text-blue-950">Modo Corre ativo</div>
-                      <div className="text-xs font-semibold text-slate-500">Apareça para bicos rápidos, compras, entregas e serviços do bairro.</div>
+                  <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+                    {[
+                      {
+                        id: "corre",
+                        icon: "⚡",
+                        title: "Corre rapido",
+                        desc: "Entregas, compras e servicos rapidos",
+                        tone: "bg-blue-600 text-white",
+                      },
+                      {
+                        id: "profissional",
+                        icon: "▣",
+                        title: "Profissional",
+                        desc: "Servicos profissionais e agendamentos",
+                        tone: "bg-emerald-500 text-white",
+                      },
+                      {
+                        id: "ambos",
+                        icon: "2x",
+                        title: "Ambos",
+                        desc: "Atuar como corre e profissional",
+                        tone: "bg-violet-600 text-white",
+                      },
+                    ].map((option) => {
+                      const active = selectedWorkMode === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setProfessionalWorkMode(option.id)}
+                          className={[
+                            "flex items-center gap-3 rounded-[18px] border p-3 text-left transition active:scale-[0.99]",
+                            active
+                              ? "border-blue-400 bg-blue-50 shadow-[0_10px_24px_rgba(37,99,235,0.12)] ring-4 ring-blue-100"
+                              : "border-slate-100 bg-white hover:border-blue-100 hover:bg-slate-50",
+                          ].join(" ")}
+                        >
+                          <span className={["grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-sm font-black", option.tone].join(" ")}>
+                            {option.icon}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-black text-blue-950">{option.title}</span>
+                            <span className="mt-0.5 block text-[11px] font-semibold leading-snug text-slate-500">{option.desc}</span>
+                          </span>
+                          <span className={["grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px] font-black", active ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 text-transparent"].join(" ")}>
+                            ✓
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {profile.isCorre && (
+                    <div className="space-y-3 rounded-[22px] border border-blue-100 bg-blue-50/50 p-3 md:p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-black text-blue-950">Corre rapido</div>
+                          <div className="mt-0.5 text-xs font-semibold text-slate-500">Dados usados quando o cliente procura ajuda imediata.</div>
+                        </div>
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black text-emerald-700">Ativo</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
+                        <Field label="Transporte">
+                          <select
+                            value={profile.correTransporte}
+                            onChange={(e) => setProfile((p) => ({ ...p, correTransporte: e.target.value }))}
+                            className={inputClass()}
+                          >
+                            <option value="" className="text-black">Selecione</option>
+                            <option value="A pé" className="text-black">A pé</option>
+                            <option value="Bike" className="text-black">Bike</option>
+                            <option value="Moto" className="text-black">Moto</option>
+                            <option value="Carro" className="text-black">Carro</option>
+                            <option value="Van" className="text-black">Van</option>
+                          </select>
+                        </Field>
+
+                        <Field label="Regiao principal">
+                          <input
+                            value={profile.correRegiao}
+                            onChange={(e) => setProfile((p) => ({ ...p, correRegiao: e.target.value }))}
+                            placeholder="Ex: Nova Iguacu - RJ"
+                            className={inputClass()}
+                          />
+                        </Field>
+
+                        <Field label="Titulo do Corre">
+                          <input
+                            value={profile.correTitulo}
+                            onChange={(e) => setProfile((p) => ({ ...p, correTitulo: e.target.value }))}
+                            placeholder="Ex: Entregas rapidas e compras"
+                            className={inputClass()}
+                          />
+                        </Field>
+
+                        <Field label="Disponibilidade">
+                          <input
+                            value={profile.correDisponibilidade}
+                            onChange={(e) => setProfile((p) => ({ ...p, correDisponibilidade: e.target.value }))}
+                            placeholder="Ex: Hoje, noites, fins de semana"
+                            className={inputClass()}
+                          />
+                        </Field>
+                      </div>
+
+                      <Field label="Resumo do seu servico">
+                        <textarea
+                          value={profile.correBio}
+                          onChange={(e) => setProfile((p) => ({ ...p, correBio: e.target.value }))}
+                          placeholder="Ex: Entregas rapidas, compras e pequenos servicos de transporte."
+                          maxLength={120}
+                          className={inputClass("min-h-24 resize-y")}
+                        />
+                      </Field>
                     </div>
-                    <ToggleSwitch
-                      checked={profile.isCorre}
-                      onChange={(checked) => setProfile((p) => ({ ...p, isCorre: checked }))}
-                      label="Ativar modo Corre"
-                      tone="blue"
-                    />
-                  </label>
+                  )}
 
-                  <Field label="Título do Corre">
-                    <input
-                      value={profile.correTitulo}
-                      onChange={(e) => setProfile((p) => ({ ...p, correTitulo: e.target.value }))}
-                      placeholder="Ex: Faço entregas, compras e pequenos serviços"
-                      className={inputClass()}
-                    />
-                  </Field>
+                  {profile.isProfissional && (
+                    <div className="space-y-3 rounded-[22px] border border-emerald-100 bg-emerald-50/45 p-3 md:p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-black text-blue-950">Servicos profissionais</div>
+                          <div className="mt-0.5 text-xs font-semibold text-slate-500">Dados usados em profissionais, agenda e ficha publica.</div>
+                        </div>
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black text-emerald-700">Ativo</span>
+                      </div>
 
-                  <Field label="Resumo do Corre">
-                    <textarea
-                      value={profile.correBio}
-                      onChange={(e) => setProfile((p) => ({ ...p, correBio: e.target.value }))}
-                      placeholder="Conte que tipo de corre você faz, como trabalha e sua experiência."
-                      className={inputClass("min-h-20 resize-y md:min-h-28")}
-                    />
-                  </Field>
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
+                        <Field label="Profissao principal">
+                          <input
+                            value={profile.titulo}
+                            onChange={(e) => setProfile((p) => ({ ...p, titulo: e.target.value }))}
+                            placeholder="Ex: Eletricista"
+                            className={inputClass()}
+                          />
+                        </Field>
 
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
-                    <Field label="Transporte">
-                      <select
-                        value={profile.correTransporte}
-                        onChange={(e) => setProfile((p) => ({ ...p, correTransporte: e.target.value }))}
-                        className={inputClass()}
-                      >
-                        <option value="" className="text-black">Selecione</option>
-                        <option value="A pé" className="text-black">🚶 A pé</option>
-                        <option value="Bike" className="text-black">🚲 Bike</option>
-                        <option value="Moto" className="text-black">🏍️ Moto</option>
-                        <option value="Carro" className="text-black">🚗 Carro</option>
-                        <option value="Van" className="text-black">🚐 Van</option>
-                      </select>
-                    </Field>
+                        <Field label="Regiao principal">
+                          <input
+                            value={profile.profRegiao}
+                            onChange={(e) => setProfile((p) => ({ ...p, profRegiao: e.target.value }))}
+                            placeholder="Ex: Nova Iguacu - RJ"
+                            className={inputClass()}
+                          />
+                        </Field>
 
-                    <Field label="Região que atende">
-                      <input
-                        value={profile.correRegiao}
-                        onChange={(e) => setProfile((p) => ({ ...p, correRegiao: e.target.value }))}
-                        placeholder="Ex: Centro, bairros próximos"
-                        className={inputClass()}
-                      />
-                    </Field>
+                        <Field label="Preco base">
+                          <input
+                            value={profile.preco}
+                            onChange={(e) => setProfile((p) => ({ ...p, preco: e.target.value }))}
+                            placeholder="Ex: R$ 50,00"
+                            inputMode="decimal"
+                            className={inputClass()}
+                          />
+                        </Field>
 
-                    <Field label="Disponibilidade">
-                      <input
-                        value={profile.correDisponibilidade}
-                        onChange={(e) => setProfile((p) => ({ ...p, correDisponibilidade: e.target.value }))}
-                        placeholder="Ex: Noites, fins de semana, qualquer hora"
-                        className={inputClass()}
-                      />
-                    </Field>
+                        <Field label="WhatsApp">
+                          <input
+                            value={profile.whatsapp}
+                            onChange={(e) => setProfile((p) => ({ ...p, whatsapp: e.target.value }))}
+                            placeholder="Ex: (21) 99999-9999"
+                            inputMode="tel"
+                            className={inputClass()}
+                          />
+                        </Field>
 
-                    <Field label="Experiência">
-                      <input
-                        value={profile.correExperiencia}
-                        onChange={(e) => setProfile((p) => ({ ...p, correExperiencia: e.target.value }))}
-                        placeholder="Ex: 2 anos fazendo entregas e compras"
-                        className={inputClass()}
-                      />
-                    </Field>
+                        <Field label="Experiencia">
+                          <input
+                            value={profile.profExperiencia}
+                            onChange={(e) => setProfile((p) => ({ ...p, profExperiencia: e.target.value }))}
+                            placeholder="Ex: 5 anos"
+                            className={inputClass()}
+                          />
+                        </Field>
+                      </div>
+
+                      <Field label="Resumo do seu servico">
+                        <textarea
+                          value={profile.descricao}
+                          onChange={(e) => setProfile((p) => ({ ...p, descricao: e.target.value }))}
+                          placeholder="Ex: Instalacoes, manutencoes e reparos eletricos."
+                          maxLength={120}
+                          className={inputClass("min-h-24 resize-y")}
+                        />
+                      </Field>
+                    </div>
+                  )}
+
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3 text-xs font-bold leading-relaxed text-slate-600">
+                    O portfolio continua separado: use a opcao Portfolio de servicos para cadastrar fotos, precos e trabalhos.
                   </div>
                 </section>
               )}
@@ -3074,7 +3238,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                     </div>
                     <button
                       type="button"
-                      onClick={() => setProfSection("perfilPublico")}
+                      onClick={() => setProfSection("perfilProfissional")}
                       className="h-9 rounded-xl bg-[#ffd91a] px-4 text-xs font-black text-blue-950 shadow-sm"
                     >
                       Ver meu perfil
@@ -3122,18 +3286,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
 
               {profSection === "config" && (
                 <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
-                  <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
-                    <div>
-                      <div className="text-sm font-black text-blue-950">Modo profissional</div>
-                      <div className="text-xs font-semibold text-slate-500">Apareça na lista de profissionais para clientes.</div>
-                    </div>
-                    <ToggleSwitch
-                      checked={profile.isProfissional}
-                      onChange={(checked) => setProfile((p) => ({ ...p, isProfissional: checked }))}
-                      label="Ativar modo profissional"
-                      tone="blue"
-                    />
-                  </label>
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Configuracoes</div>
+                    <div className="mt-1 text-sm font-bold text-slate-500">Ajuste sua agenda e disponibilidade de atendimento.</div>
+                  </div>
 
                   <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3">
                     <div>

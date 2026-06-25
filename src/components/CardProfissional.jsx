@@ -143,6 +143,7 @@ function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
 
   const isProf = !!(item?.isProfissional || profile?.isProfissional || prof?.ativo || item?.profissional)
   const isCorre = !!(item?.isCorre || profile?.isCorre || corre?.ativo || item?.corre)
+  const isOnline = item?.online === true
   const agendaStatus = getAgendaStatus(item)
 
   const tituloProf = pickText(prof?.titulo, item?.profTitulo, profile?.titulo, item?.titulo, 'Profissional local')
@@ -245,8 +246,9 @@ function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
     profExperiencia || expCorre ? { label: 'Experiência', value: profExperiencia || expCorre } : null,
   ].filter(Boolean)
 
-  const statusLabel = agendaStatus.emServico ? 'Em serviço' : agendaStatus.agendaAberta ? 'Disponível' : 'Agenda fechada'
-  const statusTone = agendaStatus.emServico ? 'amber' : agendaStatus.agendaAberta ? 'emerald' : 'slate'
+  const statusLabel = isOnline ? 'Online agora' : 'Aceita agendamento'
+  const statusIcon = isOnline ? '🟢' : '⚪'
+  const statusTone = isOnline ? 'emerald' : 'slate'
   const temPortfolio = useMemo(() => hasActivePortfolio(item), [item])
   const avatarStyle = useMemo(
     () => (fotoURL ? { backgroundImage: `url(${JSON.stringify(fotoURL)})` } : undefined),
@@ -286,7 +288,7 @@ function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
                   statusTone === 'slate' ? 'bg-slate-100 text-slate-600 ring-slate-200' : '',
                 ].join(' ')}
               >
-                <span className={statusTone === 'emerald' ? 'h-1.5 w-1.5 rounded-full bg-emerald-500' : statusTone === 'amber' ? 'h-1.5 w-1.5 rounded-full bg-amber-500' : 'h-1.5 w-1.5 rounded-full bg-slate-400'} />
+                <span aria-hidden="true">{statusIcon}</span>
                 {statusLabel}
               </div>
               <h3 className="mt-1.5 truncate text-base font-black leading-tight text-slate-950 md:mt-2 md:text-lg">{nome}</h3>

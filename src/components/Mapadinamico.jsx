@@ -69,6 +69,189 @@ const isFotoValor = (v) => /^(https?:\/\/|data:image\/|blob:|\/)/i.test(String(v
 
 const pickFoto = (...vals) => vals.map((v) => String(v || '').trim()).find(isFotoValor) || ''
 
+const safeText = (v) => String(v || '').trim()
+
+const publicTime = (...values) => {
+  for (const value of values) {
+    const numeric = Number(value)
+    if (Number.isFinite(numeric) && numeric > 0) return numeric
+    const parsed = Date.parse(String(value || ''))
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return Date.now()
+}
+
+const isExplicitPrivateProfile = (privacy = {}) =>
+  privacy.profileVisible === false &&
+  (privacy.profileVisibilityExplicit === true || privacy.profileVisibleExplicit === true)
+
+const normalizePublicPortfolioItems = (...values) => values
+  .flatMap((value) => {
+    if (!value) return []
+    if (Array.isArray(value)) return value
+    if (typeof value === 'object') {
+      return Object.entries(value).map(([key, item]) => ({
+        id: item?.id || key,
+        ...(item || {}),
+      }))
+    }
+    return []
+  })
+  .filter((item) => item && typeof item === 'object')
+  .slice(0, 12)
+
+const buildPublicVitrinePayload = (uid, user = {}, fallback = {}) => {
+  if (!uid || !user || typeof user !== 'object') return { profile: null, portfolio: null }
+
+  const profile = user.profile || {}
+  const privacy = user.privacy || profile.privacy || {}
+  if (isExplicitPrivateProfile(privacy)) return { profile: null, portfolio: null }
+
+  const corre = user.corre || profile.corre || {}
+  const profissional = user.profissional || profile.profissional || {}
+  const fotoPrincipal = pickFoto(
+    fallback.fotoURL,
+    user.fotoURL,
+    profile.fotoURL,
+    user.photoURL,
+    profile.photoURL,
+    user.avatar,
+    profile.avatar
+  )
+  const avatarEmoji =
+    user.avatarEmoji ||
+    profile.avatarEmoji ||
+    (!isFotoValor(user.avatar) ? user.avatar : '') ||
+    (!isFotoValor(profile.avatar) ? profile.avatar : '') ||
+    fallback.avatarEmoji ||
+    ''
+  const nome = safeText(user.nome || profile.nome || fallback.nome || 'Profissional')
+  const cidade = safeText(user.cidade || profile.cidade || profissional.regiao || corre.regiao || '')
+  const isCorre = !!(user.isCorre || profile.isCorre || corre.ativo)
+  const isProfissional = !!(user.isProfissional || profile.isProfissional || profissional.ativo)
+  const portfolioItems = normalizePublicPortfolioItems(
+    user.profPortfolio,
+    user.portfolio,
+    profile.profPortfolio,
+    profile.portfolio,
+    profissional.profPortfolio,
+    profissional.portfolio
+  )
+
+  if (!isCorre && !isProfissional && !portfolioItems.length) {
+    return { profile: null, portfolio: null }
+  }
+
+  const publicPortfolio = portfolioItems.reduce((acc, item, index) => {
+    const id = safeText(item.id || item.key || `portfolio_${uid}_${index}`)
+    const categoriaMeta = getCategoryById(item.categoriaId || item.categoria)
+    const categoriaId = safeText(item.categoriaId || categoriaMeta?.id || '')
+    const categoriaNome = safeText(item.categoriaNome || item.categoria || categoriaMeta?.label || '')
+    const nomeServico = safeText(item.nome || item.titulo || item.title)
+    const fotos = normalizePublicPortfolioItems(item.fotos)
+    const fotoURL = pickFoto(item.fotoURL, item.foto, fotos[0]?.url, fotos[0]) || ''
+    const serviceFotos = Array.isArray(item.fotos)
+      ? item.fotos.map((foto) => pickFoto(foto?.url, foto)).filter(Boolean).slice(0, 5)
+      : fotoURL
+        ? [fotoURL]
+        : []
+
+    if (!id || !nomeServico || item.ativo === false) return acc
+
+    acc[id] = {
+      id,
+      nome: nomeServico,
+      titulo: nomeServico,
+      descricao: safeText(item.descricao || item.description),
+      categoriaId,
+      categoriaNome,
+      categoria: categoriaNome,
+      preco: safeText(item.preco || item.price),
+      faixaPreco: safeText(item.faixaPreco || item.valor || item.priceRange || item.preco),
+      valor: safeText(item.faixaPreco || item.valor || item.priceRange || item.preco),
+      tempoMedio: safeText(item.tempoMedio || item.tempo || item.duration),
+      fotos: serviceFotos,
+      fotoURL: serviceFotos[0] || '',
+      regiao: safeText(item.regiao || item.regiaoAtendimento || item.region || cidade),
+      atendeDomicilio: item.atendeDomicilio ?? item.domicilio ?? true,
+      urgente: item.urgente === true || item.urgent === true,
+      ativo: true,
+      profissionalId: uid,
+      uid,
+      profissionalNome: nome,
+      providerName: nome,
+      profissionalFotoURL: fotoPrincipal || '',
+      providerFotoURL: fotoPrincipal || '',
+      cidade,
+      isCorre,
+      isProfissional: true,
+      createdAt: publicTime(item.createdAt, item.criadoEm),
+      updatedAt: publicTime(item.updatedAt, item.atualizadoEm, item.createdAt, item.criadoEm),
+    }
+    return acc
+  }, {})
+
+  const profPortfolio = Object.values(publicPortfolio)
+  const publicProfile = {
+    uid,
+    id: uid,
+    nome,
+    fotoURL: fotoPrincipal || null,
+    photoURL: fotoPrincipal || null,
+    avatar: fotoPrincipal || avatarEmoji || '',
+    avatarEmoji,
+    cidade,
+    bio: safeText(user.bio || profile.bio || corre.bio || profissional.descricao),
+    visivel: user.visivel !== false && profile.visivel !== false,
+    profileVisible: true,
+    profileVisibilityExplicit: privacy.profileVisibilityExplicit === true || privacy.profileVisibleExplicit === true,
+    showOnlineStatus: user.showOnlineStatus ?? privacy.showOnlineStatus ?? true,
+    allowPublicContact: user.allowPublicContact ?? privacy.allowPublicContact ?? false,
+    isCorre,
+    isProfissional,
+    correCategorias: Array.isArray(user.correCategorias) ? user.correCategorias : Array.isArray(profile.correCategorias) ? profile.correCategorias : [],
+    profCategorias: Array.isArray(user.profCategorias) ? user.profCategorias : Array.isArray(profile.profCategorias) ? profile.profCategorias : [],
+    correTitulo: safeText(user.correTitulo || profile.correTitulo || corre.titulo || 'Corre rapido'),
+    correResumo: safeText(user.correResumo || profile.correResumo || corre.bio || profile.bio),
+    correRegiao: safeText(user.correRegiao || profile.correRegiao || corre.regiao || cidade),
+    correTransporte: safeText(user.correTransporte || profile.correTransporte || corre.transporte),
+    profResumo: safeText(user.profResumo || profile.profResumo || profile.descricao || profissional.descricao || profissional.titulo),
+    profCidadeAtende: safeText(user.profCidadeAtende || profile.profCidadeAtende || profissional.regiao || cidade),
+    profPrecoBase: safeText(user.profPrecoBase || profile.profPrecoBase || profile.preco || profissional.preco),
+    profWhats: safeText(user.profWhats || profile.profWhats || profissional.whatsapp),
+    profExperiencia: safeText(user.profExperiencia || profile.profExperiencia || profissional.experiencia),
+    corre: {
+      ativo: isCorre,
+      titulo: safeText(corre.titulo || user.correTitulo || profile.correTitulo || 'Corre rapido'),
+      bio: safeText(corre.bio || user.correResumo || profile.correResumo || profile.bio),
+      transporte: safeText(corre.transporte || user.correTransporte || profile.correTransporte),
+      regiao: safeText(corre.regiao || user.correRegiao || profile.correRegiao || cidade),
+    },
+    profissional: {
+      ativo: isProfissional,
+      titulo: safeText(profissional.titulo || profile.titulo),
+      descricao: safeText(profissional.descricao || profile.descricao),
+      preco: safeText(profissional.preco || profile.preco),
+      whatsapp: safeText(profissional.whatsapp || profile.whatsapp),
+      regiao: safeText(profissional.regiao || profile.profRegiao || cidade),
+      experiencia: safeText(profissional.experiencia || profile.profExperiencia),
+      agendaAberta: user.agendaAberta ?? profissional.agendaAberta ?? true,
+    },
+    profPortfolio,
+    portfolio: publicPortfolio,
+    plano: user.plano || profile.plano || 'Free',
+    statusProfissional: user.statusProfissional || profile.statusProfissional || profissional.statusProfissional || 'disponivel',
+    agendaAberta: user.agendaAberta ?? profile.agendaAberta ?? profissional.agendaAberta ?? true,
+    updatedAt: Date.now(),
+    atualizadoEm: Date.now(),
+  }
+
+  return {
+    profile: publicProfile,
+    portfolio: Object.keys(publicPortfolio).length ? publicPortfolio : null,
+  }
+}
+
 const compactCategoryLabel = (label, max = 12) => {
   const text = String(label || '').trim()
   if (!text || text.length <= max) return text
@@ -1577,6 +1760,37 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [meuId])
 
+  useEffect(() => {
+    if (!meuId || !meuUserProfile) return undefined
+
+    let cancelled = false
+    const payload = buildPublicVitrinePayload(meuId, meuUserProfile, {
+      nome: meuNome,
+      fotoURL,
+      avatarEmoji,
+    })
+
+    ;(async () => {
+      try {
+        await set(ref(database, `publicProfiles/${meuId}`), payload.profile)
+      } catch (error) {
+        console.warn('[CLIENTE_HOME] erro publicando publicProfiles', error)
+      }
+
+      if (cancelled) return
+
+      try {
+        await set(ref(database, `publicPortfolio/${meuId}`), payload.portfolio)
+      } catch (error) {
+        console.warn('[CLIENTE_HOME] erro publicando publicPortfolio', error)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [meuId, meuUserProfile, meuNome, fotoURL, avatarEmoji])
+
   /* =======================
      3) Ler pedidos
   ======================= */
@@ -1693,12 +1907,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
 
     const off = onValue(
-      query(ref(database, 'users'), limitToLast(300)),
+      query(ref(database, 'publicProfiles'), limitToLast(300)),
       (snap) => {
         setRegisteredUsersObj(snap.val() || {})
       },
       (error) => {
-        console.warn('[CLIENTE_HOME] erro lendo perfis cadastrados', error)
+        console.warn('[CLIENTE_HOME] erro lendo publicProfiles', error)
         setRegisteredUsersObj({})
       }
     )
