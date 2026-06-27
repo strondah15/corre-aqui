@@ -1106,6 +1106,162 @@ function ProfessionalOverview({
   )
 }
 
+function GlobalProfileFab({ fotoURL, avatarEmoji, iniciais, count = 0, onClick, bottomClass = '' }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Abrir menu da conta"
+      className={[
+        'fixed right-4 z-[99981] grid h-14 w-14 place-items-center rounded-full border-[5px] border-white bg-[#ffd91a] text-blue-950 shadow-[0_18px_42px_rgba(15,23,42,0.28),0_0_34px_rgba(250,204,21,0.35)] transition hover:scale-[1.03] active:scale-[0.96] md:right-7 md:h-[62px] md:w-[62px]',
+        bottomClass,
+      ].join(' ')}
+    >
+      {fotoURL ? (
+        <span
+          aria-hidden="true"
+          className="h-full w-full overflow-hidden rounded-full bg-cover bg-center"
+          style={{ backgroundImage: `url(${fotoURL})` }}
+        />
+      ) : avatarEmoji ? (
+        <span className="text-xl leading-none">{avatarEmoji}</span>
+      ) : (
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2.35" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+          <path d="M4.8 20.5c1.4-4 4-6 7.2-6s5.8 2 7.2 6" />
+        </svg>
+      )}
+      {!fotoURL && !avatarEmoji && iniciais ? (
+        <span className="sr-only">{iniciais}</span>
+      ) : null}
+      {count > 0 ? (
+        <span className="absolute -right-2 -top-2 grid h-7 min-w-7 place-items-center rounded-full bg-rose-500 px-1.5 text-xs font-black text-white ring-[3px] ring-white">
+          {count > 99 ? '99+' : count}
+        </span>
+      ) : null}
+    </button>
+  )
+}
+
+function ProfileMenuRow({ icon, label, count = 0, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-12 w-full items-center gap-3 rounded-2xl px-3 text-left text-sm font-bold text-slate-100 transition hover:bg-white/[0.08] active:scale-[0.99]"
+    >
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white/10 text-base">{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {count > 0 ? (
+        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white">
+          {count > 99 ? '99+' : count}
+        </span>
+      ) : null}
+      <span className="text-lg text-slate-400">›</span>
+    </button>
+  )
+}
+
+function GlobalProfileMenu({
+  open,
+  onClose,
+  nome,
+  fotoURL,
+  avatarEmoji,
+  iniciais,
+  nota,
+  avaliacoes,
+  emServico,
+  clientePedidosCount,
+  unreadInbox,
+  problemasCount,
+  onDados,
+  onEnderecos,
+  onHistorico,
+  onFavoritos,
+  onAvaliacoesCliente,
+  onPerfilProfissional,
+  onPortfolio,
+  onAgenda,
+  onGanhos,
+  onPatentes,
+  onAvaliacoesRecebidas,
+  onConfiguracoes,
+  onAjuda,
+}) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[100002] bg-slate-950/58 px-3 py-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="ml-auto flex h-full w-full max-w-[390px] flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#0b1628] text-white shadow-[0_30px_100px_rgba(2,6,23,0.55)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-[#ffd91a] bg-white text-lg font-black text-blue-700">
+              {fotoURL ? (
+                <span className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${fotoURL})` }} />
+              ) : avatarEmoji ? (
+                <span>{avatarEmoji}</span>
+              ) : (
+                <span>{iniciais}</span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-lg font-black">{nome || 'Corre Aqui'}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-black">
+                <span className="rounded-full bg-[#ffd91a] px-2 py-1 text-blue-950">
+                  {nota > 0 ? `★ ${nota.toFixed(1)}` : 'Novo'}
+                  {avaliacoes ? ` (${avaliacoes})` : ''}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/14 px-2 py-1 text-emerald-300">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  {emServico ? 'Em serviço' : 'Online'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/8 text-lg font-black transition hover:bg-white/12"
+            aria-label="Fechar menu"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          <section className="rounded-[22px] border border-white/8 bg-white/[0.045] p-2">
+            <div className="px-3 pb-1 pt-2 text-xs font-black uppercase tracking-[0.14em] text-violet-300">Minha conta cliente</div>
+            <ProfileMenuRow icon="👤" label="Dados pessoais" onClick={onDados} />
+            <ProfileMenuRow icon="📍" label="Endereços" onClick={onEnderecos} />
+            <ProfileMenuRow icon="🧾" label="Histórico de pedidos" count={clientePedidosCount} onClick={onHistorico} />
+            <ProfileMenuRow icon="♥" label="Favoritos" onClick={onFavoritos} />
+            <ProfileMenuRow icon="★" label="Avaliações como cliente" onClick={onAvaliacoesCliente} />
+          </section>
+
+          <section className="rounded-[22px] border border-white/8 bg-white/[0.045] p-2">
+            <div className="px-3 pb-1 pt-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-300">Área profissional</div>
+            <ProfileMenuRow icon="👤" label="Meu perfil profissional" onClick={onPerfilProfissional} />
+            <ProfileMenuRow icon="💼" label="Portfólio de serviços" onClick={onPortfolio} />
+            <ProfileMenuRow icon="📅" label="Agenda" onClick={onAgenda} />
+            <ProfileMenuRow icon="💰" label="Ganhos" onClick={onGanhos} />
+            <ProfileMenuRow icon="♦" label="Patentes" onClick={onPatentes} />
+            <ProfileMenuRow icon="★" label="Avaliações recebidas" onClick={onAvaliacoesRecebidas} />
+          </section>
+
+          <section className="rounded-[22px] border border-white/8 bg-white/[0.045] p-2">
+            <ProfileMenuRow icon="⚙" label="Configurações" count={problemasCount} onClick={onConfiguracoes} />
+            <ProfileMenuRow icon="?" label="Ajuda e suporte" count={unreadInbox} onClick={onAjuda} />
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {}) {
   const router = useRouter()
   const [tab, setTab] = useState('corre') // corre | inbox | agenda
@@ -1113,7 +1269,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const [modoApp, setModoApp] = useState(initialMode === 'cliente' || initialMode === 'corre' ? initialMode : 'corre') // cliente | corre
   const [openPerfil, setOpenPerfil] = useState(false)
-  const [perfilInitialTab, setPerfilInitialTab] = useState('perfil')
+  const [openProfileMenu, setOpenProfileMenu] = useState(false)
+  const [perfilInitialTab, setPerfilInitialTab] = useState('config')
+  const [perfilInitialProfSection, setPerfilInitialProfSection] = useState('')
   const [showXpToast, setShowXpToast] = useState(false)
   const [xpToastInfo, setXpToastInfo] = useState({
     xp: 10,
@@ -2224,6 +2382,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       ganhosSemana,
       taxaConclusao,
       notaMedia,
+      avaliacoes: notas.length,
       ticketMedio,
       semana,
     }
@@ -2935,8 +3094,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const abrirPerfilCliente = useCallback((u) => {
     if (!u) {
-      setPerfilInitialTab('perfil')
-      setOpenPerfil(true)
+      setOpenProfileMenu(true)
       return
     }
 
@@ -3018,6 +3176,37 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     )
   }
 
+  const abrirPerfilDrawer = useCallback((initialTab = 'config', initialProfSection = '') => {
+    setPerfilInitialTab(initialTab && initialTab !== 'perfil' ? initialTab : 'config')
+    setPerfilInitialProfSection(initialProfSection || '')
+    setOpenProfileMenu(false)
+    setOpenPerfil(true)
+  }, [])
+
+  const abrirRecursoEmBreve = useCallback((title) => {
+    setOpenProfileMenu(false)
+    showToast({
+      type: 'info',
+      title,
+      message: 'Essa área entra na próxima rodada de ajustes.',
+    })
+  }, [showToast])
+
+  const abrirPainelCliente = useCallback((painel) => {
+    setOpenProfileMenu(false)
+    setModoApp('cliente')
+    setChatPedido(null)
+    setClientePainelBaixo(painel)
+  }, [])
+
+  const abrirAreaProfissional = useCallback((nextTab) => {
+    setOpenProfileMenu(false)
+    setModoApp('corre')
+    setTab(nextTab)
+    setClientePainelBaixo('')
+    setChatPedido(null)
+  }, [])
+
   const onBottomTab = (id) => {
     if (id === 'inicio') {
       setTab('corre')
@@ -3068,8 +3257,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       return
     }
     if (id === 'perfil') {
-      setPerfilInitialTab('profissional')
-      setOpenPerfil(true)
+      setOpenProfileMenu(true)
       return
     }
     if (id === 'aovivo') {
@@ -3087,6 +3275,21 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
     setTab(id)
   }
+
+  const profileFabCount = Number(problemasVisiveisCount || 0)
+  const showGlobalProfileFab =
+    !openIA &&
+    !isMapOpen &&
+    !openPerfil &&
+    !openProfileMenu &&
+    !usuarioSelecionado &&
+    !agendaClienteUser &&
+    !clientePainelBaixo
+  const profileFabBottomClass = bottomBarsHidden
+    ? 'bottom-[calc(env(safe-area-inset-bottom)+1rem)]'
+    : modoApp === 'corre'
+      ? 'bottom-[calc(env(safe-area-inset-bottom)+10.35rem)] md:bottom-44'
+      : 'bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] md:bottom-28'
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050b12] text-slate-900 corre-aqui-no-select">
@@ -3196,10 +3399,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          setPerfilInitialTab('perfil')
-                          setOpenPerfil(true)
-                        }}
+                        onClick={() => setOpenProfileMenu(true)}
                         className="mt-0.5 block w-full max-w-[9.2rem] truncate text-left text-[1.55rem] font-black leading-none text-white drop-shadow-sm transition hover:opacity-90 min-[390px]:max-w-[11rem] min-[390px]:text-2xl md:max-w-none md:text-4xl"
                       >
                         {meuNome || 'Visitante'} ›
@@ -3325,7 +3525,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     nome={meuNome}
                     fotoURL={fotoURL}
                     notificacoesCount={notificacoesNaoLidas}
-                    onAbrirPerfil={() => setOpenPerfil(true)}
+                    onAbrirPerfil={() => setOpenProfileMenu(true)}
                     onAbrirNotificacoes={() => setTab('inbox')}
                   />
                 </div>
@@ -3347,10 +3547,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     <div className="text-sm font-black md:text-base">Ganhos Corre/Prof</div>
                     <button
                       type="button"
-                      onClick={() => {
-                        setPerfilInitialTab('profissional')
-                        setOpenPerfil(true)
-                      }}
+                      onClick={() => abrirPerfilDrawer('profissional', 'config')}
                       className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/8 text-lg font-black text-white transition hover:bg-white/12"
                       title="Perfil profissional"
                     >
@@ -4311,7 +4508,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             bottomBarsHidden ? 'translate-y-[135%] opacity-0' : 'translate-y-0 opacity-100',
           ].join(' ')}
         >
-          <div className="pointer-events-auto mx-auto grid h-[66px] w-full max-w-[430px] grid-cols-[1fr_1fr_72px_1fr_1fr] items-center gap-1 rounded-[28px] border border-slate-200 bg-white px-2 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.22)] backdrop-blur-xl md:h-[146px] md:max-w-none md:grid-cols-[1fr_1fr_132px_1fr_1fr] md:gap-4 md:rounded-[36px] md:border-slate-100 md:bg-white md:px-8 md:text-slate-700">
+          <div className="pointer-events-auto mx-auto grid h-[66px] w-full max-w-[360px] grid-cols-[1fr_1fr_72px_1fr] items-center gap-1 rounded-[28px] border border-slate-200 bg-white px-2 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.22)] backdrop-blur-xl md:h-[146px] md:max-w-[820px] md:grid-cols-[1fr_1fr_132px_1fr] md:gap-4 md:rounded-[36px] md:border-slate-100 md:bg-white md:px-8 md:text-slate-700">
             <button
               type="button"
               onClick={() => {
@@ -4387,22 +4584,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               {navCountBadge(unreadInbox)}
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setPerfilInitialTab('perfil')
-                setOpenPerfil(true)
-              }}
-              title="Perfil"
-              className="relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black text-slate-600 transition-all duration-200 hover:bg-slate-100 active:scale-[0.96] md:h-[104px] md:rounded-[30px] md:text-[20px] md:text-slate-500 md:hover:bg-slate-50 md:hover:text-blue-950"
-            >
-              <svg className="h-[22px] w-[22px] md:h-11 md:w-11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" strokeWidth="2.1" />
-                <path d="M4.8 20.5c1.4-4 4-6 7.2-6s5.8 2 7.2 6" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
-              </svg>
-              <span className="mt-0.5 leading-none">Perfil</span>
-              {navCountBadge(problemasVisiveisCount)}
-            </button>
           </div>
 
           <div className="hidden pointer-events-auto mx-auto h-[70px] w-full max-w-[330px] items-center justify-between rounded-full border border-slate-200 bg-white px-3 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.24)] backdrop-blur-xl md:max-w-[360px] md:border-white/10 md:bg-slate-950/92 md:px-4 md:text-white">
@@ -4848,7 +5029,52 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         onClose={() => setPatenteUp(null)}
       />
 
-      <PerfilDrawer open={openPerfil} onClose={() => setOpenPerfil(false)} uid={meuId} initialTab={perfilInitialTab} />
+      {showGlobalProfileFab ? (
+        <GlobalProfileFab
+          fotoURL={fotoURL}
+          avatarEmoji={avatarEmoji}
+          iniciais={minhasIniciais}
+          count={profileFabCount}
+          bottomClass={profileFabBottomClass}
+          onClick={() => setOpenProfileMenu(true)}
+        />
+      ) : null}
+
+      <GlobalProfileMenu
+        open={openProfileMenu}
+        onClose={() => setOpenProfileMenu(false)}
+        nome={meuNome}
+        fotoURL={fotoURL}
+        avatarEmoji={avatarEmoji}
+        iniciais={minhasIniciais}
+        nota={Number(profissionalStats?.notaMedia || 0)}
+        avaliacoes={Number(profissionalStats?.avaliacoes || 0)}
+        emServico={tab === 'servico'}
+        clientePedidosCount={clientePedidosCount}
+        unreadInbox={unreadInbox}
+        problemasCount={problemasVisiveisCount}
+        onDados={() => abrirPerfilDrawer('config')}
+        onEnderecos={() => abrirRecursoEmBreve('Endereços')}
+        onHistorico={() => abrirPainelCliente('meusPedidos')}
+        onFavoritos={() => abrirRecursoEmBreve('Favoritos')}
+        onAvaliacoesCliente={() => abrirRecursoEmBreve('Avaliações como cliente')}
+        onPerfilProfissional={() => abrirPerfilDrawer('profissional', 'perfilProfissional')}
+        onPortfolio={() => abrirPerfilDrawer('profissional', 'portfolio')}
+        onAgenda={() => abrirAreaProfissional('agenda')}
+        onGanhos={() => abrirAreaProfissional('ganhos')}
+        onPatentes={() => abrirPerfilDrawer('profissional', 'patentes')}
+        onAvaliacoesRecebidas={() => abrirPerfilDrawer('profissional', 'avaliacoes')}
+        onConfiguracoes={() => abrirPerfilDrawer('config')}
+        onAjuda={() => abrirPerfilDrawer('profissional', 'ajuda')}
+      />
+
+      <PerfilDrawer
+        open={openPerfil}
+        onClose={() => setOpenPerfil(false)}
+        uid={meuId}
+        initialTab={perfilInitialTab}
+        initialProfSection={perfilInitialProfSection}
+      />
 
       <ModalAgenda
         open={!!agendaClienteUser}

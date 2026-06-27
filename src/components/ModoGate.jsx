@@ -141,7 +141,7 @@ export default function ModoGate() {
           className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-[18px] border border-white/35 bg-white/16 text-xs font-black text-white shadow-[0_12px_30px_rgba(15,23,42,0.14)] backdrop-blur-xl transition hover:bg-white/22 active:scale-[0.98] md:h-12 md:rounded-[20px] md:text-sm"
         >
           <span aria-hidden="true">⚙</span>
-          <span>Perfil e configurações</span>
+          <span>Configurações</span>
         </button>
 
         <PerfilDrawer

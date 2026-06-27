@@ -82,16 +82,14 @@ const initialProfile = {
 };
 
 const tabLabel = {
-  perfil: "Perfil",
   corre: "Corre",
   profissional: "Corre/Pro",
-  config: "Ajustes",
+  config: "Configurações",
   monetizacao: "Em breve",
   patentes: "Patentes",
 };
 
 const tabIcon = {
-  perfil: "👤",
   corre: "⚡",
   profissional: "🧑‍🔧",
   config: "⚙️",
@@ -236,6 +234,29 @@ function ToggleSwitch({ checked, onChange, label, tone = "blue" }) {
   );
 }
 
+function MiniSwitch({ checked, onChange, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={[
+        "relative h-7 w-12 shrink-0 rounded-full border p-0.5 transition active:scale-[0.96]",
+        checked ? "border-blue-600 bg-blue-600" : "border-slate-200 bg-slate-200",
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "block h-6 w-6 rounded-full bg-white shadow-[0_3px_10px_rgba(15,23,42,0.22)] transition",
+          checked ? "translate-x-5" : "translate-x-0",
+        ].join(" ")}
+      />
+    </button>
+  );
+}
+
 function ProfMenuIcon({ id }) {
   const common = {
     fill: "none",
@@ -291,6 +312,51 @@ function ProfMenuIcon({ id }) {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 md:h-6 md:w-6" aria-hidden="true">
       {icons[id] || icons.perfilProfissional}
+    </svg>
+  );
+}
+
+function WorkModeIcon({ type }) {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2.2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+  const icons = {
+    corre: (
+      <>
+        <circle {...common} cx="7" cy="16" r="2.2" />
+        <circle {...common} cx="17" cy="16" r="2.2" />
+        <path {...common} d="M9 16h4l2-6h2" />
+        <path {...common} d="M7 16l3.5-6H14l3 6" />
+        <path {...common} d="M11 7h3" />
+      </>
+    ),
+    profissional: (
+      <>
+        <path {...common} d="M8 8V6.5A2.5 2.5 0 0 1 10.5 4h3A2.5 2.5 0 0 1 16 6.5V8" />
+        <path {...common} d="M4.5 8h15v10.5A1.5 1.5 0 0 1 18 20H6a1.5 1.5 0 0 1-1.5-1.5V8Z" />
+        <path {...common} d="M4.5 13h15" />
+        <path {...common} d="M10 13v2h4v-2" />
+      </>
+    ),
+    ambos: (
+      <>
+        <circle {...common} cx="8" cy="9" r="3" />
+        <circle {...common} cx="16" cy="15" r="3" />
+        <path {...common} d="M10.2 11.2 13.8 13.8" />
+        <path {...common} d="M5 18c.8-2 2.2-3 4-3" />
+        <path {...common} d="M15 6c1.8 0 3.2 1 4 3" />
+      </>
+    ),
+    check: <path {...common} d="M5 12.5 9.5 17 19 7" />,
+  };
+
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+      {icons[type] || icons.profissional}
     </svg>
   );
 }
@@ -628,9 +694,10 @@ function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
   });
 }
 
-export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil" }) {
-  const [tab, setTab] = useState("perfil");
+export default function PerfilDrawer({ open, onClose, uid, initialTab = "config", initialProfSection = "" }) {
+  const [tab, setTab] = useState("config");
   const [profSection, setProfSection] = useState("");
+  const [professionalProfileStep, setProfessionalProfileStep] = useState("choice");
 
   const [profile, setProfile] = useState(initialProfile);
   const [portfolioDraft, setPortfolioDraft] = useState(createEmptyPortfolioDraft);
@@ -696,9 +763,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
 
   useEffect(() => {
     if (!open) return;
-    setTab(initialTab || "perfil");
-    setProfSection("");
-  }, [open, initialTab]);
+    setTab(initialTab && initialTab !== "perfil" ? initialTab : "config");
+    setProfSection(initialTab === "profissional" ? initialProfSection || "" : "");
+    setProfessionalProfileStep("choice");
+  }, [open, initialTab, initialProfSection]);
 
   useEffect(() => {
     if (!open || !uid) return;
@@ -1570,6 +1638,29 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
       isProfissional: mode === "profissional" || mode === "ambos",
     }));
   };
+  const setProfessionalProfileType = (field, checked) => {
+    setProfile((prev) => {
+      const next = { ...prev, [field]: checked };
+      if (!next.isCorre && !next.isProfissional) {
+        return prev;
+      }
+      return next;
+    });
+  };
+  const goProfessionalProfileStep = (step) => {
+    setProfessionalProfileStep(step);
+    window.setTimeout(() => {
+      drawerScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    }, 40);
+  };
+  const salvarPerfilProfissional = async () => {
+    try {
+      await salvar();
+      goProfessionalProfileStep("saved");
+    } catch (error) {
+      console.error("[PERFIL_PROFISSIONAL] erro ao salvar", error);
+    }
+  };
   const profPages = {
     perfilProfissional: {
       title: "Meu perfil profissional",
@@ -1598,20 +1689,16 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
   };
   const profPage = profPages[profSection] || profPages.perfilProfissional;
   const drawerPages = {
-    perfil: {
-      title: "Meu perfil",
-      desc: "Dados pessoais, confiança e verificação.",
-    },
     config: {
-      title: "Ajustes",
-      desc: "Presença, notificações, mapa e experiência.",
+      title: "Configurações",
+      desc: "Conta, privacidade, notificações e preferências.",
     },
     monetizacao: {
       title: "Planos",
       desc: "Recursos, anúncios e benefícios do Corre Aqui.",
     },
   };
-  const drawerPage = drawerPages[tab] || drawerPages.perfil;
+  const drawerPage = drawerPages[tab] || drawerPages.config;
   const updatePortfolioDraft = (field, value) => {
     setPortfolioPhotoError("");
     setPortfolioDraft((prev) => ({ ...prev, [field]: value }));
@@ -1884,8 +1971,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
           {/* MENU DO PERFIL */}
           {!professionalMode && (
           <div className="mt-3 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.10)] md:mt-5 md:rounded-[30px] md:p-2">
-            <div className="grid grid-cols-3 gap-1.5 md:gap-2">
-              {["perfil", "config", "monetizacao"].map(
+            <div className="grid grid-cols-2 gap-1.5 md:gap-2">
+              {["config", "monetizacao"].map(
                 (t) => (
                   <button
                     key={t}
@@ -2608,7 +2695,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                     <button
                       key={id}
                       type="button"
-                      onClick={() => setProfSection(id)}
+                      onClick={() => {
+                        setProfSection(id);
+                        if (id === "perfilProfissional") setProfessionalProfileStep("choice");
+                      }}
                       className={[
                         "group flex w-full items-center gap-3 px-4 py-2.5 text-left transition md:gap-4 md:px-5 md:py-3",
                         index < arr.length - 1 ? "border-b border-slate-100" : "",
@@ -2631,6 +2721,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
               </>
               ) : (
               <>
+              {profSection !== "perfilProfissional" && (
               <section className="rounded-[24px] border border-white/10 bg-[#0b1628] p-3 text-white shadow-[0_18px_45px_rgba(15,23,42,0.16)] md:rounded-[30px] md:p-4">
                 <div className="flex items-center gap-3">
                   <button
@@ -2647,206 +2738,247 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                   </div>
                 </div>
               </section>
+              )}
 
               {profSection === "perfilProfissional" && (
-                <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 text-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
-                  <div>
-                    <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Meu perfil profissional</div>
-                    <div className="mt-1 text-sm font-bold text-slate-500">Escolha como deseja trabalhar e preencha apenas o essencial.</div>
+                <section className="mx-auto w-full max-w-[430px] rounded-[26px] border border-slate-200 bg-white p-4 text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.16)] md:max-w-[520px] md:rounded-[32px] md:p-5">
+                  <div className="flex h-10 items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfSection("");
+                        setProfessionalProfileStep("choice");
+                      }}
+                      className="grid h-10 w-10 place-items-center rounded-full text-xl font-black text-blue-950 transition hover:bg-slate-50"
+                      title="Voltar"
+                    >
+                      ‹
+                    </button>
+                    <div className="text-sm font-black text-blue-950 md:text-base">Meu perfil profissional</div>
+                    <button
+                      type="button"
+                      className="grid h-10 w-10 place-items-center rounded-full text-sm font-black text-blue-950 transition hover:bg-slate-50"
+                      title="Informacoes"
+                    >
+                      i
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
-                    {[
-                      {
-                        id: "corre",
-                        icon: "⚡",
-                        title: "Corre rapido",
-                        desc: "Entregas, compras e servicos rapidos",
-                        tone: "bg-blue-600 text-white",
-                      },
-                      {
-                        id: "profissional",
-                        icon: "▣",
-                        title: "Profissional",
-                        desc: "Servicos profissionais e agendamentos",
-                        tone: "bg-emerald-500 text-white",
-                      },
-                      {
-                        id: "ambos",
-                        icon: "2x",
-                        title: "Ambos",
-                        desc: "Atuar como corre e profissional",
-                        tone: "bg-violet-600 text-white",
-                      },
-                    ].map((option) => {
-                      const active = selectedWorkMode === option.id;
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => setProfessionalWorkMode(option.id)}
-                          className={[
-                            "flex items-center gap-3 rounded-[18px] border p-3 text-left transition active:scale-[0.99]",
-                            active
-                              ? "border-blue-400 bg-blue-50 shadow-[0_10px_24px_rgba(37,99,235,0.12)] ring-4 ring-blue-100"
-                              : "border-slate-100 bg-white hover:border-blue-100 hover:bg-slate-50",
-                          ].join(" ")}
-                        >
-                          <span className={["grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-sm font-black", option.tone].join(" ")}>
-                            {option.icon}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-black text-blue-950">{option.title}</span>
-                            <span className="mt-0.5 block text-[11px] font-semibold leading-snug text-slate-500">{option.desc}</span>
-                          </span>
-                          <span className={["grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px] font-black", active ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 text-transparent"].join(" ")}>
-                            ✓
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {professionalProfileStep === "choice" && (
+                    <div className="pt-8">
+                      <h3 className="text-xl font-black leading-tight text-blue-950 md:text-2xl">Como você trabalha?</h3>
+                      <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">Selecione o que melhor te representa.</p>
 
-                  {profile.isCorre && (
-                    <div className="space-y-3 rounded-[22px] border border-blue-100 bg-blue-50/50 p-3 md:p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-black text-blue-950">Corre rapido</div>
-                          <div className="mt-0.5 text-xs font-semibold text-slate-500">Dados usados quando o cliente procura ajuda imediata.</div>
-                        </div>
-                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black text-emerald-700">Ativo</span>
+                      <div className="mt-6 space-y-3">
+                        {[
+                          {
+                            id: "corre",
+                            icon: "corre",
+                            title: "Corre rápido",
+                            desc: "Entregas, compras e serviços rápidos",
+                            tone: "bg-blue-600 text-white",
+                          },
+                          {
+                            id: "profissional",
+                            icon: "profissional",
+                            title: "Profissional",
+                            desc: "Serviços profissionais e agendamentos",
+                            tone: "bg-emerald-500 text-white",
+                          },
+                          {
+                            id: "ambos",
+                            icon: "ambos",
+                            title: "Ambos",
+                            desc: "Quero atuar como corre e profissional",
+                            tone: "bg-violet-500 text-white",
+                          },
+                        ].map((option) => {
+                          const active = selectedWorkMode === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setProfessionalWorkMode(option.id)}
+                              className={[
+                                "flex min-h-[88px] w-full items-center gap-4 rounded-[18px] border bg-white p-3 text-left transition active:scale-[0.99]",
+                                active ? "border-blue-200 shadow-[0_16px_35px_rgba(37,99,235,0.10)]" : "border-slate-200 hover:border-blue-100",
+                              ].join(" ")}
+                            >
+                              <span className={["grid h-12 w-12 shrink-0 place-items-center rounded-full shadow-[0_10px_24px_rgba(15,23,42,0.12)]", option.tone].join(" ")}>
+                                <WorkModeIcon type={option.icon} />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-black text-blue-950">{option.title}</span>
+                                <span className="mt-1 block text-xs font-semibold leading-snug text-slate-500">{option.desc}</span>
+                              </span>
+                              <span className={["grid h-5 w-5 shrink-0 place-items-center rounded-full border-2", active ? "border-blue-600" : "border-slate-300"].join(" ")}>
+                                {active ? <span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> : null}
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
 
-                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
-                        <Field label="Transporte">
-                          <select
-                            value={profile.correTransporte}
-                            onChange={(e) => setProfile((p) => ({ ...p, correTransporte: e.target.value }))}
-                            className={inputClass()}
-                          >
-                            <option value="" className="text-black">Selecione</option>
-                            <option value="A pé" className="text-black">A pé</option>
-                            <option value="Bike" className="text-black">Bike</option>
-                            <option value="Moto" className="text-black">Moto</option>
-                            <option value="Carro" className="text-black">Carro</option>
-                            <option value="Van" className="text-black">Van</option>
-                          </select>
-                        </Field>
-
-                        <Field label="Regiao principal">
-                          <input
-                            value={profile.correRegiao}
-                            onChange={(e) => setProfile((p) => ({ ...p, correRegiao: e.target.value }))}
-                            placeholder="Ex: Nova Iguacu - RJ"
-                            className={inputClass()}
-                          />
-                        </Field>
-
-                        <Field label="Titulo do Corre">
-                          <input
-                            value={profile.correTitulo}
-                            onChange={(e) => setProfile((p) => ({ ...p, correTitulo: e.target.value }))}
-                            placeholder="Ex: Entregas rapidas e compras"
-                            className={inputClass()}
-                          />
-                        </Field>
-
-                        <Field label="Disponibilidade">
-                          <input
-                            value={profile.correDisponibilidade}
-                            onChange={(e) => setProfile((p) => ({ ...p, correDisponibilidade: e.target.value }))}
-                            placeholder="Ex: Hoje, noites, fins de semana"
-                            className={inputClass()}
-                          />
-                        </Field>
-                      </div>
-
-                      <Field label="Resumo do seu servico">
-                        <textarea
-                          value={profile.correBio}
-                          onChange={(e) => setProfile((p) => ({ ...p, correBio: e.target.value }))}
-                          placeholder="Ex: Entregas rapidas, compras e pequenos servicos de transporte."
-                          maxLength={120}
-                          className={inputClass("min-h-24 resize-y")}
-                        />
-                      </Field>
+                      <button
+                        type="button"
+                        onClick={() => goProfessionalProfileStep("form")}
+                        className="mt-12 h-12 w-full rounded-xl bg-blue-700 text-sm font-black text-white shadow-[0_14px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]"
+                      >
+                        Continuar
+                      </button>
                     </div>
                   )}
 
-                  {profile.isProfissional && (
-                    <div className="space-y-3 rounded-[22px] border border-emerald-100 bg-emerald-50/45 p-3 md:p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-black text-blue-950">Servicos profissionais</div>
-                          <div className="mt-0.5 text-xs font-semibold text-slate-500">Dados usados em profissionais, agenda e ficha publica.</div>
+                  {professionalProfileStep === "form" && (
+                    <div className="space-y-5 pt-8">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-black text-blue-950">Corre rápido <span className="font-semibold text-slate-400">(opcional)</span></div>
+                          <MiniSwitch
+                            checked={profile.isCorre}
+                            onChange={(checked) => setProfessionalProfileType("isCorre", checked)}
+                            label="Ativar Corre rapido"
+                          />
                         </div>
-                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black text-emerald-700">Ativo</span>
+
+                        {profile.isCorre && (
+                          <div className="space-y-3">
+                            <Field label="Transporte">
+                              <select
+                                value={profile.correTransporte}
+                                onChange={(e) => setProfile((p) => ({ ...p, correTransporte: e.target.value }))}
+                                className={inputClass("h-12")}
+                              >
+                                <option value="" className="text-black">Selecione</option>
+                                <option value="A pé" className="text-black">A pé</option>
+                                <option value="Bike" className="text-black">Bike</option>
+                                <option value="Moto" className="text-black">Moto</option>
+                                <option value="Carro" className="text-black">Carro</option>
+                                <option value="Van" className="text-black">Van</option>
+                              </select>
+                            </Field>
+
+                            <Field label="Região principal">
+                              <input
+                                value={profile.correRegiao}
+                                onChange={(e) => setProfile((p) => ({ ...p, correRegiao: e.target.value }))}
+                                placeholder="Nova Iguaçu - RJ"
+                                className={inputClass("h-12")}
+                              />
+                            </Field>
+                          </div>
+                        )}
                       </div>
 
-                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:gap-3">
-                        <Field label="Profissao principal">
-                          <input
-                            value={profile.titulo}
-                            onChange={(e) => setProfile((p) => ({ ...p, titulo: e.target.value }))}
-                            placeholder="Ex: Eletricista"
-                            className={inputClass()}
+                      <div className="space-y-3 border-t border-slate-100 pt-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-black text-blue-950">Serviços profissionais <span className="font-semibold text-slate-400">(opcional)</span></div>
+                          <MiniSwitch
+                            checked={profile.isProfissional}
+                            onChange={(checked) => setProfessionalProfileType("isProfissional", checked)}
+                            label="Ativar servicos profissionais"
                           />
-                        </Field>
+                        </div>
 
-                        <Field label="Regiao principal">
-                          <input
-                            value={profile.profRegiao}
-                            onChange={(e) => setProfile((p) => ({ ...p, profRegiao: e.target.value }))}
-                            placeholder="Ex: Nova Iguacu - RJ"
-                            className={inputClass()}
-                          />
-                        </Field>
+                        {profile.isProfissional && (
+                          <div className="space-y-3">
+                            <Field label="Profissão principal">
+                              <input
+                                value={profile.titulo}
+                                onChange={(e) => setProfile((p) => ({ ...p, titulo: e.target.value }))}
+                                placeholder="Eletricista"
+                                className={inputClass("h-12")}
+                              />
+                            </Field>
 
-                        <Field label="Preco base">
-                          <input
-                            value={profile.preco}
-                            onChange={(e) => setProfile((p) => ({ ...p, preco: e.target.value }))}
-                            placeholder="Ex: R$ 50,00"
-                            inputMode="decimal"
-                            className={inputClass()}
-                          />
-                        </Field>
-
-                        <Field label="WhatsApp">
-                          <input
-                            value={profile.whatsapp}
-                            onChange={(e) => setProfile((p) => ({ ...p, whatsapp: e.target.value }))}
-                            placeholder="Ex: (21) 99999-9999"
-                            inputMode="tel"
-                            className={inputClass()}
-                          />
-                        </Field>
-
-                        <Field label="Experiencia">
-                          <input
-                            value={profile.profExperiencia}
-                            onChange={(e) => setProfile((p) => ({ ...p, profExperiencia: e.target.value }))}
-                            placeholder="Ex: 5 anos"
-                            className={inputClass()}
-                          />
-                        </Field>
+                            <Field label="Resumo do serviço">
+                              <textarea
+                                value={profile.descricao}
+                                onChange={(e) => setProfile((p) => ({ ...p, descricao: e.target.value }))}
+                                placeholder="Instalações, manutenções e reparos elétricos."
+                                maxLength={120}
+                                className={inputClass("min-h-24 resize-none")}
+                              />
+                              <div className="mt-1 text-right text-[11px] font-bold text-slate-400">
+                                {String(profile.descricao || "").length}/120
+                              </div>
+                            </Field>
+                          </div>
+                        )}
                       </div>
 
-                      <Field label="Resumo do seu servico">
-                        <textarea
-                          value={profile.descricao}
-                          onChange={(e) => setProfile((p) => ({ ...p, descricao: e.target.value }))}
-                          placeholder="Ex: Instalacoes, manutencoes e reparos eletricos."
-                          maxLength={120}
-                          className={inputClass("min-h-24 resize-y")}
-                        />
-                      </Field>
+                      <button
+                        type="button"
+                        onClick={salvarPerfilProfissional}
+                        disabled={salvando || fotoSalvando}
+                        className="h-12 w-full rounded-xl bg-blue-700 text-sm font-black text-white shadow-[0_14px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {salvando || fotoSalvando ? "Salvando..." : "Salvar perfil"}
+                      </button>
                     </div>
                   )}
 
-                  <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3 text-xs font-bold leading-relaxed text-slate-600">
-                    O portfolio continua separado: use a opcao Portfolio de servicos para cadastrar fotos, precos e trabalhos.
-                  </div>
+                  {professionalProfileStep === "saved" && (
+                    <div className="pt-10 text-center">
+                      <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+                        <WorkModeIcon type="check" />
+                      </div>
+                      <h3 className="mt-5 text-xl font-black text-blue-950">Perfil salvo!</h3>
+                      <p className="mx-auto mt-2 max-w-[240px] text-sm font-semibold leading-relaxed text-slate-500">
+                        Seu perfil está pronto para aparecer para clientes.
+                      </p>
+
+                      <div className="mt-8 space-y-3 text-left">
+                        {profile.isCorre && (
+                          <div className="flex items-center gap-3 rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
+                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-600 text-white">
+                              <WorkModeIcon type="corre" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-black text-blue-950">Corre rápido</div>
+                              <div className="mt-0.5 truncate text-xs font-semibold text-slate-500">
+                                {(profile.correTransporte || "Transporte")} • {(profile.correRegiao || profile.cidade || "Região")}
+                              </div>
+                            </div>
+                            <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-700">Ativo</span>
+                          </div>
+                        )}
+
+                        {profile.isProfissional && (
+                          <div className="flex items-center gap-3 rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
+                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-emerald-500 text-white">
+                              <WorkModeIcon type="profissional" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-black text-blue-950">Serviços profissionais</div>
+                              <div className="mt-0.5 truncate text-xs font-semibold text-slate-500">
+                                {profile.titulo || "Profissional"}
+                              </div>
+                              {profile.descricao ? (
+                                <div className="mt-1 line-clamp-2 text-xs font-semibold leading-snug text-slate-500">{profile.descricao}</div>
+                              ) : null}
+                            </div>
+                            <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-700">Ativo</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setProfSection("")}
+                        className="mt-8 h-12 w-full rounded-xl bg-blue-700 text-sm font-black text-white shadow-[0_14px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]"
+                      >
+                        Ver perfil
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => goProfessionalProfileStep("form")}
+                        className="mt-3 w-full text-sm font-black text-blue-700"
+                      >
+                        Editar perfil
+                      </button>
+                    </div>
+                  )}
                 </section>
               )}
 
@@ -3238,7 +3370,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
                     </div>
                     <button
                       type="button"
-                      onClick={() => setProfSection("perfilProfissional")}
+                      onClick={() => {
+                        setProfSection("perfilProfissional");
+                        setProfessionalProfileStep("choice");
+                      }}
                       className="h-9 rounded-xl bg-[#ffd91a] px-4 text-xs font-black text-blue-950 shadow-sm"
                     >
                       Ver meu perfil
@@ -3378,7 +3513,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "perfil"
             </div>
           )}
 
-          {(!professionalMode || profSection) && (
+          {(!professionalMode || (profSection && profSection !== "perfilProfissional")) && (
           <button
             onClick={salvar}
             disabled={salvando || fotoSalvando}

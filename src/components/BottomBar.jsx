@@ -70,7 +70,6 @@ export default function BottomBar({
   onTab,
   unreadCount = 0,
   agendaCount = 0,
-  problemasCount = 0,
   hidden = false,
   modoApp = 'corre',
   collapsed = false,
@@ -83,7 +82,6 @@ export default function BottomBar({
     { id: 'agenda', label: 'Agenda', icon: 'agenda', count: Number(agendaCount || 0) },
     { id: 'ganhos', label: 'Ganhos', icon: 'ganhos', count: 0 },
     { id: 'inbox', label: 'Chat', icon: 'inbox', count: Number(unreadCount || 0) },
-    { id: 'perfil', label: 'Perfil', icon: 'perfil', count: Number(problemasCount || 0) },
   ]
 
   const navButton = (item) => {
