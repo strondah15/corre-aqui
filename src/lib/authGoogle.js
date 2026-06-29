@@ -8,6 +8,7 @@ import {
   signInWithRedirect,
 } from "firebase/auth";
 import { ref, update, serverTimestamp } from "firebase/database";
+import { getUserOnlinePreference } from "@/lib/presence";
 
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
@@ -71,6 +72,7 @@ async function salvarPerfilGoogle(user) {
 
   try {
     const agoraPresence = Date.now();
+    const onlinePreference = getUserOnlinePreference();
     debugPresence(`salvando online true em presence/${user.uid}`, {
       origem: "authGoogle/salvarPerfilGoogle",
       path: `presence/${user.uid}`,
@@ -82,7 +84,8 @@ async function salvarPerfilGoogle(user) {
         nome: user.displayName || "Usuario",
         fotoURL: user.photoURL || "",
         modoAtual: "",
-        online: true,
+        online: onlinePreference,
+        disponivel: onlinePreference,
         lastSeen: agoraPresence,
         updatedAt: agoraPresence,
       }),

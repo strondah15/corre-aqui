@@ -15,7 +15,7 @@ import {
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 import SplashScreen from '@/components/SplashScreen'
 import { perfilMinimoCompleto } from '@/lib/perfilCadastro'
-import { startPresence } from '@/lib/presence'
+import { getUserOnlinePreference, startPresence } from '@/lib/presence'
 
 let vinhetaJaRodouNoRuntime = false
 let googleRedirectPromise = null
@@ -137,12 +137,14 @@ async function salvarUsuarioBasico(user) {
     )
 
     const agoraPresence = Date.now()
+    const onlinePreference = getUserOnlinePreference()
     const presencePayload = {
       uid: user.uid,
       id: user.uid,
       nome: nomeAuth || atual.nome || 'Usuario',
       fotoURL: fotoFallback || '',
-      online: true,
+      online: onlinePreference,
+      disponivel: onlinePreference,
       lastSeen: agoraPresence,
       updatedAt: agoraPresence,
       modoAtual: modoAtual || undefined,

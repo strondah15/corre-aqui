@@ -4,6 +4,7 @@ import { onDisconnect, onValue, ref, update } from "firebase/database";
 const HEARTBEAT_MS = 15_000;
 const LOCATION_REFRESH_MS = 60_000;
 export const ONLINE_TTL_MS = 60_000;
+export const USER_ONLINE_PREFERENCE_KEY = "correAqui.userOnlinePreference.v1";
 const DEBUG_PREFIX = "[PRESENCE]";
 export const DEBUG_PRESENCE_ENABLED =
   process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_DEBUG_PRESENCE === "true";
@@ -53,6 +54,24 @@ function getModoAtual() {
   }
 }
 
+export function getUserOnlinePreference() {
+  if (!isBrowser()) return true;
+
+  try {
+    return window.localStorage.getItem(USER_ONLINE_PREFERENCE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+export function setUserOnlinePreference(value) {
+  if (!isBrowser()) return;
+
+  try {
+    window.localStorage.setItem(USER_ONLINE_PREFERENCE_KEY, value ? "true" : "false");
+  } catch {}
+}
+
 function getMyLocation() {
   return new Promise((resolve) => {
     if (!isBrowser() || !navigator.geolocation) {
@@ -100,6 +119,7 @@ function buildIdentityPatch(user, extras = {}) {
     id: user.uid,
     nome,
     online: true,
+    disponivel: true,
     lastSeen: now,
     updatedAt: now,
   };
@@ -125,6 +145,19 @@ export function startPresence(database, user, extras = {}) {
   const saveOnline = async (extraPatch = {}) => {
     if (cancelled) return;
 
+    if (!getUserOnlinePreference()) {
+      debugPresence("preferencia offline ativa; mantendo presence offline", uid);
+      await updatePresencePath(database, uid, {
+        ...buildIdentityPatch(user, extras),
+        ...extraPatch,
+        online: false,
+        disponivel: false,
+        lastSeen: Date.now(),
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
     debugPresence(`salvando online true em presence/${uid}`, {
       extraKeys: Object.keys(extraPatch || {}),
     });
@@ -135,6 +168,7 @@ export function startPresence(database, user, extras = {}) {
         ...buildIdentityPatch(user, extras),
         ...extraPatch,
         online: true,
+        disponivel: true,
         lastSeen: now,
         updatedAt: now,
       });
@@ -146,6 +180,8 @@ export function startPresence(database, user, extras = {}) {
   };
 
   const saveLocation = async () => {
+    if (!getUserOnlinePreference()) return null;
+
     const local = await getMyLocation();
     if (cancelled || !local) return null;
 
@@ -246,7 +282,13 @@ export function getOnlineTimestamp(user) {
 
 export function isOnlineRecente(user, now = Date.now()) {
   const seenAt = getOnlineTimestamp(user);
-  return user?.online === true && Number.isFinite(seenAt) && now - seenAt <= ONLINE_TTL_MS;
+  return (
+    user?.online === true &&
+    user?.disponivel !== false &&
+    user?.showOnlineStatus !== false &&
+    Number.isFinite(seenAt) &&
+    now - seenAt <= ONLINE_TTL_MS
+  );
 }
 
 export function hasValidUserLocation(user) {
@@ -258,7 +300,11 @@ export function hasValidUserLocation(user) {
 export function splitUsuariosOnline(usersObj, now = Date.now()) {
   const users = Object.entries(usersObj || {})
     .map(([id, user]) => ({ id, uid: user?.uid || id, ...user }));
-  const onlineBrutos = users.filter((user) => user?.online === true);
+  const onlineBrutos = users.filter((user) => (
+    user?.online === true &&
+    user?.disponivel !== false &&
+    user?.showOnlineStatus !== false
+  ));
   const usuariosOnlineLista = onlineBrutos
     .filter((user) => {
       const seenAt = getOnlineTimestamp(user);

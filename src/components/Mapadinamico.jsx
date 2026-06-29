@@ -27,7 +27,7 @@ import {
   limitToLast,
   runTransaction,
 } from 'firebase/database'
-import { getOnlineTimestamp, splitUsuariosOnline } from '@/lib/presence'
+import { getOnlineTimestamp, getUserOnlinePreference, setUserOnlinePreference, splitUsuariosOnline } from '@/lib/presence'
 
 import PerfilDrawer from '@/components/PerfilDrawer'
 import XpToast from '@/components/XpToast'
@@ -1106,15 +1106,179 @@ function ProfessionalOverview({
   )
 }
 
-function GlobalProfileFab({ fotoURL, avatarEmoji, iniciais, count = 0, onClick, bottomClass = '' }) {
+const PROFILE_FAB_STORAGE_KEY = 'correAqui.profileFabPosition.v1'
+const PROFILE_FAB_EDGE_INSET = 16
+const PROFILE_FAB_DRAG_THRESHOLD = 6
+
+function clampProfileFabPosition(position, minBottomInset = PROFILE_FAB_EDGE_INSET) {
+  if (typeof window === 'undefined') return position
+
+  const viewport = window.visualViewport
+  const width = Math.max(320, Math.floor(viewport?.width || window.innerWidth || 360))
+  const height = Math.max(480, Math.floor(viewport?.height || window.innerHeight || 640))
+  const isDesktop = width >= 768
+  const size = isDesktop ? 62 : 56
+  const maxX = Math.max(PROFILE_FAB_EDGE_INSET, width - size - PROFILE_FAB_EDGE_INSET)
+  const maxY = Math.max(PROFILE_FAB_EDGE_INSET, height - size - minBottomInset)
+
+  return {
+    x: Math.min(Math.max(Number(position?.x) || PROFILE_FAB_EDGE_INSET, PROFILE_FAB_EDGE_INSET), maxX),
+    y: Math.min(Math.max(Number(position?.y) || PROFILE_FAB_EDGE_INSET, PROFILE_FAB_EDGE_INSET), maxY),
+  }
+}
+
+function getDefaultProfileFabPosition(minBottomInset = PROFILE_FAB_EDGE_INSET) {
+  if (typeof window === 'undefined') return { x: PROFILE_FAB_EDGE_INSET, y: PROFILE_FAB_EDGE_INSET }
+
+  const viewport = window.visualViewport
+  const width = Math.max(320, Math.floor(viewport?.width || window.innerWidth || 360))
+  const height = Math.max(480, Math.floor(viewport?.height || window.innerHeight || 640))
+  const size = width >= 768 ? 62 : 56
+
+  return clampProfileFabPosition(
+    {
+      x: width - size - PROFILE_FAB_EDGE_INSET,
+      y: height - size - minBottomInset,
+    },
+    minBottomInset,
+  )
+}
+
+function snapProfileFabToSide(position, minBottomInset = PROFILE_FAB_EDGE_INSET) {
+  if (typeof window === 'undefined') return position
+
+  const viewport = window.visualViewport
+  const width = Math.max(320, Math.floor(viewport?.width || window.innerWidth || 360))
+  const size = width >= 768 ? 62 : 56
+  const center = Number(position?.x || 0) + size / 2
+  const x = center < width / 2 ? PROFILE_FAB_EDGE_INSET : width - size - PROFILE_FAB_EDGE_INSET
+
+  return clampProfileFabPosition({ ...position, x }, minBottomInset)
+}
+
+function GlobalProfileFab({ fotoURL, avatarEmoji, iniciais, count = 0, onClick, minBottomInset = PROFILE_FAB_EDGE_INSET }) {
+  const [position, setPosition] = useState(null)
+  const dragRef = useRef(null)
+  const suppressClickRef = useRef(false)
+
+  useEffect(() => {
+    let initialPosition = null
+
+    try {
+      initialPosition = JSON.parse(window.localStorage.getItem(PROFILE_FAB_STORAGE_KEY) || 'null')
+    } catch {
+      initialPosition = null
+    }
+
+    setPosition(clampProfileFabPosition(initialPosition || getDefaultProfileFabPosition(minBottomInset), minBottomInset))
+  }, [minBottomInset])
+
+  useEffect(() => {
+    const handleResize = () => {
+      setPosition((current) => {
+        const clamped = clampProfileFabPosition(current || getDefaultProfileFabPosition(minBottomInset), minBottomInset)
+        try {
+          window.localStorage.setItem(PROFILE_FAB_STORAGE_KEY, JSON.stringify(clamped))
+        } catch {
+          // localStorage can be unavailable in private contexts.
+        }
+        return clamped
+      })
+    }
+
+    window.addEventListener('resize', handleResize)
+    window.visualViewport?.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.visualViewport?.removeEventListener('resize', handleResize)
+    }
+  }, [minBottomInset])
+
+  const handlePointerDown = (event) => {
+    if (event.button !== undefined && event.button !== 0) return
+
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    const currentPosition = position || getDefaultProfileFabPosition(minBottomInset)
+    setPosition(currentPosition)
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: currentPosition.x,
+      startY: currentPosition.y,
+      dragged: false,
+    }
+  }
+
+  const handlePointerMove = (event) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+
+    const dx = event.clientX - drag.startClientX
+    const dy = event.clientY - drag.startClientY
+
+    if (!drag.dragged && Math.hypot(dx, dy) >= PROFILE_FAB_DRAG_THRESHOLD) {
+      drag.dragged = true
+    }
+
+    if (!drag.dragged) return
+
+    event.preventDefault()
+    setPosition(clampProfileFabPosition({ x: drag.startX + dx, y: drag.startY + dy }, minBottomInset))
+  }
+
+  const handlePointerUp = (event) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    dragRef.current = null
+
+    if (!drag.dragged) return
+
+    suppressClickRef.current = true
+    setTimeout(() => {
+      suppressClickRef.current = false
+    }, 0)
+
+    setPosition((current) => {
+      const snapped = snapProfileFabToSide(current || getDefaultProfileFabPosition(minBottomInset), minBottomInset)
+      try {
+        window.localStorage.setItem(PROFILE_FAB_STORAGE_KEY, JSON.stringify(snapped))
+      } catch {
+        // localStorage can be unavailable in private contexts.
+      }
+      return snapped
+    })
+  }
+
+  const handleClick = (event) => {
+    if (suppressClickRef.current) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    onClick?.()
+  }
+
+  const style = position
+    ? { left: `${position.x}px`, top: `${position.y}px` }
+    : { right: `${PROFILE_FAB_EDGE_INSET}px`, bottom: `${minBottomInset}px` }
+
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={handleClick}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       title="Abrir menu da conta"
+      style={style}
       className={[
-        'fixed right-4 z-[99981] grid h-14 w-14 place-items-center rounded-full border-[5px] border-white bg-[#ffd91a] text-blue-950 shadow-[0_18px_42px_rgba(15,23,42,0.28),0_0_34px_rgba(250,204,21,0.35)] transition hover:scale-[1.03] active:scale-[0.96] md:right-7 md:h-[62px] md:w-[62px]',
-        bottomClass,
+        'fixed z-[99981] grid h-14 w-14 touch-none place-items-center rounded-full border-[5px] border-white bg-[#ffd91a] text-blue-950 shadow-[0_18px_42px_rgba(15,23,42,0.28),0_0_34px_rgba(250,204,21,0.35)] transition-[box-shadow,transform] hover:scale-[1.03] active:scale-[0.96] md:h-[62px] md:w-[62px]',
+        dragRef.current ? 'cursor-grabbing' : 'cursor-grab',
       ].join(' ')}
     >
       {fotoURL ? (
@@ -1351,7 +1515,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [agendaPendentes, setAgendaPendentes] = useState(0)
   const [agendaConfirmados, setAgendaConfirmados] = useState(0)
   const [agendaRecusados, setAgendaRecusados] = useState(0)
-  const [correDisponivel, setCorreDisponivel] = useState(true)
+  const [correDisponivel, setCorreDisponivel] = useState(() => getUserOnlinePreference())
   const [ganhosModo, setGanhosModo] = useState('corre')
   const [bottomBarsHidden, setBottomBarsHidden] = useState(false)
   const [mostrarBuscaCorreFlutuante, setMostrarBuscaCorreFlutuante] = useState(false)
@@ -1622,24 +1786,30 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [initialMode])
 
   useEffect(() => {
+    setCorreDisponivel(getUserOnlinePreference())
+  }, [])
+
+  useEffect(() => {
     try {
       localStorage.setItem('modoApp', modoApp)
     } catch {}
 
     if (meuId) {
       const agoraPresence = Date.now()
+      const onlineNow = correDisponivel && getUserOnlinePreference()
       debugPresence('uid atual', meuId)
-      debugPresence(`salvando online true em presence/${meuId}`, { origem: 'modoApp' })
+      debugPresence(`salvando status em presence/${meuId}`, { origem: 'modoApp', online: onlineNow })
       update(ref(database, `presence/${meuId}`), {
         modoAtual: modoApp,
-        online: true,
+        online: onlineNow,
+        disponivel: onlineNow,
         lastSeen: agoraPresence,
         updatedAt: agoraPresence,
       })
         .then(() => debugPresence('salvou online com sucesso', { uid: meuId, origem: 'modoApp' }))
         .catch((error) => console.error('[PRESENCE] erro ao salvar presença', error))
     }
-  }, [meuId, modoApp])
+  }, [meuId, modoApp, correDisponivel])
 
   // ✅ Cliente não usa BottomBar; profissionais abrem em aba lateral direita
   useEffect(() => {
@@ -1798,8 +1968,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       if (cancelled) return
 
       const agoraPresence = Date.now()
-      debugPresence(`salvando online true em presence/${meuId}`, {
+      const onlineNow = correDisponivel && getUserOnlinePreference()
+      debugPresence(`salvando status em presence/${meuId}`, {
         origem: 'Mapadinamico/writeOnline',
+        online: onlineNow,
         temLocal: false,
       })
 
@@ -1807,13 +1979,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         uid: meuId,
         id: meuId,
         nome: meuNome || 'Anônimo',
-        online: true,
-        disponivel: correDisponivel,
+        online: onlineNow,
+        disponivel: onlineNow,
         lastSeen: agoraPresence,
         updatedAt: agoraPresence,
         ...getAvatarPatch(),
       })
       debugPresence('salvou online com sucesso', { uid: meuId, origem: 'Mapadinamico/writeOnline' })
+
+      if (!onlineNow) return
 
       const local = await getMyLocation()
       if (cancelled || !local) return
@@ -1828,7 +2002,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
 
     const writeOffline = async () => {
-      return undefined
+      const agoraPresence = Date.now()
+      await update(userRef, {
+        online: false,
+        disponivel: false,
+        lastSeen: agoraPresence,
+        updatedAt: agoraPresence,
+        ...getAvatarPatch(),
+      }).catch((error) => console.error('[PRESENCE] erro ao salvar presenca offline', error))
     }
 
     const offConnected = onValue(connectedRef, async (snap) => {
@@ -1855,19 +2036,23 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
     const heartbeat = setInterval(async () => {
       const agoraPresence = Date.now()
-      debugPresence(`salvando online true em presence/${meuId}`, {
+      const onlineNow = correDisponivel && getUserOnlinePreference()
+      debugPresence(`salvando status em presence/${meuId}`, {
         origem: 'Mapadinamico/heartbeat',
+        online: onlineNow,
         temLocal: false,
       })
       update(userRef, {
-        online: true,
-        disponivel: correDisponivel,
+        online: onlineNow,
+        disponivel: onlineNow,
         lastSeen: agoraPresence,
         updatedAt: agoraPresence,
         ...getAvatarPatch(),
       })
         .then(() => debugPresence('salvou online com sucesso', { uid: meuId, origem: 'Mapadinamico/heartbeat' }))
         .catch((error) => console.error('[PRESENCE] erro ao salvar presença', error))
+
+      if (!onlineNow) return
 
       const local = await getMyLocation()
       if (cancelled || !local) return
@@ -3226,13 +3411,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       return
     }
     if (id === 'disponivel') {
-      setCorreDisponivel((prev) => {
-        const next = !prev
+      const next = !correDisponivel
+      setCorreDisponivel(next)
+      setUserOnlinePreference(next)
 
         if (meuId) {
           const agoraPresence = Date.now()
           update(ref(database, `presence/${meuId}`), {
-            online: true,
+            online: next,
             disponivel: next,
             lastSeen: agoraPresence,
             updatedAt: agoraPresence,
@@ -3246,9 +3432,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             ? 'Você está aparecendo para clientes e pedidos.'
             : 'Você não aparece como disponível agora.',
         })
-
-        return next
-      })
       return
     }
 
@@ -3285,11 +3468,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     !usuarioSelecionado &&
     !agendaClienteUser &&
     !clientePainelBaixo
-  const profileFabBottomClass = bottomBarsHidden
-    ? 'bottom-[calc(env(safe-area-inset-bottom)+1rem)]'
+  const profileFabMinBottomInset = bottomBarsHidden
+    ? 16
     : modoApp === 'corre'
-      ? 'bottom-[calc(env(safe-area-inset-bottom)+10.35rem)] md:bottom-44'
-      : 'bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] md:bottom-28'
+      ? 176
+      : 112
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#050b12] text-slate-900 corre-aqui-no-select">
@@ -5035,7 +5218,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           avatarEmoji={avatarEmoji}
           iniciais={minhasIniciais}
           count={profileFabCount}
-          bottomClass={profileFabBottomClass}
+          minBottomInset={profileFabMinBottomInset}
           onClick={() => setOpenProfileMenu(true)}
         />
       ) : null}
@@ -5053,7 +5236,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         clientePedidosCount={clientePedidosCount}
         unreadInbox={unreadInbox}
         problemasCount={problemasVisiveisCount}
-        onDados={() => abrirPerfilDrawer('config')}
+        onDados={() => abrirPerfilDrawer('dados')}
         onEnderecos={() => abrirRecursoEmBreve('Endereços')}
         onHistorico={() => abrirPainelCliente('meusPedidos')}
         onFavoritos={() => abrirRecursoEmBreve('Favoritos')}

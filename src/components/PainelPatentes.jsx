@@ -1,67 +1,130 @@
 'use client'
 
+import { AnimatePresence, motion } from 'framer-motion'
 import { useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
-import Patente, {
+import {
   SERVICOS_POR_NIVEL,
   calcularPatentePorServicos,
-  getPatenteTitle,
-  getPatenteVisual,
-  progressoPatentePorServicos,
-  proximoMarcoPatente,
 } from './Patente'
 
 const LEVELS = [1, 2, 3, 4, 5]
 
-const TRACK_META = {
+const TRACKS = {
   corre: {
     label: 'Corre',
-    eyebrow: 'Trilha Corre',
-    short: 'Corre rapido',
-    icon: '⚡',
-    accent: 'from-blue-500 via-violet-500 to-fuchsia-500',
-    soft: 'from-blue-500/20 via-violet-500/16 to-fuchsia-500/12',
-    ring: 'border-violet-300/30',
-    progress: 'from-blue-400 to-violet-500',
-    nextTone: 'text-violet-100',
+    tabIcon: '⚡',
+    subtitle: 'Trilha Corre',
+    activeTab: 'from-yellow-300 via-yellow-400 to-orange-400 text-slate-950',
+    progress: 'from-blue-500 via-violet-500 to-yellow-300',
+    glow: 'rgba(250,204,21,0.32)',
+    names: {
+      1: 'Iniciante',
+      2: 'Corredor',
+      3: 'Resolvedor',
+      4: 'Brabo',
+      5: 'Lendário',
+    },
+    levelIcons: {
+      1: '⚡',
+      2: '🏃',
+      3: '⚡',
+      4: '⭐',
+      5: '👑',
+    },
+    benefits: {
+      1: ['Aceitar pedidos', 'Perfil básico', 'Histórico iniciado'],
+      2: ['Selo de evolução', 'Mais confiança visual', 'Progresso visível'],
+      3: ['Perfil mais forte', 'Badge destacado', 'Histórico consolidado'],
+      4: ['Sinal de alta experiência', 'Perfil mais confiável', 'Prioridade em buscas'],
+      5: ['Patente máxima', 'Selo raro', 'Perfil de referência'],
+    },
   },
   prof: {
     label: 'Profissional',
-    eyebrow: 'Trilha Profissional',
-    short: 'Servicos profissionais',
-    icon: '💼',
-    accent: 'from-emerald-400 via-cyan-400 to-blue-500',
-    soft: 'from-emerald-400/18 via-cyan-400/14 to-blue-500/12',
-    ring: 'border-emerald-300/30',
-    progress: 'from-emerald-400 to-cyan-400',
-    nextTone: 'text-emerald-100',
+    tabIcon: '💼',
+    subtitle: 'Trilha Profissional',
+    activeTab: 'from-emerald-400 via-cyan-400 to-violet-500 text-white',
+    progress: 'from-emerald-400 via-cyan-400 to-violet-500',
+    glow: 'rgba(52,211,153,0.28)',
+    names: {
+      1: 'Profissional',
+      2: 'Especialista',
+      3: 'Mestre',
+      4: 'Referência',
+      5: 'Imparável',
+    },
+    levelIcons: {
+      1: '💼',
+      2: '💎',
+      3: '🔮',
+      4: '⭐',
+      5: '🏆',
+    },
+    benefits: {
+      1: ['Ficha profissional', 'Agenda aberta', 'Serviços técnicos'],
+      2: ['Selo de especialista', 'Mais confiança', 'Histórico profissional'],
+      3: ['Ficha mais robusta', 'Badge destacado', 'Reputação forte'],
+      4: ['Referência local', 'Sinal de experiência', 'Perfil mais valorizado'],
+      5: ['Patente máxima', 'Selo raro', 'Profissional de referência'],
+    },
   },
 }
 
-const BENEFITS = {
-  corre: {
-    1: ['Aceitar pedidos', 'Perfil basico'],
-    2: ['Mais confianca visual', 'Selo de evolucao'],
-    3: ['Perfil mais forte', 'Badge destacado'],
-    4: ['Alta experiencia', 'Prioridade em buscas'],
-    5: ['Patente maxima', 'Destaque especial'],
+const LEVEL_STYLE = {
+  1: {
+    hex: '#38BDF8',
+    card: 'border-cyan-400/40 bg-cyan-400/8',
+    locked: 'border-slate-500/25 bg-slate-700/20',
+    gradient: 'from-slate-300 via-slate-500 to-slate-800',
+    shadow: 'rgba(56,189,248,0.26)',
   },
-  prof: {
-    1: ['Vitrine profissional', 'Agenda basica'],
-    2: ['Mais credibilidade', 'Servicos em destaque'],
-    3: ['Autoridade visual', 'Portfolio valorizado'],
-    4: ['Referencia local', 'Prioridade em agendamentos'],
-    5: ['Profissional elite', 'Destaque premium'],
+  2: {
+    hex: '#38B2F6',
+    card: 'border-blue-400/45 bg-blue-400/8',
+    locked: 'border-slate-500/25 bg-slate-700/20',
+    gradient: 'from-cyan-300 via-blue-500 to-blue-800',
+    shadow: 'rgba(59,130,246,0.28)',
+  },
+  3: {
+    hex: '#A855F7',
+    card: 'border-violet-400/60 bg-violet-500/10',
+    locked: 'border-slate-500/25 bg-slate-700/20',
+    gradient: 'from-fuchsia-300 via-violet-500 to-purple-900',
+    shadow: 'rgba(168,85,247,0.42)',
+  },
+  4: {
+    hex: '#F59E0B',
+    card: 'border-yellow-400/55 bg-yellow-400/9',
+    locked: 'border-slate-500/25 bg-slate-700/20',
+    gradient: 'from-yellow-200 via-amber-500 to-orange-800',
+    shadow: 'rgba(245,158,11,0.32)',
+  },
+  5: {
+    hex: '#EF4444',
+    card: 'border-red-400/55 bg-red-500/8',
+    locked: 'border-slate-500/25 bg-slate-700/20',
+    gradient: 'from-orange-300 via-red-500 to-red-900',
+    shadow: 'rgba(239,68,68,0.32)',
   },
 }
 
-const ACHIEVEMENTS = [
-  { icon: '🏁', title: 'Primeiro servico', target: 1 },
-  { icon: '🏆', title: '5 servicos', target: 5 },
-  { icon: '👑', title: '10 servicos', target: 10 },
-  { icon: '⭐', title: '15 servicos', target: 15 },
-  { icon: '💎', title: '30 servicos', target: 30 },
-]
+const STATUS_META = {
+  atual: {
+    label: 'Atual',
+    className: 'border-violet-300/60 bg-violet-500/22 text-violet-100 shadow-[0_0_24px_rgba(168,85,247,0.28)]',
+    icon: '●',
+  },
+  desbloqueado: {
+    label: 'Desbloqueado',
+    className: 'border-emerald-300/35 bg-emerald-400/16 text-emerald-100',
+    icon: '✓',
+  },
+  bloqueado: {
+    label: 'Bloqueado',
+    className: 'border-slate-400/20 bg-slate-500/12 text-slate-300',
+    icon: '🔒',
+  },
+}
 
 function toNumber(value, fallback = 0) {
   const n = Number(value)
@@ -103,51 +166,188 @@ function getServicos(accountStats = {}, serviceStats = {}, tipo = 'corre') {
   )
 }
 
+function getStatus(level, currentLevel) {
+  if (level === currentLevel) return 'atual'
+  return level < currentLevel ? 'desbloqueado' : 'bloqueado'
+}
+
+function getTrackTitle(tipo, level) {
+  return TRACKS[tipo]?.names?.[level] || 'Patente'
+}
+
+function getTrackIcon(tipo, level) {
+  return TRACKS[tipo]?.levelIcons?.[level] || TRACKS[tipo]?.tabIcon || '★'
+}
+
 function buildTrack({ tipo, servicos, savedNivel, enabled = true }) {
   const serviceNivel = calcularPatentePorServicos(servicos)
   const nivel = Math.max(1, Math.min(5, Math.max(serviceNivel, toNumber(savedNivel, 1))))
-  const nextMark = proximoMarcoPatente(servicos)
   const nextNivel = nivel >= 5 ? null : nivel + 1
   const currentMark = SERVICOS_POR_NIVEL[nivel] || 0
-  const nextLevelMark = nextNivel ? SERVICOS_POR_NIVEL[nextNivel] : SERVICOS_POR_NIVEL[5]
-  const localProgress = nextNivel
-    ? clampPercent(((servicos - currentMark) / Math.max(nextLevelMark - currentMark, 1)) * 100)
-    : 100
+  const nextMark = nextNivel ? SERVICOS_POR_NIVEL[nextNivel] : SERVICOS_POR_NIVEL[5]
+  const progress = nivel >= 5
+    ? 100
+    : clampPercent(((servicos - currentMark) / Math.max(nextMark - currentMark, 1)) * 100)
 
   return {
     tipo,
-    meta: TRACK_META[tipo],
+    meta: TRACKS[tipo],
     servicos,
     nivel,
-    title: getPatenteTitle(tipo, nivel),
-    visual: getPatenteVisual(tipo, nivel),
-    progress: nivel >= 5 ? 100 : Math.max(localProgress, clampPercent(progressoPatentePorServicos(servicos))),
-    nextMark,
+    title: getTrackTitle(tipo, nivel),
     nextNivel,
-    nextTitle: nextNivel ? getPatenteTitle(tipo, nextNivel) : 'Nivel maximo',
-    missing: nextMark ? Math.max(0, nextMark - servicos) : 0,
+    nextTitle: nextNivel ? getTrackTitle(tipo, nextNivel) : 'Nível máximo',
+    nextMark,
+    missing: nextNivel ? Math.max(0, nextMark - servicos) : 0,
+    progress,
     enabled,
   }
 }
 
-function StatTile({ label, value, detail, tone = 'blue' }) {
-  const toneClass = tone === 'yellow' ? 'text-yellow-200' : tone === 'green' ? 'text-emerald-200' : 'text-blue-200'
+function StatusBadge({ status, compact = false }) {
+  const meta = STATUS_META[status]
 
   return (
-    <div className="rounded-[18px] border border-white/10 bg-white/[0.06] px-3 py-3 shadow-[0_14px_28px_rgba(0,0,0,0.18)]">
-      <div className={`text-2xl font-black leading-none ${toneClass}`}>{value}</div>
-      <div className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-white/55">{label}</div>
-      {detail ? <div className="mt-1 text-[11px] font-bold text-white/45">{detail}</div> : null}
+    <span
+      className={[
+        'inline-flex items-center gap-1 rounded-full border font-black uppercase tracking-[0.08em]',
+        compact ? 'px-2 py-1 text-[9px]' : 'px-3 py-1.5 text-[10px]',
+        meta.className,
+      ].join(' ')}
+    >
+      <span>{meta.icon}</span>
+      {meta.label}
+    </span>
+  )
+}
+
+function TrailStatusMark({ status }) {
+  if (status === 'atual') {
+    return (
+      <span className="mt-2 rounded-full border border-violet-300/50 bg-violet-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-violet-100">
+        Atual
+      </span>
+    )
+  }
+
+  if (status === 'desbloqueado') {
+    return (
+      <span className="mt-2 grid h-5 w-5 place-items-center rounded-full bg-emerald-400/20 text-[11px] font-black text-emerald-200 ring-1 ring-emerald-300/35">
+        ✓
+      </span>
+    )
+  }
+
+  return (
+    <span className="mt-2 grid h-5 w-5 place-items-center rounded-full bg-slate-500/15 text-[10px] font-black text-slate-400 ring-1 ring-slate-300/15">
+      🔒
+    </span>
+  )
+}
+
+function Medal({ tipo, level, size = 'md', active = false, locked = false }) {
+  const style = LEVEL_STYLE[level]
+  const icon = getTrackIcon(tipo, level)
+  const lockedTone = locked ? 'opacity-65 grayscale saturate-50' : 'opacity-100'
+  const sizeClass = {
+    xs: 'h-12 w-12 text-lg',
+    sm: 'h-16 w-16 text-2xl',
+    md: 'h-24 w-24 text-4xl',
+    lg: 'h-36 w-36 text-6xl',
+  }[size]
+  const innerClass = {
+    xs: 'h-9 w-9 rounded-xl',
+    sm: 'h-12 w-12 rounded-2xl',
+    md: 'h-[4.5rem] w-[4.5rem] rounded-[22px]',
+    lg: 'h-28 w-28 rounded-[34px]',
+  }[size]
+
+  return (
+    <div className={`relative grid ${sizeClass} shrink-0 place-items-center`}>
+      <div
+        className={[
+          'absolute inset-0 rounded-full blur-2xl transition-opacity',
+          active ? 'opacity-90' : locked ? 'opacity-22' : 'opacity-45',
+          `bg-gradient-to-br ${style.gradient}`,
+        ].join(' ')}
+        style={{ boxShadow: `0 0 70px ${style.shadow}` }}
+      />
+      {active ? (
+        <div className="absolute -top-3 left-1/2 flex -translate-x-1/2 gap-1 text-yellow-200 drop-shadow-[0_0_10px_rgba(250,204,21,0.75)]">
+          <span className="text-xs">★</span>
+          <span className="text-base">★</span>
+          <span className="text-xs">★</span>
+        </div>
+      ) : null}
+      <div
+        className={[
+          'relative grid place-items-center overflow-hidden border border-white/25 shadow-[inset_0_1px_18px_rgba(255,255,255,0.20)]',
+          `bg-gradient-to-br ${style.gradient}`,
+          lockedTone,
+          innerClass,
+        ].join(' ')}
+        style={{ clipPath: 'polygon(50% 0%, 88% 17%, 88% 68%, 50% 100%, 12% 68%, 12% 17%)' }}
+      >
+        <span className="absolute left-1/2 top-2 h-1/4 w-1/2 -translate-x-1/2 rounded-full bg-white/25 blur-sm" />
+        <span
+          className={[
+            'absolute left-1/2 top-1/2 z-10 grid h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/15 bg-black/20 text-[0.82em] text-white shadow-[0_8px_18px_rgba(0,0,0,0.26)] drop-shadow-[0_3px_12px_rgba(0,0,0,0.4)]',
+            locked ? 'opacity-90' : 'opacity-100',
+          ].join(' ')}
+        >
+          {icon}
+        </span>
+        <span className="drop-shadow-[0_3px_12px_rgba(0,0,0,0.4)]">{locked ? '◆' : icon}</span>
+      </div>
+      <div
+        className={[
+          'absolute inset-x-3 bottom-1 h-2 rounded-full blur-sm',
+          locked ? 'bg-slate-600/30' : `bg-gradient-to-r ${style.gradient}`,
+          active ? 'opacity-95' : 'opacity-40',
+        ].join(' ')}
+      />
     </div>
   )
 }
 
-function TrackTabs({ activeTipo, onChange }) {
+function SectionLabel({ number, children }) {
   return (
-    <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/20 p-1">
+    <div className="mb-3 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.08em] text-yellow-300">
+      <span>{number}.</span>
+      <span>{children}</span>
+    </div>
+  )
+}
+
+function Header({ onBack }) {
+  return (
+    <header className="rounded-[24px] border border-white/10 bg-[#0A1728]/90 p-4 shadow-[0_22px_58px_rgba(0,0,0,0.32)] md:p-5">
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-2xl font-black text-white shadow-[0_12px_32px_rgba(0,0,0,0.26)] transition hover:-translate-y-0.5 hover:bg-white/[0.1] motion-reduce:transition-none"
+          aria-label="Voltar"
+        >
+          ←
+        </button>
+        <div className="min-w-0">
+          <h2 className="text-2xl font-black leading-none text-white md:text-3xl">Patentes</h2>
+          <p className="mt-2 text-sm font-semibold text-slate-300">
+            Evolua concluindo serviços e desbloqueie benefícios.
+          </p>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+function Tabs({ activeTipo, onChange }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 rounded-[22px] border border-white/10 bg-[#081321] p-1.5 shadow-[0_18px_40px_rgba(0,0,0,0.22)]">
       {(['corre', 'prof']).map((tipo) => {
-        const meta = TRACK_META[tipo]
         const active = activeTipo === tipo
+        const track = TRACKS[tipo]
 
         return (
           <button
@@ -155,14 +355,23 @@ function TrackTabs({ activeTipo, onChange }) {
             type="button"
             onClick={() => onChange(tipo)}
             className={[
-              'rounded-xl px-3 py-2 text-xs font-black transition',
+              'relative overflow-hidden rounded-[18px] px-3 py-3 text-sm font-black uppercase tracking-[0.02em] transition motion-reduce:transition-none md:text-base',
               active
-                ? `bg-gradient-to-r ${meta.accent} text-white shadow-[0_14px_28px_rgba(37,99,235,0.25)]`
-                : 'bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white',
+                ? `bg-gradient-to-r ${track.activeTab} shadow-[0_14px_34px_rgba(250,204,21,0.24)]`
+                : 'bg-transparent text-slate-300 hover:bg-white/[0.06] hover:text-white',
             ].join(' ')}
           >
-            <span className="mr-1">{meta.icon}</span>
-            {meta.label}
+            {active ? (
+              <motion.span
+                layoutId="patente-active-tab"
+                className="absolute inset-0 rounded-[18px] ring-1 ring-white/20"
+                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+              />
+            ) : null}
+            <span className="relative inline-flex items-center justify-center gap-2">
+              <span>{track.tabIcon}</span>
+              {track.label}
+            </span>
           </button>
         )
       })}
@@ -170,424 +379,351 @@ function TrackTabs({ activeTipo, onChange }) {
   )
 }
 
-function LevelBadge({ tipo, level, active, unlocked }) {
-  const visual = getPatenteVisual(tipo, level)
-  const title = getPatenteTitle(tipo, level)
-
+function StatPill({ icon, value, label }) {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-2">
-      <div
-        className={[
-          'relative grid h-12 w-12 place-items-center rounded-2xl border text-lg font-black ring-1 transition md:h-14 md:w-14',
-          unlocked ? `border-white/20 bg-gradient-to-br ${visual.cor} text-white ${visual.ring}` : 'border-white/10 bg-white/[0.04] text-white/35 ring-white/5',
-          active ? 'scale-110 shadow-[0_0_30px_rgba(168,85,247,0.35)]' : '',
-        ].join(' ')}
-      >
-        {active ? <span className="absolute -top-1.5 h-2 w-2 rounded-full bg-yellow-300 shadow-[0_0_18px_rgba(250,204,21,0.8)]" /> : null}
-        <span>{visual.icon}</span>
+    <div className="rounded-[18px] border border-white/10 bg-[#122238] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <div className="flex items-center gap-2">
+        <span className="text-xl">{icon}</span>
+        <span className="text-2xl font-black leading-none text-white">{value}</span>
       </div>
-      <div className="text-center">
-        <div className={['text-xs font-black', active ? 'text-white' : unlocked ? 'text-white/75' : 'text-white/35'].join(' ')}>
-          {level}
-        </div>
-        <div className={['max-w-[64px] truncate text-[10px] font-bold', active ? 'text-violet-200' : 'text-white/45'].join(' ')}>
-          {title}
-        </div>
-      </div>
+      <div className="mt-1 text-[11px] font-bold text-slate-400">{label}</div>
     </div>
   )
 }
 
-function TrackProgressHero({ track }) {
+function EvolutionCard({ track, xp, moedas }) {
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`overflow-hidden rounded-[24px] border ${track.meta.ring} bg-gradient-to-br ${track.meta.soft} p-4 shadow-[0_18px_55px_rgba(0,0,0,0.22)] md:p-5`}
-    >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="grid h-24 w-24 shrink-0 place-items-center rounded-[28px] border border-white/10 bg-black/25 shadow-[0_0_50px_rgba(124,58,237,0.28)]">
-          <Patente tipo={track.tipo} nivel={track.nivel} showLabel={false} pulse />
+    <section className="rounded-[24px] border border-white/10 bg-[#0B1627] p-4 shadow-[0_24px_68px_rgba(0,0,0,0.28)] md:p-5">
+      <SectionLabel number="1">Minha evolução</SectionLabel>
+      <div className="grid gap-5 md:grid-cols-[170px_1fr] md:items-center">
+        <div className="flex justify-center md:justify-start">
+          <Medal tipo={track.tipo} level={track.nivel} size="lg" active />
         </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="text-xs font-black uppercase tracking-[0.16em] text-white/55">{track.meta.eyebrow}</div>
-          <h3 className="mt-1 text-2xl font-black leading-tight text-white">
-            Sua evolucao {track.meta.label}
-          </h3>
-          <div className="mt-1 inline-flex rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs font-black text-white">
-            Nivel {track.nivel} - {track.title}
+        <div className="min-w-0">
+          <div className="text-sm font-bold text-slate-300">Nível atual</div>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <h3 className="text-3xl font-black leading-tight text-white md:text-4xl">{track.title}</h3>
+            <span className="rounded-xl border border-violet-300/30 bg-violet-500/24 px-3 py-1.5 text-sm font-black text-violet-100">
+              Nível {track.nivel}
+            </span>
+          </div>
+
+          <div className="mt-5 grid grid-cols-3 gap-2">
+            <StatPill icon="🧾" value={track.servicos} label="Serviços concluídos" />
+            <StatPill icon="XP" value={xp} label="XP" />
+            <StatPill icon="🪙" value={moedas} label="Moedas" />
           </div>
         </div>
       </div>
-
-      <div className="mt-5">
-        <div className="mb-2 flex items-center justify-between gap-3 text-sm font-bold text-white/75">
-          <span>{track.servicos} servicos concluidos</span>
-          <span>{track.progress}%</span>
-        </div>
-        <div className="h-3 overflow-hidden rounded-full bg-white/10">
-          <div
-            className={`h-full rounded-full bg-gradient-to-r ${track.meta.progress} shadow-[0_0_22px_rgba(99,102,241,0.42)] transition-all duration-500`}
-            style={{ width: `${track.progress}%` }}
-          />
-        </div>
-        <div className="mt-2 text-xs font-bold text-white/50">
-          {track.nextMark ? `Faltam ${track.missing} servicos para o proximo nivel` : 'Voce chegou ao nivel maximo desta trilha.'}
-        </div>
-      </div>
-
-      <div className="relative mt-6">
-        <div className="absolute left-6 right-6 top-6 h-px bg-gradient-to-r from-white/15 via-white/35 to-white/15" />
-        <div className="relative flex justify-between gap-2">
-          {LEVELS.map((level) => (
-            <LevelBadge
-              key={`${track.tipo}-hero-${level}`}
-              tipo={track.tipo}
-              level={level}
-              active={level === track.nivel}
-              unlocked={level <= track.nivel}
-            />
-          ))}
-        </div>
-      </div>
-    </motion.section>
+    </section>
   )
 }
 
-function PatentLevelCard({ tipo, level, currentLevel }) {
-  const visual = getPatenteVisual(tipo, level)
-  const title = getPatenteTitle(tipo, level)
-  const unlocked = level <= currentLevel
-  const active = level === currentLevel
-  const meta = TRACK_META[tipo]
+function ProgressCard({ track }) {
+  return (
+    <section className="rounded-[24px] border border-white/10 bg-[#0B1627] p-4 shadow-[0_22px_58px_rgba(0,0,0,0.24)] md:p-5">
+      <SectionLabel number="2">Progresso para o próximo nível</SectionLabel>
+      <div className="grid gap-4 sm:grid-cols-[1fr_92px] sm:items-center">
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-lg font-black text-white">
+              Próximo nível:{' '}
+              <span className="text-yellow-300">{track.nextNivel ? track.nextTitle : 'Máximo'}</span>
+            </div>
+            <div className="text-xl font-black text-white">{track.progress}%</div>
+          </div>
+          <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-700/70">
+            <motion.div
+              key={`${track.tipo}-${track.nivel}-${track.progress}`}
+              initial={{ width: 0 }}
+              animate={{ width: `${track.progress}%` }}
+              transition={{ duration: 0.7, ease: 'easeOut' }}
+              className={`h-full rounded-full bg-gradient-to-r ${track.meta.progress} shadow-[0_0_22px_rgba(250,204,21,0.34)]`}
+            />
+          </div>
+          <div className="mt-3 text-sm font-semibold text-slate-400">
+            {track.nextNivel ? `Faltam ${track.missing} serviços para evoluir` : 'Você alcançou a última patente desta trilha.'}
+          </div>
+        </div>
+        <div className="mx-auto">
+          <Medal tipo={track.tipo} level={track.nextNivel || track.nivel} size="sm" active={!!track.nextNivel} locked={!track.nextNivel} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function Trail({ track, onSelect }) {
+  return (
+    <section className="rounded-[24px] border border-white/10 bg-[#0B1627] p-4 shadow-[0_22px_58px_rgba(0,0,0,0.22)] md:p-5">
+      <SectionLabel number="3">Trilha visual de patentes</SectionLabel>
+      <div className="relative overflow-hidden rounded-[20px] bg-[#09182A]/55 px-1 py-3">
+        <div className="absolute left-[10%] right-[10%] top-[47px] h-px bg-gradient-to-r from-slate-600/50 via-blue-300/60 to-slate-600/50" />
+        <div className="relative grid grid-cols-5 gap-1 sm:gap-2">
+          {LEVELS.map((level) => {
+            const status = getStatus(level, track.nivel)
+            const active = status === 'atual'
+            const unlocked = status !== 'bloqueado'
+
+            return (
+              <button
+                key={`${track.tipo}-trail-${level}`}
+                type="button"
+                onClick={() => onSelect(level)}
+                className={[
+                  'relative flex min-w-0 flex-col items-center rounded-[18px] px-1 py-2 text-center transition hover:-translate-y-1 hover:bg-white/[0.04] motion-reduce:transition-none',
+                  active ? 'bg-white/[0.04]' : '',
+                ].join(' ')}
+              >
+                <Medal tipo={track.tipo} level={level} size={active ? 'sm' : 'xs'} active={active} locked={!unlocked} />
+                <div className={['mt-2 text-sm font-black leading-none', unlocked ? 'text-white' : 'text-slate-500'].join(' ')}>
+                  {level}
+                </div>
+                <div className={['mt-1 w-full truncate text-[10px] font-bold sm:text-xs', active ? 'text-violet-200' : unlocked ? 'text-slate-300' : 'text-slate-500'].join(' ')}>
+                  {getTrackTitle(track.tipo, level)}
+                </div>
+                <TrailStatusMark status={status} />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PatentCard({ track, level, onSelect }) {
+  const status = getStatus(level, track.nivel)
+  const active = status === 'atual'
+  const unlocked = status !== 'bloqueado'
+  const style = LEVEL_STYLE[level]
+  const benefits = TRACKS[track.tipo].benefits[level]
 
   return (
-    <motion.div
+    <motion.button
+      type="button"
       layout
+      whileHover={{ y: -4, scale: 1.01 }}
+      whileTap={{ scale: 0.99 }}
+      onClick={() => onSelect(level)}
       className={[
-        'relative overflow-hidden rounded-[18px] border p-3 transition',
-        active
-          ? `border-white/25 bg-gradient-to-r ${meta.soft} shadow-[0_0_35px_rgba(124,58,237,0.24)]`
-          : unlocked
-            ? 'border-white/10 bg-white/[0.07]'
-            : 'border-white/8 bg-white/[0.03] opacity-70',
+        'group relative w-full overflow-hidden rounded-[24px] border p-4 text-left shadow-[0_18px_48px_rgba(0,0,0,0.20)] transition motion-reduce:transition-none',
+        unlocked ? style.card : style.locked,
+        active ? 'ring-1 ring-violet-300/60' : '',
       ].join(' ')}
+      style={active ? { boxShadow: `0 0 34px ${style.shadow}, 0 18px 48px rgba(0,0,0,0.24)` } : undefined}
     >
-      {active ? <div className={`absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${meta.accent}`} /> : null}
-      <div className="flex items-start gap-3">
-        <div
-          className={[
-            'grid h-10 w-10 shrink-0 place-items-center rounded-2xl border text-base font-black',
-            unlocked ? `border-white/20 bg-gradient-to-br ${visual.cor} text-white` : 'border-white/10 bg-white/[0.05] text-white/35',
-          ].join(' ')}
-        >
-          {visual.icon}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(255,255,255,0.08),transparent_34%)] opacity-80" />
+      <div className="relative grid gap-4 md:grid-cols-[1fr_116px_1.2fr] md:items-center">
+        <div className="min-w-0">
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-300">Nível {level}</div>
+          <h4 className="mt-2 text-2xl font-black leading-tight text-white">{getTrackTitle(track.tipo, level)}</h4>
+          <div className="mt-1 text-sm font-semibold text-slate-300">{SERVICOS_POR_NIVEL[level]}+ serviços</div>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="text-sm font-black text-white">
-              Nivel {level} - {title}
-            </h4>
-            {active ? (
-              <span className="rounded-full bg-violet-400/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-violet-100">
-                Atual
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-1 text-[11px] font-bold text-white/45">
-            {SERVICOS_POR_NIVEL[level]} servicos
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {(BENEFITS[tipo]?.[level] || []).map((benefit) => (
-              <span
-                key={`${tipo}-${level}-${benefit}`}
-                className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-white/70"
-              >
-                {unlocked ? '✓' : '•'} {benefit}
-              </span>
+
+        <div className="flex justify-start md:justify-center">
+          <Medal tipo={track.tipo} level={level} size="md" active={active} locked={!unlocked} />
+        </div>
+
+        <div className="min-w-0">
+          <div className="mb-2 text-sm font-bold text-slate-300">Benefícios desbloqueados</div>
+          <div className="space-y-1.5">
+            {benefits.map((benefit) => (
+              <div key={`${track.tipo}-${level}-${benefit}`} className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                <span className={unlocked ? 'text-emerald-300' : 'text-slate-500'}>✓</span>
+                <span>{benefit}</span>
+              </div>
             ))}
+          </div>
+          <div className="mt-3">
+            <StatusBadge status={status} />
           </div>
         </div>
       </div>
+    </motion.button>
+  )
+}
+
+function PatentList({ track, onSelect }) {
+  return (
+    <section className="space-y-3">
+      <SectionLabel number="4">Lista de patentes - {track.meta.label}</SectionLabel>
+      {LEVELS.map((level) => (
+        <PatentCard key={`${track.tipo}-card-${level}`} track={track} level={level} onSelect={onSelect} />
+      ))}
+    </section>
+  )
+}
+
+function HowItWorks() {
+  return (
+    <section className="rounded-[24px] border border-white/10 bg-[#0B1627] p-4 shadow-[0_18px_44px_rgba(0,0,0,0.22)] md:p-5">
+      <div className="flex items-center gap-4">
+        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-yellow-300/30 bg-yellow-300/12 text-3xl text-yellow-200">
+          ★
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-black uppercase tracking-[0.12em] text-yellow-300">Como funciona</div>
+          <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-300">
+            Suas patentes aumentam conforme você conclui serviços. Quanto maior sua patente, mais confiança seu perfil transmite.
+          </p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function Legend() {
+  return (
+    <section className="grid gap-3 rounded-[24px] border border-white/10 bg-[#0B1627] p-4 shadow-[0_18px_44px_rgba(0,0,0,0.20)] md:grid-cols-[1.1fr_1fr] md:p-5">
+      <div>
+        <SectionLabel number="5">Legenda de status</SectionLabel>
+        <div className="flex flex-wrap gap-3">
+          <StatusBadge status="desbloqueado" />
+          <StatusBadge status="atual" />
+          <StatusBadge status="bloqueado" />
+        </div>
+      </div>
+      <div>
+        <SectionLabel number="6">Cores por nível</SectionLabel>
+        <div className="grid grid-cols-5 gap-2">
+          {LEVELS.map((level) => (
+            <div
+              key={`color-${level}`}
+              className={`rounded-2xl bg-gradient-to-br ${LEVEL_STYLE[level].gradient} px-2 py-3 text-center text-[10px] font-black uppercase text-white shadow-[0_12px_26px_rgba(0,0,0,0.2)]`}
+            >
+              Nível {level}
+              <div className="mt-1 text-white/80">{LEVEL_STYLE[level].hex}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PatentModal({ selected, track, onClose }) {
+  const status = getStatus(selected.level, track.nivel)
+  const unlocked = status !== 'bloqueado'
+  const benefits = TRACKS[track.tipo].benefits[selected.level]
+  const nextText = track.nextNivel
+    ? `Faltam ${track.missing} serviços para chegar em ${track.nextTitle}.`
+    : 'Você já chegou ao nível máximo desta trilha.'
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[10000] grid place-items-center bg-black/72 p-4 backdrop-blur-md"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onMouseDown={onClose}
+    >
+      <motion.div
+        className="relative w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/10 bg-[#07111F] p-4 text-white shadow-[0_30px_90px_rgba(0,0,0,0.55)] md:p-5"
+        initial={{ opacity: 0, y: 24, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 16, scale: 0.96 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_10%,rgba(168,85,247,0.24),transparent_32%),radial-gradient(circle_at_88%_12%,rgba(59,130,246,0.16),transparent_28%)]" />
+        <div className="relative flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-xl font-black transition hover:bg-white/[0.1]"
+            aria-label="Voltar"
+          >
+            ←
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] text-2xl font-black transition hover:bg-white/[0.1]"
+            aria-label="Fechar"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="relative mt-4 grid gap-5 md:grid-cols-[220px_1fr]">
+          <div className="text-center">
+            <div className="text-sm font-bold text-slate-400">{track.meta.subtitle}</div>
+            <h3 className="mt-1 text-3xl font-black text-violet-200">
+              Nível {selected.level} - {getTrackTitle(track.tipo, selected.level)}
+            </h3>
+            <div className="mt-5 flex justify-center">
+              <Medal tipo={track.tipo} level={selected.level} size="lg" active={status === 'atual'} locked={!unlocked} />
+            </div>
+            <div className="mt-4">
+              <StatusBadge status={status} />
+            </div>
+            <div className="mt-5 text-2xl font-black text-white">
+              {Math.min(track.servicos, track.nextMark)}/{track.nextMark}
+            </div>
+            <div className="text-sm font-semibold text-slate-400">Serviços concluídos</div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-[24px] border border-white/10 bg-[#122238] p-4">
+              <div className="text-base font-black text-white">Benefícios desbloqueados</div>
+              <div className="mt-3 space-y-2">
+                {benefits.map((benefit) => (
+                  <div key={`modal-${track.tipo}-${selected.level}-${benefit}`} className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                    <span className={unlocked ? 'text-emerald-300' : 'text-slate-500'}>✓</span>
+                    {benefit}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-white/10 bg-[#122238] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-base font-black text-white">Progresso para o próximo nível</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-400">
+                    Você já concluiu {track.servicos} de {track.nextMark} serviços.
+                  </div>
+                </div>
+                <div className="text-lg font-black text-white">{track.progress}%</div>
+              </div>
+              <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-700">
+                <div className={`h-full rounded-full bg-gradient-to-r ${track.meta.progress}`} style={{ width: `${track.progress}%` }} />
+              </div>
+              <div className="mt-4 border-t border-white/10 pt-4">
+                <div className="text-sm font-black text-white">O que falta para desbloquear</div>
+                <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-400">{nextText}</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className={`w-full rounded-2xl bg-gradient-to-r ${track.meta.progress} px-5 py-4 text-base font-black text-white shadow-[0_18px_45px_rgba(37,99,235,0.28)] transition hover:-translate-y-0.5 motion-reduce:transition-none`}
+            >
+              Continuar evoluindo {track.meta.tabIcon}
+            </button>
+          </div>
+        </div>
+      </motion.div>
     </motion.div>
   )
 }
 
-function PatentCards({ track }) {
-  return (
-    <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-3 md:p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs font-black uppercase tracking-[0.16em] text-white/45">Cards de patentes</div>
-          <h3 className="text-lg font-black text-white">Beneficios por nivel</h3>
-        </div>
-        <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-black text-white/70">
-          {track.meta.label}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        {LEVELS.map((level) => (
-          <PatentLevelCard key={`${track.tipo}-level-${level}`} tipo={track.tipo} level={level} currentLevel={track.nivel} />
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function Overview({ track, xp, moedas, totalServicos }) {
-  return (
-    <section className="space-y-3 rounded-[24px] border border-white/10 bg-white/[0.04] p-3 md:p-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <StatTile label="Nivel atual" value={track.nivel} detail={track.title} tone="yellow" />
-        <StatTile label="Servicos" value={totalServicos} detail="concluidos" />
-        <StatTile label="XP" value={xp} detail="acumulado" tone="green" />
-        <StatTile label="Moedas" value={moedas} detail="ganhas" tone="yellow" />
-      </div>
-
-      <div className="rounded-[20px] border border-white/10 bg-black/20 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-black text-yellow-200">
-              {track.nextNivel ? `Proximo nivel: ${track.nextTitle}` : 'Nivel maximo alcancado'}
-            </div>
-            <div className="mt-1 text-xs font-bold text-white/50">
-              {track.nextMark ? `Faltam ${track.missing} servicos` : 'Continue mantendo boa reputacao para se destacar.'}
-            </div>
-          </div>
-          <div className="text-sm font-black text-white">{track.progress}%</div>
-        </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full rounded-full bg-gradient-to-r from-yellow-300 to-orange-400" style={{ width: `${track.progress}%` }} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-5 gap-2">
-        {LEVELS.map((level) => {
-          const active = level === track.nivel
-          const unlocked = level <= track.nivel
-
-          return (
-            <div
-              key={`${track.tipo}-reward-${level}`}
-              className={[
-                'rounded-[16px] border p-2 text-center',
-                active
-                  ? 'border-yellow-300/80 bg-yellow-300/10'
-                  : unlocked
-                    ? 'border-white/12 bg-white/[0.05]'
-                    : 'border-white/8 bg-white/[0.025]',
-              ].join(' ')}
-            >
-              <div className="text-[10px] font-black text-white/45">{level}</div>
-              <Patente tipo={track.tipo} nivel={level} size="xs" showLabel={false} pulse={active} />
-              <div className={['mt-1 truncate text-[10px] font-black', active ? 'text-yellow-200' : 'text-white/55'].join(' ')}>
-                {getPatenteTitle(track.tipo, level)}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-function DualTracks({ correTrack, profTrack, activeTipo, onChange }) {
-  return (
-    <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-3 md:p-4">
-      <div className="mb-3">
-        <div className="text-xs font-black uppercase tracking-[0.16em] text-white/45">Trilha dupla</div>
-        <h3 className="text-lg font-black text-white">Corre e Profissional</h3>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {([correTrack, profTrack]).map((track) => {
-          const active = activeTipo === track.tipo
-
-          return (
-            <button
-              key={`track-${track.tipo}`}
-              type="button"
-              onClick={() => onChange(track.tipo)}
-              className={[
-                'rounded-[20px] border p-3 text-left transition',
-                active ? `${track.meta.ring} bg-white/[0.08]` : 'border-white/10 bg-black/20 hover:bg-white/[0.06]',
-              ].join(' ')}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Patente tipo={track.tipo} nivel={track.nivel} size="sm" showLabel={false} pulse={active} />
-                  <div>
-                    <div className="text-xs font-black text-white/55">{track.meta.eyebrow}</div>
-                    <div className="text-base font-black text-white">Nivel {track.nivel}</div>
-                  </div>
-                </div>
-                <span className={['rounded-full px-2 py-1 text-[10px] font-black', track.enabled ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/10 text-white/45'].join(' ')}>
-                  {track.enabled ? 'Ativa' : 'Opcional'}
-                </span>
-              </div>
-
-              <div className="mt-3 text-sm font-black text-white">{track.title}</div>
-              <div className="mt-1 text-xs font-bold text-white/50">{track.servicos} servicos concluidos</div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                <div className={`h-full rounded-full bg-gradient-to-r ${track.meta.progress}`} style={{ width: `${track.progress}%` }} />
-              </div>
-            </button>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-function Missions({ track, avaliacoes, notaMedia }) {
-  const serviceTarget = track.nextMark || SERVICOS_POR_NIVEL[5]
-  const missions = [
-    {
-      label: `Concluir ${serviceTarget} servicos`,
-      value: `${Math.min(track.servicos, serviceTarget)}/${serviceTarget}`,
-      progress: clampPercent((track.servicos / Math.max(serviceTarget, 1)) * 100),
-    },
-    {
-      label: 'Receber avaliacoes',
-      value: `${avaliacoes}/5`,
-      progress: clampPercent((avaliacoes / 5) * 100),
-    },
-    {
-      label: 'Manter nota 4.8+',
-      value: notaMedia ? notaMedia.toFixed(1) : '0.0',
-      progress: clampPercent((notaMedia / 5) * 100),
-    },
-  ]
-
-  return (
-    <section className="rounded-[24px] border border-white/10 bg-white/[0.04] p-3 md:p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-black uppercase tracking-[0.16em] text-white/45">Detalhes da patente</div>
-          <h3 className="text-xl font-black text-white">
-            Nivel {track.nivel} - {track.title}
-          </h3>
-          <div className="text-xs font-bold text-white/45">{track.meta.eyebrow}</div>
-        </div>
-        <Patente tipo={track.tipo} nivel={track.nivel} size="sm" showLabel={false} />
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-[0.85fr_1.15fr]">
-        <div className={`rounded-[22px] border ${track.meta.ring} bg-gradient-to-br ${track.meta.soft} p-4 text-center`}>
-          <div className="mx-auto grid h-24 w-24 place-items-center rounded-[28px] border border-white/10 bg-black/25">
-            <Patente tipo={track.tipo} nivel={track.nivel} showLabel={false} />
-          </div>
-          <div className="mt-3 text-2xl font-black text-white">{track.servicos}/{track.nextMark || SERVICOS_POR_NIVEL[5]}</div>
-          <div className="text-xs font-bold text-white/50">Servicos concluidos</div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-            <div className={`h-full rounded-full bg-gradient-to-r ${track.meta.progress}`} style={{ width: `${track.progress}%` }} />
-          </div>
-        </div>
-
-        <div className="space-y-3 rounded-[22px] border border-white/10 bg-black/20 p-3">
-          <div>
-            <div className="text-sm font-black text-white">Beneficios desbloqueados</div>
-            <div className="mt-2 space-y-1">
-              {(BENEFITS[track.tipo]?.[track.nivel] || []).map((benefit) => (
-                <div key={`${track.tipo}-benefit-${benefit}`} className="flex items-center gap-2 text-xs font-bold text-white/70">
-                  <span className="text-emerald-300">✓</span>
-                  {benefit}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-sm font-black text-white">Missoes para evoluir</div>
-            <div className="mt-2 space-y-2">
-              {missions.map((mission) => (
-                <div key={`${track.tipo}-mission-${mission.label}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-2">
-                  <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-white/65">
-                    <span>{mission.label}</span>
-                    <span>{mission.value}</span>
-                  </div>
-                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
-                    <div className={`h-full rounded-full bg-gradient-to-r ${track.meta.progress}`} style={{ width: `${mission.progress}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-5 gap-2">
-        {ACHIEVEMENTS.map((item) => {
-          const done = track.servicos >= item.target
-
-          return (
-            <div
-              key={`${track.tipo}-achievement-${item.title}`}
-              className={[
-                'rounded-[16px] border p-2 text-center',
-                done ? 'border-yellow-300/35 bg-yellow-300/10 text-yellow-100' : 'border-white/10 bg-white/[0.035] text-white/40',
-              ].join(' ')}
-            >
-              <div className="text-lg">{item.icon}</div>
-              <div className="mt-1 truncate text-[9px] font-black">{item.title}</div>
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-function PremiumStage({ track }) {
-  return (
-    <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.18),rgba(2,6,23,0.15)_42%,rgba(2,6,23,0.45))] p-4 text-center">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-left">
-          <div className="text-xs font-black uppercase tracking-[0.16em] text-white/45">Layout premium</div>
-          <h3 className="text-lg font-black text-white">Sua jornada de patentes</h3>
-        </div>
-        <div className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-black text-white/60">
-          {track.meta.label}
-        </div>
-      </div>
-
-      <div className="mt-5 grid grid-cols-5 items-end gap-2">
-        {LEVELS.map((level) => {
-          const active = level === track.nivel
-          const unlocked = level <= track.nivel
-          const height = active ? 'h-20' : level < track.nivel ? 'h-14' : 'h-10'
-
-          return (
-            <div key={`${track.tipo}-stage-${level}`} className="flex flex-col items-center gap-2">
-              <div className={['grid place-items-center rounded-t-2xl border border-white/10 bg-white/[0.04] px-2', height].join(' ')}>
-                <Patente tipo={track.tipo} nivel={level} size={active ? 'sm' : 'xs'} showLabel={false} pulse={active} />
-              </div>
-              <div className={['text-xs font-black', active ? 'text-yellow-200' : unlocked ? 'text-white/70' : 'text-white/35'].join(' ')}>
-                {level}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <p className="mx-auto mt-5 max-w-md text-sm font-bold text-white/60">
-        Sua dedicacao te leva cada vez mais longe. Evolua concluindo servicos, mantendo boa nota e atualizando seu perfil.
-      </p>
-    </section>
-  )
-}
-
-export default function PainelPatentes({ accountStats = {}, serviceStats = {}, isProfissional = false }) {
+export default function PainelPatentes({
+  accountStats = {},
+  serviceStats = {},
+  isProfissional = false,
+  onBack,
+}) {
   const [activeTipo, setActiveTipo] = useState('corre')
+  const [selectedPatent, setSelectedPatent] = useState(null)
 
   const xp = toNumber(accountStats.xp)
   const moedas = toNumber(accountStats.moedas)
   const servicosCorre = getServicos(accountStats, serviceStats, 'corre')
   const servicosProf = getServicos(accountStats, serviceStats, 'prof')
-  const avaliacoes = toNumber(serviceStats.avaliacoes)
-  const notaMedia = toNumber(serviceStats.notaMedia)
 
   const { correTrack, profTrack } = useMemo(() => {
     const corre = buildTrack({
@@ -607,45 +743,56 @@ export default function PainelPatentes({ accountStats = {}, serviceStats = {}, i
   }, [accountStats.patenteCorre, accountStats.patenteProf, isProfissional, servicosCorre, servicosProf])
 
   const activeTrack = activeTipo === 'prof' ? profTrack : correTrack
-  const totalServicos = servicosCorre + servicosProf
+  const modalTrack = selectedPatent?.tipo === 'prof' ? profTrack : correTrack
+
+  const handleSelectPatent = (level) => {
+    setSelectedPatent({ tipo: activeTrack.tipo, level })
+  }
 
   return (
-    <div className="space-y-4 text-white">
-      <section className="overflow-hidden rounded-[26px] border border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.95),rgba(2,6,23,0.86))] p-4 shadow-[0_24px_60px_rgba(0,0,0,0.26)] md:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <div className="text-xs font-black uppercase tracking-[0.18em] text-yellow-300">Patentes Corre Aqui</div>
-            <h2 className="mt-1 text-2xl font-black leading-tight md:text-3xl">Evolua em cada servico</h2>
-            <p className="mt-2 max-w-2xl text-sm font-bold leading-relaxed text-white/55">
-              Acompanhe seu nivel, beneficios, recompensas e o quanto falta para a proxima patente.
-            </p>
-          </div>
+    <div className="rounded-[30px] bg-[#07111F] p-3 text-white shadow-[0_30px_90px_rgba(0,0,0,0.36)] md:p-4">
+      <div className="space-y-4">
+        <Header onBack={onBack} />
+        <Tabs activeTipo={activeTipo} onChange={setActiveTipo} />
 
-          <div className="w-full lg:w-[320px]">
-            <TrackTabs activeTipo={activeTipo} onChange={setActiveTipo} />
-          </div>
-        </div>
-      </section>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTipo}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22 }}
+            className="grid gap-4 xl:grid-cols-[0.96fr_1.04fr]"
+          >
+            <div className="space-y-4">
+              <EvolutionCard track={activeTrack} xp={xp} moedas={moedas} />
+              <ProgressCard track={activeTrack} />
+              <Trail track={activeTrack} onSelect={handleSelectPatent} />
+              <HowItWorks />
+            </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <TrackProgressHero track={activeTrack} />
-        <Overview track={activeTrack} xp={xp} moedas={moedas} totalServicos={totalServicos} />
+            <div className="space-y-4">
+              <PatentList track={activeTrack} onSelect={handleSelectPatent} />
+              <Legend />
+              {!isProfissional && activeTipo === 'prof' ? (
+                <div className="rounded-[24px] border border-emerald-300/24 bg-emerald-400/10 px-4 py-4 text-sm font-bold leading-relaxed text-emerald-100">
+                  Ative o perfil profissional para evoluir nessa trilha e liberar benefícios para agenda e portfólio.
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      <DualTracks correTrack={correTrack} profTrack={profTrack} activeTipo={activeTipo} onChange={setActiveTipo} />
-
-      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <PatentCards track={activeTrack} />
-        <Missions track={activeTrack} avaliacoes={avaliacoes} notaMedia={notaMedia} />
-      </div>
-
-      <PremiumStage track={activeTrack} />
-
-      {!isProfissional && activeTipo === 'prof' ? (
-        <div className="rounded-[20px] border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm font-bold text-emerald-100">
-          Ative o perfil profissional para evoluir tambem nessa trilha e liberar beneficios para agenda e portfolio.
-        </div>
-      ) : null}
+      <AnimatePresence>
+        {selectedPatent ? (
+          <PatentModal
+            selected={selectedPatent}
+            track={modalTrack}
+            onClose={() => setSelectedPatent(null)}
+          />
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }
