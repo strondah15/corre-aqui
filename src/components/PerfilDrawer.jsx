@@ -263,6 +263,77 @@ function MiniSwitch({ checked, onChange, label }) {
   );
 }
 
+function ServiceBriefcaseIcon({ className = "h-6 w-6" }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none">
+      <path
+        d="M8 7V5.8C8 4.25 9.25 3 10.8 3h2.4C14.75 3 16 4.25 16 5.8V7"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4.75 7h14.5A1.75 1.75 0 0 1 21 8.75v9A2.25 2.25 0 0 1 18.75 20H5.25A2.25 2.25 0 0 1 3 17.75v-9A1.75 1.75 0 0 1 4.75 7Z"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M3.5 12.2h17" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      <path
+        d="M9.5 11.4h5v2.1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-2.1Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function ServiceToolboxIllustration({ className = "h-28 w-40" }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 220 150" className={className} fill="none">
+      <defs>
+        <linearGradient id="toolboxBox" x1="67" y1="70" x2="159" y2="132" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#2D74FF" />
+          <stop offset="1" stopColor="#1E49C8" />
+        </linearGradient>
+        <linearGradient id="toolboxLid" x1="61" y1="58" x2="169" y2="94" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#4D8CFF" />
+          <stop offset="1" stopColor="#2655D8" />
+        </linearGradient>
+        <linearGradient id="toolboxWrench" x1="133" y1="34" x2="169" y2="90" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#FFD84A" />
+          <stop offset="1" stopColor="#F5A400" />
+        </linearGradient>
+        <filter id="toolboxShadow" x="28" y="92" width="161" height="45" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB">
+          <feGaussianBlur stdDeviation="10" />
+        </filter>
+      </defs>
+
+      <ellipse cx="108" cy="116" rx="64" ry="17" fill="#DDEBFF" filter="url(#toolboxShadow)" opacity=".86" />
+      <path d="M58 62h104l-17 29H73L58 62Z" fill="url(#toolboxLid)" />
+      <path d="M74 85h73l14 35H61l13-35Z" fill="url(#toolboxBox)" />
+      <path d="M61 87 34 73l28-12 14 23-15 3Z" fill="#3478F6" />
+      <path d="m146 86 35-16-18-13-19 26 2 3Z" fill="#336CE9" />
+      <path d="M83 89h10v7H83v-7ZM126 95h9v7h-9v-7Z" fill="#85B7FF" opacity=".55" />
+
+      <path d="M74 54 58 20l28 7 7 24-19 3Z" fill="#EAF3FF" />
+      <path d="M66 31h16M70 41h15M74 51h11" stroke="#2C6CF2" strokeWidth="4" strokeLinecap="round" />
+      <path d="M49 33h8v8h-8v-8Z" fill="#CFE2FF" transform="rotate(-19 49 33)" />
+
+      <path d="M111 74V39" stroke="#FFC627" strokeWidth="9" strokeLinecap="round" />
+      <path d="M100 79V51" stroke="#FFD34D" strokeWidth="9" strokeLinecap="round" />
+      <path d="M125 79V34" stroke="#BFCBDA" strokeWidth="11" strokeLinecap="round" />
+      <path d="M119 36c0-10 8-18 18-18l-7 12 10 6 7-12c4 9 1 20-8 26l-17 35-14-7 17-42Z" fill="url(#toolboxWrench)" />
+      <path d="M103 41h13v42h-13V41Z" fill="#132A60" opacity=".24" />
+
+      <circle cx="165" cy="25" r="3" fill="#6BA1FF" opacity=".55" />
+      <circle cx="151" cy="13" r="2.5" fill="#9BC1FF" opacity=".85" />
+      <path d="M177 42h9M181.5 37.5v9" stroke="#D6E6FF" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ProfMenuIcon({ id }) {
   const common = {
     fill: "none",
@@ -708,7 +779,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [profile, setProfile] = useState(initialProfile);
   const [portfolioDraft, setPortfolioDraft] = useState(createEmptyPortfolioDraft);
   const [portfolioEditingId, setPortfolioEditingId] = useState("");
-  const [portfolioStarterActive, setPortfolioStarterActive] = useState(false);
   const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
   const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -770,7 +840,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   useEffect(() => {
     if (!open) return;
     setTab(initialTab && initialTab !== "perfil" ? initialTab : "config");
-    setProfSection(initialTab === "profissional" ? initialProfSection || "" : "");
+    setProfSection(initialTab === "profissional" ? initialProfSection || "perfilProfissional" : "");
     setProfessionalProfileStep("choice");
   }, [open, initialTab, initialProfSection]);
 
@@ -1711,7 +1781,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       desc: "Boas praticas para trabalhar com seguranca.",
     },
   };
-  const profPage = profPages[profSection] || profPages.perfilProfissional;
+  const currentProfSection = professionalMode ? profSection || "perfilProfissional" : profSection;
+  const profPage = profPages[currentProfSection] || profPages.perfilProfissional;
   const drawerPages = {
     dados: {
       title: "Dados pessoais",
@@ -1730,35 +1801,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const updatePortfolioDraft = (field, value) => {
     setPortfolioPhotoError("");
     setPortfolioDraft((prev) => ({ ...prev, [field]: value }));
-  };
-  const prepararPrimeiroServico = () => {
-    setPortfolioEditingId("");
-    setPortfolioPhotoError("");
-    setPortfolioStarterActive(true);
-    setPortfolioDraft({
-      ...createEmptyPortfolioDraft(),
-      regiao: profile.profRegiao || profile.cidade || "",
-      ativo: true,
-      atendeDomicilio: true,
-    });
-
-    window.setTimeout(() => {
-      const drawer = drawerScrollRef.current;
-      const form = portfolioFormRef.current;
-
-      if (drawer && form) {
-        const drawerBox = drawer.getBoundingClientRect();
-        const formBox = form.getBoundingClientRect();
-        const targetTop = Math.max(0, drawer.scrollTop + formBox.top - drawerBox.top - 18);
-        drawer.scrollTo({ top: targetTop, behavior: "smooth" });
-      } else {
-        form?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-
-      window.setTimeout(() => {
-        portfolioFirstInputRef.current?.focus();
-      }, 180);
-    }, 60);
   };
   const adicionarPortfolioItem = () => {
     const fotos = normalizePortfolioFotos(portfolioDraft);
@@ -1804,7 +1846,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     }));
     setPortfolioDraft(createEmptyPortfolioDraft());
     setPortfolioEditingId("");
-    setPortfolioStarterActive(false);
     setPortfolioPhotoError("");
   };
   const editarPortfolioItem = (item) => {
@@ -1821,7 +1862,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       fotos: normalizePortfolioFotos(normalized),
     });
     setPortfolioEditingId(normalized.id || "");
-    setPortfolioStarterActive(false);
     setPortfolioPhotoError("");
   };
   const removerPortfolioItem = (id) => {
@@ -2824,7 +2864,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           {/* PROFISSIONAL */}
           {tab === "profissional" && (
             <div className="min-h-[calc(100dvh-7rem)] space-y-3 md:space-y-4">
-              {!profSection ? (
+              {!currentProfSection ? (
               <>
               <section className="overflow-hidden rounded-[24px] border border-white/10 bg-[#0b1628] p-3 text-white shadow-[0_22px_70px_rgba(15,23,42,0.20)] md:rounded-[32px] md:p-5">
                 <div className="flex items-center justify-between gap-3">
@@ -2903,7 +2943,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                   ["config", "Configurações", "Conta, seguranca e privacidade."],
                   ["ajuda", "Ajuda", "Duvidas e suporte."],
                 ].map(([id, label, desc], index, arr) => {
-                  const active = profSection === id;
+                  const active = currentProfSection === id;
                   return (
                     <button
                       key={id}
@@ -2934,12 +2974,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
               </>
               ) : (
               <>
-              {profSection !== "perfilProfissional" && (
+              {currentProfSection !== "perfilProfissional" && (
               <section className="rounded-[24px] border border-white/10 bg-[#0b1628] p-3 text-white shadow-[0_18px_45px_rgba(15,23,42,0.16)] md:rounded-[30px] md:p-4">
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setProfSection("")}
+                    onClick={onClose}
                     className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/10 text-lg font-black transition hover:bg-white/15"
                     title="Voltar"
                   >
@@ -2953,15 +2993,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
               </section>
               )}
 
-              {profSection === "perfilProfissional" && (
+              {currentProfSection === "perfilProfissional" && (
                 <section className="mx-auto w-full max-w-[430px] rounded-[26px] border border-slate-200 bg-white p-4 text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.16)] md:max-w-[520px] md:rounded-[32px] md:p-5">
                   <div className="flex h-10 items-center justify-between">
                     <button
                       type="button"
-                      onClick={() => {
-                        setProfSection("");
-                        setProfessionalProfileStep("choice");
-                      }}
+                      onClick={onClose}
                       className="grid h-10 w-10 place-items-center rounded-full text-xl font-black text-blue-950 transition hover:bg-slate-50"
                       title="Voltar"
                     >
@@ -3178,7 +3215,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
                       <button
                         type="button"
-                        onClick={() => setProfSection("")}
+                        onClick={onClose}
                         className="mt-8 h-12 w-full rounded-xl bg-blue-700 text-sm font-black text-white shadow-[0_14px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]"
                       >
                         Ver perfil
@@ -3195,12 +3232,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                 </section>
               )}
 
-              {profSection === "portfolio" && (
+              {currentProfSection === "portfolio" && (
                 <section className="overflow-hidden rounded-[26px] border border-blue-950/12 bg-white p-3 shadow-[0_22px_70px_rgba(15,23,42,0.10)] ring-1 ring-blue-950/5 md:rounded-[34px] md:p-5">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
-                      <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[18px] bg-blue-700 text-xl text-white shadow-[0_14px_30px_rgba(37,99,235,0.24)]">
-                        ▣
+                      <span className="grid h-16 w-20 shrink-0 place-items-center rounded-[22px] border border-blue-100 bg-blue-50 shadow-[0_14px_30px_rgba(37,99,235,0.14)]">
+                        <ServiceToolboxIllustration className="h-14 w-20" />
                       </span>
                       <div className="min-w-0">
                         <h3 className="text-lg font-black leading-tight text-blue-950 md:text-2xl">Seu portfólio profissional</h3>
@@ -3293,16 +3330,16 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                     ref={portfolioFormRef}
                     className={[
                       "mt-4 scroll-mt-6 rounded-[22px] border bg-white p-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] transition md:p-4",
-                      portfolioStarterActive ? "border-blue-300 ring-4 ring-blue-100" : "border-slate-100",
+                      "border-slate-100",
                     ].join(" ")}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="grid h-10 w-10 place-items-center rounded-full bg-blue-700 text-2xl font-black text-white shadow-[0_12px_24px_rgba(37,99,235,0.24)]">
-                        +
+                      <span className="grid h-10 w-10 place-items-center rounded-full bg-blue-700 text-white shadow-[0_12px_24px_rgba(37,99,235,0.24)]">
+                        <ServiceBriefcaseIcon className="h-5 w-5" />
                       </span>
                       <div>
                         <div className="text-sm font-black text-blue-950">
-                          {portfolioEditingId ? "Editar serviço" : portfolioStarterActive ? "Cadastrar primeiro serviço" : "Adicionar novo serviço"}
+                          {portfolioEditingId ? "Editar serviço" : "Novo serviço"}
                         </div>
                         <div className="text-xs font-semibold text-slate-500">Preencha os dados do serviço que você oferece</div>
                       </div>
@@ -3416,7 +3453,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                               className="hidden"
                               onChange={alterarFotoPortfolio}
                             />
-                            {portfolioPhotoUploading ? "Enviando..." : "Adicionar"}
+                            {portfolioPhotoUploading ? "Enviando..." : "Fotos"}
                           </label>
                         </div>
 
@@ -3441,7 +3478,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                                     </button>
                                   </>
                                 ) : (
-                                  index === 0 ? "+ Adicionar" : "▧"
+                                  index === 0 ? "+ Foto" : "▧"
                                 )}
                               </div>
                             );
@@ -3458,7 +3495,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                           type="button"
                         onClick={() => {
                           setPortfolioEditingId("");
-                          setPortfolioStarterActive(false);
                           setPortfolioDraft(createEmptyPortfolioDraft());
                         }}
                           className="h-10 rounded-xl border border-slate-200 bg-white px-5 text-xs font-black text-slate-600 transition active:scale-[0.98]"
@@ -3471,30 +3507,21 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                         onClick={adicionarPortfolioItem}
                         className="h-10 rounded-xl bg-blue-700 px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]"
                       >
-                        {portfolioEditingId ? "Salvar serviço" : "Adicionar serviço"}
+                        {portfolioEditingId ? "Salvar serviço" : "Adicionar"}
                       </button>
                     </div>
                   </div>
 
                   {!portfolioItems.length ? (
-                    <div className="mt-4 flex flex-col gap-3 rounded-[22px] border border-slate-100 bg-white p-4 shadow-[0_14px_36px_rgba(15,23,42,0.07)] md:flex-row md:items-center md:px-8">
-                      <div className="relative h-24 w-32 shrink-0">
-                        <div className="absolute bottom-2 left-5 h-12 w-20 rounded-[18px] bg-blue-600 shadow-[0_14px_28px_rgba(37,99,235,0.20)]" />
-                        <div className="absolute bottom-9 left-9 h-8 w-12 rounded-t-[18px] border-4 border-blue-300" />
-                        <div className="absolute left-4 top-4 rotate-[-18deg] text-2xl">▤</div>
-                        <div className="absolute right-3 top-5 rotate-[18deg] text-3xl">🔧</div>
-                        <div className="absolute bottom-8 left-12 h-3 w-3 rounded-full bg-[#ffd91a]" />
+                    <div className="mt-4 flex flex-col gap-4 rounded-[22px] border border-slate-100 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.07)] md:flex-row md:items-center md:px-8">
+                      <div className="relative grid h-32 w-44 shrink-0 place-items-center">
+                        <ServiceToolboxIllustration className="h-32 w-44" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-black text-blue-950">Você ainda não cadastrou serviços</div>
-                        <p className="mt-1 text-xs font-semibold text-slate-500">Adicione seu primeiro trabalho para aparecer melhor para clientes e aumentar suas chances de receber contatos.</p>
-                        <button
-                          type="button"
-                          onClick={prepararPrimeiroServico}
-                          className="mt-3 h-10 rounded-xl bg-blue-700 px-4 text-xs font-black text-white shadow-[0_10px_22px_rgba(37,99,235,0.22)]"
-                        >
-                          Adicionar meu primeiro serviço
-                        </button>
+                        <p className="mt-1 max-w-xl text-xs font-semibold leading-relaxed text-slate-500">
+                          Preencha o formulário acima e finalize pelo botão Adicionar para montar sua vitrine profissional.
+                        </p>
                       </div>
                     </div>
                   ) : null}
@@ -3595,7 +3622,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                 </section>
               )}
 
-              {profSection === "avaliacoes" && (
+              {currentProfSection === "avaliacoes" && (
                 <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
                   <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Avaliações</div>
                   <div className="mt-3 grid grid-cols-3 gap-2">
@@ -3616,18 +3643,18 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                 </section>
               )}
 
-              {profSection === "patentes" && (
+              {currentProfSection === "patentes" && (
                 <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[#07111F] p-1.5 shadow-[0_24px_70px_rgba(15,23,42,0.28)] md:p-2">
                   <PainelPatentes
                     accountStats={accountStats}
                     serviceStats={serviceStats}
                     isProfissional={profile.isProfissional}
-                    onBack={() => setProfSection("")}
+                    onBack={onClose}
                   />
                 </section>
               )}
 
-              {profSection === "config" && (
+              {currentProfSection === "config" && (
                 <section className="space-y-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
                   <div>
                     <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Configuracoes</div>
@@ -3661,7 +3688,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                 </section>
               )}
 
-              {profSection === "ajuda" && (
+              {currentProfSection === "ajuda" && (
                 <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
                   <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Central de ajuda</div>
                   <div className="mt-3 grid gap-2">
@@ -3721,7 +3748,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             </div>
           )}
 
-          {tab !== "dados" && (!professionalMode || (profSection && profSection !== "perfilProfissional")) && (
+          {tab !== "dados" && (!professionalMode || (currentProfSection && currentProfSection !== "perfilProfissional")) && (
           <button
             onClick={salvar}
             disabled={salvando || fotoSalvando}
