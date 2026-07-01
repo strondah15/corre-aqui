@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ref, push, set, serverTimestamp } from 'firebase/database'
 import { database } from '@/lib/firebase'
+import { auth } from '@/lib/firebase'
+import { createPrivateRequest } from '@/lib/privateRequests'
 
 function tomorrow() {
   const d = new Date()
@@ -106,7 +107,7 @@ const valueOptions = [
   { value: 'R$ 150', label: 'R$ 150' },
 ]
 
-export default function ModalAgenda({ open, onClose, profissional }) {
+export default function ModalAgenda({ open, onClose, profissional, servico = null }) {
   const [data, setData] = useState(tomorrow())
   const [hora, setHora] = useState('09:00')
   const [duracao, setDuracao] = useState('1h')
@@ -119,6 +120,8 @@ export default function ModalAgenda({ open, onClose, profissional }) {
   const profissionalId = profissional.uid || profissional.id
   const profissionalNome = pickText(profissional.nome, profissional.profile?.nome, 'Profissional')
   const profissao = pickText(
+    servico?.titulo,
+    servico?.nome,
     profissional.profTitulo,
     profissional.profile?.profTitulo,
     profissional.profissional?.profTitulo,
@@ -156,25 +159,38 @@ export default function ModalAgenda({ open, onClose, profissional }) {
     setSalvando(true)
 
     try {
-      const clienteId = localStorage.getItem('meuId') || ''
-      const clienteNome = localStorage.getItem('meuNome') || 'Cliente'
+      const authUser = auth.currentUser
+      const clienteId = authUser?.uid || localStorage.getItem('meuId') || ''
+      const clienteNome = localStorage.getItem('meuNome') || authUser?.displayName || 'Cliente'
 
-      const novo = push(ref(database, 'agendamentos'))
-
-      await set(novo, {
-        id: novo.key,
-        profissionalId,
-        profissionalNome,
-        clienteId,
-        clienteNome,
-        data,
-        hora,
-        duracao,
-        descricao,
-        valor,
-        status: 'pendente',
-        criadoEm: Date.now(),
-        atualizadoEm: serverTimestamp(),
+      await createPrivateRequest({
+        database,
+        cliente: {
+          uid: clienteId,
+          nome: clienteNome,
+          fotoURL: authUser?.photoURL || '',
+        },
+        profissional: {
+          ...profissional,
+          uid: profissionalId,
+          id: profissionalId,
+          nome: profissionalNome,
+        },
+        servico: servico || {
+          id: profissionalId,
+          titulo: profissao,
+          nome: profissao,
+          descricao,
+          valor,
+        },
+        tipo: 'agendamento',
+        agendamento: {
+          data,
+          hora,
+          duracao,
+          descricao,
+          valor,
+        },
       })
 
       onClose?.()

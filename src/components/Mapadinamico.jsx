@@ -28,6 +28,7 @@ import {
   runTransaction,
 } from 'firebase/database'
 import { getOnlineTimestamp, getUserOnlinePreference, setUserOnlinePreference, splitUsuariosOnline } from '@/lib/presence'
+import { createPrivateRequest } from '@/lib/privateRequests'
 
 import PerfilDrawer from '@/components/PerfilDrawer'
 import XpToast from '@/components/XpToast'
@@ -1486,6 +1487,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [toast, setToast] = useState(null)
   const [usuarioSelecionado, setUsuarioSelecionado] = useState(null)
   const [agendaClienteUser, setAgendaClienteUser] = useState(null)
+  const [agendaClienteService, setAgendaClienteService] = useState(null)
+  const [privateRequests, setPrivateRequests] = useState([])
   const [notifPermission, setNotifPermission] = useState('default')
   const notificacoesInicializadasRef = useRef(false)
   const notificacoesVistasRef = useRef(new Set())
@@ -1728,12 +1731,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       return
     }
 
-    const nRef = query(ref(database, `notificacoes/${meuId}`), limitToLast(20))
-    const off = onValue(nRef, (snap) => {
-      const raw = snap.val() || {}
-      const lista = Object.entries(raw)
-        .map(([id, n]) => ({ id, ...(n || {}) }))
+    let rawLegacy = {}
+    let rawModern = {}
+    const emitLista = () => {
+      const merged = new Map()
+      Object.entries(rawLegacy || {}).forEach(([id, n]) => merged.set(id, { id, ...(n || {}) }))
+      Object.entries(rawModern || {}).forEach(([id, n]) => merged.set(id, { ...(merged.get(id) || {}), id, ...(n || {}) }))
+      const lista = Array.from(merged.values())
         .sort((a, b) => Number(b?.criadoEm || 0) - Number(a?.criadoEm || 0))
+
       setNotificacoesNaoLidas(lista.filter((n) => n?.lida !== true).length)
 
       if (!notificacoesInicializadasRef.current) {
@@ -1765,9 +1771,22 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         body: nova.mensagem || '',
         tag: `corre-aqui-${nova.id}`,
       })
+    }
+
+    const offLegacy = onValue(query(ref(database, `notificacoes/${meuId}`), limitToLast(20)), (snap) => {
+      rawLegacy = snap.val() || {}
+      emitLista()
     })
 
-    return () => off()
+    const offModern = onValue(query(ref(database, `notifications/${meuId}`), limitToLast(20)), (snap) => {
+      rawModern = snap.val() || {}
+      emitLista()
+    })
+
+    return () => {
+      offLegacy()
+      offModern()
+    }
   }, [meuId, showToast, meuUserProfile])
 
   /* =======================
@@ -1897,6 +1916,26 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       setAgendaPendentes(counts.pendentes)
       setAgendaConfirmados(counts.confirmados)
       setAgendaRecusados(counts.recusados)
+    })
+
+    return () => off()
+  }, [meuId])
+
+  useEffect(() => {
+    if (!meuId) {
+      setPrivateRequests([])
+      return undefined
+    }
+
+    const off = onValue(ref(database, `privateRequestInbox/${meuId}`), (snap) => {
+      const raw = snap.val() || {}
+      const lista = Object.entries(raw)
+        .map(([id, value]) => ({ id, ...(value || {}) }))
+        .sort((a, b) => Number(b?.atualizadoEm || b?.criadoEm || 0) - Number(a?.atualizadoEm || a?.criadoEm || 0))
+
+      setPrivateRequests(lista)
+    }, () => {
+      setPrivateRequests([])
     })
 
     return () => off()
@@ -3277,6 +3316,43 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     router.push(`/chat/${encodeURIComponent(String(pedido.id))}?voltar=${modoApp}`)
   }, [modoApp, router, saveListState])
 
+  const abrirAcaoNotificacao = useCallback((screen, notificacao = {}) => {
+    const action = notificacao?.action || {}
+    const destino = String(screen || action?.screen || '').toLowerCase()
+    const id = action?.id || notificacao?.privateRequestId || notificacao?.pedidoId || notificacao?.conversaId || notificacao?.servicoId
+
+    if (destino === 'chat' && id) {
+      abrirChatFocado({ id, titulo: notificacao?.titulo || 'Conversa do pedido' })
+      return
+    }
+
+    if (destino === 'agenda' || destino === 'privaterequestdetails') {
+      setModoApp('corre')
+      setClientePainelBaixo('')
+      setChatPedido(null)
+      setTab('agenda')
+      return
+    }
+
+    if (destino === 'myorders') {
+      setModoApp('cliente')
+      setChatPedido(null)
+      setClientePainelBaixo('meusPedidos')
+      return
+    }
+
+    if (destino === 'portfolio') {
+      setModoApp('cliente')
+      setChatPedido(null)
+      setClientePainelBaixo('')
+      showToast({
+        type: 'info',
+        title: 'Veja outros profissionais',
+        message: 'Abra um perfil ou servico do portfolio para tentar novamente.',
+      })
+    }
+  }, [abrirChatFocado, showToast])
+
   const abrirPerfilCliente = useCallback((u) => {
     if (!u) {
       setOpenProfileMenu(true)
@@ -3330,7 +3406,63 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
   }, [showToast])
 
-  const abrirAgendaCliente = useCallback((u) => {
+  const criarPedidoDiretoPortfolio = useCallback(async (u, servico = null) => {
+    const profissionalId = u?.uid || u?.id || u?.profissionalId
+    if (!meuId) {
+      showToast({ type: 'error', title: 'Entre para solicitar', message: 'Faça login para chamar este perfil.' })
+      return
+    }
+    if (!profissionalId) {
+      showToast({ type: 'error', title: 'Perfil incompleto', message: 'Não encontrei o profissional deste serviço.' })
+      return
+    }
+    if (String(profissionalId) === String(meuId)) {
+      showToast({ type: 'info', title: 'Este perfil é seu', message: 'Você não pode solicitar o próprio serviço.' })
+      return
+    }
+
+    try {
+      const request = await createPrivateRequest({
+        database,
+        cliente: {
+          uid: meuId,
+          nome: meuNome,
+          fotoURL,
+          avatarEmoji,
+        },
+        profissional: {
+          ...u,
+          uid: profissionalId,
+          id: profissionalId,
+        },
+        servico: servico || {
+          id: profissionalId,
+          titulo: u?.profTitulo || u?.correTitulo || u?.nome || 'Serviço solicitado',
+          descricao: u?.profResumo || u?.correResumo || '',
+          valor: u?.profPrecoBase || '',
+        },
+        tipo: 'pedido_direto',
+      })
+
+      setUsuarioSelecionado(null)
+      setClientePainelBaixo('meusPedidos')
+      showToast({
+        type: 'success',
+        title: 'Pedido enviado',
+        message: `${request.profissionalNome} recebeu sua solicitação.`,
+      })
+    } catch (error) {
+      console.error('[PRIVATE_REQUEST] erro ao criar pedido direto', error)
+      showToast({
+        type: 'error',
+        title: 'Não foi possível enviar',
+        message: error?.message || 'Tente novamente em alguns segundos.',
+      })
+    }
+  }, [avatarEmoji, fotoURL, meuId, meuNome, showToast])
+
+  const abrirAgendaCliente = useCallback((u, servico = null) => {
+    setAgendaClienteService(servico || null)
     setAgendaClienteUser(u)
   }, [])
 
@@ -3672,6 +3804,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     corres={corres}
                     onAbrirChat={abrirChatFocado}
                     onAbrirPedido={abrirPedidoFocado}
+                    onAction={abrirAcaoNotificacao}
                     onToast={showToast}
                   />
 
@@ -3707,6 +3840,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     uid={meuId}
                     nome={meuNome}
                     fotoURL={fotoURL}
+                    privateRequests={privateRequests}
                     notificacoesCount={notificacoesNaoLidas}
                     onAbrirPerfil={() => setOpenProfileMenu(true)}
                     onAbrirNotificacoes={() => setTab('inbox')}
@@ -4667,13 +4801,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         <PerfilPublico
           user={usuarioSelecionado}
           onClose={() => setUsuarioSelecionado(null)}
-          onPedirServico={() => {
-            setUsuarioSelecionado(null)
-            setOpenIA(true)
+          onPedirServico={(u, servico) => {
+            criarPedidoDiretoPortfolio(u, servico)
           }}
-          onAgendar={(u) => {
+          onAgendar={(u, servico) => {
             setUsuarioSelecionado(null)
-            setAgendaClienteUser(u)
+            abrirAgendaCliente(u, servico)
           }}
         />
       )}
@@ -4895,6 +5028,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 <MeusPedidosCliente
                   meuId={meuId}
                   corres={corres}
+                  privateRequests={privateRequests}
                   onAbrirChat={abrirChatFocado}
                   onVerMapa={(pedido) => {
                     setMapItem(pedido)
@@ -4931,6 +5065,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   corres={corres}
                   onAbrirChat={abrirChatFocado}
                   onAbrirPedido={abrirPedidoFocado}
+                  onAction={abrirAcaoNotificacao}
                   onToast={showToast}
                 />
               )}
@@ -5262,7 +5397,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       <ModalAgenda
         open={!!agendaClienteUser}
         profissional={agendaClienteUser}
-        onClose={() => setAgendaClienteUser(null)}
+        servico={agendaClienteService}
+        onClose={() => {
+          setAgendaClienteUser(null)
+          setAgendaClienteService(null)
+        }}
       />
 
       {modoApp === 'corre' && !openIA && !isMapOpen ? (

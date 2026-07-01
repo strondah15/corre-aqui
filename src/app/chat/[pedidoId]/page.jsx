@@ -49,6 +49,7 @@ function ChatPageContent() {
 
   const [authUser, setAuthUser] = useState(null)
   const [pedido, setPedido] = useState(null)
+  const [privateRequest, setPrivateRequest] = useState(null)
   const [conversa, setConversa] = useState(null)
   const [userNode, setUserNode] = useState(null)
   const [nomeCache, setNomeCache] = useState('')
@@ -87,6 +88,19 @@ function ChatPageContent() {
 
     const off = onValue(ref(database, `pedidos/${pedidoId}`), (snap) => {
       setPedido(snap.exists() ? { id: pedidoId, ...(snap.val() || {}) } : null)
+    })
+
+    return () => off()
+  }, [pedidoId])
+
+  useEffect(() => {
+    if (!pedidoId) {
+      setPrivateRequest(null)
+      return undefined
+    }
+
+    const off = onValue(ref(database, `privateRequests/${pedidoId}`), (snap) => {
+      setPrivateRequest(snap.exists() ? { id: pedidoId, ...(snap.val() || {}) } : null)
     })
 
     return () => off()
@@ -145,8 +159,27 @@ function ChatPageContent() {
     authUser?.displayName,
     nomeCache
   )
-  const titulo = pedido?.titulo || conversa?.titulo || 'Conversa do pedido'
-  const outroUser = getOutroUser(pedido, conversa, authUser?.uid)
+  const pedidoChat = useMemo(() => {
+    if (pedido) return pedido
+    if (!privateRequest) return null
+    return {
+      id: pedidoId,
+      titulo: privateRequest?.servicoTitulo || privateRequest?.titulo || conversa?.titulo || 'Pedido direto',
+      privateRequest: true,
+      criador: {
+        id: privateRequest?.clienteId,
+        nome: privateRequest?.clienteNome,
+        fotoURL: privateRequest?.clienteFotoURL,
+      },
+      aceite: {
+        id: privateRequest?.profissionalId,
+        nome: privateRequest?.profissionalNome,
+        fotoURL: privateRequest?.profissionalFotoURL,
+      },
+    }
+  }, [conversa?.titulo, pedido, pedidoId, privateRequest])
+  const titulo = pedidoChat?.titulo || conversa?.titulo || 'Conversa do pedido'
+  const outroUser = getOutroUser(pedidoChat, conversa, authUser?.uid)
 
   return (
     <main className="fixed inset-0 z-[100000] h-[100svh] overflow-hidden bg-[#050b12] text-white supports-[height:100dvh]:h-[100dvh]">

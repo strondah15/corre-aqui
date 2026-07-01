@@ -578,7 +578,7 @@ const normalizePublicPortfolioServices = (publicPortfolio = {}) => {
 const PortfolioServiceCard = memo(function PortfolioServiceCard({ service, onAbrirPerfil, onAgendar }) {
   const categoria = getCategoryById(service?.categoriaId)
   const handleAbrir = useCallback(() => onAbrirPerfil?.(service?.provider), [onAbrirPerfil, service])
-  const handleAgendar = useCallback(() => onAgendar?.(service?.provider), [onAgendar, service])
+  const handleAgendar = useCallback(() => onAgendar?.(service?.provider, service), [onAgendar, service])
 
   return (
     <article className="w-[210px] shrink-0 overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.12)] md:w-[260px]">

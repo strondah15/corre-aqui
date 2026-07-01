@@ -86,9 +86,9 @@ function getDistancia(pedido) {
 function getStatusKey(pedido) {
   const status = String(pedido?.status || 'aberto').toLowerCase()
   if (pedido?.problemaServico) return 'problema'
-  if (status === 'aceito' || status === 'em_andamento' || status === 'andamento') return 'aceito'
+  if (status === 'aceito' || status === 'agendado' || status === 'em_andamento' || status === 'andamento') return 'aceito'
   if (status === 'concluido' || status === 'finalizado' || status === 'feito') return 'concluido'
-  if (status === 'cancelado') return 'cancelado'
+  if (status === 'cancelado' || status === 'recusado') return 'cancelado'
   return 'aberto'
 }
 
@@ -206,6 +206,7 @@ function SummaryCard({ icon, value, title, subtitle, tone }) {
 export default function MeusPedidosCliente({
   meuId,
   corres = [],
+  privateRequests = [],
   onAbrirChat,
   onVerMapa,
   onConfirmarServicoFeito,
@@ -217,14 +218,34 @@ export default function MeusPedidosCliente({
   const [filtro, setFiltro] = useState('todos')
 
   const meusPedidos = useMemo(() => {
-    return (corres || [])
+    const pedidosPublicos = (corres || [])
       .filter((pedido) => String(pedido?.criador?.id || '') === String(meuId || ''))
+    const pedidosPrivados = (Array.isArray(privateRequests) ? privateRequests : [])
+      .filter((pedido) => String(pedido?.clienteId || '') === String(meuId || ''))
+      .map((pedido) => {
+        const status = String(pedido?.status || 'pendente').toLowerCase()
+        const aceito = status === 'aceito' || status === 'agendado'
+        return {
+          ...pedido,
+          id: pedido?.privateRequestId || pedido?.id,
+          privateRequest: true,
+          titulo: pedido?.servicoTitulo || pedido?.titulo || (pedido?.tipo === 'agendamento' ? 'Agendamento solicitado' : 'Pedido direto'),
+          categoriaNome: pedido?.tipo === 'agendamento' ? 'Agendamento' : 'Pedido direto',
+          status: status === 'pendente' ? 'aberto' : status,
+          criadoEm: pedido?.criadoEm,
+          atualizadoEm: pedido?.atualizadoEm,
+          criador: { id: pedido?.clienteId, nome: pedido?.clienteNome || 'Cliente' },
+          aceite: aceito ? { id: pedido?.profissionalId, nome: pedido?.profissionalNome || 'Profissional' } : null,
+        }
+      })
+
+    return [...pedidosPublicos, ...pedidosPrivados]
       .sort((a, b) => {
         const ta = getMs(a?.criadoEm || a?.createdAt || a?.atualizadoEm || 0)
         const tb = getMs(b?.criadoEm || b?.createdAt || b?.atualizadoEm || 0)
         return tb - ta
       })
-  }, [corres, meuId])
+  }, [corres, meuId, privateRequests])
 
   const totals = useMemo(() => {
     return meusPedidos.reduce(
@@ -263,8 +284,28 @@ export default function MeusPedidosCliente({
     [totals.andamento, totals.cancelados, totals.concluidos, totals.todos]
   )
 
+  const avisarEmBreve = useCallback((title, message) => {
+    if (typeof onToast === 'function') {
+      onToast({ type: 'info', title, message })
+    }
+  }, [onToast])
+
   const abrirDetalhes = useCallback((pedido) => {
     if (!pedido?.id) return
+    if (pedido?.privateRequest) {
+      const statusKey = getStatusKey(pedido)
+      if (statusKey === 'aceito' || statusKey === 'concluido') {
+        onAbrirChat?.(pedido)
+        return
+      }
+      avisarEmBreve(
+        pedido?.status === 'recusado' ? 'Pedido recusado' : 'Pedido enviado',
+        pedido?.status === 'recusado'
+          ? 'Esse profissional recusou a solicitação. Você pode procurar outro perfil.'
+          : 'O profissional recebeu sua solicitação e ainda vai responder.'
+      )
+      return
+    }
     try {
       if (process.env.NODE_ENV !== 'production') console.time('open-card')
       sessionStorage.setItem(
@@ -281,13 +322,7 @@ export default function MeusPedidosCliente({
     if (process.env.NODE_ENV !== 'production') {
       window.requestAnimationFrame(() => console.timeEnd('open-card'))
     }
-  }, [router])
-
-  const avisarEmBreve = useCallback((title, message) => {
-    if (typeof onToast === 'function') {
-      onToast({ type: 'info', title, message })
-    }
-  }, [onToast])
+  }, [avisarEmBreve, onAbrirChat, router])
 
   return (
     <section className="mx-auto w-full max-w-[1440px] overflow-hidden rounded-[22px] border border-slate-200 bg-white text-slate-950 shadow-[0_18px_60px_rgba(15,23,42,0.08)] md:rounded-[28px]">

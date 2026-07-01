@@ -40,6 +40,7 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
   const meta = META[tipo] || META.inbox
   const [user, setUser] = useState(null)
   const [pedidos, setPedidos] = useState([])
+  const [privateRequests, setPrivateRequests] = useState([])
   const uid = user?.uid || ''
 
   useEffect(() => {
@@ -65,12 +66,51 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
     return () => off()
   }, [uid])
 
+  useEffect(() => {
+    if (!uid) {
+      setPrivateRequests([])
+      return undefined
+    }
+
+    const off = onValue(ref(database, `privateRequestInbox/${uid}`), (snap) => {
+      const raw = snap.val() || {}
+      const lista = Object.entries(raw)
+        .map(([id, value]) => ({ id, ...(value || {}) }))
+        .sort((a, b) => Number(b?.atualizadoEm || b?.criadoEm || 0) - Number(a?.atualizadoEm || a?.criadoEm || 0))
+      setPrivateRequests(lista)
+    }, () => setPrivateRequests([]))
+
+    return () => off()
+  }, [uid])
+
   const meusPedidos = uid ? pedidos.filter((p) => p?.criador?.id === uid || p?.aceite?.id === uid) : []
 
   const abrirChat = (pedido) => {
     const pedidoId = pedido?.id || pedido?.pedidoId
     if (!pedidoId) return
     router.push(`/chat/${encodeURIComponent(String(pedidoId))}?voltar=corre`)
+  }
+
+  const abrirAcaoNotificacao = (screen, notificacao = {}) => {
+    const action = notificacao?.action || {}
+    const destino = String(screen || action?.screen || '').toLowerCase()
+    const id = action?.id || notificacao?.privateRequestId || notificacao?.pedidoId || notificacao?.conversaId
+
+    if (destino === 'chat' && id) {
+      abrirChat({ id })
+      return
+    }
+    if (destino === 'agenda' || destino === 'privaterequestdetails') {
+      router.replace('/corre/agenda')
+      return
+    }
+    if (destino === 'myorders') {
+      router.replace('/cliente')
+      return
+    }
+    if (destino === 'portfolio') {
+      router.replace('/cliente')
+    }
   }
 
   const voltarCorre = () => {
@@ -120,6 +160,7 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
                 corres={meusPedidos}
                 onAbrirChat={abrirChat}
                 onAbrirPedido={voltarCorre}
+                onAction={abrirAcaoNotificacao}
               />
               <ListaConversas meuId={uid} onAbrirChat={(pedidoId) => abrirChat({ id: pedidoId })} />
             </div>
@@ -130,6 +171,7 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
               uid={uid}
               nome={user?.displayName || ''}
               fotoURL={user?.photoURL || ''}
+              privateRequests={privateRequests}
             />
           ) : null}
 

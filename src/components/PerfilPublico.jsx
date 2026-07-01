@@ -196,7 +196,7 @@ function ServiceOfferCard({ item, user, dados, onPedirServico, abrirAgenda }) {
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() => onPedirServico?.(user)}
+          onClick={() => onPedirServico?.(user, item)}
           className="h-9 rounded-[13px] bg-blue-700 px-3 text-xs font-black text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)] transition active:scale-[0.98]"
         >
           Chamar
@@ -213,7 +213,7 @@ function ServiceOfferCard({ item, user, dados, onPedirServico, abrirAgenda }) {
         ) : (
           <button
             type="button"
-            onClick={abrirAgenda}
+            onClick={() => abrirAgenda(item)}
             disabled={!dados.agendaAberta}
             className="h-9 rounded-[13px] border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 disabled:opacity-50"
           >
@@ -227,6 +227,7 @@ function ServiceOfferCard({ item, user, dados, onPedirServico, abrirAgenda }) {
 
 export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar }) {
   const [openAgenda, setOpenAgenda] = useState(false)
+  const [agendaService, setAgendaService] = useState(null)
 
   const dados = useMemo(() => {
     if (!user) return null
@@ -414,11 +415,12 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
 
   if (!user || !dados) return null
 
-  const abrirAgenda = () => {
+  const abrirAgenda = (service = null) => {
     if (onAgendar) {
-      onAgendar(user)
+      onAgendar(user, service)
       return
     }
+    setAgendaService(service || null)
     setOpenAgenda(true)
   }
 
@@ -611,7 +613,11 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
         <ModalAgenda
           open={openAgenda}
           profissional={user}
-          onClose={() => setOpenAgenda(false)}
+          servico={agendaService}
+          onClose={() => {
+            setOpenAgenda(false)
+            setAgendaService(null)
+          }}
         />
       </div>
     </div>

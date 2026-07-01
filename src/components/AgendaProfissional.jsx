@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { onValue, ref, serverTimestamp, update } from 'firebase/database'
 import { database } from '@/lib/firebase'
+import { respondPrivateRequest } from '@/lib/privateRequests'
 
 function getMs(value) {
   if (!value) return 0
@@ -406,6 +407,7 @@ export default function AgendaProfissional({
   compacto = false,
   nome = '',
   fotoURL = '',
+  privateRequests = [],
   notificacoesCount = 0,
   onAbrirPerfil,
   onAbrirNotificacoes,
@@ -442,12 +444,41 @@ export default function AgendaProfissional({
     return () => off()
   }, [uid])
 
+  const agendaItems = useMemo(() => {
+    const byId = new Map()
+    agendamentos.forEach((item) => {
+      const id = item?.privateRequestId || item?.id
+      if (!id) return
+      byId.set(id, { ...item, id, privateRequestId: item?.privateRequestId || id })
+    })
+
+    ;(Array.isArray(privateRequests) ? privateRequests : []).forEach((item) => {
+      const id = item?.privateRequestId || item?.id
+      if (!id) return
+      if (item?.profissionalId !== uid && item?.clienteId !== uid) return
+      const current = byId.get(id) || {}
+      const status = String(item?.status || current?.status || 'pendente').toLowerCase()
+      byId.set(id, {
+        ...current,
+        ...item,
+        id,
+        privateRequestId: id,
+        privateRequest: true,
+        status: status === 'agendado' ? 'aceito' : status,
+        titulo: item?.servicoTitulo || item?.titulo || current?.titulo || 'Serviço solicitado',
+        servico: item?.servicoTitulo || current?.servico || 'Serviço',
+      })
+    })
+
+    return Array.from(byId.values()).sort((a, b) => getAgendaMs(a) - getAgendaMs(b))
+  }, [agendamentos, privateRequests, uid])
+
   const resumo = useMemo(() => {
     const hoje = dateKey(Date.now())
-    const pendentes = agendamentos.filter((item) => String(item.status || 'pendente').toLowerCase() === 'pendente')
-    const confirmados = agendamentos.filter((item) => String(item.status || '').toLowerCase() === 'aceito')
-    const hojeLista = agendamentos.filter((item) => dateKey(getAgendaMs(item)) === hoje)
-    const valorPrevisto = agendamentos
+    const pendentes = agendaItems.filter((item) => String(item.status || 'pendente').toLowerCase() === 'pendente')
+    const confirmados = agendaItems.filter((item) => String(item.status || '').toLowerCase() === 'aceito')
+    const hojeLista = agendaItems.filter((item) => dateKey(getAgendaMs(item)) === hoje)
+    const valorPrevisto = agendaItems
       .filter((item) => !['recusado', 'cancelado'].includes(String(item.status || 'pendente').toLowerCase()))
       .reduce((acc, item) => acc + moneyNumber(item.valor || item.preco || item.faixaPreco), 0)
 
@@ -457,16 +488,16 @@ export default function AgendaProfissional({
       confirmados: confirmados.length,
       valorPrevisto,
     }
-  }, [agendamentos])
+  }, [agendaItems])
 
   const listaFiltrada = useMemo(() => {
-    return agendamentos.filter((item) => {
+    return agendaItems.filter((item) => {
       const ms = getAgendaMs(item)
       if (filtro === 'hoje') return dateKey(ms) === selectedKey
       if (filtro === 'semana') return isSameWeek(ms, selectedKey)
       return true
     })
-  }, [agendamentos, filtro, selectedKey])
+  }, [agendaItems, filtro, selectedKey])
 
   const listaRender = compacto ? listaFiltrada.slice(0, 4) : listaFiltrada
 
@@ -474,6 +505,17 @@ export default function AgendaProfissional({
     if (!id || salvandoId) return
     setSalvandoId(id)
     try {
+      const item = agendaItems.find((entry) => String(entry?.id || entry?.privateRequestId || '') === String(id))
+      if (item?.privateRequest || item?.privateRequestId) {
+        await respondPrivateRequest({
+          database,
+          request: item,
+          profissional: { uid, nome, fotoURL },
+          status,
+        })
+        return
+      }
+
       await update(ref(database, `agendamentos/${id}`), {
         status,
         respondidoEm: Date.now(),

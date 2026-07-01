@@ -33,6 +33,12 @@ function formatData(v) {
 
 function tipoInfo(tipo) {
   const t = String(tipo || '').toLowerCase()
+  if (t === 'pedido_direto_criado') return { icon: '\u{1F4E6}', label: 'Pedido direto', tone: 'blue' }
+  if (t === 'pedido_direto_aceito') return { icon: '\u2705', label: 'Pedido aceito', tone: 'emerald' }
+  if (t === 'pedido_direto_recusado') return { icon: '\u2715', label: 'Pedido recusado', tone: 'rose' }
+  if (t === 'agendamento_criado') return { icon: '\u{1F4C5}', label: 'Agenda', tone: 'blue' }
+  if (t === 'agendamento_aceito') return { icon: '\u2705', label: 'Confirmado', tone: 'emerald' }
+  if (t === 'agendamento_recusado') return { icon: '\u2715', label: 'Recusado', tone: 'rose' }
   if (t === 'mensagem_chat') return { icon: '💬', label: 'Mensagem', tone: 'blue' }
   if (t === 'corre_aceito') return { icon: '✅', label: 'Aceite', tone: 'emerald' }
   if (t === 'servico_concluido') return { icon: '🏁', label: 'Conclusão', tone: 'sky' }
@@ -56,6 +62,7 @@ export default function CentralNotificacoes({
   corres = [],
   onAbrirChat,
   onAbrirPedido,
+  onAction,
   onToast,
   limit = 80,
 }) {
@@ -68,16 +75,31 @@ export default function CentralNotificacoes({
       return
     }
 
-    const nRef = query(ref(database, `notificacoes/${meuId}`), limitToLast(Math.max(20, Number(limit || 80))))
-    const off = onValue(nRef, (snap) => {
-      const raw = snap.val() || {}
-      const lista = Object.entries(raw)
-        .map(([id, n]) => ({ id, ...(n || {}) }))
+    let rawLegacy = {}
+    let rawModern = {}
+    const emitLista = () => {
+      const merged = new Map()
+      Object.entries(rawLegacy || {}).forEach(([id, n]) => merged.set(id, { id, ...(n || {}), __legacy: true }))
+      Object.entries(rawModern || {}).forEach(([id, n]) => merged.set(id, { ...(merged.get(id) || {}), id, ...(n || {}), __modern: true }))
+      const lista = Array.from(merged.values())
         .sort((a, b) => getMs(b.criadoEm || b.createdAt) - getMs(a.criadoEm || a.createdAt))
       setNotificacoes(lista)
+    }
+
+    const nLimit = Math.max(20, Number(limit || 80))
+    const offLegacy = onValue(query(ref(database, `notificacoes/${meuId}`), limitToLast(nLimit)), (snap) => {
+      rawLegacy = snap.val() || {}
+      emitLista()
+    })
+    const offModern = onValue(query(ref(database, `notifications/${meuId}`), limitToLast(nLimit)), (snap) => {
+      rawModern = snap.val() || {}
+      emitLista()
     })
 
-    return () => off()
+    return () => {
+      offLegacy()
+      offModern()
+    }
   }, [meuId, limit])
 
   const naoLidas = useMemo(() => notificacoes.filter((n) => n?.lida !== true).length, [notificacoes])
@@ -96,10 +118,17 @@ export default function CentralNotificacoes({
   const marcarLida = useCallback(
     async (n) => {
       if (!meuId || !n?.id || n?.lida === true) return
-      await update(ref(database, `notificacoes/${meuId}/${n.id}`), {
-        lida: true,
-        lidaEm: Date.now(),
-      }).catch(() => {})
+      const agora = Date.now()
+      const updates = {}
+      if (n.__legacy !== false && (n.__legacy || !n.__modern)) {
+        updates[`notificacoes/${meuId}/${n.id}/lida`] = true
+        updates[`notificacoes/${meuId}/${n.id}/lidaEm`] = agora
+      }
+      if (n.__modern) {
+        updates[`notifications/${meuId}/${n.id}/lida`] = true
+        updates[`notifications/${meuId}/${n.id}/lidaEm`] = agora
+      }
+      if (Object.keys(updates).length) await update(ref(database), updates).catch(() => {})
     },
     [meuId]
   )
@@ -110,8 +139,14 @@ export default function CentralNotificacoes({
     const agora = Date.now()
     notificacoes.forEach((n) => {
       if (n?.id && n?.lida !== true) {
-        updates[`notificacoes/${meuId}/${n.id}/lida`] = true
-        updates[`notificacoes/${meuId}/${n.id}/lidaEm`] = agora
+        if (n.__legacy !== false && (n.__legacy || !n.__modern)) {
+          updates[`notificacoes/${meuId}/${n.id}/lida`] = true
+          updates[`notificacoes/${meuId}/${n.id}/lidaEm`] = agora
+        }
+        if (n.__modern) {
+          updates[`notifications/${meuId}/${n.id}/lida`] = true
+          updates[`notifications/${meuId}/${n.id}/lidaEm`] = agora
+        }
       }
     })
     await update(ref(database), updates).catch(() => {})
@@ -119,15 +154,25 @@ export default function CentralNotificacoes({
 
   const abrir = async (n) => {
     await marcarLida(n)
-    const pedidoId = n?.pedidoId || n?.conversaId
+    const action = n?.action || {}
+    const actionScreen = String(action?.screen || n?.acao || '').toLowerCase()
+    const actionId = action?.id || n?.privateRequestId || n?.pedidoId || n?.conversaId || n?.servicoId
+    const pedidoId = n?.pedidoId || n?.conversaId || actionId
     const pedido = (corres || []).find((p) => String(p?.id || '') === String(pedidoId || ''))
-    const acao = String(n?.acao || '').toLowerCase()
+    const acao = actionScreen
     const tipo = String(n?.tipo || '').toLowerCase()
     const deveAbrirChat =
       acao === 'abrir_chat' ||
+      acao === 'chat' ||
       tipo === 'mensagem_chat' ||
       tipo === 'corre_aceito' ||
-      tipo === 'servico_concluido'
+      tipo === 'servico_concluido' ||
+      tipo === 'pedido_direto_aceito'
+
+    if (acao === 'agenda' || acao === 'myorders' || acao === 'portfolio' || acao === 'privaterequestdetails') {
+      onAction?.(acao, n)
+      return
+    }
 
     if (!pedido) {
       if (deveAbrirChat && pedidoId) {
@@ -240,7 +285,7 @@ export default function CentralNotificacoes({
                       onClick={() => abrir(n)}
                       className="rounded-xl bg-blue-700 px-3 py-1.5 text-xs font-black text-white shadow-[0_10px_22px_rgba(37,99,235,0.18)] transition hover:bg-blue-800 active:scale-[0.98] md:rounded-2xl md:py-2"
                     >
-                      Abrir
+                      {n?.action?.label || 'Abrir'}
                     </button>
                     {unread ? (
                       <button
