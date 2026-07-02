@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ref, onValue, update, query, limitToLast } from 'firebase/database'
-import { database } from '@/lib/firebase'
 import { motion } from 'framer-motion'
+import { database } from '@/lib/firebase'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 
 function getMs(v) {
@@ -39,6 +39,61 @@ const toInt = (v, fallback) => {
   return Number.isFinite(n) ? Math.trunc(n) : fallback
 }
 
+function getValorPedido(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  const normalized = String(value || '')
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+  const n = Number(normalized)
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatMoney(value) {
+  const n = getValorPedido(value)
+  if (!n) return ''
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function getStatusConversa(c) {
+  return String(c?.pedidoStatus || c?.statusPedido || c?.atendimentoStatus || c?.status || '').toLowerCase()
+}
+
+function statusMeta(c) {
+  const s = getStatusConversa(c)
+  if (s === 'em_atendimento') {
+    return { label: 'Em atendimento', tone: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-300', dot: 'bg-emerald-400', active: true }
+  }
+  if (s === 'aguardando_inicio' || s === 'aceito') {
+    return { label: 'Aguardando início', tone: 'border-yellow-300/25 bg-yellow-400/10 text-yellow-200', dot: 'bg-yellow-300', active: true }
+  }
+  if (s === 'concluido') {
+    return { label: 'Concluído', tone: 'border-blue-400/25 bg-blue-500/10 text-blue-200', dot: 'bg-blue-400', archived: true }
+  }
+  if (s === 'avaliado') {
+    return { label: 'Avaliado', tone: 'border-purple-400/25 bg-purple-500/10 text-purple-200', dot: 'bg-purple-400', archived: true }
+  }
+  if (s === 'cancelado') {
+    return { label: 'Cancelado', tone: 'border-slate-400/20 bg-slate-500/10 text-slate-300', dot: 'bg-slate-400', archived: true }
+  }
+  if (s === 'arquivavel' || s === 'arquivada') {
+    return { label: 'Histórico', tone: 'border-slate-400/20 bg-slate-500/10 text-slate-300', dot: 'bg-slate-400', archived: true }
+  }
+  return { label: 'Ativa', tone: 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200', dot: 'bg-emerald-400', active: true }
+}
+
+function iconPorConversa(c) {
+  const text = `${c?.categoriaNome || ''} ${c?.titulo || ''}`.toLowerCase()
+  if (text.includes('hidrául') || text.includes('encanam') || text.includes('torneira')) return '🚰'
+  if (text.includes('móvel') || text.includes('montagem')) return '🛋️'
+  if (text.includes('limpeza')) return '🧹'
+  if (text.includes('pintura')) return '🖌️'
+  if (text.includes('ar condicionado')) return '❄️'
+  if (text.includes('ventil')) return '🪭'
+  if (text.includes('alvenaria') || text.includes('parede')) return '🧱'
+  return '⚡'
+}
+
 export default function ListaConversas({
   meuId,
   onAbrirChat,
@@ -47,11 +102,12 @@ export default function ListaConversas({
 }) {
   const [conversas, setConversas] = useState([])
   const [busca, setBusca] = useState('')
+  const [filtro, setFiltro] = useState('todas')
 
   useEffect(() => {
     if (!meuId) {
       setConversas([])
-      return
+      return undefined
     }
 
     const lim = clamp(toInt(limit, 60), 20, 200)
@@ -59,7 +115,6 @@ export default function ListaConversas({
 
     const off = onValue(cRef, (snap) => {
       const raw = snap.val() || {}
-
       const list = Object.entries(raw).map(([pedidoId, c]) => ({
         pedidoId,
         ...(c || {}),
@@ -81,20 +136,40 @@ export default function ListaConversas({
       const titulo = String(c?.titulo || '')
       const preview = String(c?.lastText || c?.mensagemPreview || '')
       const otherNome = String(c?.outroNome || c?.otherNome || '')
+      const meta = statusMeta(c)
       return {
         ...c,
         preview,
         pessoa: otherNome || 'Participante',
-        _idx: `${titulo} ${preview} ${otherNome}`.toLowerCase(),
+        _status: getStatusConversa(c),
+        _statusMeta: meta,
+        _idx: `${titulo} ${preview} ${otherNome} ${c?.categoriaNome || ''}`.toLowerCase(),
       }
     })
   }, [conversas])
 
+  const totais = useMemo(() => {
+    return conversasComIndex.reduce(
+      (acc, c) => {
+        acc.todas += 1
+        if (c?._statusMeta?.active) acc.ativas += 1
+        if (c?._statusMeta?.archived) acc.arquivadas += 1
+        return acc
+      },
+      { todas: 0, ativas: 0, arquivadas: 0 }
+    )
+  }, [conversasComIndex])
+
   const conversasFiltradas = useMemo(() => {
     const t = busca.trim().toLowerCase()
-    if (!t) return conversasComIndex
-    return conversasComIndex.filter((c) => c._idx.includes(t))
-  }, [conversasComIndex, busca])
+    const porStatus = conversasComIndex.filter((c) => {
+      if (filtro === 'ativas') return c?._statusMeta?.active === true
+      if (filtro === 'arquivadas') return c?._statusMeta?.archived === true
+      return true
+    })
+    if (!t) return porStatus
+    return porStatus.filter((c) => c._idx.includes(t))
+  }, [conversasComIndex, busca, filtro])
 
   const marcarLidaOptimista = useCallback(
     (pedidoId) => {
@@ -123,65 +198,95 @@ export default function ListaConversas({
   )
 
   return (
-    <div className="overflow-hidden rounded-[24px] border border-blue-100 bg-white shadow-[0_18px_55px_rgba(37,99,235,0.12)] md:rounded-[32px]">
-      <div className="border-b border-blue-100 bg-[linear-gradient(135deg,#eef8ff_0%,#ffffff_58%,#fff6bf_100%)] px-3 py-3 md:px-4 md:py-4">
+    <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[#050b14] text-white shadow-[0_26px_80px_rgba(0,0,0,0.35)] md:rounded-[32px]">
+      <div className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.20),transparent_34%),linear-gradient(135deg,#07111f,#081827)] px-3 py-3 md:px-4 md:py-4">
         <div className="flex items-center justify-between gap-2.5 md:gap-3.5">
           <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
-            <LogoCorreAqui
-              className="h-10 w-10 rounded-xl border-0 shadow-none md:h-14 md:w-14 md:rounded-2xl"
-              imageClassName={logoUrl ? '' : ''}
-            />
+            <div className="relative grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] shadow-[0_14px_34px_rgba(0,0,0,0.22)] md:h-14 md:w-14">
+              <LogoCorreAqui
+                className="h-9 w-9 rounded-xl border-0 shadow-none md:h-11 md:w-11 md:rounded-2xl"
+                imageClassName={logoUrl ? '' : ''}
+              />
+              {totalNaoLidas > 0 ? (
+                <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white ring-2 ring-[#07111f]">
+                  {Math.min(totalNaoLidas, 9)}
+                </span>
+              ) : null}
+            </div>
 
             <div className="min-w-0 leading-tight">
-              <div className="text-sm font-black text-blue-950 md:text-base">Conversas</div>
-              <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-600 md:mt-1 md:text-xs">Pedidos aceitos e histórico rápido</div>
+              <div className="text-base font-black text-white md:text-lg">Conversas</div>
+              <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-400 md:mt-1 md:text-xs">
+                Atendimentos ativos e histórico salvo
+              </div>
             </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
-            <div className="rounded-full border border-blue-100 bg-white px-2 py-0.5 text-[10px] font-black text-blue-800 shadow-sm md:px-2.5 md:py-1 md:text-[11px]">
+            <div className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black text-emerald-200 md:text-[11px]">
+              {totais.ativas} ativas
+            </div>
+            <div className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-black text-slate-300 md:text-[11px]">
               {conversasFiltradas.length}
             </div>
-            <div
-              className={[
-                'rounded-full border px-2 py-0.5 text-[10px] font-black md:px-2.5 md:py-1 md:text-[11px]',
-                totalNaoLidas > 0
-                  ? 'border-rose-200 bg-rose-50 text-rose-700'
-                  : 'border-blue-100 bg-white text-slate-600',
-              ].join(' ')}
-              title="Conversas não lidas"
-            >
-              {totalNaoLidas > 0 ? `${totalNaoLidas} novas` : '0 novas'}
-            </div>
           </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-1.5 rounded-2xl border border-white/10 bg-black/18 p-1">
+          {[
+            ['todas', 'Todas', totais.todas],
+            ['ativas', 'Ativas', totais.ativas],
+            ['arquivadas', 'Arquivadas', totais.arquivadas],
+          ].map(([id, label, count]) => {
+            const active = filtro === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setFiltro(id)}
+                className={[
+                  'min-w-0 rounded-xl px-2 py-2 text-[11px] font-black transition active:scale-[0.98] md:text-xs',
+                  active
+                    ? 'bg-emerald-500 text-white shadow-[0_10px_28px_rgba(34,197,94,0.20)]'
+                    : 'text-slate-400 hover:bg-white/[0.06] hover:text-white',
+                ].join(' ')}
+              >
+                <span className="truncate">{label}</span>
+                <span className={active ? 'ml-1 text-white/75' : 'ml-1 text-slate-500'}>{count}</span>
+              </button>
+            )
+          })}
         </div>
 
         <div className="mt-2 md:mt-3">
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por pedido, pessoa ou mensagem..."
-            className="h-10 w-full rounded-xl border border-blue-100 bg-white px-3 text-xs font-bold text-slate-950 outline-none placeholder:text-slate-400 focus:ring-4 focus:ring-blue-400/15 md:h-12 md:rounded-2xl md:px-4 md:text-sm"
+            placeholder="Buscar atendimento..."
+            className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 text-xs font-bold text-white outline-none placeholder:text-slate-500 focus:ring-4 focus:ring-blue-400/15 md:h-12 md:rounded-2xl md:px-4 md:text-sm"
           />
         </div>
       </div>
 
-      <div className="max-h-[calc(100dvh-13rem)] overflow-y-auto bg-slate-50 p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
+      <div className="max-h-[calc(100dvh-13rem)] overflow-y-auto bg-[#050b14] p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
         {conversasFiltradas.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-blue-200 bg-white p-5 text-slate-700">
-            <div className="font-black text-blue-950">Nenhuma conversa ainda</div>
-            <div className="mt-1 text-sm leading-relaxed text-slate-600">
-              Quando alguém aceitar um pedido ou responder no chat, a conversa aparece aqui.
+          <div className="rounded-3xl border border-dashed border-white/12 bg-white/[0.04] p-5 text-slate-300">
+            <div className="font-black text-white">Nenhuma conversa aqui</div>
+            <div className="mt-1 text-sm leading-relaxed text-slate-400">
+              Depois de aceitar e iniciar um atendimento, a conversa aparece nesta lista.
             </div>
           </div>
         ) : (
-          <div className="space-y-1.5 md:space-y-2">
+          <div className="space-y-2">
             {conversasFiltradas.map((c, index) => {
               const hora = timeShort(c.lastAt || c.updatedAt)
-              const titulo = c.titulo || 'Conversa'
+              const titulo = c.titulo || 'Atendimento'
               const preview = String(c.preview || '').trim()
               const pessoa = c.pessoa || 'Participante'
               const enviadaPorMim = c.lastById && meuId && String(c.lastById) === String(meuId)
+              const meta = c._statusMeta || statusMeta(c)
+              const valor = formatMoney(c?.valor)
+              const icon = iconPorConversa(c)
 
               return (
                 <motion.button
@@ -199,32 +304,40 @@ export default function ListaConversas({
                   className={[
                     'w-full rounded-[18px] border px-2.5 py-2.5 text-left transition-all duration-200 md:rounded-[22px] md:px-3 md:py-3',
                     c.unread
-                      ? 'border-blue-200 bg-blue-50 shadow-[0_14px_42px_rgba(37,99,235,0.14)]'
-                      : 'border-slate-200 bg-white hover:bg-blue-50',
+                      ? 'border-emerald-400/35 bg-emerald-500/10 shadow-[0_14px_42px_rgba(34,197,94,0.12)]'
+                      : 'border-white/10 bg-white/[0.045] hover:bg-white/[0.07]',
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-2.5 md:gap-3">
                     <div className="flex min-w-0 items-start gap-2.5 md:gap-3">
-                      <div className={c.unread ? 'mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500 shadow-[0_0_18px_rgba(59,130,246,0.7)] md:h-2.5 md:w-2.5' : 'mt-1 h-2 w-2 shrink-0 rounded-full bg-slate-300 md:h-2.5 md:w-2.5'} />
+                      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-xl shadow-[0_14px_30px_rgba(37,99,235,0.24)] md:h-14 md:w-14 md:text-2xl">
+                        {icon}
+                      </div>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="truncate text-sm font-black text-blue-950 md:text-base">{titulo}</div>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="truncate text-sm font-black text-white md:text-base">{pessoa}</div>
                           {c.unread ? (
-                            <span className="rounded-full bg-blue-700 px-2 py-0.5 text-[10px] font-black text-white">
-                              novo
+                            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-emerald-500 px-1 text-[10px] font-black text-white">
+                              {Number(c.unreadCount || 1)}
                             </span>
                           ) : null}
                         </div>
-                        <div className="mt-0.5 truncate text-[11px] font-bold text-slate-500">
-                          {pessoa}
+                        <div className="mt-0.5 line-clamp-1 text-[11px] font-bold text-slate-400 md:text-xs">
+                          {titulo}
                         </div>
                       </div>
                     </div>
 
-                    <div className="shrink-0 text-[10px] font-bold text-slate-500 md:text-[11px]">{hora}</div>
+                    <div className="shrink-0 text-right">
+                      <div className="text-[10px] font-bold text-slate-500 md:text-[11px]">{hora}</div>
+                      <span className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.06em] ${meta.tone}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                        {meta.label}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="mt-1.5 line-clamp-2 pl-4 text-xs font-semibold leading-snug text-slate-700 md:mt-2 md:pl-5 md:text-sm md:leading-relaxed">
+                  <div className="mt-2 line-clamp-2 pl-[58px] text-xs font-semibold leading-snug text-slate-300 md:pl-[68px] md:text-sm md:leading-relaxed">
                     {preview ? (
                       <>
                         {enviadaPorMim ? <span className="text-slate-500">Você: </span> : null}
@@ -233,6 +346,12 @@ export default function ListaConversas({
                     ) : (
                       <span className="text-slate-500">Sem mensagens ainda</span>
                     )}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-[58px] text-[10px] font-bold text-slate-500 md:pl-[68px] md:text-[11px]">
+                    {valor ? <span className="rounded-full bg-white/[0.06] px-2 py-1 text-slate-300">{valor}</span> : null}
+                    {c?.categoriaNome ? <span className="rounded-full bg-white/[0.06] px-2 py-1">{c.categoriaNome}</span> : null}
+                    <span className="rounded-full bg-white/[0.06] px-2 py-1">Chat do pedido</span>
                   </div>
                 </motion.button>
               )

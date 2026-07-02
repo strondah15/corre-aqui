@@ -429,6 +429,9 @@ const boostInfo = (p) => {
   return { lvl, cfg, until, ativo, emergencia, destaque }
 }
 
+const PEDIDO_ATIVO_STATUSES = ['aceito', 'aguardando_inicio', 'em_atendimento']
+const isPedidoAtivoStatus = (status) => PEDIDO_ATIVO_STATUSES.includes(String(status || '').toLowerCase())
+
 const getProximoPassoPedido = (p, meuId) => {
   const status = String(p?.status || 'aberto').toLowerCase()
   const souCliente = !!meuId && String(p?.criador?.id || '') === String(meuId)
@@ -436,9 +439,13 @@ const getProximoPassoPedido = (p, meuId) => {
 
   if (p?.problemaServico) return 'Problema registrado. Acompanhe pelo chat até resolver.'
   if (status === 'aberto') return 'Aguardando alguém aceitar.'
-  if (status === 'aceito' && souCliente) return 'Combine no chat e confirme quando o serviço terminar.'
-  if (status === 'aceito' && souAceitador) return 'Combine no chat e aguarde o cliente confirmar a conclusão.'
-  if (status === 'aceito') return 'Serviço em andamento.'
+  if (status === 'aguardando_inicio' && souCliente) return 'O profissional aceitou. Aguarde o início do atendimento.'
+  if (status === 'aguardando_inicio' && souAceitador) return 'Confira os detalhes e toque em Iniciar atendimento.'
+  if (status === 'em_atendimento' && souCliente) return 'Atendimento em andamento. Combine tudo pelo chat.'
+  if (status === 'em_atendimento' && souAceitador) return 'Atendimento em andamento. Use o chat como central.'
+  if (isPedidoAtivoStatus(status) && souCliente) return 'Combine no chat e confirme quando o serviço terminar.'
+  if (isPedidoAtivoStatus(status) && souAceitador) return 'Combine no chat e aguarde o cliente confirmar a conclusão.'
+  if (isPedidoAtivoStatus(status)) return 'Serviço em andamento.'
   if (status === 'concluido' && !p?.avaliacao && souCliente) return 'Avalie o serviço para fechar o ciclo.'
   if (status === 'concluido' && !p?.avaliacao && souAceitador) return 'Serviço confirmado. Aguardando avaliação do cliente.'
   if (status === 'concluido') return 'Serviço finalizado e avaliado.'
@@ -1905,7 +1912,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
           const status = String(a?.status || 'pendente')
           if (status === 'pendente') acc.pendentes += 1
-          if (status === 'aceito') acc.confirmados += 1
+          if (isPedidoAtivoStatus(status)) acc.confirmados += 1
           if (status === 'recusado') acc.recusados += 1
 
           return acc
@@ -2567,7 +2574,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const profissionalStats = useMemo(() => {
     const meus = (Array.isArray(corres) ? corres : []).filter((p) => p?.aceite?.id === meuId)
     const concluidos = meus.filter((p) => String(p?.status || '').toLowerCase() === 'concluido')
-    const ativos = meus.filter((p) => String(p?.status || '').toLowerCase() === 'aceito')
+    const ativos = meus.filter((p) => isPedidoAtivoStatus(p?.status))
     const notas = concluidos
       .map((p) => Number(p?.avaliacao?.nota || p?.avaliacaoNota || 0))
       .filter((n) => Number.isFinite(n) && n > 0)
@@ -2622,7 +2629,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         return modoProf ? isProf : !isProf
       })
       const concluidos = pedidosModo.filter((p) => String(p?.status || '').toLowerCase() === 'concluido')
-      const ativos = pedidosModo.filter((p) => String(p?.status || '').toLowerCase() === 'aceito')
+      const ativos = pedidosModo.filter((p) => isPedidoAtivoStatus(p?.status))
       const notas = concluidos
         .map((p) => Number(p?.avaliacao?.nota || p?.avaliacaoNota || 0))
         .filter((n) => Number.isFinite(n) && n > 0)
@@ -2728,7 +2735,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       // marcar pedido como aceito
       await update(ref(database, `pedidos/${p.id}`), {
-        status: 'aceito',
+        status: 'aguardando_inicio',
         aceite,
         conversaId,
         aceitoEm: agora,
@@ -2761,6 +2768,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           outroNome: meuNome || 'Anônimo',
           unread: true,
           status: 'ativa',
+          pedidoStatus: 'aguardando_inicio',
+          categoriaId: p?.categoriaId || p?.categoria || '',
+          categoriaNome: p?.categoriaNome || p?.categoriaLabel || '',
+          valor: p?.valor || null,
           tipoNotificacao: 'corre_aceito',
           lastText: `${meuNome || 'Alguém'} aceitou seu corre.`,
           lastAt: agora,
@@ -2777,7 +2788,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           titulo: 'Seu corre foi aceito! 🚀',
           mensagem: `${meuNome || 'Alguém'} aceitou: ${p.titulo || 'Corre aqui'}`,
           prioridade: 'alta',
-          acao: 'abrir_chat',
+          acao: 'abrir_pedido',
           lida: false,
           criadoEm: agora,
           autor: { id: meuId, nome: meuNome || 'Anônimo' },
@@ -2790,7 +2801,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           titulo: 'Seu corre foi aceito!',
           mensagem: `${meuNome || 'Alguem'} aceitou: ${p.titulo || 'Corre aqui'}`,
           prioridade: 'alta',
-          acao: 'abrir_chat',
+          acao: 'abrir_pedido',
         })
       }
 
@@ -2802,6 +2813,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         outroNome: p?.criador?.nome || 'Cliente',
         unread: false,
         status: 'ativa',
+        pedidoStatus: 'aguardando_inicio',
+        categoriaId: p?.categoriaId || p?.categoria || '',
+        categoriaNome: p?.categoriaNome || p?.categoriaLabel || '',
+        valor: p?.valor || null,
         lastText: 'Você aceitou esse corre.',
         lastAt: agora,
         lastById: meuId,
@@ -2910,7 +2925,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         return
       }
 
-      if ((p.status || '').toLowerCase() !== 'aceito') {
+      if (!isPedidoAtivoStatus(p.status)) {
         showToast({
           type: 'info',
           title: 'Ainda não',
@@ -3254,10 +3269,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           <span className="relative drop-shadow-[0_0_7px_rgba(16,185,129,0.85)]">ABERTO</span>
         </span>
       )
-    if (s === 'aceito')
+    if (isPedidoAtivoStatus(s))
       return (
         <span className="rounded-full border border-amber-300/50 bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-800 md:py-1 md:text-xs">
-          ACEITO
+          {s === 'em_atendimento' ? 'EM ATENDIMENTO' : 'ACEITO'}
         </span>
       )
     if (s === 'concluido')
@@ -3321,6 +3336,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     const destino = String(screen || action?.screen || '').toLowerCase()
     const id = action?.id || notificacao?.privateRequestId || notificacao?.pedidoId || notificacao?.conversaId || notificacao?.servicoId
 
+    if ((destino === 'abrir_pedido' || destino === 'pedido' || destino === 'pedidodetails' || destino === 'pedido_details') && id) {
+      setChatPedido(null)
+      router.push(`/pedido/${encodeURIComponent(String(id))}?voltar=${modoApp}`)
+      return
+    }
+
     if (destino === 'chat' && id) {
       abrirChatFocado({ id, titulo: notificacao?.titulo || 'Conversa do pedido' })
       return
@@ -3351,7 +3372,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         message: 'Abra um perfil ou servico do portfolio para tentar novamente.',
       })
     }
-  }, [abrirChatFocado, showToast])
+  }, [abrirChatFocado, modoApp, router, showToast])
 
   const abrirPerfilCliente = useCallback((u) => {
     if (!u) {
@@ -4202,7 +4223,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 const statusLabel =
                   status === 'concluido' || status === 'finalizado'
                     ? 'Finalizado'
-                    : status === 'aceito'
+                    : isPedidoAtivoStatus(status)
                       ? 'Aceito'
                       : 'Aberto'
                 const valorNumerico = getValorPedido(p.valor)
@@ -4279,7 +4300,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                               "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em]",
                               status === 'aberto'
                                 ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                                : status === 'aceito'
+                                : isPedidoAtivoStatus(status)
                                   ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
                                   : "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
                             ].join(" ")}
@@ -4530,11 +4551,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      <button className={btnDark} onClick={() => abrirChatFocado(p)} type="button">
-                        💬 Chat
-                      </button>
+                      {(status === 'em_atendimento' || status === 'concluido') && (souCriador(p) || souAceitador(p)) ? (
+                        <button className={btnDark} onClick={() => abrirChatFocado(p)} type="button">
+                          💬 Chat
+                        </button>
+                      ) : null}
 
-                      {(status === 'aceito' || status === 'concluido') && (souCriador(p) || souAceitador(p)) && (
+                      {(status === 'aceito' || status === 'aguardando_inicio') && (souCriador(p) || souAceitador(p)) ? (
+                        <button className={btnDark} onClick={() => abrirFichaPedido(p)} type="button">
+                          Detalhes
+                        </button>
+                      ) : null}
+
+                      {(isPedidoAtivoStatus(status) || status === 'concluido') && (souCriador(p) || souAceitador(p)) && (
                         <button
                           className="col-span-2 min-h-[38px] rounded-[16px] border border-red-200 bg-white px-2 py-2 text-[11px] font-black text-red-700 shadow-sm transition hover:bg-red-50 md:col-span-1 md:px-3 md:text-xs"
                           onClick={() => abrirProblema(p)}
@@ -4555,7 +4584,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {aceitoPorMim && status === 'aceito' && (
+                      {aceitoPorMim && (status === 'aceito' || status === 'aguardando_inicio') && (
                         <button
                           className={`${btnDanger} col-span-2 disabled:opacity-60 md:col-span-1`}
                           onClick={() => cancelarAceite(p)}
@@ -4566,7 +4595,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {status === 'aceito' && souCriador(p) && (
+                      {isPedidoAtivoStatus(status) && souCriador(p) && (
                         <button
                           className="col-span-2 min-h-[38px] rounded-[16px] bg-emerald-600 px-2 py-2 text-[11px] font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-700 disabled:opacity-60 md:col-span-1 md:px-3 md:text-xs"
                           onClick={() => abrirConclusao(p)}

@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref, serverTimestamp, update } from 'firebase/database'
 import { auth, database } from '@/lib/firebase'
 import { startPresence } from '@/lib/presence'
 
 export default function ListaPedidos() {
+  const router = useRouter()
   const [pedidos, setPedidos] = useState([])
   const [user, setUser] = useState(null)
   const [mensagem, setMensagem] = useState('')
@@ -64,7 +66,7 @@ export default function ListaPedidos() {
     const nome = localStorage.getItem('meuNome') || user.displayName || 'Corre'
 
     await update(ref(database, `pedidos/${pedido.id}`), {
-      status: 'aceito',
+      status: 'aguardando_inicio',
       aceite: {
         id: user.uid,
         nome,
@@ -78,6 +80,7 @@ export default function ListaPedidos() {
     })
 
     setMensagem('Pedido aceito com sucesso.')
+    router.push(`/pedido/${encodeURIComponent(String(pedido.id))}?voltar=corre&aceito=1`)
   }
 
   const abertos = pedidos.filter((p) => (p.status || 'aberto') === 'aberto')

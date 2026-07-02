@@ -1,6 +1,6 @@
 'use client'
 
-const STEP_LABELS = ['Aberto', 'Aceito', 'Concluído', 'Avaliado']
+const STEP_LABELS = ['Aberto', 'Aceito', 'Atendimento', 'Concluído', 'Avaliado']
 
 function getFluxoState(pedido) {
   const status = String(pedido?.status || 'aberto').toLowerCase()
@@ -18,19 +18,28 @@ function getFluxoState(pedido) {
 
   if (status === 'concluido') {
     return {
-      activeStep: avaliado ? 3 : 2,
+      activeStep: avaliado ? 4 : 3,
       problema,
       cancelado: false,
       resumo: avaliado ? 'Serviço avaliado' : 'Aguardando avaliação',
     }
   }
 
-  if (status === 'aceito') {
+  if (status === 'em_atendimento') {
+    return {
+      activeStep: 2,
+      problema,
+      cancelado: false,
+      resumo: 'Atendimento em andamento',
+    }
+  }
+
+  if (status === 'aceito' || status === 'aguardando_inicio') {
     return {
       activeStep: 1,
       problema,
       cancelado: false,
-      resumo: 'Serviço em andamento',
+      resumo: status === 'aguardando_inicio' ? 'Aguardando início' : 'Serviço aceito',
     }
   }
 
@@ -82,7 +91,7 @@ export default function StatusFluxoServico({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-1.5 md:gap-2">
+      <div className="grid grid-cols-5 gap-1.5 md:gap-2">
         {STEP_LABELS.map((label, index) => {
           const done = !cancelado && index <= activeStep
           const current = !cancelado && index === activeStep

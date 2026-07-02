@@ -161,11 +161,16 @@ export default function CentralNotificacoes({
     const pedido = (corres || []).find((p) => String(p?.id || '') === String(pedidoId || ''))
     const acao = actionScreen
     const tipo = String(n?.tipo || '').toLowerCase()
+    const deveAbrirPedido =
+      acao === 'abrir_pedido' ||
+      acao === 'pedido' ||
+      acao === 'pedido_details' ||
+      acao === 'pedidodetails' ||
+      tipo === 'corre_aceito'
     const deveAbrirChat =
       acao === 'abrir_chat' ||
       acao === 'chat' ||
       tipo === 'mensagem_chat' ||
-      tipo === 'corre_aceito' ||
       tipo === 'servico_concluido' ||
       tipo === 'pedido_direto_aceito'
 
@@ -175,6 +180,10 @@ export default function CentralNotificacoes({
     }
 
     if (!pedido) {
+      if (deveAbrirPedido && pedidoId) {
+        onAction?.('abrir_pedido', n)
+        return
+      }
       if (deveAbrirChat && pedidoId) {
         onAbrirChat?.({ id: pedidoId, titulo: n?.titulo || 'Conversa do pedido' })
         return
@@ -185,6 +194,11 @@ export default function CentralNotificacoes({
 
     if (deveAbrirChat) {
       onAbrirChat?.(pedido)
+      return
+    }
+
+    if (deveAbrirPedido) {
+      onAbrirPedido?.(pedido)
       return
     }
 

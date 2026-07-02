@@ -166,7 +166,7 @@ export default function AvisoCorreAceito({
 
       return (
         p?.criador?.id === meuId &&
-        String(p?.status || '').toLowerCase() === 'aceito' &&
+        ['aceito', 'aguardando_inicio', 'em_atendimento'].includes(String(p?.status || '').toLowerCase()) &&
         !!p?.aceite?.id &&
         aceitoEm > 0 &&
         now - aceitoEm <= RECENTE_MS &&

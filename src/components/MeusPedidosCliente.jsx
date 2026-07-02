@@ -86,7 +86,14 @@ function getDistancia(pedido) {
 function getStatusKey(pedido) {
   const status = String(pedido?.status || 'aberto').toLowerCase()
   if (pedido?.problemaServico) return 'problema'
-  if (status === 'aceito' || status === 'agendado' || status === 'em_andamento' || status === 'andamento') return 'aceito'
+  if (
+    status === 'aceito' ||
+    status === 'aguardando_inicio' ||
+    status === 'em_atendimento' ||
+    status === 'agendado' ||
+    status === 'em_andamento' ||
+    status === 'andamento'
+  ) return 'aceito'
   if (status === 'concluido' || status === 'finalizado' || status === 'feito') return 'concluido'
   if (status === 'cancelado' || status === 'recusado') return 'cancelado'
   return 'aberto'
@@ -224,7 +231,7 @@ export default function MeusPedidosCliente({
       .filter((pedido) => String(pedido?.clienteId || '') === String(meuId || ''))
       .map((pedido) => {
         const status = String(pedido?.status || 'pendente').toLowerCase()
-        const aceito = status === 'aceito' || status === 'agendado'
+        const aceito = status === 'aceito' || status === 'aguardando_inicio' || status === 'em_atendimento' || status === 'agendado'
         return {
           ...pedido,
           id: pedido?.privateRequestId || pedido?.id,

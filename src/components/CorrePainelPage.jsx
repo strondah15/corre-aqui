@@ -100,6 +100,10 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
       abrirChat({ id })
       return
     }
+    if ((destino === 'abrir_pedido' || destino === 'pedido' || destino === 'pedidodetails' || destino === 'pedido_details') && id) {
+      router.push(`/pedido/${encodeURIComponent(String(id))}?voltar=corre`)
+      return
+    }
     if (destino === 'agenda' || destino === 'privaterequestdetails') {
       router.replace('/corre/agenda')
       return
@@ -159,7 +163,11 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
                 meuId={uid}
                 corres={meusPedidos}
                 onAbrirChat={abrirChat}
-                onAbrirPedido={voltarCorre}
+                onAbrirPedido={(pedido) => {
+                  const id = pedido?.id || pedido?.pedidoId
+                  if (id) router.push(`/pedido/${encodeURIComponent(String(id))}?voltar=corre`)
+                  else voltarCorre()
+                }}
                 onAction={abrirAcaoNotificacao}
               />
               <ListaConversas meuId={uid} onAbrirChat={(pedidoId) => abrirChat({ id: pedidoId })} />

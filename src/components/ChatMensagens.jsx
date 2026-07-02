@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { database } from '@/lib/firebase'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
-import { ref, push, onValue, query, limitToLast, update, serverTimestamp } from 'firebase/database'
+import { ref, push, onValue, query, limitToLast, update, serverTimestamp, get, set } from 'firebase/database'
 import { motion } from 'framer-motion'
 
 function getMsgMs(v) {
@@ -35,6 +35,47 @@ function formatarTempo(segundos) {
 function safeName(v, fallback = 'Alguém') {
   return String(v || '').trim() || fallback
 }
+
+function getValorPedido(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  const normalized = String(value || '')
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+  const n = Number(normalized)
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatarValorPedido(value) {
+  const n = getValorPedido(value)
+  if (!n) return 'Combinar'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function formatarDataPedido(value) {
+  const ms = getMsgMs(value)
+  if (!ms) return 'Data a combinar'
+  const hoje = new Date()
+  const d = new Date(ms)
+  const mesmoDia =
+    hoje.getFullYear() === d.getFullYear() &&
+    hoje.getMonth() === d.getMonth() &&
+    hoje.getDate() === d.getDate()
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  if (mesmoDia) return `Hoje, ${hora}`
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + `, ${hora}`
+}
+
+function statusAtendimentoMeta(status) {
+  const s = String(status || 'aberto').toLowerCase()
+  if (s === 'em_atendimento') return { label: 'Em atendimento', tone: 'text-emerald-300 bg-emerald-500/10 border-emerald-400/25', step: 2 }
+  if (s === 'concluido') return { label: 'Concluído', tone: 'text-blue-200 bg-blue-500/10 border-blue-400/25', step: 3 }
+  if (s === 'avaliado') return { label: 'Avaliado', tone: 'text-yellow-200 bg-yellow-400/10 border-yellow-300/25', step: 4 }
+  if (s === 'aceito' || s === 'aguardando_inicio') return { label: 'Aguardando início', tone: 'text-yellow-200 bg-yellow-400/10 border-yellow-300/25', step: 0 }
+  return { label: 'Aberto', tone: 'text-slate-300 bg-white/5 border-white/10', step: 0 }
+}
+
+const TIMELINE_ATENDIMENTO = ['Pedido aceito', 'Iniciou atendimento', 'Em andamento', 'Concluído', 'Avaliação']
 
 const SUGESTOES = [
   'Pode me passar mais detalhes?',
@@ -226,6 +267,7 @@ export default function ChatMensagens({
   const [gravando, setGravando] = useState(false)
   const [tempo, setTempo] = useState(0)
   const [fechado, setFechado] = useState(false)
+  const [pedido, setPedido] = useState(null)
 
   const mediaRef = useRef(null)
   const mediaStreamRef = useRef(null)
@@ -268,6 +310,60 @@ export default function ChatMensagens({
 
     return () => off()
   }, [pedidoId])
+
+  useEffect(() => {
+    if (!pedidoId) {
+      setPedido(null)
+      return undefined
+    }
+
+    const off = onValue(
+      ref(database, `pedidos/${pedidoId}`),
+      (snap) => {
+        setPedido(snap.exists() ? { id: pedidoId, ...(snap.val() || {}) } : null)
+      },
+      () => setPedido(null),
+    )
+    return () => off()
+  }, [pedidoId])
+
+  useEffect(() => {
+    if (!pedidoId || !meuId) return undefined
+    let cancelado = false
+
+    const criarMensagemInicial = async () => {
+      try {
+        const msgId = 'msg_atendimento_intro'
+        const msgRef = ref(database, `chats/${pedidoId}/${msgId}`)
+        const snap = await get(msgRef)
+        if (cancelado || snap.exists()) return
+
+        const agora = Date.now()
+        const payload = {
+          texto:
+            'Este chat é exclusivo deste atendimento.\nCombine por aqui:\n• horário\n• endereço\n• detalhes do serviço\n• valor final, se necessário\nTudo ficará registrado no aplicativo.',
+          sistema: true,
+          evento: 'atendimento_intro',
+          criadoEm: agora,
+          hora: agora,
+          autorId: 'sistema',
+          autorNome: 'Sistema',
+        }
+
+        await set(msgRef, payload)
+        const mirrorRef = ref(database, `mensagens/${pedidoId}/${msgId}`)
+        const mirrorSnap = await get(mirrorRef).catch(() => null)
+        if (!mirrorSnap?.exists?.()) await set(mirrorRef, payload).catch(() => {})
+      } catch (error) {
+        console.warn('Não foi possível criar a mensagem inicial do atendimento:', error)
+      }
+    }
+
+    criarMensagemInicial()
+    return () => {
+      cancelado = true
+    }
+  }, [pedidoId, meuId])
 
   useEffect(() => {
     if (!pedidoId || !meuId) return
@@ -392,6 +488,9 @@ export default function ChatMensagens({
       lastById: meuId,
       lastByNome: nomeMeu,
       status: 'ativa',
+      pedidoStatus: pedido?.status || null,
+      valor: pedido?.valor || null,
+      categoriaNome: pedido?.categoriaNome || pedido?.categoriaLabel || '',
     }
 
     await update(ref(database, `conversas/${meuId}/${pedidoId}`), {
@@ -559,6 +658,134 @@ export default function ChatMensagens({
       setAnexando(false)
     }
   }
+
+  async function registrarMensagemSistema(texto, evento) {
+    if (!pedidoId || !meuId) return
+    const agora = Date.now()
+    const msgId = `msg_${evento || 'sistema'}_${agora}`
+    const payload = {
+      texto,
+      sistema: true,
+      evento: evento || 'sistema',
+      criadoEm: agora,
+      hora: agora,
+      autorId: 'sistema',
+      autorNome: 'Sistema',
+    }
+
+    await set(ref(database, `chats/${pedidoId}/${msgId}`), payload)
+    await set(ref(database, `mensagens/${pedidoId}/${msgId}`), payload).catch(() => {})
+  }
+
+  async function finalizarAtendimento() {
+    if (!pedidoId || !meuId || enviando || anexando) return
+    if (!pedido) {
+      onToast?.({
+        type: 'info',
+        title: 'Atendimento em preparo',
+        message: 'A finalização automática está disponível para pedidos públicos.',
+      })
+      return
+    }
+
+    const souProfissional = String(pedido?.aceite?.id || '') === String(meuId || '')
+    if (pedido && !souProfissional) {
+      onToast?.({
+        type: 'info',
+        title: 'Ação do profissional',
+        message: 'Quem aceitou o pedido deve finalizar o atendimento.',
+      })
+      return
+    }
+
+    const confirmar = typeof window === 'undefined' || window.confirm('Deseja finalizar este atendimento?')
+    if (!confirmar) return
+
+    try {
+      setEnviando(true)
+      const agora = Date.now()
+      await update(ref(database, `pedidos/${pedidoId}`), {
+        status: 'concluido',
+        concluidoEm: agora,
+        concluidoPor: { id: meuId, nome: nomeMeu },
+        avaliacaoPendente: true,
+        atualizadoEm: agora,
+        atualizadoEmServer: serverTimestamp(),
+      })
+
+      await registrarMensagemSistema('Atendimento finalizado.', 'atendimento_finalizado')
+
+      if (outroId) {
+        const notificationId = `notif_atendimento_finalizado_${agora}`
+        const mensagem = 'Avalie o atendimento recebido.'
+        await update(ref(database), {
+          [`conversas/${meuId}/${pedidoId}/pedidoId`]: pedidoId,
+          [`conversas/${meuId}/${pedidoId}/lastText`]: 'Atendimento finalizado.',
+          [`conversas/${meuId}/${pedidoId}/mensagemPreview`]: 'Atendimento finalizado.',
+          [`conversas/${meuId}/${pedidoId}/lastAt`]: agora,
+          [`conversas/${meuId}/${pedidoId}/updatedAt`]: agora,
+          [`conversas/${meuId}/${pedidoId}/status`]: 'arquivavel',
+          [`conversas/${meuId}/${pedidoId}/pedidoStatus`]: 'concluido',
+          [`conversas/${outroId}/${pedidoId}/pedidoId`]: pedidoId,
+          [`conversas/${outroId}/${pedidoId}/outroId`]: meuId,
+          [`conversas/${outroId}/${pedidoId}/outroNome`]: nomeMeu,
+          [`conversas/${outroId}/${pedidoId}/unread`]: true,
+          [`conversas/${outroId}/${pedidoId}/lastText`]: mensagem,
+          [`conversas/${outroId}/${pedidoId}/mensagemPreview`]: mensagem,
+          [`conversas/${outroId}/${pedidoId}/lastAt`]: agora,
+          [`conversas/${outroId}/${pedidoId}/updatedAt`]: agora,
+          [`conversas/${outroId}/${pedidoId}/status`]: 'ativa',
+          [`conversas/${outroId}/${pedidoId}/pedidoStatus`]: 'concluido',
+          [`notificacoes/${outroId}/${notificationId}`]: {
+            tipo: 'atendimento_finalizado',
+            pedidoId,
+            conversaId: pedidoId,
+            titulo: 'Atendimento finalizado',
+            mensagem,
+            prioridade: 'alta',
+            acao: 'avaliar_pedido',
+            lida: false,
+            criadoEm: agora,
+            toUid: outroId,
+            fromUid: meuId,
+            autor: { id: meuId, nome: nomeMeu },
+          },
+          [`notifications/${outroId}/${notificationId}`]: {
+            id: notificationId,
+            tipo: 'atendimento_finalizado',
+            titulo: 'Atendimento finalizado',
+            mensagem,
+            pedidoId,
+            servicoId: pedido?.servicoId || '',
+            fromUid: meuId,
+            toUid: outroId,
+            lida: false,
+            criadoEm: agora,
+            action: { label: 'Avaliar atendimento', screen: 'myOrders', id: pedidoId },
+            autor: { id: meuId, nome: nomeMeu },
+          },
+        })
+
+        enviarPushParaUsuario(outroId, {
+          tipo: 'atendimento_finalizado',
+          pedidoId,
+          conversaId: pedidoId,
+          titulo: 'Atendimento finalizado',
+          mensagem,
+          prioridade: 'alta',
+          acao: 'avaliar_pedido',
+        })
+      }
+
+      onToast?.({ type: 'success', title: 'Atendimento finalizado', message: 'O cliente foi avisado para avaliar.' })
+    } catch (error) {
+      console.warn('Erro ao finalizar atendimento:', error)
+      onToast?.({ type: 'error', title: 'Falha ao finalizar', message: 'Tente novamente em instantes.' })
+    } finally {
+      setEnviando(false)
+    }
+  }
+
   const onKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -582,6 +809,12 @@ export default function ChatMensagens({
   const outroFoto = outroUser?.fotoURL || outroUser?.photoURL || ''
   const outroInicial = safeName(outroNome, 'C').slice(0, 1).toUpperCase()
   const podeEnviarMensagem = Boolean(texto.trim() || anexoSelecionado)
+  const pedidoStatusMeta = statusAtendimentoMeta(pedido?.status)
+  const pedidoTituloChat = pedido?.titulo || pedido?.servicoTitulo || pedidoTitulo || 'Atendimento Corre Aqui'
+  const pedidoValorChat = formatarValorPedido(pedido?.valor)
+  const pedidoDataChat = formatarDataPedido(pedido?.atendimentoIniciadoEm || pedido?.aceitoEm || pedido?.criadoEm || pedido?.createdAt)
+  const pedidoIcon = pedido?.categoriaIcon || pedido?.icone || '⚡'
+  const timelineStep = pedidoStatusMeta.step
   const containerClass = modoPagina
     ? 'fixed inset-0 z-[100000] flex h-[100svh] min-h-0 w-screen flex-col overflow-hidden bg-[#050b12] text-white supports-[height:100dvh]:h-[100dvh]'
     : 'relative z-[9999] flex h-[min(86dvh,760px)] max-h-[calc(100dvh-1rem)] w-full max-w-[780px] flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#050b12] text-white shadow-[0_30px_100px_rgba(0,0,0,0.45)] sm:rounded-[30px]'
@@ -666,6 +899,56 @@ export default function ChatMensagens({
           </div>
         </div>
       ) : null}
+
+      <div className="shrink-0 border-b border-white/10 bg-[#07111f] px-3 py-3 sm:px-4">
+        <div className="rounded-2xl border border-white/10 bg-[#0f1b2d] p-3 shadow-[0_14px_36px_rgba(0,0,0,0.22)]">
+          <div className="flex items-center gap-3">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-yellow-400 text-2xl text-slate-950 shadow-[0_14px_30px_rgba(250,204,21,0.24)]">
+              {pedidoIcon}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="line-clamp-1 text-sm font-black text-white sm:text-base">{pedidoTituloChat}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-300 sm:text-xs">
+                <span>{pedidoValorChat}</span>
+                <span className="text-slate-600">•</span>
+                <span>{pedidoDataChat}</span>
+              </div>
+            </div>
+            <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] sm:text-[10px] ${pedidoStatusMeta.tone}`}>
+              {pedidoStatusMeta.label}
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-5 gap-1.5">
+            {TIMELINE_ATENDIMENTO.map((label, index) => {
+              const done = index <= timelineStep
+              const current = index === timelineStep
+              return (
+                <div key={label} className="min-w-0">
+                  <div className="flex items-center gap-1">
+                    <span
+                      className={[
+                        'grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[10px] font-black',
+                        done
+                          ? 'border-emerald-400 bg-emerald-500 text-white shadow-[0_0_18px_rgba(34,197,94,0.35)]'
+                          : 'border-white/12 bg-white/[0.05] text-slate-500',
+                      ].join(' ')}
+                    >
+                      {done ? '✓' : index + 1}
+                    </span>
+                    {index < TIMELINE_ATENDIMENTO.length - 1 ? (
+                      <span className={`h-0.5 min-w-0 flex-1 rounded-full ${done ? 'bg-emerald-400' : 'bg-white/10'}`} />
+                    ) : null}
+                  </div>
+                  <div className={`mt-1 line-clamp-2 text-[9px] font-bold leading-tight ${current ? 'text-emerald-200' : 'text-slate-500'}`}>
+                    {label}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
 
       <div
         ref={chatRef}
@@ -763,6 +1046,55 @@ export default function ChatMensagens({
           className="hidden"
           onChange={(e) => selecionarArquivo(e)}
         />
+
+        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-2">
+          <button
+            type="button"
+            onClick={() => enviar('Minha localização está disponível no pedido.')}
+            disabled={enviando || anexando || gravando}
+            className="shrink-0 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-[11px] font-black text-emerald-200 transition hover:bg-emerald-500/15 disabled:opacity-50"
+          >
+            Localização
+          </button>
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={!pedidoId || enviando || anexando || gravando}
+            className="shrink-0 rounded-xl border border-blue-400/25 bg-blue-500/10 px-3 py-2 text-[11px] font-black text-blue-200 transition hover:bg-blue-500/15 disabled:opacity-50"
+          >
+            Foto
+          </button>
+          <button
+            type="button"
+            onClick={gravando ? solicitarParadaGravacao : iniciarGravacao}
+            disabled={!pedidoId || enviando || anexando}
+            className="shrink-0 rounded-xl border border-purple-400/25 bg-purple-500/10 px-3 py-2 text-[11px] font-black text-purple-200 transition hover:bg-purple-500/15 disabled:opacity-50"
+          >
+            {gravando ? 'Parar áudio' : 'Áudio'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onToast?.({ type: 'info', title: 'Orçamento', message: 'Orçamento dentro do chat entra na próxima etapa.' })}
+            className="shrink-0 rounded-xl border border-yellow-400/25 bg-yellow-500/10 px-3 py-2 text-[11px] font-black text-yellow-100 transition hover:bg-yellow-500/15"
+          >
+            Orçamento
+          </button>
+          <button
+            type="button"
+            onClick={() => onToast?.({ type: 'info', title: 'Alterar valor', message: 'Alteração de valor será registrada com confirmação do cliente.' })}
+            className="shrink-0 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-[11px] font-black text-emerald-200 transition hover:bg-emerald-500/15"
+          >
+            Alterar valor
+          </button>
+          <button
+            type="button"
+            onClick={finalizarAtendimento}
+            disabled={!pedidoId || enviando || anexando || gravando || pedido?.status === 'concluido'}
+            className="shrink-0 rounded-xl border border-emerald-400/35 bg-emerald-500 px-3 py-2 text-[11px] font-black text-white shadow-[0_10px_24px_rgba(34,197,94,0.24)] transition hover:bg-emerald-400 disabled:opacity-50"
+          >
+            Finalizar
+          </button>
+        </div>
 
         {!gravando && !modoPagina ? (
           <div className="mb-1.5 flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-2 sm:gap-2">
