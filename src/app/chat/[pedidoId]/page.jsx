@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref } from 'firebase/database'
 import { auth, database } from '@/lib/firebase'
+import { getOnlineTimestamp, isOnlineRecente } from '@/lib/presence'
 import LoginGate from '@/components/LoginGate'
 import ChatMensagens from '@/components/ChatMensagens'
 
@@ -52,6 +53,7 @@ function ChatPageContent() {
   const [privateRequest, setPrivateRequest] = useState(null)
   const [conversa, setConversa] = useState(null)
   const [userNode, setUserNode] = useState(null)
+  const [outroPresence, setOutroPresence] = useState(null)
   const [nomeCache, setNomeCache] = useState('')
   const [toast, setToast] = useState(null)
 
@@ -128,17 +130,20 @@ function ChatPageContent() {
   const voltarParaOrigem = useCallback(() => {
     const modoUrl = String(searchParams?.get('voltar') || '').toLowerCase()
     if (modoUrl === 'cliente' || modoUrl === 'corre') {
+      const stateKey = `${LIST_STATE_PREFIX}:${modoUrl}`
       try {
-        const stateKey = `${LIST_STATE_PREFIX}:${modoUrl}`
         if (sessionStorage.getItem(stateKey)) {
           if (process.env.NODE_ENV !== 'production') console.time('back-list')
           sessionStorage.setItem(LIST_RETURN_FLAG, stateKey)
-          router.back()
+          router.replace(`/${modoUrl}`, { scroll: false })
           return
         }
       } catch {}
 
-      router.replace(`/${modoUrl}`)
+      try {
+        sessionStorage.setItem(LIST_RETURN_FLAG, stateKey)
+      } catch {}
+      router.replace(`/${modoUrl}`, { scroll: false })
       return
     }
 
@@ -179,7 +184,34 @@ function ChatPageContent() {
     }
   }, [conversa?.titulo, pedido, pedidoId, privateRequest])
   const titulo = pedidoChat?.titulo || conversa?.titulo || 'Conversa do pedido'
-  const outroUser = getOutroUser(pedidoChat, conversa, authUser?.uid)
+  const outroUserBase = useMemo(() => getOutroUser(pedidoChat, conversa, authUser?.uid), [authUser?.uid, conversa, pedidoChat])
+
+  useEffect(() => {
+    if (!outroUserBase?.id) {
+      setOutroPresence(null)
+      return undefined
+    }
+
+    const off = onValue(
+      ref(database, `presence/${outroUserBase.id}`),
+      (snap) => setOutroPresence(snap.val() || null),
+      () => setOutroPresence(null),
+    )
+
+    return () => off()
+  }, [outroUserBase?.id])
+
+  const outroUser = useMemo(() => {
+    const presence = outroPresence || {}
+    return {
+      ...outroUserBase,
+      fotoURL: outroUserBase?.fotoURL || presence?.fotoURL || presence?.photoURL || '',
+      photoURL: outroUserBase?.photoURL || presence?.photoURL || presence?.fotoURL || '',
+      online: isOnlineRecente(presence),
+      lastSeen: getOnlineTimestamp(presence),
+      presence,
+    }
+  }, [outroPresence, outroUserBase])
 
   return (
     <main className="fixed inset-0 z-[100000] h-[100svh] overflow-hidden bg-[#050b12] text-white supports-[height:100dvh]:h-[100dvh]">

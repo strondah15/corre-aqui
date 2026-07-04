@@ -8,6 +8,7 @@ import { onValue, ref, runTransaction, serverTimestamp, set, update } from 'fire
 import LoginGate from '@/components/LoginGate'
 import { getCategoryById } from '@/constants/categories'
 import { auth, database } from '@/lib/firebase'
+import { isOnlineRecente } from '@/lib/presence'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
 
 const MapinhaModal = dynamic(() => import('@/components/MapinhaModal'), { ssr: false })
@@ -356,6 +357,7 @@ function PedidoDetalhe() {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [creatorProfile, setCreatorProfile] = useState(null)
+  const [creatorPresence, setCreatorPresence] = useState(null)
   const [pedido, setPedido] = useState(null)
   const [loading, setLoading] = useState(true)
   const [aceitando, setAceitando] = useState(false)
@@ -404,6 +406,21 @@ function PedidoDetalhe() {
     return () => off()
   }, [pedido?.criador?.id])
 
+  useEffect(() => {
+    const creatorId = pedido?.criador?.id
+    if (!creatorId) {
+      setCreatorPresence(null)
+      return undefined
+    }
+
+    const off = onValue(
+      ref(database, `presence/${creatorId}`),
+      (snap) => setCreatorPresence(snap.val() || null),
+      () => setCreatorPresence(null),
+    )
+    return () => off()
+  }, [pedido?.criador?.id])
+
   const status = String(pedido?.status || 'aberto').toLowerCase()
   const souCriador = !!user?.uid && String(pedido?.criador?.id || '') === String(user.uid)
   const souAceitador = !!user?.uid && String(pedido?.aceite?.id || '') === String(user.uid)
@@ -421,8 +438,8 @@ function PedidoDetalhe() {
 
   const categoria = pedido?.categoriaNome || pedido?.categoriaLabel || categoryMeta?.label || pedido?.categoriaId || pedido?.categoria || 'Serviços gerais'
   const criadorNome = pedido?.criador?.nome || creatorProfile?.nome || creatorProfile?.displayName || 'Usuário Corre Aqui'
-  const criadorFoto = pedido?.criador?.fotoURL || pedido?.criador?.photoURL || creatorProfile?.fotoURL || creatorProfile?.photoURL || ''
-  const criadorOnline = !!(creatorProfile?.online || creatorProfile?.disponivel)
+  const criadorFoto = pedido?.criador?.fotoURL || pedido?.criador?.photoURL || creatorProfile?.fotoURL || creatorProfile?.photoURL || creatorPresence?.fotoURL || creatorPresence?.photoURL || ''
+  const criadorOnline = isOnlineRecente(creatorPresence)
   const telefone = getTelefone(creatorProfile, pedido?.criador)
   const telefoneLink = phoneHref(telefone)
   const tituloPedido = pedido?.titulo || pedido?.texto || 'Pedido sem título'
@@ -440,18 +457,21 @@ function PedidoDetalhe() {
 
   const voltarParaLista = () => {
     const fallback = voltar === 'cliente' ? '/cliente' : '/corre'
+    const stateKey = `${LIST_STATE_PREFIX}:${voltar === 'cliente' ? 'cliente' : 'corre'}`
 
     try {
-      const stateKey = `${LIST_STATE_PREFIX}:${voltar === 'cliente' ? 'cliente' : 'corre'}`
       if (sessionStorage.getItem(stateKey)) {
         if (process.env.NODE_ENV !== 'production') console.time('back-list')
         sessionStorage.setItem(LIST_RETURN_FLAG, stateKey)
-        router.back()
+        router.replace(fallback, { scroll: false })
         return
       }
     } catch {}
 
-    router.replace(fallback)
+    try {
+      sessionStorage.setItem(LIST_RETURN_FLAG, stateKey)
+    } catch {}
+    router.replace(fallback, { scroll: false })
   }
 
   const abrirChat = () => {
@@ -518,11 +538,27 @@ function PedidoDetalhe() {
           pedidoId: pedido.id,
           conversaId,
           titulo: 'Seu corre foi aceito!',
-          mensagem: `${nome} aceitou: ${pedido.titulo || 'Corre aqui'}`,
+          mensagem: `${nome} aceitou seu pedido. Converse pelo chat.`,
           prioridade: 'alta',
-          acao: 'abrir_pedido',
+          acao: 'abrir_chat',
           lida: false,
           criadoEm: agora,
+          autor: { id: user.uid, nome },
+        })
+
+        await update(ref(database, `notifications/${pedido.criador.id}/notif_${agora}`), {
+          id: `notif_${agora}`,
+          tipo: 'corre_aceito',
+          titulo: 'Seu corre foi aceito!',
+          mensagem: `${nome} aceitou seu pedido. Converse pelo chat.`,
+          pedidoId: pedido.id,
+          conversaId,
+          servicoId: pedido?.servicoId || '',
+          fromUid: user.uid,
+          toUid: pedido.criador.id,
+          lida: false,
+          criadoEm: agora,
+          action: { label: 'Abrir conversa', screen: 'chat', id: conversaId },
           autor: { id: user.uid, nome },
         })
 
@@ -531,9 +567,9 @@ function PedidoDetalhe() {
           pedidoId: pedido.id,
           conversaId,
           titulo: 'Seu corre foi aceito!',
-          mensagem: `${nome} aceitou: ${pedido.titulo || 'Corre aqui'}`,
+          mensagem: `${nome} aceitou seu pedido. Converse pelo chat.`,
           prioridade: 'alta',
-          acao: 'abrir_pedido',
+          acao: 'abrir_chat',
         })
       }
 
@@ -827,7 +863,7 @@ function PedidoDetalhe() {
                     <div className="truncate text-sm font-black text-white md:text-xl">{criadorNome}</div>
                     <div className={`mt-0.5 flex items-center gap-1.5 text-xs font-semibold md:mt-1 md:gap-2 md:text-base ${criadorOnline ? 'text-emerald-600' : 'text-slate-500'}`}>
                       <span className={`h-2.5 w-2.5 rounded-full md:h-3 md:w-3 ${criadorOnline ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                      {criadorOnline ? 'Online' : 'Aceita agendamento'}
+                      {criadorOnline ? 'Online' : 'Offline'}
                     </div>
                   </div>
 

@@ -27,7 +27,7 @@ import {
   limitToLast,
   runTransaction,
 } from 'firebase/database'
-import { getOnlineTimestamp, getUserOnlinePreference, setUserOnlinePreference, splitUsuariosOnline } from '@/lib/presence'
+import { getOnlineTimestamp, getUserOnlinePreference, isOnlineRecente, setUserOnlinePreference, splitUsuariosOnline } from '@/lib/presence'
 import { createPrivateRequest } from '@/lib/privateRequests'
 
 import PerfilDrawer from '@/components/PerfilDrawer'
@@ -1560,12 +1560,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [busca, cardAbertoId, categoriaFiltro, clientePainelBaixo, filtro, listStateKey, modoApp, tab])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return undefined
 
     try {
       const raw = window.sessionStorage.getItem(listStateKey)
       const saved = raw ? JSON.parse(raw) : null
-      if (!saved || Date.now() - Number(saved.ts || 0) > 10 * 60 * 1000) return
+      if (!saved || Date.now() - Number(saved.ts || 0) > 10 * 60 * 1000) return undefined
 
       if (saved.modoApp === 'cliente' || saved.modoApp === 'corre') setModoApp(saved.modoApp)
       if (saved.tab) setTab(saved.tab)
@@ -1575,16 +1575,54 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       if (typeof saved.clientePainelBaixo === 'string') setClientePainelBaixo(saved.clientePainelBaixo)
       setCardAbertoId(saved.cardAbertoId || null)
 
-      const finishRestore = () => {
-        window.scrollTo({ top: Number(saved.scrollY || 0), left: 0, behavior: 'auto' })
-        if (DEBUG_NAV_PERF && window.sessionStorage.getItem(LIST_RETURN_FLAG) === listStateKey) {
-          console.timeEnd('back-list')
-          window.sessionStorage.removeItem(LIST_RETURN_FLAG)
+      let cancelled = false
+      let frameOne = 0
+      let frameTwo = 0
+      const timers = []
+      const targetY = Math.max(0, Number(saved.scrollY || 0))
+
+      const finishPerf = () => {
+        if (window.sessionStorage.getItem(LIST_RETURN_FLAG) !== listStateKey) return
+        if (DEBUG_NAV_PERF) {
+          try {
+            console.timeEnd('back-list')
+          } catch {}
         }
+        window.sessionStorage.removeItem(LIST_RETURN_FLAG)
       }
 
-      window.requestAnimationFrame(() => window.requestAnimationFrame(finishRestore))
+      const tryRestore = (attempt = 0) => {
+        if (cancelled) return
+
+        const doc = document.documentElement
+        const maxY = Math.max(0, doc.scrollHeight - window.innerHeight)
+        const nextY = Math.min(targetY, maxY)
+        window.scrollTo({ top: nextY, left: 0, behavior: 'auto' })
+
+        const currentY = window.scrollY || doc.scrollTop || 0
+        const reached = Math.abs(currentY - targetY) <= 8
+        const pageReady = maxY >= targetY
+        if (reached || pageReady || attempt >= 8) {
+          finishPerf()
+          return
+        }
+
+        const delay = [40, 80, 140, 220, 340, 520, 760, 1000][attempt] || 1200
+        timers.push(window.setTimeout(() => tryRestore(attempt + 1), delay))
+      }
+
+      frameOne = window.requestAnimationFrame(() => {
+        frameTwo = window.requestAnimationFrame(() => tryRestore(0))
+      })
+
+      return () => {
+        cancelled = true
+        if (frameOne) window.cancelAnimationFrame(frameOne)
+        if (frameTwo) window.cancelAnimationFrame(frameTwo)
+        timers.forEach((timer) => window.clearTimeout(timer))
+      }
     } catch {}
+    return undefined
   }, [listStateKey])
 
   useEffect(() => {
@@ -2788,10 +2826,26 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           titulo: 'Seu corre foi aceito! 🚀',
           mensagem: `${meuNome || 'Alguém'} aceitou: ${p.titulo || 'Corre aqui'}`,
           prioridade: 'alta',
-          acao: 'abrir_pedido',
+          acao: 'abrir_chat',
           lida: false,
           criadoEm: agora,
           autor: { id: meuId, nome: meuNome || 'Anônimo' },
+        })
+
+        await update(ref(database, `notifications/${p.criador.id}/notif_${agora}`), {
+          id: `notif_${agora}`,
+          tipo: 'corre_aceito',
+          titulo: 'Seu corre foi aceito!',
+          mensagem: `${meuNome || 'Alguem'} aceitou seu pedido. Converse pelo chat.`,
+          pedidoId: p.id,
+          conversaId,
+          servicoId: p?.servicoId || '',
+          fromUid: meuId,
+          toUid: p.criador.id,
+          lida: false,
+          criadoEm: agora,
+          action: { label: 'Abrir conversa', screen: 'chat', id: conversaId },
+          autor: { id: meuId, nome: meuNome || 'Anonimo' },
         })
 
         enviarPushParaUsuario(p.criador.id, {
@@ -2799,9 +2853,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           pedidoId: p.id,
           conversaId,
           titulo: 'Seu corre foi aceito!',
-          mensagem: `${meuNome || 'Alguem'} aceitou: ${p.titulo || 'Corre aqui'}`,
+          mensagem: `${meuNome || 'Alguem'} aceitou seu pedido. Converse pelo chat.`,
           prioridade: 'alta',
-          acao: 'abrir_pedido',
+          acao: 'abrir_chat',
         })
       }
 
@@ -3294,6 +3348,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     if (p?.aceite?.nome && p.aceite.id !== meuId) return { id: null, nome: p.aceite.nome }
     if (p?.criador?.nome) return { id: null, nome: p.criador.nome }
     return { id: null, nome: 'Alguém' }
+  }
+
+  const getOutroUserComPresence = (p) => {
+    const base = getOutroUser(p)
+    const presence = base?.id ? usersObj?.[base.id] || null : null
+    return {
+      ...base,
+      fotoURL: base?.fotoURL || base?.photoURL || presence?.fotoURL || presence?.photoURL || '',
+      photoURL: base?.photoURL || base?.fotoURL || presence?.photoURL || presence?.fotoURL || '',
+      online: isOnlineRecente(presence),
+      lastSeen: getOnlineTimestamp(presence),
+      presence,
+    }
   }
 
   const souCriador = (p) => !!meuId && p?.criador?.id === meuId
@@ -4644,7 +4711,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                           meuId={meuId}
                           meuNome={meuNome}
                           pedidoTitulo={p.titulo || 'Corre aqui'}
-                          outroUser={getOutroUser(p)}
+                          outroUser={getOutroUserComPresence(p)}
                           planoAtual={meuUserNode?.plano || 'free'}
                           mostrarAnuncio={false}
                           onToast={showToast}
@@ -4765,7 +4832,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   meuId={meuId}
                   meuNome={meuNome}
                   pedidoTitulo={chatPedido.titulo || 'Corre aqui'}
-                  outroUser={getOutroUser(chatPedido)}
+                  outroUser={getOutroUserComPresence(chatPedido)}
                   planoAtual={meuUserNode?.plano || 'free'}
                   mostrarAnuncio={false}
                   onToast={showToast}
@@ -5135,7 +5202,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       meuId={meuId}
                       meuNome={meuNome}
                       pedidoTitulo={chatPedido.titulo || 'Corre aqui'}
-                      outroUser={getOutroUser(chatPedido)}
+                      outroUser={getOutroUserComPresence(chatPedido)}
                       planoAtual={meuUserNode?.plano || 'free'}
                       mostrarAnuncio={false}
                       onToast={showToast}

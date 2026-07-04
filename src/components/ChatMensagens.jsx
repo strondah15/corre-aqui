@@ -36,6 +36,19 @@ function safeName(v, fallback = 'Alguém') {
   return String(v || '').trim() || fallback
 }
 
+function formatarUltimaPresenca(value) {
+  const ms = getMsgMs(value)
+  if (!ms) return 'Offline'
+  const diff = Math.max(0, Date.now() - ms)
+  const min = Math.floor(diff / 60000)
+  if (min < 1) return 'Visto agora'
+  if (min < 60) return `Visto ha ${min} min`
+  const horas = Math.floor(min / 60)
+  if (horas < 24) return `Visto ha ${horas} h`
+  if (horas < 48) return 'Visto ontem'
+  return `Visto ha ${Math.floor(horas / 24)} d`
+}
+
 function getValorPedido(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0
   const normalized = String(value || '')
@@ -118,6 +131,15 @@ function IconMore(props) {
       <circle cx="12" cy="5" r="1.7" />
       <circle cx="12" cy="12" r="1.7" />
       <circle cx="12" cy="19" r="1.7" />
+    </svg>
+  )
+}
+
+function IconBell(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path d="M18 9.5a6 6 0 0 0-12 0c0 4.7-2 5.7-2 5.7h16s-2-1-2-5.7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.8 18.5a2.3 2.3 0 0 0 4.4 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   )
 }
@@ -344,6 +366,7 @@ export default function ChatMensagens({
   const [anexoSelecionado, setAnexoSelecionado] = useState(null)
   const [gravando, setGravando] = useState(false)
   const [tempo, setTempo] = useState(0)
+  const [chamandoAtencao, setChamandoAtencao] = useState(false)
   const [fechado, setFechado] = useState(false)
   const [pedido, setPedido] = useState(null)
   const [detalhesPedidoAberto, setDetalhesPedidoAberto] = useState(false)
@@ -739,6 +762,84 @@ export default function ChatMensagens({
     }
   }
 
+  async function chamarAtencao() {
+    if (!pedidoId || !meuId || !outroId || enviando || anexando || chamandoAtencao) return
+
+    try {
+      setChamandoAtencao(true)
+      const agora = Date.now()
+      const notificationId = `notif_chamar_atencao_${agora}`
+      const tituloPedido = pedido?.titulo || pedido?.servicoTitulo || pedidoTitulo || 'atendimento'
+      const titulo = `${nomeMeu} chamou sua atencao`
+      const mensagem = `${nomeMeu} esta aguardando voce na conversa sobre ${tituloPedido}.`
+      const systemMessage = `${nomeMeu} chamou atencao na conversa.`
+
+      await update(ref(database), {
+        [`conversas/${outroId}/${pedidoId}/pedidoId`]: pedidoId,
+        [`conversas/${outroId}/${pedidoId}/outroId`]: meuId,
+        [`conversas/${outroId}/${pedidoId}/outroNome`]: nomeMeu,
+        [`conversas/${outroId}/${pedidoId}/unread`]: true,
+        [`conversas/${outroId}/${pedidoId}/lastText`]: systemMessage,
+        [`conversas/${outroId}/${pedidoId}/mensagemPreview`]: systemMessage,
+        [`conversas/${outroId}/${pedidoId}/lastAt`]: agora,
+        [`conversas/${outroId}/${pedidoId}/updatedAt`]: agora,
+        [`conversas/${outroId}/${pedidoId}/status`]: 'ativa',
+        [`conversas/${meuId}/${pedidoId}/pedidoId`]: pedidoId,
+        [`conversas/${meuId}/${pedidoId}/lastText`]: systemMessage,
+        [`conversas/${meuId}/${pedidoId}/mensagemPreview`]: systemMessage,
+        [`conversas/${meuId}/${pedidoId}/lastAt`]: agora,
+        [`conversas/${meuId}/${pedidoId}/updatedAt`]: agora,
+        [`notificacoes/${outroId}/${notificationId}`]: {
+          tipo: 'chamar_atencao_chat',
+          pedidoId,
+          conversaId: pedidoId,
+          titulo,
+          mensagem,
+          prioridade: 'alta',
+          acao: 'abrir_chat',
+          lida: false,
+          criadoEm: agora,
+          toUid: outroId,
+          fromUid: meuId,
+          autor: { id: meuId, nome: nomeMeu },
+        },
+        [`notifications/${outroId}/${notificationId}`]: {
+          id: notificationId,
+          tipo: 'chamar_atencao_chat',
+          titulo,
+          mensagem,
+          pedidoId,
+          servicoId: pedido?.servicoId || '',
+          fromUid: meuId,
+          toUid: outroId,
+          lida: false,
+          criadoEm: agora,
+          action: { label: 'Abrir conversa', screen: 'chat', id: pedidoId },
+          autor: { id: meuId, nome: nomeMeu },
+        },
+      })
+
+      await registrarMensagemSistema(systemMessage, 'chamar_atencao')
+
+      enviarPushParaUsuario(outroId, {
+        tipo: 'chamar_atencao_chat',
+        pedidoId,
+        conversaId: pedidoId,
+        titulo,
+        mensagem,
+        prioridade: 'alta',
+        acao: 'abrir_chat',
+      })
+
+      onToast?.({ type: 'success', title: 'Aviso enviado', message: `${outroNome} recebeu um alerta para abrir a conversa.` })
+    } catch (error) {
+      console.warn('Erro ao chamar atencao:', error)
+      onToast?.({ type: 'error', title: 'Nao foi possivel avisar', message: 'Tente novamente em instantes.' })
+    } finally {
+      setChamandoAtencao(false)
+    }
+  }
+
   async function registrarMensagemSistema(texto, evento) {
     if (!pedidoId || !meuId) return
     const agora = Date.now()
@@ -890,6 +991,13 @@ export default function ChatMensagens({
 
   const outroFoto = outroUser?.fotoURL || outroUser?.photoURL || ''
   const outroInicial = safeName(outroNome, 'C').slice(0, 1).toUpperCase()
+  const outroOnline = outroUser?.online === true
+  const outroLastSeen = outroUser?.lastSeen || outroUser?.presence?.lastSeen || outroUser?.presence?.updatedAt || 0
+  const outroStatusLabel = outroOnline ? 'Online' : formatarUltimaPresenca(outroLastSeen)
+  const outroStatusClass = outroOnline ? 'text-emerald-400' : 'text-slate-400'
+  const outroDotClass = outroOnline
+    ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)]'
+    : 'bg-slate-500 shadow-none'
   const podeEnviarMensagem = Boolean(texto.trim() || anexoSelecionado)
   const pedidoStatusMeta = statusAtendimentoMeta(pedido?.status)
   const pedidoTituloChat = pedido?.titulo || pedido?.servicoTitulo || pedidoTitulo || 'Atendimento Corre Aqui'
@@ -925,7 +1033,7 @@ export default function ChatMensagens({
             ) : (
               <div className="grid h-full w-full place-items-center text-sm font-black text-white sm:text-xl">{outroInicial}</div>
             )}
-            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[#061322] bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.75)] sm:bottom-1 sm:h-4 sm:w-4" />
+            <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[#061322] sm:bottom-1 sm:h-4 sm:w-4 ${outroDotClass}`} />
           </div>
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-base font-black tracking-tight text-white sm:text-2xl">{outroNome}</div>
@@ -934,9 +1042,9 @@ export default function ChatMensagens({
               <span className="h-1 w-1 rounded-full bg-slate-600" />
               <span>Outro: <b className="text-slate-200">{outroNome}</b></span>
             </div>
-            <div className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-emerald-400 sm:mt-1 sm:gap-2 sm:text-base">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)] sm:h-3 sm:w-3" />
-              Online
+            <div className={`mt-0.5 flex items-center gap-1 text-[11px] font-bold sm:mt-1 sm:gap-2 sm:text-base ${outroStatusClass}`}>
+              <span className={`h-2 w-2 rounded-full sm:h-3 sm:w-3 ${outroDotClass}`} />
+              {outroStatusLabel}
             </div>
           </div>
 
@@ -1195,6 +1303,15 @@ export default function ChatMensagens({
           >
             <IconMapPin className="h-4 w-4 text-emerald-400 sm:h-8 sm:w-8" />
             Localização
+          </button>
+          <button
+            type="button"
+            onClick={chamarAtencao}
+            disabled={!outroId || enviando || anexando || gravando || chamandoAtencao}
+            className="grid h-[48px] w-[58px] shrink-0 place-items-center rounded-[12px] border border-orange-400/25 bg-orange-500/10 px-1 py-1.5 text-center text-[8px] font-black leading-tight text-white transition hover:bg-orange-500/15 disabled:opacity-50 sm:h-[86px] sm:w-[92px] sm:rounded-[18px] sm:px-2 sm:py-3 sm:text-[12px]"
+          >
+            <IconBell className="h-4 w-4 text-orange-300 sm:h-8 sm:w-8" />
+            {chamandoAtencao ? 'Enviando' : 'Chamar'}
           </button>
           <button
             type="button"

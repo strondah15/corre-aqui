@@ -24,6 +24,9 @@ const modes = {
   },
 }
 
+const LIST_STATE_PREFIX = 'correAqui:listState:v2'
+const LIST_RETURN_FLAG = 'correAqui:returningToList'
+
 export default function ModoGate() {
   const [selectedMode, setSelectedMode] = useState('cliente')
   const [stage, setStage] = useState('select')
@@ -42,6 +45,19 @@ export default function ModoGate() {
     try {
       const saved = localStorage.getItem('modoApp')
       if (saved === 'cliente' || saved === 'corre') setSelectedMode(saved)
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      const returningKey = sessionStorage.getItem(LIST_RETURN_FLAG) || ''
+      const clienteKey = `${LIST_STATE_PREFIX}:cliente`
+      const correKey = `${LIST_STATE_PREFIX}:corre`
+      if (returningKey === clienteKey || returningKey === correKey) {
+        const mode = returningKey === clienteKey ? 'cliente' : 'corre'
+        setSelectedMode(mode)
+        setStage('app')
+      }
     } catch {}
   }, [])
 
