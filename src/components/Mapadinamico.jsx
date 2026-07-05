@@ -3752,13 +3752,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               <div className="pointer-events-none absolute -right-16 top-0 h-80 w-60 rotate-12 rounded-[70px] bg-yellow-100/42 md:-right-6 md:h-[30rem] md:w-80" />
               <div className="pointer-events-none absolute bottom-10 right-5 h-32 w-52 rotate-12 rounded-[44px] bg-blue-600/26 md:bottom-12 md:right-12 md:h-52 md:w-80" />
 
-              <div className="relative p-4 pb-5 md:p-8 md:pb-10">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5 md:gap-3">
-                  <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
+              <div className="relative p-3 pb-5 md:p-8 md:pb-10">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-1.5 md:gap-3">
+                  <div className="flex min-w-0 items-center gap-1.5 md:gap-3">
                     {typeof onBackToMode === 'function' ? (
                       <button
                         onClick={voltarModoLimpo}
-                        className="grid h-12 w-12 shrink-0 place-items-center rounded-[18px] border border-yellow-200/80 bg-[#ffd91a] text-blue-950 shadow-[0_14px_28px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.58)] transition hover:-translate-y-0.5 active:scale-[0.96] min-[390px]:h-14 min-[390px]:w-14 min-[390px]:rounded-[20px] md:h-16 md:w-16 md:rounded-[24px]"
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-yellow-200/80 bg-[#ffd91a] text-blue-950 shadow-[0_14px_28px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.58)] transition hover:-translate-y-0.5 active:scale-[0.96] min-[390px]:h-12 min-[390px]:w-12 min-[390px]:rounded-[18px] md:h-16 md:w-16 md:rounded-[24px]"
                         type="button"
                         title="Voltar para escolher Cliente ou Corre"
                         aria-label="Trocar modo"
@@ -3780,7 +3780,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     ) : null}
 
                     <div className="relative shrink-0">
-                      <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-[19px] bg-white text-base font-black text-blue-700 shadow-[0_14px_30px_rgba(15,23,42,0.16)] min-[390px]:h-14 min-[390px]:w-14 min-[390px]:rounded-[22px] min-[390px]:text-lg md:h-20 md:w-20 md:rounded-[30px] md:text-2xl">
+                      <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-[17px] bg-white text-base font-black text-blue-700 shadow-[0_14px_30px_rgba(15,23,42,0.16)] min-[390px]:h-12 min-[390px]:w-12 min-[390px]:rounded-[19px] min-[390px]:text-lg md:h-20 md:w-20 md:rounded-[30px] md:text-2xl">
                         {fotoURL ? (
                           <span
                             aria-hidden="true"
@@ -3793,29 +3793,29 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                           <span>{minhasIniciais}</span>
                         )}
                       </div>
-                      <span className="absolute -right-1 -top-1 h-5 w-5 rounded-full border-4 border-[#18b8d1] bg-[#ffd91a] md:h-6 md:w-6" />
+                      <span className="absolute -right-1 -top-1 h-[18px] w-[18px] rounded-full border-[3px] border-[#18b8d1] bg-[#ffd91a] md:h-6 md:w-6 md:border-4" />
                     </div>
 
                     <div className="min-w-0 flex-1 leading-tight">
-                      <div className="max-w-[8.6rem] truncate text-[9px] font-black uppercase tracking-[0.18em] text-white min-[390px]:max-w-[10rem] min-[390px]:text-[10px] md:max-w-none md:text-xs md:tracking-[0.22em]">
+                      <div className="max-w-full truncate text-[8px] font-black uppercase tracking-[0.12em] text-white min-[390px]:text-[9px] md:max-w-none md:text-xs md:tracking-[0.22em]">
                         Perto de você
                       </div>
                       <button
                         type="button"
                         onClick={() => setOpenProfileMenu(true)}
-                        className="mt-0.5 block w-full max-w-[9.2rem] truncate text-left text-[1.55rem] font-black leading-none text-white drop-shadow-sm transition hover:opacity-90 min-[390px]:max-w-[11rem] min-[390px]:text-2xl md:max-w-none md:text-4xl"
+                        className="mt-0.5 block w-full max-w-full truncate text-left text-[1.25rem] font-black leading-none text-white drop-shadow-sm transition hover:opacity-90 min-[390px]:text-[1.35rem] md:max-w-none md:text-4xl"
                       >
                         {meuNome || 'Visitante'} ›
                       </button>
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-1.5 md:gap-3">
+                  <div className="flex shrink-0 items-center gap-1 md:gap-3">
                     <button
                       type="button"
                       onClick={() => setOpenMapaAoVivo(true)}
                       title="Mapa ao vivo"
-                      className="grid h-10 w-10 place-items-center rounded-[16px] bg-white/90 text-base shadow-[0_12px_26px_rgba(15,23,42,0.14)] transition hover:scale-[1.03] min-[390px]:h-11 min-[390px]:w-11 min-[390px]:rounded-[18px] min-[390px]:text-lg md:h-14 md:w-14 md:rounded-[22px]"
+                      className="grid h-9 w-9 place-items-center rounded-[14px] bg-white/90 text-sm shadow-[0_12px_26px_rgba(15,23,42,0.14)] transition hover:scale-[1.03] min-[390px]:h-10 min-[390px]:w-10 min-[390px]:rounded-[16px] min-[390px]:text-base md:h-14 md:w-14 md:rounded-[22px] md:text-lg"
                     >
                       🗺️
                     </button>
@@ -3823,7 +3823,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       type="button"
                       onClick={() => setTab('inbox')}
                       title="Notificações e conversas"
-                      className="relative grid h-10 w-10 place-items-center rounded-[16px] bg-white/90 text-base shadow-[0_12px_26px_rgba(15,23,42,0.14)] transition hover:scale-[1.03] min-[390px]:h-11 min-[390px]:w-11 min-[390px]:rounded-[18px] min-[390px]:text-lg md:h-14 md:w-14 md:rounded-[22px]"
+                      className="relative grid h-9 w-9 place-items-center rounded-[14px] bg-white/90 text-sm shadow-[0_12px_26px_rgba(15,23,42,0.14)] transition hover:scale-[1.03] min-[390px]:h-10 min-[390px]:w-10 min-[390px]:rounded-[16px] min-[390px]:text-base md:h-14 md:w-14 md:rounded-[22px] md:text-lg"
                     >
                       🔔
                       {unreadInbox > 0 ? (
@@ -3932,6 +3932,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     notificacoesCount={notificacoesNaoLidas}
                     onAbrirPerfil={() => setOpenProfileMenu(true)}
                     onAbrirNotificacoes={() => setTab('inbox')}
+                    onAbrirChat={abrirChatFocado}
+                    onToast={showToast}
                   />
                 </div>
               </div>

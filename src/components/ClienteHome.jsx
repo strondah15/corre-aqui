@@ -992,22 +992,22 @@ export default function ClienteHome({
     ) : null}
 
     <div className="-mx-2.5 -mt-2 min-h-[calc(100dvh-4rem)] overflow-hidden bg-white pb-24 text-slate-950 md:mx-auto md:mt-0 md:min-h-0 md:w-full md:max-w-[1024px] md:rounded-[40px] md:pb-8 md:shadow-[0_24px_90px_rgba(0,0,0,0.18)]">
-      <div className="relative min-h-[405px] overflow-hidden bg-[#f8fbff] px-7 pb-6 pt-5 md:min-h-[820px] md:px-[52px] md:pb-0 md:pt-8">
+      <div className="relative min-h-[405px] overflow-hidden bg-[#f8fbff] px-4 pb-6 pt-5 md:min-h-[820px] md:px-[52px] md:pb-0 md:pt-8">
         <ClienteMapBackdrop />
 
-        <div className="relative mt-3 flex items-center justify-between gap-2 md:mt-14 md:gap-5">
+        <div className="relative mt-3 flex items-center justify-between gap-1.5 md:mt-14 md:gap-5">
           {typeof onBackToMode === 'function' ? (
             <button
               type="button"
               onClick={onBackToMode}
-              className="grid h-[48px] w-[48px] shrink-0 place-items-center rounded-[16px] border border-yellow-200/80 bg-[#ffd91a] text-blue-950 shadow-[0_12px_22px_rgba(245,158,11,0.18),inset_0_1px_0_rgba(255,255,255,0.72)] transition hover:-translate-y-0.5 active:scale-[0.96] min-[390px]:h-[52px] min-[390px]:w-[52px] md:h-24 md:w-24 md:rounded-[30px]"
+              className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-[14px] border border-yellow-200/80 bg-[#ffd91a] text-blue-950 shadow-[0_12px_22px_rgba(245,158,11,0.18),inset_0_1px_0_rgba(255,255,255,0.72)] transition hover:-translate-y-0.5 active:scale-[0.96] min-[390px]:h-[44px] min-[390px]:w-[44px] md:h-24 md:w-24 md:rounded-[30px]"
               title="Voltar para escolher Cliente ou Corre"
               aria-label="Trocar modo"
             >
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
-                className="h-[18px] w-[18px] md:h-9 md:w-9"
+                className="h-[17px] w-[17px] md:h-9 md:w-9"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2.8"
@@ -1023,10 +1023,10 @@ export default function ClienteHome({
           <button
             type="button"
             onClick={() => onAbrirPerfil?.()}
-            className="relative grid h-[62px] w-[62px] shrink-0 place-items-center rounded-full bg-white text-xl font-black text-blue-600 shadow-[0_14px_28px_rgba(37,99,235,0.13)] min-[390px]:h-[66px] min-[390px]:w-[66px] md:h-[136px] md:w-[136px] md:text-[48px]"
+            className="relative grid h-[50px] w-[50px] shrink-0 place-items-center rounded-full bg-white text-lg font-black text-blue-600 shadow-[0_14px_28px_rgba(37,99,235,0.13)] min-[390px]:h-[54px] min-[390px]:w-[54px] md:h-[136px] md:w-[136px] md:text-[48px]"
             title="Abrir perfil"
           >
-            <span className="absolute right-1 top-0 h-3.5 w-3.5 rounded-full bg-[#ffd91a] ring-[3px] ring-white md:right-4 md:top-0 md:h-6 md:w-6 md:ring-[5px]" />
+            <span className="absolute right-0.5 top-0 h-3.5 w-3.5 rounded-full bg-[#ffd91a] ring-[3px] ring-white md:right-4 md:top-0 md:h-6 md:w-6 md:ring-[5px]" />
             {iniciais}
           </button>
 
@@ -1035,31 +1035,31 @@ export default function ClienteHome({
             onClick={() => onAbrirPerfil?.()}
             className="min-w-0 flex-1 text-left"
           >
-            <div className="truncate whitespace-nowrap text-[8px] font-black uppercase tracking-[0.1em] text-blue-600 min-[390px]:text-[9px] md:text-[20px] md:tracking-[0.18em]">
+            <div className="truncate whitespace-nowrap text-[8px] font-black uppercase tracking-[0.08em] text-blue-600 min-[390px]:text-[9px] md:text-[20px] md:tracking-[0.18em]">
               Perto de você
             </div>
-            <div className="mt-0.5 flex items-center gap-1 truncate whitespace-nowrap text-[14px] font-black text-blue-950 min-[390px]:text-[16px] md:mt-2 md:text-[32px]">
+            <div className="mt-0.5 flex items-center gap-1 truncate whitespace-nowrap text-[17px] font-black text-blue-950 min-[390px]:text-[18px] md:mt-2 md:text-[32px]">
               <span className="truncate">{nomeExibicao}</span>
               <span className="text-blue-700">›</span>
             </div>
           </button>
 
-          <div className="flex shrink-0 items-center gap-2 md:gap-6">
+          <div className="flex shrink-0 items-center gap-1.5 md:gap-6">
             <button
               type="button"
               onClick={() => onIrAoVivo?.()}
-              className="grid h-[46px] w-[46px] place-items-center rounded-[17px] bg-white text-blue-700 shadow-[0_12px_24px_rgba(37,99,235,0.11)] min-[390px]:h-[52px] min-[390px]:w-[52px] md:h-24 md:w-24 md:rounded-[28px]"
+              className="grid h-[38px] w-[38px] place-items-center rounded-[14px] bg-white text-blue-700 shadow-[0_12px_24px_rgba(37,99,235,0.11)] min-[390px]:h-[42px] min-[390px]:w-[42px] md:h-24 md:w-24 md:rounded-[28px]"
               title="Mapa"
             >
-              <MapMiniIcon className="h-[22px] w-[22px] min-[390px]:h-6 min-[390px]:w-6 md:h-10 md:w-10" />
+              <MapMiniIcon className="h-[19px] w-[19px] min-[390px]:h-[21px] min-[390px]:w-[21px] md:h-10 md:w-10" />
             </button>
             <button
               type="button"
               onClick={() => onAbrirNotificacoes?.()}
-              className="relative grid h-[46px] w-[46px] place-items-center rounded-[17px] bg-white text-blue-700 shadow-[0_12px_24px_rgba(37,99,235,0.11)] min-[390px]:h-[52px] min-[390px]:w-[52px] md:h-24 md:w-24 md:rounded-[28px]"
+              className="relative grid h-[38px] w-[38px] place-items-center rounded-[14px] bg-white text-blue-700 shadow-[0_12px_24px_rgba(37,99,235,0.11)] min-[390px]:h-[42px] min-[390px]:w-[42px] md:h-24 md:w-24 md:rounded-[28px]"
               title="Notificações"
             >
-              <BellMiniIcon className="h-[22px] w-[22px] min-[390px]:h-6 min-[390px]:w-6 md:h-10 md:w-10" />
+              <BellMiniIcon className="h-[19px] w-[19px] min-[390px]:h-[21px] min-[390px]:w-[21px] md:h-10 md:w-10" />
             </button>
           </div>
         </div>
@@ -1077,7 +1077,7 @@ export default function ClienteHome({
           />
         </label>
 
-        <section className="relative z-20 mt-11 min-h-[150px] text-left md:mt-[92px] md:min-h-[330px]">
+        <section className="relative z-20 mt-16 min-h-[150px] text-left md:mt-[92px] md:min-h-[330px]">
           <div className="relative max-w-[520px]">
             <div className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-600 md:text-[24px] md:tracking-[0.14em]">
               Corre Aqui
@@ -1090,7 +1090,7 @@ export default function ClienteHome({
             </p>
           </div>
         </section>
-        <div className="absolute left-[66%] top-[58%] z-10 -translate-x-1/2 -translate-y-1/2 min-[390px]:left-[68%] min-[390px]:top-[57%] md:left-[70%] md:top-[64%]">
+        <div className="absolute left-[66%] top-[55%] z-10 -translate-x-1/2 -translate-y-1/2 min-[390px]:left-[68%] min-[390px]:top-[54%] md:left-[70%] md:top-[64%]">
           <ClienteHeroMapIcon />
         </div>
       </div>

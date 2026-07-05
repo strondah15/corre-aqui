@@ -210,6 +210,20 @@ export async function respondPrivateRequest({ database, request = {}, profission
   const finalStatus = status === 'aceito' ? acceptedStatus(tipo) : 'recusado'
   const agora = Date.now()
   const title = safeStr(request.servicoTitulo || request.titulo || 'Serviço solicitado')
+  const updatedRequest = {
+    ...request,
+    id: requestId,
+    privateRequestId: requestId,
+    privateRequest: true,
+    status: finalStatus,
+    tipo,
+    clienteId,
+    profissionalId,
+    profissionalNome: profNome,
+    atualizadoEm: agora,
+    respondidoEm: agora,
+  }
+  const updatedSummary = requestSummary(updatedRequest)
   const updates = {
     [`privateRequests/${requestId}/status`]: finalStatus,
     [`privateRequests/${requestId}/respondidoEm`]: agora,
@@ -217,10 +231,8 @@ export async function respondPrivateRequest({ database, request = {}, profission
     [`privateRequests/${requestId}/atualizadoEmServer`]: serverTimestamp(),
     [`privateRequests/${requestId}/respondidoPor/id`]: profissionalId,
     [`privateRequests/${requestId}/respondidoPor/nome`]: profNome,
-    [`privateRequestInbox/${clienteId}/${requestId}/status`]: finalStatus,
-    [`privateRequestInbox/${clienteId}/${requestId}/atualizadoEm`]: agora,
-    [`privateRequestInbox/${profissionalId}/${requestId}/status`]: finalStatus,
-    [`privateRequestInbox/${profissionalId}/${requestId}/atualizadoEm`]: agora,
+    [`privateRequestInbox/${clienteId}/${requestId}`]: updatedSummary,
+    [`privateRequestInbox/${profissionalId}/${requestId}`]: updatedSummary,
   }
 
   if (finalStatus === 'aceito' || finalStatus === 'agendado') {

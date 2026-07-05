@@ -180,6 +180,7 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
               nome={user?.displayName || ''}
               fotoURL={user?.photoURL || ''}
               privateRequests={privateRequests}
+              onAbrirChat={abrirChat}
             />
           ) : null}
 

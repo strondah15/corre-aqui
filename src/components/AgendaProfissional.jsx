@@ -411,11 +411,15 @@ export default function AgendaProfissional({
   notificacoesCount = 0,
   onAbrirPerfil,
   onAbrirNotificacoes,
+  onAbrirPedido,
+  onAbrirChat,
+  onToast,
   showHeader = false,
 } = {}) {
   const [agendamentos, setAgendamentos] = useState([])
   const [loading, setLoading] = useState(true)
   const [salvandoId, setSalvandoId] = useState(null)
+  const [erro, setErro] = useState('')
   const [filtro, setFiltro] = useState('hoje')
   const [selectedKey, setSelectedKey] = useState(() => dateKey(Date.now()))
 
@@ -504,15 +508,21 @@ export default function AgendaProfissional({
   const responder = async (id, status) => {
     if (!id || salvandoId) return
     setSalvandoId(id)
+    setErro('')
     try {
       const item = agendaItems.find((entry) => String(entry?.id || entry?.privateRequestId || '') === String(id))
       if (item?.privateRequest || item?.privateRequestId) {
-        await respondPrivateRequest({
+        const result = await respondPrivateRequest({
           database,
           request: item,
           profissional: { uid, nome, fotoURL },
           status,
         })
+        if (status === 'aceito') {
+          const destino = { ...item, ...result, id: result?.id || item?.id || item?.privateRequestId }
+          if (typeof onAbrirPedido === 'function') onAbrirPedido(destino)
+          else if (typeof onAbrirChat === 'function') onAbrirChat(destino)
+        }
         return
       }
 
@@ -521,6 +531,18 @@ export default function AgendaProfissional({
         respondidoEm: Date.now(),
         atualizadoEm: serverTimestamp(),
       })
+      if (status === 'aceito') {
+        const destino = { ...item, id }
+        if (typeof onAbrirPedido === 'function') onAbrirPedido(destino)
+        else if (typeof onAbrirChat === 'function') onAbrirChat(destino)
+      }
+    } catch (error) {
+      const message = error?.message || 'Nao foi possivel responder esse agendamento agora.'
+      console.error('[AGENDA] erro ao responder agendamento:', error)
+      setErro(message)
+      if (typeof onToast === 'function') {
+        onToast({ type: 'error', title: 'Agenda', message })
+      }
     } finally {
       setSalvandoId(null)
     }
@@ -548,6 +570,12 @@ export default function AgendaProfissional({
           <h2 className="text-2xl font-black tracking-tight text-blue-950 md:text-3xl">Minha agenda</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">Veja e gerencie seus serviços agendados.</p>
         </div>
+
+        {erro ? (
+          <div className="mt-4 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700">
+            {erro}
+          </div>
+        ) : null}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard icon="calendar" label="Hoje" value={resumo.hoje} suffix={resumo.hoje === 1 ? 'serviço' : 'serviços'} />
