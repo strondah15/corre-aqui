@@ -5470,7 +5470,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         unreadInbox={unreadInbox}
         problemasCount={problemasVisiveisCount}
         onDados={() => abrirPerfilDrawer('dados')}
-        onEnderecos={() => abrirRecursoEmBreve('Endereços')}
+        onEnderecos={() => abrirPerfilDrawer('enderecos')}
         onHistorico={() => abrirPainelCliente('meusPedidos')}
         onFavoritos={() => abrirRecursoEmBreve('Favoritos')}
         onAvaliacoesCliente={() => abrirRecursoEmBreve('Avaliações como cliente')}
@@ -5481,7 +5481,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         onPatentes={() => abrirPerfilDrawer('profissional', 'patentes')}
         onAvaliacoesRecebidas={() => abrirPerfilDrawer('profissional', 'avaliacoes')}
         onConfiguracoes={() => abrirPerfilDrawer('config')}
-        onAjuda={() => abrirPerfilDrawer('profissional', 'ajuda')}
+        onAjuda={() => abrirPerfilDrawer('ajuda')}
       />
 
       <PerfilDrawer

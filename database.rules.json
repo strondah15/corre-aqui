@@ -32,6 +32,15 @@
         "documentoVerificacao": { ".validate": "newData.val() === data.val()" }
       }
     },
+    "enderecos": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$addressId": {
+          ".validate": "!newData.exists() || (newData.child('id').val() === $addressId && newData.child('nomeLocal').isString() && newData.child('rua').isString() && newData.child('numero').isString() && newData.child('bairro').isString() && newData.child('cidade').isString())"
+        }
+      }
+    },
     "userPrivate": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

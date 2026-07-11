@@ -448,6 +448,36 @@ function inputClass(extra = "") {
   ].join(" ");
 }
 
+function createEmptyAddressDraft() {
+  return {
+    nomeLocal: "",
+    cep: "",
+    rua: "",
+    numero: "",
+    complemento: "",
+    bairro: "",
+    cidade: "",
+    referencia: "",
+    lat: null,
+    lng: null,
+  };
+}
+
+function normalizeAddresses(raw = {}) {
+  if (!raw || typeof raw !== "object") return [];
+  return Object.entries(raw)
+    .map(([id, value]) => ({
+      id,
+      ...(value && typeof value === "object" ? value : {}),
+    }))
+    .sort((a, b) => Number(b.updatedAt || b.criadoEm || 0) - Number(a.updatedAt || a.criadoEm || 0));
+}
+
+function addressLine(address = {}) {
+  const ruaNumero = [address.rua, address.numero].filter(Boolean).join(", ");
+  return [ruaNumero, address.bairro, address.cidade].filter(Boolean).join(" · ") || "Endereco sem detalhes";
+}
+
 function onlyDigits(value) {
   return String(value || "").replace(/\D/g, "");
 }
@@ -781,6 +811,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [portfolioEditingId, setPortfolioEditingId] = useState("");
   const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
   const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
+  const [addresses, setAddresses] = useState([]);
+  const [addressDraft, setAddressDraft] = useState(createEmptyAddressDraft);
+  const [addressEditingId, setAddressEditingId] = useState("");
+  const [addressSaving, setAddressSaving] = useState(false);
+  const [addressAviso, setAddressAviso] = useState("");
+  const [supportAviso, setSupportAviso] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -842,6 +878,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setTab(initialTab && initialTab !== "perfil" ? initialTab : "config");
     setProfSection(initialTab === "profissional" ? initialProfSection || "perfilProfissional" : "");
     setProfessionalProfileStep("choice");
+    setAddressAviso("");
+    setSupportAviso("");
   }, [open, initialTab, initialProfSection]);
 
   useEffect(() => {
@@ -993,6 +1031,20 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           };
         });
       }
+    });
+  }, [open, uid, userBasePath]);
+
+  useEffect(() => {
+    if (!open || !uid) {
+      setAddresses([]);
+      return undefined;
+    }
+
+    const addressesRef = ref(database, `enderecos/${uid}`);
+    return onValue(addressesRef, (snap) => {
+      setAddresses(normalizeAddresses(snap.val() || {}));
+    }, () => {
+      setAddresses([]);
     });
   }, [open, uid, userBasePath]);
 
@@ -1792,6 +1844,14 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       title: "Configurações",
       desc: "Conta, privacidade, notificações e preferências.",
     },
+    enderecos: {
+      title: "Meus endereços",
+      desc: "Cadastre locais para agilizar pedidos e atendimentos.",
+    },
+    ajuda: {
+      title: "Ajuda e suporte",
+      desc: "Tire duvidas e encontre orientacoes do Corre Aqui.",
+    },
     monetizacao: {
       title: "Planos",
       desc: "Recursos, anúncios e benefícios do Corre Aqui.",
@@ -1875,6 +1935,126 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     }
   };
 
+  const updateAddressDraft = (field, value) => {
+    setAddressAviso("");
+    setAddressDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const usarLocalizacaoAtual = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setAddressAviso("Localizacao nao disponivel neste aparelho.");
+      return;
+    }
+
+    setAddressAviso("Buscando sua localizacao...");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        setAddressDraft((prev) => ({
+          ...prev,
+          lat,
+          lng,
+          referencia: prev.referencia || `Localizacao atual: ${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+        }));
+        setAddressAviso("Localizacao adicionada ao endereco.");
+      },
+      () => setAddressAviso("Nao foi possivel usar sua localizacao agora."),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 },
+    );
+  };
+
+  const editarEndereco = (address) => {
+    setAddressEditingId(address.id || "");
+    setAddressDraft({
+      ...createEmptyAddressDraft(),
+      ...address,
+      nomeLocal: address.nomeLocal || address.nome || "",
+    });
+    setAddressAviso("");
+    window.setTimeout(() => {
+      drawerScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    }, 40);
+  };
+
+  const limparEnderecoForm = () => {
+    setAddressDraft(createEmptyAddressDraft());
+    setAddressEditingId("");
+    setAddressAviso("");
+  };
+
+  const salvarEndereco = async () => {
+    const nomeLocal = String(addressDraft.nomeLocal || "").trim();
+    const rua = String(addressDraft.rua || "").trim();
+    const numero = String(addressDraft.numero || "").trim();
+    const bairro = String(addressDraft.bairro || "").trim();
+    const cidade = String(addressDraft.cidade || "").trim();
+
+    if (!nomeLocal || !rua || !numero || !bairro || !cidade) {
+      setAddressAviso("Preencha nome do local, rua, numero, bairro e cidade.");
+      return;
+    }
+
+    const id = addressEditingId || `address_${Date.now()}`;
+    const antigo = addresses.find((item) => item.id === id) || {};
+    const payload = {
+      id,
+      nomeLocal,
+      nome: nomeLocal,
+      cep: String(addressDraft.cep || "").trim(),
+      rua,
+      numero,
+      complemento: String(addressDraft.complemento || "").trim(),
+      bairro,
+      cidade,
+      referencia: String(addressDraft.referencia || "").trim(),
+      lat: Number.isFinite(Number(addressDraft.lat)) ? Number(addressDraft.lat) : null,
+      lng: Number.isFinite(Number(addressDraft.lng)) ? Number(addressDraft.lng) : null,
+      criadoEm: antigo.criadoEm || Date.now(),
+      updatedAt: Date.now(),
+      atualizadoEm: serverTimestamp(),
+    };
+
+    setAddressSaving(true);
+    setAddressAviso("");
+    try {
+      await set(ref(database, `enderecos/${uid}/${id}`), payload);
+      setAddressDraft(createEmptyAddressDraft());
+      setAddressEditingId("");
+      setAddressAviso("Endereco salvo.");
+    } catch (error) {
+      console.error("[ENDERECOS] erro ao salvar", error);
+      setAddressAviso(error?.message || "Nao foi possivel salvar o endereco agora.");
+    } finally {
+      setAddressSaving(false);
+    }
+  };
+
+  const removerEndereco = async (id) => {
+    if (!id || addressSaving) return;
+    const confirmar = typeof window === "undefined" || window.confirm("Remover este endereco?");
+    if (!confirmar) return;
+
+    setAddressSaving(true);
+    setAddressAviso("");
+    try {
+      await set(ref(database, `enderecos/${uid}/${id}`), null);
+      if (addressEditingId === id) limparEnderecoForm();
+      setAddressAviso("Endereco removido.");
+    } catch (error) {
+      console.error("[ENDERECOS] erro ao remover", error);
+      setAddressAviso(error?.message || "Nao foi possivel remover o endereco agora.");
+    } finally {
+      setAddressSaving(false);
+    }
+  };
+
+  const abrirSuporteAcao = (mensagem) => {
+    setSupportAviso(mensagem);
+  };
+
+  const standaloneClientPage = tab === "dados" || tab === "enderecos" || tab === "ajuda";
+
   return (
     <div className="fixed inset-0 z-[100000] bg-slate-950">
       <div
@@ -1918,7 +2098,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
         <div className={professionalMode ? "mx-auto min-h-screen w-full max-w-5xl p-3 pb-24 md:p-6 md:pb-28" : "mx-auto w-full max-w-7xl p-2.5 md:p-6"}>
           {/* FOTO + HEADER */}
-          {!professionalMode && tab !== "dados" && (
+          {!professionalMode && !standaloneClientPage && (
           <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#0b73ff_0%,#18bfd2_48%,#ffe36b_100%)] p-4 text-white shadow-[0_22px_70px_rgba(37,99,235,0.22)] md:rounded-[36px] md:p-8">
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -2048,7 +2228,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           )}
 
           {/* MENU DO PERFIL */}
-          {!professionalMode && tab !== "dados" && (
+          {!professionalMode && !standaloneClientPage && (
           <div className="mt-3 rounded-[22px] border border-slate-200 bg-white p-1.5 shadow-[0_14px_36px_rgba(15,23,42,0.08)] md:mt-4 md:rounded-[28px] md:p-2">
             <div className="grid grid-cols-2 gap-1.5 md:gap-2">
               {["config", "monetizacao"].map(
@@ -2223,6 +2403,258 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                 >
                   {fotoSalvando ? "Salvando foto..." : salvando ? "Salvando..." : salvo ? "Alteracoes salvas" : "Salvar alteracoes"}
                 </button>
+              </section>
+            </div>
+          )}
+
+          {tab === "enderecos" && (
+            <div className="mx-auto mt-3 max-w-6xl md:mt-5">
+              <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_22px_70px_rgba(15,23,42,0.10)] md:rounded-[34px] md:p-8">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setTab("config")}
+                    className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-white text-2xl font-black text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.96] md:h-16 md:w-16"
+                    aria-label="Voltar"
+                  >
+                    ←
+                  </button>
+                  <div className="min-w-0">
+                    <h2 className="text-2xl font-black leading-tight text-blue-950 md:text-3xl">Meus endereços</h2>
+                    <p className="mt-1 text-sm font-bold text-slate-500 md:text-base">Salve locais para criar pedidos mais rapido.</p>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 md:rounded-[30px] md:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-black text-blue-950">
+                          {addressEditingId ? "Editar endereco" : "Novo endereco"}
+                        </div>
+                        <div className="mt-1 text-xs font-bold text-slate-500">Nome, CEP, rua, numero e referencia.</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={usarLocalizacaoAtual}
+                        className="h-10 shrink-0 rounded-xl border border-blue-100 bg-white px-3 text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-50 active:scale-[0.98]"
+                      >
+                        Usar localizacao atual
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <Field label="Nome do local">
+                        <input
+                          value={addressDraft.nomeLocal}
+                          onChange={(e) => updateAddressDraft("nomeLocal", e.target.value)}
+                          placeholder="Casa, trabalho, cliente..."
+                          className={inputClass()}
+                        />
+                      </Field>
+                      <Field label="CEP">
+                        <input
+                          value={addressDraft.cep}
+                          onChange={(e) => updateAddressDraft("cep", e.target.value)}
+                          inputMode="numeric"
+                          placeholder="00000-000"
+                          className={inputClass()}
+                        />
+                      </Field>
+                      <Field label="Rua">
+                        <input
+                          value={addressDraft.rua}
+                          onChange={(e) => updateAddressDraft("rua", e.target.value)}
+                          placeholder="Rua, avenida..."
+                          className={inputClass()}
+                        />
+                      </Field>
+                      <Field label="Numero">
+                        <input
+                          value={addressDraft.numero}
+                          onChange={(e) => updateAddressDraft("numero", e.target.value)}
+                          placeholder="123"
+                          className={inputClass()}
+                        />
+                      </Field>
+                      <Field label="Complemento">
+                        <input
+                          value={addressDraft.complemento}
+                          onChange={(e) => updateAddressDraft("complemento", e.target.value)}
+                          placeholder="Apto, bloco, casa..."
+                          className={inputClass()}
+                        />
+                      </Field>
+                      <Field label="Bairro">
+                        <input
+                          value={addressDraft.bairro}
+                          onChange={(e) => updateAddressDraft("bairro", e.target.value)}
+                          placeholder="Centro"
+                          className={inputClass()}
+                        />
+                      </Field>
+                      <Field label="Cidade">
+                        <input
+                          value={addressDraft.cidade}
+                          onChange={(e) => updateAddressDraft("cidade", e.target.value)}
+                          placeholder="Nova Iguacu"
+                          className={inputClass()}
+                        />
+                      </Field>
+                      <Field label="Referencia">
+                        <input
+                          value={addressDraft.referencia}
+                          onChange={(e) => updateAddressDraft("referencia", e.target.value)}
+                          placeholder="Perto da praca, portao azul..."
+                          className={inputClass()}
+                        />
+                      </Field>
+                    </div>
+
+                    {addressAviso ? (
+                      <div className="mt-4 rounded-2xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-blue-800">
+                        {addressAviso}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <button
+                        type="button"
+                        onClick={salvarEndereco}
+                        disabled={addressSaving}
+                        className="h-12 rounded-2xl bg-blue-700 px-5 text-sm font-black text-white shadow-[0_16px_34px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98] disabled:opacity-60"
+                      >
+                        {addressSaving ? "Salvando..." : "Salvar endereco"}
+                      </button>
+                      {addressEditingId ? (
+                        <button
+                          type="button"
+                          onClick={limparEnderecoForm}
+                          className="h-12 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-600 transition hover:bg-slate-50"
+                        >
+                          Cancelar edicao
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-blue-100 bg-blue-50/60 p-4 md:rounded-[30px]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-black text-blue-950">Enderecos salvos</div>
+                        <div className="mt-1 text-xs font-bold text-slate-500">{addresses.length} local(is)</div>
+                      </div>
+                      <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-xl shadow-sm">📍</div>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {addresses.length ? addresses.map((address) => (
+                        <article key={address.id} className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-black text-blue-950">{address.nomeLocal || address.nome || "Endereco"}</div>
+                              <div className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{addressLine(address)}</div>
+                              {address.referencia ? (
+                                <div className="mt-2 line-clamp-2 text-[11px] font-bold text-slate-400">{address.referencia}</div>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => editarEndereco(address)}
+                              className="h-9 rounded-xl border border-blue-100 bg-blue-50 text-xs font-black text-blue-700"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removerEndereco(address.id)}
+                              disabled={addressSaving}
+                              className="h-9 rounded-xl border border-rose-100 bg-rose-50 text-xs font-black text-rose-600 disabled:opacity-60"
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        </article>
+                      )) : (
+                        <div className="rounded-[20px] border border-dashed border-blue-200 bg-white/70 px-4 py-8 text-center">
+                          <div className="text-3xl">📍</div>
+                          <div className="mt-2 text-sm font-black text-blue-950">Nenhum endereco cadastrado</div>
+                          <div className="mt-1 text-xs font-semibold text-slate-500">Salve seu primeiro local para usar nos pedidos.</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+
+          {tab === "ajuda" && (
+            <div className="mx-auto mt-3 max-w-6xl md:mt-5">
+              <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_22px_70px_rgba(15,23,42,0.10)] md:rounded-[34px] md:p-8">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setTab("config")}
+                    className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-white text-2xl font-black text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.96] md:h-16 md:w-16"
+                    aria-label="Voltar"
+                  >
+                    ←
+                  </button>
+                  <div className="min-w-0">
+                    <h2 className="text-2xl font-black leading-tight text-blue-950 md:text-3xl">Ajuda e suporte</h2>
+                    <p className="mt-1 text-sm font-bold text-slate-500 md:text-base">Encontre orientacoes rapidas para usar o Corre Aqui.</p>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {[
+                    ["📝", "Como criar um pedido", "Descreva o servico, escolha categoria, valor e publique para pessoas proximas."],
+                    ["💼", "Como contratar pelo portfolio", "Abra o perfil profissional, veja servicos, fotos, preco e solicite pelo chat ou agenda."],
+                    ["⚡", "Como funcionam os Corres", "Corres aparecem por disponibilidade, reputacao e proximidade para aceitar pedidos rapidos."],
+                    ["🛡", "Seguranca e pagamentos", "Combine tudo no chat, registre detalhes e evite enviar dados sensiveis fora do app."],
+                    ["⚠", "Problemas com atendimento", "Use o historico, chat e botao de problema para registrar qualquer ocorrencia."],
+                  ].map(([icon, title, text]) => (
+                    <article key={title} className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+                      <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-xl shadow-sm">{icon}</div>
+                      <div className="mt-4 text-base font-black text-blue-950">{title}</div>
+                      <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">{text}</p>
+                    </article>
+                  ))}
+                </div>
+
+                <div className="mt-6 rounded-[24px] border border-blue-100 bg-blue-50/70 p-4 md:rounded-[30px] md:p-5">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => abrirSuporteAcao("Suporte acionado. Em breve vamos ligar este botao ao canal oficial.")}
+                      className="h-12 rounded-2xl bg-blue-700 px-4 text-sm font-black text-white shadow-[0_16px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-800 active:scale-[0.98]"
+                    >
+                      Falar com suporte
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => abrirSuporteAcao("Envio de problema preparado. Use tambem a area de problemas do atendimento.")}
+                      className="h-12 rounded-2xl border border-amber-200 bg-white px-4 text-sm font-black text-amber-700 transition hover:bg-amber-50 active:scale-[0.98]"
+                    >
+                      Enviar problema
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => abrirSuporteAcao("Perguntas frequentes em preparacao: pedidos, portfolio, agenda, chat e seguranca.")}
+                      className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+                    >
+                      Ver perguntas frequentes
+                    </button>
+                  </div>
+                  {supportAviso ? (
+                    <div className="mt-4 rounded-2xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-blue-800">
+                      {supportAviso}
+                    </div>
+                  ) : null}
+                </div>
               </section>
             </div>
           )}

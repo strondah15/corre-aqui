@@ -88,7 +88,7 @@ function statusAtendimentoMeta(status) {
   return { label: 'Aberto', tone: 'text-slate-300 bg-white/5 border-white/10', step: 0 }
 }
 
-const TIMELINE_ATENDIMENTO = ['Pedido aceito', 'Iniciou atendimento', 'Em andamento', 'Concluído', 'Avaliação']
+const TIMELINE_COMPACTA = ['Pedido aceito', 'Em atendimento', 'Concluído', 'Avaliação']
 
 const SUGESTOES = [
   'Pode me passar mais detalhes?',
@@ -100,6 +100,30 @@ const SUGESTOES = [
 const LIMITE_TEXTO = 700
 const LIMITE_FALLBACK_DATABASE_BYTES = 900 * 1024
 const ACCEPT_ANEXOS = 'image/*,.pdf,.doc,.docx,.txt,.zip'
+
+function compactSystemChip(msg) {
+  const texto = String(msg?.texto || 'Atualizacao do pedido').trim()
+  const evento = String(msg?.evento || '').toLowerCase()
+  const lower = texto.toLowerCase()
+
+  if (evento.includes('chamar') || lower.includes('chamou atencao')) {
+    return { icon: '✓', label: texto.replace(' na conversa.', '') }
+  }
+
+  if (lower.includes('localiza')) {
+    return { icon: '📍', label: 'Localizacao enviada' }
+  }
+
+  if (lower.includes('finalizado')) {
+    return { icon: '✓', label: 'Atendimento finalizado' }
+  }
+
+  if (lower.includes('iniciou') || lower.includes('iniciado')) {
+    return { icon: '✓', label: 'Atendimento iniciado' }
+  }
+
+  return { icon: '✓', label: texto.length > 54 ? `${texto.slice(0, 54).trim()}...` : texto }
+}
 
 function IconBack(props) {
   return (
@@ -1005,10 +1029,11 @@ export default function ChatMensagens({
   const pedidoDataChat = formatarDataPedido(pedido?.atendimentoIniciadoEm || pedido?.aceitoEm || pedido?.criadoEm || pedido?.createdAt)
   const pedidoIcon = pedido?.categoriaIcon || pedido?.icone || '⚡'
   const timelineStep = pedidoStatusMeta.step
+  const compactTimelineStep = Math.max(0, Math.min(3, timelineStep >= 2 ? timelineStep - 1 : timelineStep))
   const containerClass = modoPagina
-    ? 'fixed inset-0 z-[100000] flex h-[100svh] min-h-0 w-screen flex-col overflow-hidden bg-[#020915] text-white supports-[height:100dvh]:h-[100dvh]'
+    ? 'fixed inset-y-0 left-1/2 z-[100000] flex h-[100svh] min-h-0 w-full max-w-[900px] -translate-x-1/2 flex-col overflow-hidden border-x border-white/5 bg-[#020915] text-white shadow-[0_0_80px_rgba(0,0,0,0.35)] supports-[height:100dvh]:h-[100dvh]'
     : 'relative z-[9999] flex h-[min(88dvh,760px)] max-h-[calc(100dvh-1rem)] w-full max-w-[440px] flex-col overflow-hidden rounded-[24px] border border-emerald-400/15 bg-[#020915] text-white shadow-[0_30px_100px_rgba(0,0,0,0.55)] sm:max-w-[520px] sm:rounded-[32px]'
-  const nomeServicoCurto = pedidoTituloChat.length > 36 ? `${pedidoTituloChat.slice(0, 36).trim()}...` : pedidoTituloChat
+  const nomeServicoCurto = pedidoTituloChat.length > 46 ? `${pedidoTituloChat.slice(0, 46).trim()}...` : pedidoTituloChat
 
   return (
     <div className={containerClass}>
@@ -1095,73 +1120,57 @@ export default function ChatMensagens({
         </div>
       ) : null}
 
-      <div className="shrink-0 bg-[#020915] px-2.5 pb-1.5 sm:px-5 sm:pb-4">
-        <div className="overflow-hidden rounded-[16px] border border-emerald-400/20 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_34%),linear-gradient(145deg,#0a1b2a,#07111f)] p-2 shadow-[0_14px_32px_rgba(0,0,0,0.24)] sm:rounded-[28px] sm:p-4 sm:shadow-[0_22px_56px_rgba(0,0,0,0.32)]">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-yellow-400 text-xl text-white shadow-[0_10px_22px_rgba(250,204,21,0.20)] sm:h-16 sm:w-16 sm:rounded-[18px] sm:text-4xl">
+      <div className="shrink-0 bg-[#020915] px-2.5 pb-1.5 sm:px-5 sm:pb-3">
+        <div className="overflow-hidden rounded-[16px] border border-emerald-400/20 bg-[linear-gradient(145deg,#0a1b2a,#07111f)] shadow-[0_12px_28px_rgba(0,0,0,0.22)] sm:rounded-[22px]">
+          <div className="flex items-center gap-2 p-2.5 sm:gap-3 sm:p-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[13px] bg-yellow-400 text-xl text-white shadow-[0_10px_22px_rgba(250,204,21,0.18)] sm:h-12 sm:w-12 sm:text-2xl">
               {pedidoIcon}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="line-clamp-1 text-[15px] font-black leading-tight text-white sm:line-clamp-2 sm:text-xl">{nomeServicoCurto}</div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-black text-slate-400 sm:mt-2 sm:gap-2 sm:text-base">
-                <span className="text-emerald-400">{pedidoValorChat}</span>
+              <div className="truncate text-[15px] font-black leading-tight text-white sm:text-lg">{nomeServicoCurto}</div>
+              <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] font-black text-slate-400 sm:text-sm">
+                <span className="shrink-0 text-emerald-400">{pedidoValorChat}</span>
                 <span className="text-slate-600">•</span>
-                <span>{pedidoDataChat}</span>
+                <span className="truncate">{pedidoStatusMeta.label}</span>
               </div>
             </div>
-            <span className={`hidden shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] min-[430px]:inline-flex sm:px-4 sm:py-2 sm:text-[11px] ${pedidoStatusMeta.tone}`}>
-              {pedidoStatusMeta.label}
-            </span>
+            <button
+              type="button"
+              onClick={() => setDetalhesPedidoAberto((v) => !v)}
+              className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-3 text-[11px] font-black text-slate-200 transition hover:bg-white/[0.10] active:scale-[0.98] sm:h-10 sm:px-4 sm:text-xs"
+            >
+              Detalhes
+              <IconChevronDown className={`h-4 w-4 transition ${detalhesPedidoAberto ? 'rotate-180' : ''}`} />
+            </button>
           </div>
-
-          <div className="mt-1.5 hidden max-w-full rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-emerald-300 min-[430px]:hidden">
-            {pedidoStatusMeta.label}
-          </div>
-
-          <div className="mt-2 grid grid-cols-5 gap-0.5 sm:mt-6 sm:gap-1.5">
-            {TIMELINE_ATENDIMENTO.map((label, index) => {
-              const done = index <= timelineStep
-              const current = index === timelineStep
-              return (
-                <div key={label} className="min-w-0">
-                  <div className="flex items-center gap-1 sm:gap-1.5">
-                    <span
-                      className={[
-                        'grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[10px] font-black sm:h-9 sm:w-9 sm:text-sm',
-                        done
-                          ? 'border-emerald-400 bg-emerald-500 text-white shadow-[0_0_22px_rgba(34,197,94,0.42)]'
-                          : 'border-slate-500/55 bg-white/[0.04] text-slate-400',
-                        current ? 'ring-4 ring-emerald-500/25' : '',
-                        done ? 'relative text-transparent [&>svg]:text-white' : '',
-                      ].join(' ')}
-                    >
-                      {done ? <IconCheck className="absolute h-3.5 w-3.5 sm:h-5 sm:w-5" /> : null}
-                      {done ? '✓' : index + 1}
-                    </span>
-                    {index < TIMELINE_ATENDIMENTO.length - 1 ? (
-                      <span className={`h-px min-w-0 flex-1 rounded-full sm:h-1 ${done ? 'bg-emerald-400' : 'bg-slate-600/50'}`} />
-                    ) : null}
-                  </div>
-                  <div className={`mt-1 hidden text-center text-[9px] font-black leading-tight min-[430px]:line-clamp-2 sm:mt-2 sm:text-[11px] ${current ? 'text-emerald-300' : 'text-slate-400'}`}>
-                    {label}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setDetalhesPedidoAberto((v) => !v)}
-            className="mt-2 flex h-7 w-full items-center justify-center gap-1.5 border-t border-white/10 pt-1.5 text-xs font-black text-slate-300 transition hover:text-white sm:mt-5 sm:h-12 sm:gap-2 sm:pt-4 sm:text-base"
-          >
-            <IconChevronDown className={`h-4 w-4 transition sm:h-5 sm:w-5 ${detalhesPedidoAberto ? 'rotate-180' : ''}`} />
-            Ver detalhes
-          </button>
 
           {detalhesPedidoAberto ? (
-            <div className="mt-1.5 rounded-xl border border-white/10 bg-black/18 p-2 text-[11px] font-semibold leading-snug text-slate-300 sm:mt-3 sm:rounded-2xl sm:p-3 sm:text-sm">
-              {pedido?.descricao || pedido?.descricaoPedido || 'Combine os detalhes finais deste atendimento pelo chat.'}
+            <div className="border-t border-white/10 px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {TIMELINE_COMPACTA.map((label, index) => {
+                  const done = index <= compactTimelineStep
+                  const current = index === compactTimelineStep
+                  return (
+                    <div key={label} className="flex shrink-0 items-center gap-1.5">
+                      <span
+                        className={[
+                          'grid h-6 w-6 place-items-center rounded-full border text-[10px] font-black',
+                          done ? 'border-emerald-400 bg-emerald-500 text-white' : 'border-slate-500/55 bg-white/[0.04] text-slate-400',
+                          current ? 'ring-4 ring-emerald-500/20' : '',
+                        ].join(' ')}
+                      >
+                        {done ? <IconCheck className="h-3.5 w-3.5" /> : index + 1}
+                      </span>
+                      <span className={`text-[11px] font-black ${current ? 'text-emerald-300' : done ? 'text-slate-200' : 'text-slate-500'}`}>{label}</span>
+                      {index < TIMELINE_COMPACTA.length - 1 ? <span className="h-px w-5 bg-white/15" /> : null}
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="mt-2 grid gap-2 text-[12px] font-semibold leading-snug text-slate-300 sm:grid-cols-[1fr_auto] sm:text-sm">
+                <p>{pedido?.descricao || pedido?.descricaoPedido || 'Combine os detalhes finais deste atendimento pelo chat.'}</p>
+                <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] font-black text-slate-300">{pedidoDataChat}</span>
+              </div>
             </div>
           ) : null}
         </div>
@@ -1172,26 +1181,17 @@ export default function ChatMensagens({
         className="min-h-0 flex-1 overscroll-contain overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_30%),linear-gradient(180deg,#050b12_0%,#06111f_100%)] px-2.5 py-1.5 sm:px-5 sm:py-5"
       >
         {avisoAtendimentoVisivel ? (
-          <div className="mb-2 hidden rounded-[18px] border border-emerald-400/20 bg-[linear-gradient(135deg,rgba(16,185,129,0.18),rgba(15,23,42,0.88))] p-3 shadow-[0_14px_34px_rgba(0,0,0,0.22)] min-[430px]:block sm:mb-5 sm:rounded-[24px] sm:p-4">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-emerald-400/30 bg-emerald-500/15 text-emerald-300 shadow-[0_0_24px_rgba(16,185,129,0.20)] sm:h-14 sm:w-14">
-                <IconShield className="h-6 w-6 sm:h-8 sm:w-8" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-black text-white sm:text-lg">Atendimento iniciado</div>
-                <div className="mt-0.5 line-clamp-2 text-xs font-semibold leading-snug text-slate-300 sm:mt-1 sm:text-sm">
-                  Este chat e exclusivo deste pedido e tudo ficara registrado no aplicativo.
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAvisoAtendimentoVisivel(false)}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/10 hover:text-white sm:h-10 sm:w-10"
-                aria-label="Fechar aviso"
-              >
-                <IconClose className="h-5 w-5 sm:h-6 sm:w-6" />
-              </button>
-            </div>
+          <div className="mb-2 flex justify-center sm:mb-3">
+            <button
+              type="button"
+              onClick={() => setAvisoAtendimentoVisivel(false)}
+              className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-black text-emerald-100 shadow-[0_8px_20px_rgba(0,0,0,0.16)] transition hover:bg-emerald-500/15 sm:text-xs"
+              aria-label="Fechar aviso de atendimento"
+            >
+              <IconShield className="h-4 w-4 shrink-0 text-emerald-300" />
+              <span className="truncate">Atendimento iniciado. Tudo fica registrado no app.</span>
+              <IconClose className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            </button>
           </div>
         ) : null}
 
@@ -1223,16 +1223,19 @@ export default function ChatMensagens({
               const hora = formatarHoraMensagem(msg.hora || msg.criadoEm || msg.createdAt)
 
               if (sistema) {
+                const chip = compactSystemChip(msg)
                 return (
                   <motion.div
                     key={msg.id}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="flex justify-start"
+                    className="flex justify-center"
                   >
-                    <div className="max-w-[92%] rounded-[15px] border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1.5 text-left text-[11px] font-bold leading-snug text-slate-200 shadow-[0_10px_22px_rgba(0,0,0,0.16)] sm:rounded-[22px] sm:px-4 sm:py-3 sm:text-sm">
-                      {msg.texto || 'Atualização do pedido'}
+                    <div className="inline-flex max-w-[92%] items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-black leading-tight text-emerald-100 shadow-[0_8px_18px_rgba(0,0,0,0.14)] sm:max-w-[70%] sm:px-3 sm:py-1.5 sm:text-xs">
+                      <span className="shrink-0 text-emerald-300">{chip.icon}</span>
+                      <span className="truncate">{chip.label}</span>
+                      {hora ? <span className="shrink-0 text-[10px] font-bold text-slate-500">{hora}</span> : null}
                     </div>
                   </motion.div>
                 )
@@ -1294,66 +1297,58 @@ export default function ChatMensagens({
           onChange={(e) => selecionarArquivo(e)}
         />
 
-        <div className="mb-1.5 flex gap-1.5 overflow-x-auto border-t border-emerald-400/12 pt-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-4 sm:gap-3 sm:pt-4">
+        <div className="mb-1.5 flex gap-1.5 overflow-x-auto border-t border-emerald-400/12 pt-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-2.5 sm:gap-2 sm:pt-2.5">
           <button
             type="button"
             onClick={() => enviar('Minha localização está disponível no pedido.')}
             disabled={enviando || anexando || gravando}
-            className="grid h-[48px] w-[58px] shrink-0 place-items-center rounded-[12px] border border-emerald-400/25 bg-emerald-500/8 px-1 py-1.5 text-center text-[8px] font-black leading-tight text-white transition hover:bg-emerald-500/15 disabled:opacity-50 sm:h-[86px] sm:w-[92px] sm:rounded-[18px] sm:px-2 sm:py-3 sm:text-[12px]"
+            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-emerald-400/25 bg-emerald-500/8 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-emerald-500/15 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
           >
-            <IconMapPin className="h-4 w-4 text-emerald-400 sm:h-8 sm:w-8" />
-            Localização
+            <IconMapPin className="h-4 w-4 text-emerald-400 sm:h-5 sm:w-5" />
+            Local
           </button>
           <button
             type="button"
             onClick={chamarAtencao}
             disabled={!outroId || enviando || anexando || gravando || chamandoAtencao}
-            className="grid h-[48px] w-[58px] shrink-0 place-items-center rounded-[12px] border border-orange-400/25 bg-orange-500/10 px-1 py-1.5 text-center text-[8px] font-black leading-tight text-white transition hover:bg-orange-500/15 disabled:opacity-50 sm:h-[86px] sm:w-[92px] sm:rounded-[18px] sm:px-2 sm:py-3 sm:text-[12px]"
+            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-orange-400/25 bg-orange-500/10 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-orange-500/15 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
           >
-            <IconBell className="h-4 w-4 text-orange-300 sm:h-8 sm:w-8" />
+            <IconBell className="h-4 w-4 text-orange-300 sm:h-5 sm:w-5" />
             {chamandoAtencao ? 'Enviando' : 'Chamar'}
           </button>
           <button
             type="button"
             onClick={() => cameraInputRef.current?.click()}
             disabled={!pedidoId || enviando || anexando || gravando}
-            className="grid h-[48px] w-[58px] shrink-0 place-items-center rounded-[12px] border border-blue-400/25 bg-blue-500/8 px-1 py-1.5 text-center text-[8px] font-black leading-tight text-white transition hover:bg-blue-500/15 disabled:opacity-50 sm:h-[86px] sm:w-[92px] sm:rounded-[18px] sm:px-2 sm:py-3 sm:text-[12px]"
+            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-blue-400/25 bg-blue-500/8 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-blue-500/15 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
           >
-            <IconCamera className="h-4 w-4 text-blue-400 sm:h-8 sm:w-8" />
+            <IconCamera className="h-4 w-4 text-blue-400 sm:h-5 sm:w-5" />
             Foto
           </button>
           <button
             type="button"
             onClick={gravando ? solicitarParadaGravacao : iniciarGravacao}
             disabled={!pedidoId || enviando || anexando}
-            className="grid h-[48px] w-[58px] shrink-0 place-items-center rounded-[12px] border border-purple-400/25 bg-purple-500/8 px-1 py-1.5 text-center text-[8px] font-black leading-tight text-white transition hover:bg-purple-500/15 disabled:opacity-50 sm:h-[86px] sm:w-[92px] sm:rounded-[18px] sm:px-2 sm:py-3 sm:text-[12px]"
+            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-purple-400/25 bg-purple-500/8 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-purple-500/15 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
           >
-            <IconMic className="h-4 w-4 text-purple-400 sm:h-8 sm:w-8" />
+            <IconMic className="h-4 w-4 text-purple-400 sm:h-5 sm:w-5" />
             {gravando ? 'Parar áudio' : 'Áudio'}
           </button>
           <button
             type="button"
-            onClick={() => onToast?.({ type: 'info', title: 'Orçamento', message: 'Orçamento dentro do chat entra na próxima etapa.' })}
-            className="grid h-[48px] w-[58px] shrink-0 place-items-center rounded-[12px] border border-yellow-400/25 bg-yellow-500/8 px-1 py-1.5 text-center text-[8px] font-black leading-tight text-white transition hover:bg-yellow-500/15 sm:h-[86px] sm:w-[92px] sm:rounded-[18px] sm:px-2 sm:py-3 sm:text-[12px]"
+            onClick={() => onToast?.({ type: 'info', title: 'Valor', message: 'Alteracao de valor sera registrada com confirmacao do cliente.' })}
+            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-yellow-400/25 bg-yellow-500/8 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-yellow-500/15 sm:h-12 sm:w-[78px] sm:text-[11px]"
           >
-            <IconDollar className="h-4 w-4 text-yellow-400 sm:h-8 sm:w-8" />
-            Orçamento
-          </button>
-          <button
-            type="button"
-            onClick={() => onToast?.({ type: 'info', title: 'Alterar valor', message: 'Alteração de valor será registrada com confirmação do cliente.' })}
-            className="grid h-[48px] w-[58px] shrink-0 place-items-center rounded-[12px] border border-emerald-400/25 bg-emerald-500/8 px-1 py-1.5 text-center text-[8px] font-black leading-tight text-white transition hover:bg-emerald-500/15 sm:h-[86px] sm:w-[92px] sm:rounded-[18px] sm:px-2 sm:py-3 sm:text-[12px]"
-          >
-            <IconDollar className="h-4 w-4 text-emerald-400 sm:h-8 sm:w-8" />
-            Alterar valor
+            <IconDollar className="h-4 w-4 text-yellow-400 sm:h-5 sm:w-5" />
+            Valor
           </button>
           <button
             type="button"
             onClick={finalizarAtendimento}
             disabled={!pedidoId || enviando || anexando || gravando || pedido?.status === 'concluido'}
-            className="grid h-[48px] w-[58px] shrink-0 place-items-center rounded-[12px] border border-emerald-400/35 bg-emerald-500/18 px-1 py-1.5 text-center text-[8px] font-black leading-tight text-white shadow-[0_8px_18px_rgba(34,197,94,0.20)] transition hover:bg-emerald-400/20 disabled:opacity-50 sm:h-[86px] sm:w-[92px] sm:rounded-[18px] sm:px-2 sm:py-3 sm:text-[12px]"
+            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-emerald-400/35 bg-emerald-500/18 px-1 text-center text-[9px] font-black leading-tight text-white shadow-[0_8px_18px_rgba(34,197,94,0.16)] transition hover:bg-emerald-400/20 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
           >
-            <IconCheck className="h-4 w-4 text-emerald-300 sm:h-8 sm:w-8" />
+            <IconCheck className="h-4 w-4 text-emerald-300 sm:h-5 sm:w-5" />
             Finalizar
           </button>
         </div>
@@ -1457,7 +1452,7 @@ export default function ChatMensagens({
                 value={texto}
                 onChange={(e) => setTexto(e.target.value.slice(0, LIMITE_TEXTO))}
                 onKeyDown={onKeyDown}
-                placeholder={anexoSelecionado ? 'Adicionar legenda...' : 'Digite uma mensagem sobre o serviço...'}
+                placeholder={anexoSelecionado ? 'Adicionar legenda...' : 'Digite sua mensagem...'}
                 rows={1}
                 className="h-10 min-h-10 w-full max-h-20 resize-none rounded-full border border-white/10 bg-white/[0.08] px-3 py-2.5 text-sm leading-tight text-white outline-none placeholder:text-slate-500 focus:ring-2 focus:ring-emerald-500/35 sm:h-14 sm:min-h-14 sm:max-h-28 sm:px-5 sm:py-4 sm:text-base"
               />
@@ -1476,7 +1471,7 @@ export default function ChatMensagens({
             type="button"
             onClick={gravando ? solicitarParadaGravacao : iniciarGravacao}
             disabled={!pedidoId || enviando || anexando}
-            className="hidden h-10 w-10 shrink-0 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 disabled:opacity-50 min-[430px]:grid sm:h-12 sm:w-12"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 disabled:opacity-50 sm:h-12 sm:w-12"
             aria-label={gravando ? 'Parar audio' : 'Gravar audio'}
           >
             {gravando ? <IconStop className="h-5 w-5 text-red-300 sm:h-7 sm:w-7" /> : <IconMic className="h-5 w-5 sm:h-7 sm:w-7" />}

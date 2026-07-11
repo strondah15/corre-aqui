@@ -251,9 +251,9 @@ export default function AvisoCorreAceito({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -16, scale: 0.96 }}
         transition={{ type: 'spring', stiffness: 220, damping: 22 }}
-        className="pointer-events-none fixed inset-x-2 top-[calc(env(safe-area-inset-top)+0.5rem)] z-[99985] mx-auto max-w-[370px] sm:top-4 md:top-24 md:left-auto md:right-7 md:mx-0 md:w-[430px] md:max-w-[430px]"
+        className="pointer-events-none fixed inset-x-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[99985] mx-auto w-[calc(100vw-1.5rem)] max-w-[430px] sm:top-4 md:top-24 md:left-auto md:right-7 md:mx-0 md:w-[430px]"
       >
-        <div className="pointer-events-auto relative overflow-hidden rounded-[20px] border border-emerald-300/20 bg-[#07111f]/96 p-3 text-white shadow-[0_22px_70px_rgba(0,0,0,0.42)] backdrop-blur-2xl md:rounded-[28px] md:p-4 md:shadow-[0_28px_90px_rgba(0,0,0,0.45)]">
+        <div className="pointer-events-auto relative overflow-hidden rounded-[20px] border border-emerald-200 bg-white/98 p-3 text-slate-950 shadow-[0_18px_52px_rgba(15,23,42,0.18)] backdrop-blur-2xl md:rounded-[28px] md:p-4 md:shadow-[0_24px_70px_rgba(15,23,42,0.16)]">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-400 via-cyan-300 to-blue-500" />
           <div className="flex items-start gap-2.5 md:gap-3">
             <motion.div
@@ -265,22 +265,22 @@ export default function AvisoCorreAceito({
             </motion.div>
 
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-300 md:text-[11px] md:tracking-[0.16em]">Novo aceite</div>
-              <div className="mt-0.5 line-clamp-2 text-base font-black leading-tight text-white md:mt-1 md:text-lg">
+              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700 md:text-[11px] md:tracking-[0.16em]">Novo aceite</div>
+              <div className="mt-0.5 line-clamp-2 text-base font-black leading-tight text-slate-950 md:mt-1 md:text-lg">
                 {pedidoAceito?.aceite?.nome || 'Alguém'} aceitou seu pedido
               </div>
-              <div className="mt-0.5 truncate text-xs font-semibold text-slate-300 md:mt-1 md:text-sm">
+              <div className="mt-0.5 truncate text-xs font-semibold text-slate-600 md:mt-1 md:text-sm">
                 {pedidoAceito?.titulo || 'Corre aqui'}
               </div>
 
-              <div className="mt-2 grid gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] p-2 text-[11px] text-slate-300 md:mt-3 md:gap-2 md:rounded-2xl md:p-3 md:text-xs">
+              <div className="mt-2 grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-600 md:mt-3 md:gap-2 md:rounded-2xl md:p-3 md:text-xs">
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-bold text-slate-500">Horário</span>
-                  <b className="text-slate-100">{horarioAceite}</b>
+                  <b className="text-slate-800">{horarioAceite}</b>
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-bold text-slate-500">Próximo passo</span>
-                  <b className="text-emerald-100">Combine no chat</b>
+                  <b className="text-emerald-700">Combine no chat</b>
                 </div>
               </div>
 
@@ -288,7 +288,7 @@ export default function AvisoCorreAceito({
                 <button
                   type="button"
                   onClick={ativarAlertas}
-                  className="mt-2 rounded-full border border-blue-300/20 bg-blue-500/10 px-3 py-1.5 text-[11px] font-black text-blue-100 transition hover:bg-blue-500/15 md:mt-3 md:text-xs"
+                  className="mt-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-black text-blue-700 transition hover:bg-blue-100 md:mt-3 md:text-xs"
                 >
                   Ativar alertas do navegador
                 </button>
@@ -298,7 +298,7 @@ export default function AvisoCorreAceito({
             <button
               type="button"
               onClick={fechar}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.06] text-base font-black text-slate-200 transition hover:bg-white/[0.12] md:h-9 md:w-9 md:rounded-2xl md:text-lg"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-base font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 md:h-9 md:w-9 md:rounded-2xl md:text-lg"
               aria-label="Fechar aviso"
             >
               ×
@@ -318,7 +318,7 @@ export default function AvisoCorreAceito({
             </button>
 
             <button
-              className="h-10 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-xs font-black text-white transition hover:bg-white/[0.1] active:scale-[0.98] md:h-11 md:rounded-2xl md:text-sm"
+              className="h-10 rounded-xl border border-slate-200 bg-slate-100 px-3 text-xs font-black text-slate-800 transition hover:bg-slate-200 active:scale-[0.98] md:h-11 md:rounded-2xl md:text-sm"
               onClick={() => {
                 onVerMapa?.(pedidoAceito)
                 fechar()
