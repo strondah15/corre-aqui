@@ -95,6 +95,9 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
         .corre-splash-status { animation: corre-splash-rise .32s ease-out 1.68s both; }
         .corre-splash-dot { animation: corre-splash-dot 1.25s ease-in-out infinite; }
 
+        /* Keeps the animated pin transform isolated from its horizontal alignment. */
+        .corre-splash-pin-position { transform: translateX(-14px); }
+
         @media (prefers-reduced-motion: reduce) {
           .corre-splash-orbit,
           .corre-splash-pulse,
@@ -130,7 +133,7 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
             aria-hidden="true"
           />
 
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="corre-splash-pin-position absolute inset-0 flex items-center justify-center">
             <div className="corre-splash-logo h-full w-full">
               <div className="corre-splash-logo-float flex h-full w-full items-center justify-center">
               <div className="relative h-full w-full scale-[1.22] drop-shadow-[0_28px_60px_rgba(15,23,42,0.28)]">
