@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus } from '@/lib/atendimento'
 
 const CLIENTE_LIST_STATE_KEY = 'correAqui:listState:v2:cliente'
 
@@ -84,8 +85,9 @@ function getDistancia(pedido) {
 }
 
 function getStatusKey(pedido) {
-  const status = String(pedido?.status || 'aberto').toLowerCase()
+  const status = normalizeAtendimentoStatus(pedido?.status)
   if (pedido?.problemaServico) return 'problema'
+  if (status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) return 'aguardando_confirmacao'
   if (
     status === 'aceito' ||
     status === 'aguardando_inicio' ||
@@ -116,6 +118,13 @@ function getStatusMeta(pedido) {
       pill: 'border-amber-100 bg-amber-50 text-amber-700',
       dot: 'bg-amber-500',
       value: 'text-amber-700',
+    },
+    aguardando_confirmacao: {
+      label: 'CONFIRMACAO PENDENTE',
+      next: 'Confirme a conclusao solicitada pelo profissional',
+      pill: 'border-yellow-100 bg-yellow-50 text-yellow-700',
+      dot: 'bg-yellow-500',
+      value: 'text-yellow-700',
     },
     concluido: {
       label: 'CONCLUIDO',
@@ -260,7 +269,7 @@ export default function MeusPedidosCliente({
         const key = getStatusKey(pedido)
         acc.todos += 1
         if (key === 'aberto') acc.abertos += 1
-        if (key === 'aceito') acc.andamento += 1
+        if (key === 'aceito' || key === 'aguardando_confirmacao') acc.andamento += 1
         if (key === 'concluido') acc.concluidos += 1
         if (key === 'cancelado') acc.cancelados += 1
         if (key === 'problema') acc.problemas += 1
@@ -274,7 +283,7 @@ export default function MeusPedidosCliente({
     return meusPedidos.filter((pedido) => {
       const key = getStatusKey(pedido)
       if (filtro === 'todos') return true
-      if (filtro === 'andamento') return key === 'aceito'
+      if (filtro === 'andamento') return key === 'aceito' || key === 'aguardando_confirmacao'
       if (filtro === 'concluidos') return key === 'concluido'
       if (filtro === 'cancelados') return key === 'cancelado'
       return key === filtro
@@ -388,10 +397,10 @@ export default function MeusPedidosCliente({
               const criadoEm = pedido?.criadoEm || pedido?.createdAt || pedido?.atualizadoEm
               const statusKey = getStatusKey(pedido)
               const localOk = pedido?.local?.lat != null && pedido?.local?.lng != null
-              const podeAbrirChat = !!pedido?.aceite?.id || statusKey === 'aceito' || statusKey === 'concluido'
-              const podeConcluir = statusKey === 'aceito' && String(pedido?.criador?.id || '') === String(meuId || '')
+              const podeAbrirChat = !!pedido?.aceite?.id || statusKey === 'aceito' || statusKey === 'aguardando_confirmacao' || statusKey === 'concluido'
+              const podeConcluir = statusKey === 'aguardando_confirmacao' && String(pedido?.criador?.id || '') === String(meuId || '')
               const podeAvaliar = statusKey === 'concluido' && !pedido?.avaliacao
-              const podeRelatar = statusKey === 'aceito' || statusKey === 'concluido'
+              const podeRelatar = statusKey === 'aceito' || statusKey === 'aguardando_confirmacao' || statusKey === 'concluido'
 
               return (
                 <motion.article

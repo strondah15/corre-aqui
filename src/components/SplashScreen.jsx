@@ -60,6 +60,11 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
           100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
         }
 
+        @keyframes corre-splash-dot {
+          0%, 65%, 100% { opacity: .28; transform: scale(.82); }
+          30% { opacity: 1; transform: scale(1.12); }
+        }
+
         .corre-splash-orbit { animation: corre-splash-orbit 3.2s ease-in-out infinite; }
         .corre-splash-pulse { animation: corre-splash-soft-pulse 1.15s ease-in-out infinite; }
         .corre-splash-logo { animation: corre-splash-pin-pop .56s cubic-bezier(.2,.9,.2,1) both; }
@@ -88,6 +93,7 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
         .corre-splash-streak { animation: corre-splash-streak 1.26s ease-out .18s both; }
         .corre-splash-title { animation: corre-splash-rise .38s ease-out 1.5s both; }
         .corre-splash-status { animation: corre-splash-rise .32s ease-out 1.68s both; }
+        .corre-splash-dot { animation: corre-splash-dot 1.25s ease-in-out infinite; }
 
         @media (prefers-reduced-motion: reduce) {
           .corre-splash-orbit,
@@ -100,7 +106,8 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
           .corre-splash-ring,
           .corre-splash-streak,
           .corre-splash-title,
-          .corre-splash-status {
+          .corre-splash-status,
+          .corre-splash-dot {
             animation-duration: .01ms !important;
             animation-iteration-count: 1 !important;
             animation-delay: 0s !important;
@@ -108,19 +115,24 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
         }
       `}</style>
 
-      <div className="corre-splash-orbit pointer-events-none absolute -right-24 top-12 h-80 w-80 rounded-[80px] bg-yellow-200/30" />
-      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/16" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.22),transparent_38%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,#65b5ff_0%,#eaf7ff_34%,#edfafa_66%,#ffe45d_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.20]" style={{ backgroundImage: "url('/cliente-home-map-bg-v3.png')" }} />
+      <div className="pointer-events-none absolute -left-28 -top-32 h-[28rem] w-[28rem] rounded-[42%_58%_62%_38%] bg-blue-500/55" />
+      <div className="pointer-events-none absolute -left-32 -bottom-36 h-[22rem] w-[30rem] rounded-[58%_42%_34%_66%] bg-cyan-400/42" />
+      <div className="corre-splash-orbit pointer-events-none absolute -right-24 top-12 h-80 w-80 rounded-[42%_58%_38%_62%] bg-yellow-200/35" />
+      <div className="pointer-events-none absolute -right-20 bottom-[-7rem] h-96 w-[30rem] rounded-[62%_38%_46%_54%] bg-yellow-300/45" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.56),transparent_42%)]" />
 
-      <section className="relative flex min-h-[min(680px,100dvh)] w-full max-w-sm flex-col items-center justify-center px-2 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+1rem)] text-center">
-        <div className="relative mx-auto h-[248px] w-[248px] sm:h-[320px] sm:w-[320px]">
+      <section className="relative flex min-h-[min(680px,100dvh)] w-full max-w-2xl flex-col items-center justify-center px-2 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-[calc(env(safe-area-inset-top)+1rem)] text-center">
+        <div className="relative mx-auto flex h-[248px] w-[248px] items-center justify-center sm:h-[320px] sm:w-[320px]">
           <div
             className="corre-splash-pulse absolute inset-8 rounded-full bg-blue-700/18 blur-3xl sm:inset-10"
             aria-hidden="true"
           />
 
-          <div className="corre-splash-logo absolute inset-0 grid place-items-center">
-            <div className="corre-splash-logo-float h-full w-full">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="corre-splash-logo h-full w-full">
+              <div className="corre-splash-logo-float flex h-full w-full items-center justify-center">
               <div className="relative h-full w-full scale-[1.22] drop-shadow-[0_28px_60px_rgba(15,23,42,0.28)]">
                 <div className="corre-splash-pin-aura pointer-events-none absolute inset-[9%]" aria-hidden="true" />
 
@@ -148,6 +160,7 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
                   />
                 </div>
               </div>
+              </div>
             </div>
           </div>
 
@@ -162,11 +175,21 @@ export default function SplashScreen({ exiting = false, status = 'Conectando per
 
         </div>
 
-        <h1 className="corre-splash-title mt-8 w-full text-center text-[2.45rem] font-black leading-none tracking-[0] text-white drop-shadow-[0_8px_22px_rgba(37,99,235,0.28)] sm:mt-10 sm:text-5xl">
+        <h1 className="corre-splash-title mt-5 w-full text-center text-[2.45rem] font-black leading-none tracking-[0] text-blue-950 drop-shadow-[0_8px_22px_rgba(37,99,235,0.16)] sm:mt-7 sm:text-5xl">
           Corre Aqui
         </h1>
 
-        <div className="corre-splash-status mt-16 w-full max-w-[340px] text-center text-[0.78rem] font-black uppercase leading-relaxed tracking-[0.28em] text-blue-950/70 sm:mt-20 sm:text-sm">
+        <div className="mt-6 flex items-center justify-center gap-2" aria-hidden="true">
+          {[0, 1, 2].map((delay) => (
+            <span
+              key={delay}
+              className="corre-splash-dot h-2.5 w-2.5 rounded-full bg-cyan-500 shadow-[0_0_12px_rgba(6,182,212,0.35)]"
+              style={{ animationDelay: `${delay * 0.16}s` }}
+            />
+          ))}
+        </div>
+
+        <div className="corre-splash-status mt-5 w-full max-w-[340px] text-center text-[0.78rem] font-black uppercase leading-relaxed tracking-[0.28em] text-blue-950/70 sm:mt-6 sm:text-sm">
           {status}
         </div>
       </section>

@@ -99,10 +99,10 @@ function ClienteMapBackdrop() {
 
       <div
         className="absolute inset-0 bg-cover bg-center opacity-100"
-        style={{ backgroundImage: "url('/cliente-home-map-bg.png')" }}
+        style={{ backgroundImage: "url('/cliente-home-map-bg-v3.png')" }}
       />
 
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(255,255,255,.54),transparent_34%),linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.38)_78%,rgba(255,255,255,.78))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(255,255,255,.12),transparent_34%),linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.34)_78%,rgba(255,255,255,.72))]" />
     </div>
   )
 }

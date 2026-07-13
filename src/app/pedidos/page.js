@@ -6,6 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref, serverTimestamp, update } from 'firebase/database'
 import { auth, database } from '@/lib/firebase'
 import { startPresence } from '@/lib/presence'
+import { ATENDIMENTO_STATUS, transitionAtendimento } from '@/lib/atendimento'
 
 export default function ListaPedidos() {
   const router = useRouter()
@@ -65,18 +66,19 @@ export default function ListaPedidos() {
     const agora = Date.now()
     const nome = localStorage.getItem('meuNome') || user.displayName || 'Corre'
 
-    await update(ref(database, `pedidos/${pedido.id}`), {
-      status: 'aguardando_inicio',
-      aceite: {
-        id: user.uid,
-        nome,
-        local: null,
+    await transitionAtendimento({
+      database,
+      pedidoId: pedido.id,
+      actorUid: user.uid,
+      expectedStatus: ATENDIMENTO_STATUS.ABERTO,
+      nextStatus: ATENDIMENTO_STATUS.ACEITO,
+      atendimentoPatch: { aceitoEm: agora, aceitoPor: { id: user.uid, nome } },
+      topLevelPatch: {
+        aceite: { id: user.uid, nome, local: null, aceitoEm: agora },
+        conversaId: pedido.id,
         aceitoEm: agora,
+        atualizadoEmServer: serverTimestamp(),
       },
-      conversaId: pedido.id,
-      aceitoEm: agora,
-      atualizadoEm: agora,
-      atualizadoEmServer: serverTimestamp(),
     })
 
     setMensagem('Pedido aceito com sucesso.')

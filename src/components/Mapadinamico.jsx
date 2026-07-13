@@ -29,6 +29,8 @@ import {
 } from 'firebase/database'
 import { getOnlineTimestamp, getUserOnlinePreference, isOnlineRecente, setUserOnlinePreference, splitUsuariosOnline } from '@/lib/presence'
 import { createPrivateRequest } from '@/lib/privateRequests'
+import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
+import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
 
 import PerfilDrawer from '@/components/PerfilDrawer'
 import XpToast from '@/components/XpToast'
@@ -429,13 +431,32 @@ const boostInfo = (p) => {
   return { lvl, cfg, until, ativo, emergencia, destaque }
 }
 
-const PEDIDO_ATIVO_STATUSES = ['aceito', 'aguardando_inicio', 'em_atendimento']
-const isPedidoAtivoStatus = (status) => PEDIDO_ATIVO_STATUSES.includes(String(status || '').toLowerCase())
+const PEDIDO_ATIVO_STATUSES = [
+  ATENDIMENTO_STATUS.ACEITO,
+  ATENDIMENTO_STATUS.EM_ANDAMENTO,
+  ATENDIMENTO_STATUS.CHEGOU,
+  ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
+  'aguardando_inicio',
+  'em_atendimento',
+]
+const isPedidoAtivoStatus = (status) => PEDIDO_ATIVO_STATUSES.includes(normalizeAtendimentoStatus(status))
 
 const getProximoPassoPedido = (p, meuId) => {
-  const status = String(p?.status || 'aberto').toLowerCase()
+  const status = normalizeAtendimentoStatus(p?.status)
   const souCliente = !!meuId && String(p?.criador?.id || '') === String(meuId)
   const souAceitador = !!meuId && String(p?.aceite?.id || '') === String(meuId)
+
+  if (status === ATENDIMENTO_STATUS.ACEITO && souCliente) return 'O profissional aceitou. Aguarde o inicio do atendimento.'
+  if (status === ATENDIMENTO_STATUS.ACEITO && souAceitador) return 'Confira os detalhes e toque em Iniciar atendimento.'
+  if (status === ATENDIMENTO_STATUS.EM_ANDAMENTO && souCliente) return 'O profissional esta a caminho.'
+  if (status === ATENDIMENTO_STATUS.EM_ANDAMENTO && souAceitador) return 'Quando chegar, informe ao cliente pelo botao de chegada.'
+  if (status === ATENDIMENTO_STATUS.CHEGOU && souCliente) return 'O profissional informou que chegou ao local.'
+  if (status === ATENDIMENTO_STATUS.CHEGOU && souAceitador) return 'Solicite a finalizacao quando concluir o servico.'
+  if (status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO && souCliente) return 'Confirme a conclusao para finalizar o atendimento.'
+  if (status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO && souAceitador) return 'Aguardando a confirmacao do cliente.'
+  if (status === ATENDIMENTO_STATUS.FINALIZADO && !p?.avaliacao && souCliente) return 'Avalie o servico para fechar o ciclo.'
+  if (status === ATENDIMENTO_STATUS.FINALIZADO && !p?.avaliacao && souAceitador) return 'Servico confirmado. Aguardando avaliacao do cliente.'
+  if (status === ATENDIMENTO_STATUS.FINALIZADO) return 'Servico finalizado e avaliado.'
 
   if (p?.problemaServico) return 'Problema registrado. Acompanhe pelo chat até resolver.'
   if (status === 'aberto') return 'Aguardando alguém aceitar.'
@@ -515,106 +536,6 @@ const notificarTelefone = async ({ title, body, tag }) => {
   }
 }
 
-
-/* =======================
-   ✅ Patente por serviços
-======================= */
-const calcPatente = (serviços = 0) => {
-  return calcularPatentePorServicos(serviços)
-}
-
-async function subirPatentePorServiço({ uid, modoPedido = 'geral' }) {
-  if (!uid) return
-
-  const userRef = ref(database, `users/${uid}`)
-  let resultado = null
-
-  await runTransaction(userRef, (current) => {
-    const u = current || {}
-
-    const servicosCorreAntes = Number(u.servicosCorre ?? u['serviçosCorre'] ?? 0)
-    const servicosProfAntes = Number(u.servicosProf ?? u['serviçosProf'] ?? 0)
-    const patenteCorreAntes = calcPatente(servicosCorreAntes)
-    const patenteProfAntes = calcPatente(servicosProfAntes)
-    const isProfissionalUser = !!(u.isProfissional || u?.profile?.isProfissional || u?.profissional?.ativo)
-    const isProf = String(modoPedido || 'geral').toLowerCase() === 'profissional' && isProfissionalUser
-
-    const servicosCorre = isProf ? servicosCorreAntes : servicosCorreAntes + 1
-    const servicosProf = isProf ? servicosProfAntes + 1 : servicosProfAntes
-
-    const patenteCorre = calcPatente(servicosCorre)
-    const patenteProf = isProfissionalUser ? calcPatente(servicosProf) : 0
-
-    resultado = {
-      tipo: isProf ? 'prof' : 'corre',
-      patenteAntes: isProf ? patenteProfAntes : patenteCorreAntes,
-      patenteDepois: isProf ? patenteProf : patenteCorre,
-      servicosCorre,
-      servicosProf,
-      subiu: isProf ? patenteProf > patenteProfAntes : patenteCorre > patenteCorreAntes,
-    }
-
-    return {
-      ...u,
-      servicosCorre,
-      servicosProf,
-      serviçosCorre: servicosCorre,
-      serviçosProf: servicosProf,
-      patenteCorre,
-      patenteProf,
-      patenteAtualizadaEm: Date.now(),
-    }
-  })
-
-  return resultado
-}
-
-/* =======================
-   ✅ MISSÕES (XP + moedas)
-======================= */
-async function missãoIncrementar(uid, tipo) {
-  if (!uid) return
-
-  const k = dayKey()
-  const mRef = ref(database, `missoes/${uid}/${k}`)
-
-  await runTransaction(mRef, (cur) => {
-    const c = cur || { aceitou: 0, entregou: 0, boostou: 0, xp: 0, moedas: 0, updatedAt: 0 }
-    const next = { ...c }
-
-    next[tipo] = Number(next[tipo] || 0) + 1
-
-    if (tipo === 'aceitou') {
-      next.xp += 3
-      next.moedas += 1
-    }
-    if (tipo === 'entregou') {
-      next.xp += 10
-      next.moedas += 4
-    }
-    if (tipo === 'boostou') {
-      next.xp += 2
-    }
-
-    next.updatedAt = Date.now()
-    return next
-  })
-
-  const userRef = ref(database, `users/${uid}`)
-  await runTransaction(userRef, (cur) => {
-    const u = cur || {}
-
-    const addXp = tipo === 'aceitou' ? 3 : tipo === 'entregou' ? 10 : 2
-    const addMoedas = tipo === 'aceitou' ? 1 : tipo === 'entregou' ? 4 : 0
-
-    return {
-      ...u,
-      xp: Number(u.xp || 0) + addXp,
-      moedas: Number(u.moedas || 0) + addMoedas,
-      missaoAtualizadaEm: Date.now(),
-    }
-  })
-}
 
 async function aplicarImpulsionarNoPedido({ pedido, level, meuId, meuNome }) {
   if (!pedido?.id || !meuId) return
@@ -1499,6 +1420,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [notifPermission, setNotifPermission] = useState('default')
   const notificacoesInicializadasRef = useRef(false)
   const notificacoesVistasRef = useRef(new Set())
+  const recompensasEmCursoRef = useRef(new Set())
   const showToast = useCallback((t) => setToast({ ms: 2800, ...t }), [])
 
   const [loadingPedidos, setLoadingPedidos] = useState(() => !pedidosCacheReady)
@@ -1506,6 +1428,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [abrindoPedidoId, setAbrindoPedidoId] = useState(null)
 
   const [aceitandoId, setAceitandoId] = useState(null)
+  const [atendimentoId, setAtendimentoId] = useState(null)
   const [cancelandoId, setCancelandoId] = useState(null)
   const [serviçondoId, setServiçondoId] = useState(null)
   const [excluindoId, setExcluindoId] = useState(null)
@@ -1533,6 +1456,39 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const lastListStateSaveAtRef = useRef(0)
   const buscaCorreTopoRef = useRef(null)
   const listStateKey = useMemo(() => `${LIST_STATE_PREFIX}:${initialMode}`, [initialMode])
+
+  useEffect(() => {
+    if (!meuId || !Array.isArray(corres)) return
+
+    corres
+      .filter((pedido) => (
+        normalizeAtendimentoStatus(pedido?.status) === ATENDIMENTO_STATUS.FINALIZADO
+        && String(pedido?.aceite?.id || '') === String(meuId)
+        && pedido?.atendimento?.recompensasContabilizadas !== true
+      ))
+      .forEach((pedido) => {
+        if (recompensasEmCursoRef.current.has(pedido.id)) return
+        recompensasEmCursoRef.current.add(pedido.id)
+
+        contabilizarAtendimentoFinalizado({ database, pedido, uid: meuId })
+          .then((resultado) => {
+            if (!resultado?.contabilizado) return
+            const patenteResultado = resultado.patente
+            setXpToastInfo({ xp: 10, texto: 'Servico concluido. XP, moedas e patente atualizados.' })
+            setShowXpToast(true)
+            window.setTimeout(() => setShowXpToast(false), 2600)
+            if (patenteResultado?.subiu) {
+              setPatenteUp({
+                patente: getPatenteTitle(patenteResultado.tipo, patenteResultado.patenteDepois),
+                tipo: patenteResultado.tipo,
+                nivel: patenteResultado.patenteDepois,
+              })
+            }
+          })
+          .catch((error) => console.warn('Nao foi possivel contabilizar as recompensas:', error))
+          .finally(() => recompensasEmCursoRef.current.delete(pedido.id))
+      })
+  }, [corres, meuId])
 
   const saveListState = useCallback((markReturning = false) => {
     if (typeof window === 'undefined') return
@@ -2503,9 +2459,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
         if (modo === 'profissional' && !isProfissional) return false
 
-        if (filtro === 'abertos' && (p.status || 'aberto') !== 'aberto') return false
+        const status = normalizeAtendimentoStatus(p?.status)
+        if (filtro === 'abertos' && status !== ATENDIMENTO_STATUS.ABERTO) return false
         if (filtro === 'meus' && p?.aceite?.id !== meuId) return false
-        if (filtro === 'finalizados' && String(p?.status || '').toLowerCase() !== 'concluido') return false
+        if (filtro === 'finalizados' && status !== ATENDIMENTO_STATUS.FINALIZADO) return false
 
         const cat = p?.categoriaId ?? p?.categoria ?? p?.category ?? null
         if (categoriaFiltro === 'sem') {
@@ -2545,10 +2502,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       const modo = String(p?.modoPedido || 'geral').toLowerCase()
       if (modo === 'profissional' && !isProfissional) return
 
-      const status = String(p?.status || 'aberto').toLowerCase()
+      const status = normalizeAtendimentoStatus(p?.status)
       if (filtro === 'abertos' && status !== 'aberto') return
       if (filtro === 'meus' && p?.aceite?.id !== meuId) return
-      if (filtro === 'finalizados' && status !== 'concluido') return
+      if (filtro === 'finalizados' && status !== ATENDIMENTO_STATUS.FINALIZADO) return
 
       if (buscaTerm) {
         const t = buscaTerm
@@ -2599,10 +2556,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     const lista = Array.isArray(corres) ? corres : []
     return lista.reduce(
       (acc, p) => {
-        const status = String(p?.status || 'aberto').toLowerCase()
+        const status = normalizeAtendimentoStatus(p?.status)
         if (status === 'aberto') acc.abertos += 1
         if (p?.aceite?.id === meuId) acc.meus += 1
-        if (status === 'concluido') acc.concluidos += 1
+        if (status === ATENDIMENTO_STATUS.FINALIZADO) acc.concluidos += 1
         return acc
       },
       { abertos: 0, meus: 0, concluidos: 0 }
@@ -2611,7 +2568,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const profissionalStats = useMemo(() => {
     const meus = (Array.isArray(corres) ? corres : []).filter((p) => p?.aceite?.id === meuId)
-    const concluidos = meus.filter((p) => String(p?.status || '').toLowerCase() === 'concluido')
+    const concluidos = meus.filter((p) => normalizeAtendimentoStatus(p?.status) === ATENDIMENTO_STATUS.FINALIZADO)
     const ativos = meus.filter((p) => isPedidoAtivoStatus(p?.status))
     const notas = concluidos
       .map((p) => Number(p?.avaliacao?.nota || p?.avaliacaoNota || 0))
@@ -2666,7 +2623,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         const isProf = String(p?.modoPedido || 'geral').toLowerCase() === 'profissional'
         return modoProf ? isProf : !isProf
       })
-      const concluidos = pedidosModo.filter((p) => String(p?.status || '').toLowerCase() === 'concluido')
+      const concluidos = pedidosModo.filter((p) => normalizeAtendimentoStatus(p?.status) === ATENDIMENTO_STATUS.FINALIZADO)
       const ativos = pedidosModo.filter((p) => isPedidoAtivoStatus(p?.status))
       const notas = concluidos
         .map((p) => Number(p?.avaliacao?.nota || p?.avaliacaoNota || 0))
@@ -2736,8 +2693,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       return
     }
 
-    const statusAtual = String(p?.status || 'aberto').toLowerCase()
-    if (statusAtual !== 'aberto' || p?.aceite?.id) {
+    const statusAtual = normalizeAtendimentoStatus(p?.status)
+    if (statusAtual !== ATENDIMENTO_STATUS.ABERTO || p?.aceite?.id) {
       showToast({
         type: 'info',
         title: 'Pedido indisponível',
@@ -2772,13 +2729,22 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       const conversaId = p.id
 
       // marcar pedido como aceito
-      await update(ref(database, `pedidos/${p.id}`), {
-        status: 'aguardando_inicio',
-        aceite,
-        conversaId,
-        aceitoEm: agora,
-        atualizadoEm: agora,
-        atualizadoEmServer: serverTimestamp(),
+      await transitionAtendimento({
+        database,
+        pedidoId: p.id,
+        actorUid: meuId,
+        expectedStatus: ATENDIMENTO_STATUS.ABERTO,
+        nextStatus: ATENDIMENTO_STATUS.ACEITO,
+        atendimentoPatch: {
+          aceitoEm: agora,
+          aceitoPor: { id: meuId, nome: aceite.nome },
+        },
+        topLevelPatch: {
+          aceite,
+          conversaId,
+          aceitoEm: agora,
+          atualizadoEmServer: serverTimestamp(),
+        },
       })
 
       // 📅 Agenda inteligente: ao aceitar um serviço, o profissional fica "em serviço"
@@ -2806,7 +2772,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           outroNome: meuNome || 'Anônimo',
           unread: true,
           status: 'ativa',
-          pedidoStatus: 'aguardando_inicio',
+          pedidoStatus: ATENDIMENTO_STATUS.ACEITO,
           categoriaId: p?.categoriaId || p?.categoria || '',
           categoriaNome: p?.categoriaNome || p?.categoriaLabel || '',
           valor: p?.valor || null,
@@ -2867,7 +2833,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         outroNome: p?.criador?.nome || 'Cliente',
         unread: false,
         status: 'ativa',
-        pedidoStatus: 'aguardando_inicio',
+        pedidoStatus: ATENDIMENTO_STATUS.ACEITO,
         categoriaId: p?.categoriaId || p?.categoria || '',
         categoriaNome: p?.categoriaNome || p?.categoriaLabel || '',
         valor: p?.valor || null,
@@ -2899,13 +2865,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       await set(ref(database, `usersChats/${meuId}/${conversaId}`), true)
 
-      await missãoIncrementar(meuId, 'aceitou')
-
       router.push(`/pedido/${encodeURIComponent(String(p.id))}?voltar=corre&aceito=1`)
       showToast({
         type: 'success',
         title: 'Corre aceito! ✅',
-        message: `Você aceitou "${p.titulo || 'Corre aqui'}" às ${formatDataHora(agora)}. +XP`,
+        message: `Você aceitou "${p.titulo || 'Corre aqui'}" às ${formatDataHora(agora)}.`,
       })
     } catch (e) {
       console.error('Erro ao aceitar:', e)
@@ -2925,21 +2889,127 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         return
       }
 
-      await update(ref(database, `pedidos/${p.id}`), {
-        status: 'aberto',
-        aceite: null,
-        atualizadoEm: serverTimestamp(),
+      await transitionAtendimento({
+        database,
+        pedidoId: p.id,
+        actorUid: meuId,
+        expectedStatus: normalizeAtendimentoStatus(p.status),
+        nextStatus: ATENDIMENTO_STATUS.CANCELADO,
+        atendimentoPatch: {
+          canceladoEm: Date.now(),
+          canceladoPor: { id: meuId, nome: meuNome || 'Profissional' },
+        },
+        topLevelPatch: {
+          canceladoEm: Date.now(),
+          canceladoPor: { id: meuId, nome: meuNome || 'Profissional' },
+          atualizadoEmServer: serverTimestamp(),
+        },
       })
 
       if (mapItem?.id === p.id) setMapItem(null)
       if (chatPedido?.id === p.id) setChatPedido(null)
 
-      showToast({ type: 'success', title: 'Cancelado', message: 'Voltou para ABERTO.' })
+      showToast({ type: 'success', title: 'Atendimento cancelado', message: 'O pedido foi encerrado sem voltar para uma etapa anterior.' })
     } catch (e) {
       console.error('Erro ao cancelar aceite:', e)
       showToast({ type: 'error', title: 'Falha ao cancelar', message: e?.message || 'Veja o console.' })
     } finally {
       setCancelandoId(null)
+    }
+  }
+
+  async function avancarAtendimento(p, nextStatus) {
+    if (!p?.id || !meuId || atendimentoId) return
+
+    const currentStatus = normalizeAtendimentoStatus(p.status)
+    const isWorker = String(p?.aceite?.id || '') === String(meuId)
+    const isClient = String(p?.criador?.id || '') === String(meuId)
+    if (!isWorker && !(nextStatus === ATENDIMENTO_STATUS.FINALIZADO && isClient)) return
+
+    setAtendimentoId(p.id)
+    try {
+      const agora = Date.now()
+      const conversaId = p?.conversaId || p.id
+      const profissionalNome = p?.aceite?.nome || 'Profissional'
+      const clienteNome = p?.criador?.nome || 'Cliente'
+      const event = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+        ? 'atendimento_iniciado'
+        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? 'atendimento_chegou'
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? 'finalizacao_solicitada'
+            : 'atendimento_finalizado'
+      const text = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+        ? `${profissionalNome} iniciou o atendimento.`
+        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? `${profissionalNome} informou que chegou ao local.`
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? `${profissionalNome} solicitou a finalização do atendimento.`
+            : `${clienteNome} confirmou que o atendimento foi concluído.`
+      const actorName = isClient ? clienteNome : profissionalNome
+
+      const patch = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+        ? { iniciadoEm: agora, iniciadoPor: { id: meuId, nome: actorName } }
+        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? { chegouEm: agora, chegouPor: { id: meuId, nome: actorName } }
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? { finalizacaoSolicitadaEm: agora, finalizacaoSolicitadaPor: { id: meuId, nome: actorName } }
+            : { finalizadoEm: agora, finalizadoPor: { id: meuId, nome: actorName } }
+
+      await transitionAtendimento({
+        database,
+        pedidoId: p.id,
+        actorUid: meuId,
+        expectedStatus: currentStatus,
+        nextStatus,
+        atendimentoPatch: patch,
+        topLevelPatch: { ...patch, ...(nextStatus === ATENDIMENTO_STATUS.FINALIZADO ? { avaliacaoPendente: true } : {}) },
+      })
+
+      const updates = {}
+      for (const uid of [p?.criador?.id, p?.aceite?.id]) {
+        if (!uid) continue
+        updates[`conversas/${uid}/${conversaId}/pedidoStatus`] = nextStatus
+        updates[`conversas/${uid}/${conversaId}/lastText`] = text
+        updates[`conversas/${uid}/${conversaId}/mensagemPreview`] = text
+        updates[`conversas/${uid}/${conversaId}/lastAt`] = agora
+        updates[`conversas/${uid}/${conversaId}/updatedAt`] = agora
+        updates[`conversas/${uid}/${conversaId}/lastById`] = meuId
+        updates[`conversas/${uid}/${conversaId}/lastByNome`] = actorName
+        updates[`conversas/${uid}/${conversaId}/unread`] = uid !== meuId
+        updates[`conversas/${uid}/${conversaId}/status`] = nextStatus === ATENDIMENTO_STATUS.FINALIZADO ? 'arquivavel' : 'ativa'
+      }
+
+      const destinatario = isWorker ? p?.criador?.id : p?.aceite?.id
+      if (destinatario) {
+        const notificationId = `notif_atendimento_${event}_${agora}`
+        const notification = {
+          id: notificationId,
+          tipo: event,
+          titulo: nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO ? 'Atendimento iniciado' : nextStatus === ATENDIMENTO_STATUS.CHEGOU ? 'Profissional chegou' : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO ? 'Finalização solicitada' : 'Atendimento concluído',
+          mensagem: text,
+          pedidoId: p.id,
+          fromUid: meuId,
+          toUid: destinatario,
+          lida: false,
+          criadoEm: agora,
+          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
+          autor: { id: meuId, nome: actorName },
+        }
+        updates[`notifications/${destinatario}/${notificationId}`] = notification
+        updates[`notificacoes/${destinatario}/${notificationId}`] = notification
+      }
+
+      await update(ref(database), updates)
+      const message = { texto: text, sistema: true, evento: event, criadoEm: agora, hora: agora, autorId: 'sistema', autorNome: 'Sistema' }
+      await set(ref(database, `chats/${conversaId}/msg_${event}_${agora}`), message)
+      await set(ref(database, `mensagens/${conversaId}/msg_${event}_${agora}`), message).catch(() => {})
+      showToast({ type: 'success', title: 'Atendimento atualizado', message: text })
+    } catch (error) {
+      console.error('Erro ao avançar atendimento:', error)
+      showToast({ type: 'error', title: 'Falha no atendimento', message: error?.message || 'Tente novamente.' })
+    } finally {
+      setAtendimentoId(null)
     }
   }
 
@@ -2979,19 +3049,36 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         return
       }
 
-      if (!isPedidoAtivoStatus(p.status)) {
-        showToast({
-          type: 'info',
-          title: 'Ainda não',
-          message: 'Só marca ENTREGUE quando estiver ACEITO.',
+        if (normalizeAtendimentoStatus(p.status) !== ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) {
+          showToast({
+            type: 'info',
+            title: 'Ainda não',
+            message: 'A confirmação só fica disponível quando o profissional solicitar a finalização.',
         })
         return
       }
 
       const concluidoAgora = Date.now()
 
+      await transitionAtendimento({
+        database,
+        pedidoId: p.id,
+        actorUid: meuId,
+        expectedStatus: ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
+        nextStatus: ATENDIMENTO_STATUS.FINALIZADO,
+        atendimentoPatch: {
+          finalizadoEm: concluidoAgora,
+          finalizadoPor: { id: meuId, nome: meuNome || 'Cliente' },
+        },
+        topLevelPatch: {
+          finalizadoEm: concluidoAgora,
+          finalizadoPor: { id: meuId, nome: meuNome || 'Cliente' },
+          avaliacaoPendente: true,
+          atualizadoEmServer: serverTimestamp(),
+        },
+      })
+
       await update(ref(database, `pedidos/${p.id}`), {
-        status: 'concluido',
         concluidoEm: concluidoAgora,
         concluidoPor: { id: meuId, nome: meuNome || 'Anônimo' },
         avaliacaoPendente: true,
@@ -3026,16 +3113,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         })
       }
 
-      // ✅ QUEM GANHA A ENTREGA?
-      const creditUid = aceitadorId || meuId
+      if (meuId && aceitadorId && aceitadorId === meuId && p?.criador?.id !== meuId) {
+        const recompensaResultado = await contabilizarAtendimentoFinalizado({ database, pedido: p, uid: meuId })
 
-      try {
-        const patenteResultado = await subirPatentePorServiço({
-          uid: creditUid,
-          modoPedido: p?.modoPedido || 'geral',
-        })
-
-        await missãoIncrementar(creditUid, 'entregou')
+      if (recompensaResultado.contabilizado) try {
+        const patenteResultado = recompensaResultado.patente
 
         setXpToastInfo({
           xp: 10,
@@ -3055,6 +3137,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         console.warn('Serviço concluído, mas XP/patente não atualizou:', xpError)
       }
 
+        }
+
       showToast({
         type: 'success',
         title: 'Fechado!',
@@ -3062,7 +3146,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       })
 
       setConclusaoPedido(null)
-      abrirAvaliacao({ ...p, status: 'concluido', concluidoEm: concluidoAgora })
+      abrirAvaliacao({ ...p, status: ATENDIMENTO_STATUS.FINALIZADO, finalizadoEm: concluidoAgora })
     } catch (e) {
       console.error('Erro ao marcar concluido:', e)
       showToast({ type: 'error', title: 'Falha', message: e?.message || 'Veja o console.' })
@@ -3311,8 +3395,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }
 
   const BadgeStatus = ({ status }) => {
-    const s = (status || 'aberto').toLowerCase()
-    if (s === 'aberto')
+    const s = normalizeAtendimentoStatus(status)
+    if (s === ATENDIMENTO_STATUS.ABERTO)
       return (
         <span className="relative inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-emerald-300/60 bg-emerald-400/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-900 shadow-[0_0_18px_rgba(16,185,129,0.42)] animate-pulse md:gap-2 md:px-3 md:py-1.5 md:text-xs">
           <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/35 to-transparent opacity-70" />
@@ -3326,10 +3410,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     if (isPedidoAtivoStatus(s))
       return (
         <span className="rounded-full border border-amber-300/50 bg-amber-50 px-2 py-0.5 text-[11px] font-black text-amber-800 md:py-1 md:text-xs">
-          {s === 'em_atendimento' ? 'EM ATENDIMENTO' : 'ACEITO'}
+          {s === ATENDIMENTO_STATUS.ACEITO ? 'ACEITO' : s === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO ? 'CONFIRMACAO PENDENTE' : s === ATENDIMENTO_STATUS.CHEGOU ? 'CHEGOU' : 'EM ANDAMENTO'}
         </span>
       )
-    if (s === 'concluido')
+    if (s === ATENDIMENTO_STATUS.FINALIZADO)
       return (
         <span className="rounded-full border border-sky-300/50 bg-sky-50 px-2 py-0.5 text-[11px] font-black text-sky-800 md:py-1 md:text-xs">
           ENTREGUE
@@ -3695,8 +3779,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       : 112
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#050b12] text-slate-900 corre-aqui-no-select">
-      <div className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(135deg,#06111a_0%,#071724_46%,#050812_100%)]" />
+    <div className={`relative min-h-screen overflow-hidden text-slate-900 corre-aqui-no-select ${modoApp === 'corre' ? 'bg-[#eef7fc]' : 'bg-[#050b12]'}`}>
+      <div className={`pointer-events-none fixed inset-0 z-0 ${modoApp === 'corre' ? 'bg-[linear-gradient(180deg,#dff2fc_0%,#f7fbfe_48%,#eef7fc_100%)]' : 'bg-[linear-gradient(135deg,#06111a_0%,#071724_46%,#050812_100%)]'}`} />
       <style>{`
         .corre-aqui-no-select,
         .corre-aqui-no-select * {
@@ -3747,10 +3831,20 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
-            <div className="relative -mx-2.5 mb-0 overflow-hidden bg-[linear-gradient(135deg,#0b73ff_0%,#16b8d1_46%,#ffdf2e_100%)] text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.22)] backdrop-blur-xl md:mx-0 md:rounded-[34px]">
-              <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-blue-500/24 md:h-96 md:w-96" />
-              <div className="pointer-events-none absolute -right-16 top-0 h-80 w-60 rotate-12 rounded-[70px] bg-yellow-100/42 md:-right-6 md:h-[30rem] md:w-80" />
-              <div className="pointer-events-none absolute bottom-10 right-5 h-32 w-52 rotate-12 rounded-[44px] bg-blue-600/26 md:bottom-12 md:right-12 md:h-52 md:w-80" />
+            <div className="relative -mx-2.5 mb-0 overflow-hidden bg-[#e8f5fc] text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.14)] backdrop-blur-xl md:mx-0 md:rounded-[34px]">
+              <div className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.78]" style={{ backgroundImage: "url('/cliente-home-map-bg-v3.png')" }} />
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(218,241,251,.54),rgba(255,255,255,.78)_68%,rgba(239,249,253,.92))]" />
+              <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-sky-300/25 blur-2xl md:h-96 md:w-96" />
+              <div className="pointer-events-none absolute -right-16 top-0 h-80 w-60 rotate-12 rounded-[70px] bg-white/35 blur-xl md:-right-6 md:h-[30rem] md:w-80" />
+              <div className="pointer-events-none absolute bottom-10 right-5 h-32 w-52 rotate-12 rounded-[44px] bg-blue-300/20 blur-xl md:bottom-12 md:right-12 md:h-52 md:w-80" />
+              <div className="pointer-events-none absolute right-[22%] top-[27%] z-0 h-20 w-16 opacity-90 drop-shadow-[0_12px_18px_rgba(37,99,235,0.24)] md:right-[24%] md:top-[22%] md:h-32 md:w-24">
+                <span
+                  className="absolute left-1/2 top-[4%] h-[62px] w-[50px] -translate-x-1/2 bg-blue-600/90 md:top-[3%] md:h-[100px] md:w-[80px]"
+                  style={{ clipPath: 'polygon(50% 100%, 7% 45%, 5% 31%, 12% 16%, 28% 5%, 50% 0, 72% 5%, 88% 16%, 95% 31%, 93% 45%)' }}
+                />
+                <span className="absolute left-1/2 top-[21%] z-10 h-6 w-6 -translate-x-1/2 rounded-full bg-white shadow-sm md:top-[20%] md:h-9 md:w-9" />
+                <span className="absolute bottom-0 left-1/2 h-1.5 w-9 -translate-x-1/2 rounded-full bg-blue-500/35 blur-sm md:h-2 md:w-14" />
+              </div>
 
               <div className="relative p-3 pb-5 md:p-8 md:pb-10">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-1.5 md:gap-3">
@@ -3797,13 +3891,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     </div>
 
                     <div className="min-w-0 flex-1 leading-tight">
-                      <div className="max-w-full truncate text-[8px] font-black uppercase tracking-[0.12em] text-white min-[390px]:text-[9px] md:max-w-none md:text-xs md:tracking-[0.22em]">
+                      <div className="max-w-full truncate text-[8px] font-black uppercase tracking-[0.12em] text-blue-700 min-[390px]:text-[9px] md:max-w-none md:text-xs md:tracking-[0.22em]">
                         Perto de você
                       </div>
                       <button
                         type="button"
                         onClick={() => setOpenProfileMenu(true)}
-                        className="mt-0.5 block w-full max-w-full truncate text-left text-[1.25rem] font-black leading-none text-white drop-shadow-sm transition hover:opacity-90 min-[390px]:text-[1.35rem] md:max-w-none md:text-4xl"
+                        className="mt-0.5 block w-full max-w-full truncate text-left text-[1.25rem] font-black leading-none text-blue-950 drop-shadow-sm transition hover:opacity-90 min-[390px]:text-[1.35rem] md:max-w-none md:text-4xl"
                       >
                         {meuNome || 'Visitante'} ›
                       </button>
@@ -3849,10 +3943,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       </label>
                     </div>
 
-                    <div className="mt-4 rounded-[20px] border border-white/14 bg-slate-950/18 p-3 text-white shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur md:mt-8 md:rounded-[28px] md:p-5">
+                    <div className="mt-4 rounded-[20px] border border-white/80 bg-white/60 p-3 text-blue-950 shadow-[0_14px_34px_rgba(15,23,42,0.10)] backdrop-blur md:mt-8 md:rounded-[28px] md:p-5">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/75">Resumo do dia</div>
+                          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-900/70">Resumo do dia</div>
                           <div className="mt-1 text-sm font-black md:text-lg">
                             {correDisponivel ? 'Visivel para clientes' : 'Oculto agora'}
                           </div>
@@ -3867,9 +3961,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                           ['Serviços', profissionalStats.total || 0],
                           ['Avaliação', profissionalStats.notaMedia ? `${profissionalStats.notaMedia.toFixed(1)} ★` : '--'],
                         ].map(([label, value]) => (
-                          <div key={label} className="rounded-2xl border border-white/10 bg-white/10 px-2 py-2 text-center">
+                          <div key={label} className="rounded-2xl border border-blue-100/80 bg-white/60 px-2 py-2 text-center">
                             <div className="truncate text-sm font-black md:text-xl">{value}</div>
-                            <div className="mt-0.5 truncate text-[9px] font-black uppercase tracking-[0.1em] text-white/65">{label}</div>
+                            <div className="mt-0.5 truncate text-[9px] font-black uppercase tracking-[0.1em] text-blue-900/65">{label}</div>
                           </div>
                         ))}
                       </div>
@@ -4271,7 +4365,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               )}
 
               {corresFiltrados.map((p, index) => {
-                const status = (p.status || 'aberto').toLowerCase()
+                const status = normalizeAtendimentoStatus(p.status)
                 const aceitoPorMim = p?.aceite?.id === meuId
                 const temAceitador = !!p?.aceite?.id
                 const mapOk = !!(p?.local?.lat != null && p?.local?.lng != null)
@@ -4290,7 +4384,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 const patenteCriadorProf = Number(userCriador?.patenteProf || 0)
 
                 const statusLabel =
-                  status === 'concluido' || status === 'finalizado'
+                    status === ATENDIMENTO_STATUS.FINALIZADO
                     ? 'Finalizado'
                     : isPedidoAtivoStatus(status)
                       ? 'Aceito'
@@ -4620,19 +4714,30 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {(status === 'em_atendimento' || status === 'concluido') && (souCriador(p) || souAceitador(p)) ? (
+                      {([ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO, ATENDIMENTO_STATUS.FINALIZADO].includes(status)) && (souCriador(p) || souAceitador(p)) ? (
                         <button className={btnDark} onClick={() => abrirChatFocado(p)} type="button">
                           💬 Chat
                         </button>
                       ) : null}
 
-                      {(status === 'aceito' || status === 'aguardando_inicio') && (souCriador(p) || souAceitador(p)) ? (
+                      {status === ATENDIMENTO_STATUS.ACEITO && (souCriador(p) || souAceitador(p)) ? (
                         <button className={btnDark} onClick={() => abrirFichaPedido(p)} type="button">
                           Detalhes
                         </button>
                       ) : null}
 
-                      {(isPedidoAtivoStatus(status) || status === 'concluido') && (souCriador(p) || souAceitador(p)) && (
+                      {aceitoPorMim && status === ATENDIMENTO_STATUS.ACEITO && (
+                        <button
+                          className={`${btnPrimary} col-span-2 disabled:opacity-60 md:col-span-1`}
+                          onClick={() => avancarAtendimento(p, ATENDIMENTO_STATUS.EM_ANDAMENTO)}
+                          disabled={atendimentoId === p.id}
+                          type="button"
+                        >
+                          {atendimentoId === p.id ? 'Iniciando...' : 'Iniciar atendimento'}
+                        </button>
+                      )}
+
+                      {([ATENDIMENTO_STATUS.ACEITO, ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO].includes(status)) && (souCriador(p) || souAceitador(p)) && (
                         <button
                           className="col-span-2 min-h-[38px] rounded-[16px] border border-red-200 bg-white px-2 py-2 text-[11px] font-black text-red-700 shadow-sm transition hover:bg-red-50 md:col-span-1 md:px-3 md:text-xs"
                           onClick={() => abrirProblema(p)}
@@ -4653,7 +4758,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {aceitoPorMim && (status === 'aceito' || status === 'aguardando_inicio') && (
+                      {aceitoPorMim && status === ATENDIMENTO_STATUS.ACEITO && (
                         <button
                           className={`${btnDanger} col-span-2 disabled:opacity-60 md:col-span-1`}
                           onClick={() => cancelarAceite(p)}
@@ -4664,7 +4769,29 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {isPedidoAtivoStatus(status) && souCriador(p) && (
+                      {aceitoPorMim && status === ATENDIMENTO_STATUS.EM_ANDAMENTO && (
+                        <button
+                          className={`${btnPrimary} col-span-2 disabled:opacity-60 md:col-span-1`}
+                          onClick={() => avancarAtendimento(p, ATENDIMENTO_STATUS.CHEGOU)}
+                          disabled={atendimentoId === p.id}
+                          type="button"
+                        >
+                          {atendimentoId === p.id ? 'Atualizando...' : 'Cheguei ao local'}
+                        </button>
+                      )}
+
+                      {aceitoPorMim && status === ATENDIMENTO_STATUS.CHEGOU && (
+                        <button
+                          className={`${btnPrimary} col-span-2 disabled:opacity-60 md:col-span-1`}
+                          onClick={() => avancarAtendimento(p, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO)}
+                          disabled={atendimentoId === p.id}
+                          type="button"
+                        >
+                          {atendimentoId === p.id ? 'Solicitando...' : 'Solicitar finalização'}
+                        </button>
+                      )}
+
+                      {status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO && souCriador(p) && (
                         <button
                           className="col-span-2 min-h-[38px] rounded-[16px] bg-emerald-600 px-2 py-2 text-[11px] font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-700 disabled:opacity-60 md:col-span-1 md:px-3 md:text-xs"
                           onClick={() => abrirConclusao(p)}
@@ -4675,7 +4802,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {status === 'concluido' && souCriador(p) && !p?.avaliacao ? (
+                      {status === ATENDIMENTO_STATUS.FINALIZADO && souCriador(p) && !p?.avaliacao ? (
                         <button
                           className="min-h-[38px] rounded-[16px] bg-amber-500 px-2 py-2 text-[11px] font-black text-slate-950 shadow-md shadow-amber-500/20 transition hover:bg-amber-600 md:px-3 md:text-xs"
                           onClick={() => abrirAvaliacao(p)}

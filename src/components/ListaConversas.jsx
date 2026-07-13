@@ -5,6 +5,7 @@ import { ref, onValue, update, query, limitToLast } from 'firebase/database'
 import { motion } from 'framer-motion'
 import { database } from '@/lib/firebase'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
+import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus } from '@/lib/atendimento'
 
 function getMs(v) {
   if (!v) return 0
@@ -56,18 +57,18 @@ function formatMoney(value) {
 }
 
 function getStatusConversa(c) {
-  return String(c?.pedidoStatus || c?.statusPedido || c?.atendimentoStatus || c?.status || '').toLowerCase()
+  return normalizeAtendimentoStatus(c?.pedidoStatus || c?.statusPedido || c?.atendimentoStatus || c?.status)
 }
 
 function statusMeta(c) {
   const s = getStatusConversa(c)
-  if (s === 'em_atendimento') {
+  if ([ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO].includes(s)) {
     return { label: 'Em atendimento', tone: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-300', dot: 'bg-emerald-400', active: true }
   }
-  if (s === 'aguardando_inicio' || s === 'aceito') {
+  if (s === ATENDIMENTO_STATUS.ACEITO) {
     return { label: 'Aguardando início', tone: 'border-yellow-300/25 bg-yellow-400/10 text-yellow-200', dot: 'bg-yellow-300', active: true }
   }
-  if (s === 'concluido') {
+  if (s === ATENDIMENTO_STATUS.FINALIZADO) {
     return { label: 'Concluído', tone: 'border-blue-400/25 bg-blue-500/10 text-blue-200', dot: 'bg-blue-400', archived: true }
   }
   if (s === 'avaliado') {

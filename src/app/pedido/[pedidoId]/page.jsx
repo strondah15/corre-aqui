@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
-import { onValue, ref, runTransaction, serverTimestamp, set, update } from 'firebase/database'
+import { onValue, ref, serverTimestamp, set, update } from 'firebase/database'
 import LoginGate from '@/components/LoginGate'
 import { getCategoryById } from '@/constants/categories'
 import { auth, database } from '@/lib/firebase'
 import { isOnlineRecente } from '@/lib/presence'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
+import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
 
 const MapinhaModal = dynamic(() => import('@/components/MapinhaModal'), { ssr: false })
 const LIST_STATE_PREFIX = 'correAqui:listState:v2'
@@ -80,37 +81,6 @@ function getMyLocation() {
   })
 }
 
-function dayKey() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-async function missaoIncrementar(uid) {
-  if (!uid) return
-  const key = dayKey()
-
-  await runTransaction(ref(database, `missoes/${uid}/${key}`), (cur) => {
-    const c = cur || { aceitou: 0, entregou: 0, boostou: 0, xp: 0, moedas: 0, updatedAt: 0 }
-    return {
-      ...c,
-      aceitou: Number(c.aceitou || 0) + 1,
-      xp: Number(c.xp || 0) + 3,
-      moedas: Number(c.moedas || 0) + 1,
-      updatedAt: Date.now(),
-    }
-  })
-
-  await runTransaction(ref(database, `users/${uid}`), (cur) => {
-    const u = cur || {}
-    return {
-      ...u,
-      xp: Number(u.xp || 0) + 3,
-      moedas: Number(u.moedas || 0) + 1,
-      missaoAtualizadaEm: Date.now(),
-    }
-  })
-}
-
 function getInitials(name) {
   const parts = String(name || 'Usuário')
     .trim()
@@ -145,13 +115,13 @@ function phoneHref(value) {
 
 function StatusPill({ status, label }) {
   const tone =
-    status === 'aceito' || status === 'aguardando_inicio'
+    status === ATENDIMENTO_STATUS.ACEITO
       ? 'border-yellow-300/35 bg-yellow-400/10 text-yellow-200'
-      : status === 'em_atendimento'
+      : status === ATENDIMENTO_STATUS.EM_ANDAMENTO || status === ATENDIMENTO_STATUS.CHEGOU
         ? 'border-emerald-300/35 bg-emerald-400/10 text-emerald-200'
-      : status === 'concluido'
+      : status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO || status === ATENDIMENTO_STATUS.FINALIZADO
         ? 'border-emerald-300/35 bg-emerald-400/10 text-emerald-200'
-        : status === 'cancelado'
+        : status === ATENDIMENTO_STATUS.CANCELADO
           ? 'border-rose-300/35 bg-rose-400/10 text-rose-200'
           : 'border-blue-300/35 bg-blue-500/12 text-blue-100'
 
@@ -321,7 +291,7 @@ function MiniMapPreview({ onOpen, disabled }) {
         className="absolute inset-0 opacity-90"
         style={{
           backgroundImage:
-            "linear-gradient(180deg, rgba(255,255,255,.68), rgba(239,246,255,.82)), url('/cliente-home-map-bg.png')",
+            "linear-gradient(180deg, rgba(255,255,255,.22), rgba(239,246,255,.5)), url('/cliente-home-map-bg-v3.png')",
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
@@ -362,6 +332,7 @@ function PedidoDetalhe() {
   const [loading, setLoading] = useState(true)
   const [aceitando, setAceitando] = useState(false)
   const [iniciando, setIniciando] = useState(false)
+  const [transicionando, setTransicionando] = useState(false)
   const [erro, setErro] = useState('')
   const [mapOpen, setMapOpen] = useState(false)
 
@@ -421,13 +392,21 @@ function PedidoDetalhe() {
     return () => off()
   }, [pedido?.criador?.id])
 
-  const status = String(pedido?.status || 'aberto').toLowerCase()
+  const status = normalizeAtendimentoStatus(pedido?.status)
   const souCriador = !!user?.uid && String(pedido?.criador?.id || '') === String(user.uid)
   const souAceitador = !!user?.uid && String(pedido?.aceite?.id || '') === String(user.uid)
-  const podeAceitar = !!user?.uid && pedido && status === 'aberto' && !pedido?.aceite?.id && !souCriador
-  const podeIniciarAtendimento = souAceitador && (status === 'aceito' || status === 'aguardando_inicio')
+  const podeAceitar = !!user?.uid && pedido && status === ATENDIMENTO_STATUS.ABERTO && !pedido?.aceite?.id && !souCriador
+  const podeIniciarAtendimento = souAceitador && status === ATENDIMENTO_STATUS.ACEITO
+  const podeMarcarChegada = souAceitador && status === ATENDIMENTO_STATUS.EM_ANDAMENTO
+  const podeSolicitarFinalizacao = souAceitador && status === ATENDIMENTO_STATUS.CHEGOU
+  const podeConfirmarConclusao = souCriador && status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
   const participanteDoPedido = souCriador || souAceitador
-  const podeAbrirChat = participanteDoPedido && ['em_atendimento', 'concluido', 'avaliado'].includes(status)
+  const podeAbrirChat = participanteDoPedido && [
+    ATENDIMENTO_STATUS.EM_ANDAMENTO,
+    ATENDIMENTO_STATUS.CHEGOU,
+    ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
+    ATENDIMENTO_STATUS.FINALIZADO,
+  ].includes(status)
   const criadoEm = pedido?.criadoEm || pedido?.createdAt || pedido?.atualizadoEm
   const localOk = pedido?.local?.lat != null && pedido?.local?.lng != null
 
@@ -446,12 +425,12 @@ function PedidoDetalhe() {
   const descricaoPedido = pedido?.descricao || pedido?.texto || 'Converse no chat para combinar os detalhes desse serviço.'
 
   const statusLabel = useMemo(() => {
-    if (status === 'aceito') return 'Aceito'
-    if (status === 'aguardando_inicio') return 'Aguardando atendimento'
-    if (status === 'em_atendimento') return 'Em atendimento'
-    if (status === 'concluido') return 'Concluído'
-    if (status === 'avaliado') return 'Avaliado'
-    if (status === 'cancelado') return 'Cancelado'
+    if (status === ATENDIMENTO_STATUS.ACEITO) return 'Aceito'
+    if (status === ATENDIMENTO_STATUS.EM_ANDAMENTO) return 'Em andamento'
+    if (status === ATENDIMENTO_STATUS.CHEGOU) return 'Chegou ao local'
+    if (status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) return 'Confirmação pendente'
+    if (status === ATENDIMENTO_STATUS.FINALIZADO) return 'Finalizado'
+    if (status === ATENDIMENTO_STATUS.CANCELADO) return 'Cancelado'
     return 'Aberto'
   }, [status])
 
@@ -496,13 +475,22 @@ function PedidoDetalhe() {
         aceitoEm: agora,
       }
 
-      await update(ref(database, `pedidos/${pedido.id}`), {
-        status: 'aguardando_inicio',
-        aceite,
-        conversaId,
-        aceitoEm: agora,
-        atualizadoEm: agora,
-        atualizadoEmServer: serverTimestamp(),
+      await transitionAtendimento({
+        database,
+        pedidoId: pedido.id,
+        actorUid: user.uid,
+        expectedStatus: ATENDIMENTO_STATUS.ABERTO,
+        nextStatus: ATENDIMENTO_STATUS.ACEITO,
+        atendimentoPatch: {
+          aceitoEm: agora,
+          aceitoPor: { id: user.uid, nome },
+        },
+        topLevelPatch: {
+          aceite,
+          conversaId,
+          aceitoEm: agora,
+          atualizadoEmServer: serverTimestamp(),
+        },
       })
 
       await update(ref(database, `users/${user.uid}`), {
@@ -520,7 +508,7 @@ function PedidoDetalhe() {
           outroNome: nome,
           unread: true,
           status: 'ativa',
-          pedidoStatus: 'aguardando_inicio',
+          pedidoStatus: ATENDIMENTO_STATUS.ACEITO,
           categoriaId: pedido?.categoriaId || pedido?.categoria || '',
           categoriaNome: categoria,
           valor: pedido?.valor || null,
@@ -580,7 +568,7 @@ function PedidoDetalhe() {
         outroNome: pedido?.criador?.nome || 'Cliente',
         unread: false,
         status: 'ativa',
-        pedidoStatus: 'aguardando_inicio',
+        pedidoStatus: ATENDIMENTO_STATUS.ACEITO,
         categoriaId: pedido?.categoriaId || pedido?.categoria || '',
         categoriaNome: categoria,
         valor: pedido?.valor || null,
@@ -605,7 +593,6 @@ function PedidoDetalhe() {
       await set(ref(database, `mensagens/${conversaId}/msg_${agora}`), mensagemSistema)
       if (pedido?.criador?.id) await set(ref(database, `usersChats/${pedido.criador.id}/${conversaId}`), true)
       await set(ref(database, `usersChats/${user.uid}/${conversaId}`), true)
-      await missaoIncrementar(user.uid)
     } catch (error) {
       console.error('Erro ao aceitar pedido:', error)
       setErro(error?.message || 'Não foi possível aceitar agora.')
@@ -636,11 +623,25 @@ function PedidoDetalhe() {
         autorNome: 'Sistema',
       }
 
+      systemMessage.texto = `${profissionalNome} iniciou o atendimento.`
+
+      await transitionAtendimento({
+        database,
+        pedidoId: pedido.id,
+        actorUid: user.uid,
+        expectedStatus: ATENDIMENTO_STATUS.ACEITO,
+        nextStatus: ATENDIMENTO_STATUS.EM_ANDAMENTO,
+        atendimentoPatch: {
+          iniciadoEm: agora,
+          iniciadoPor: { id: user.uid, nome: profissionalNome },
+        },
+        topLevelPatch: {
+          atendimentoIniciadoEm: agora,
+          atualizadoEmServer: serverTimestamp(),
+        },
+      })
+
       const updates = {
-        [`pedidos/${pedido.id}/status`]: 'em_atendimento',
-        [`pedidos/${pedido.id}/atendimentoIniciadoEm`]: agora,
-        [`pedidos/${pedido.id}/atualizadoEm`]: agora,
-        [`pedidos/${pedido.id}/atualizadoEmServer`]: serverTimestamp(),
         [`conversas/${user.uid}/${conversaId}/pedidoId`]: pedido.id,
         [`conversas/${user.uid}/${conversaId}/titulo`]: pedido.titulo || 'Corre aqui',
         [`conversas/${user.uid}/${conversaId}/lastText`]: 'Você iniciou o atendimento.',
@@ -650,7 +651,7 @@ function PedidoDetalhe() {
         [`conversas/${user.uid}/${conversaId}/lastById`]: user.uid,
         [`conversas/${user.uid}/${conversaId}/lastByNome`]: profissionalNome,
         [`conversas/${user.uid}/${conversaId}/status`]: 'ativa',
-        [`conversas/${user.uid}/${conversaId}/pedidoStatus`]: 'em_atendimento',
+        [`conversas/${user.uid}/${conversaId}/pedidoStatus`]: ATENDIMENTO_STATUS.EM_ANDAMENTO,
         [`conversas/${user.uid}/${conversaId}/valor`]: pedido?.valor || null,
         [`conversas/${user.uid}/${conversaId}/categoriaNome`]: categoria,
       }
@@ -662,7 +663,7 @@ function PedidoDetalhe() {
         updates[`conversas/${clienteId}/${conversaId}/outroNome`] = profissionalNome
         updates[`conversas/${clienteId}/${conversaId}/unread`] = true
         updates[`conversas/${clienteId}/${conversaId}/status`] = 'ativa'
-        updates[`conversas/${clienteId}/${conversaId}/pedidoStatus`] = 'em_atendimento'
+        updates[`conversas/${clienteId}/${conversaId}/pedidoStatus`] = ATENDIMENTO_STATUS.EM_ANDAMENTO
         updates[`conversas/${clienteId}/${conversaId}/valor`] = pedido?.valor || null
         updates[`conversas/${clienteId}/${conversaId}/categoriaNome`] = categoria
         updates[`conversas/${clienteId}/${conversaId}/lastText`] = `${profissionalNome} iniciou seu atendimento.`
@@ -726,6 +727,129 @@ function PedidoDetalhe() {
     }
   }
 
+  const registrarTransicaoAtendimento = async ({ nextStatus, atendimentoPatch, topLevelPatch, texto, evento, notificationTitle, notificationMessage }) => {
+    if (!user?.uid || !pedido?.id || transicionando) return
+    setErro('')
+    setTransicionando(true)
+
+    try {
+      const agora = Date.now()
+      const conversaId = pedido.conversaId || pedido.id
+      const clienteId = pedido?.criador?.id || ''
+      const profissionalId = pedido?.aceite?.id || ''
+      const profissionalNome = pedido?.aceite?.nome || profile?.nome || user?.displayName || 'Profissional'
+      const clienteNome = pedido?.criador?.nome || criadorNome || 'Cliente'
+
+      await transitionAtendimento({
+        database,
+        pedidoId: pedido.id,
+        actorUid: user.uid,
+        expectedStatus: status,
+        nextStatus,
+        atendimentoPatch,
+        topLevelPatch: {
+          ...topLevelPatch,
+          atualizadoEmServer: serverTimestamp(),
+        },
+      })
+
+      const updates = {}
+      for (const uid of [clienteId, profissionalId]) {
+        if (!uid) continue
+        updates[`conversas/${uid}/${conversaId}/pedidoId`] = pedido.id
+        updates[`conversas/${uid}/${conversaId}/pedidoStatus`] = nextStatus
+        updates[`conversas/${uid}/${conversaId}/lastText`] = texto
+        updates[`conversas/${uid}/${conversaId}/mensagemPreview`] = texto
+        updates[`conversas/${uid}/${conversaId}/lastAt`] = agora
+        updates[`conversas/${uid}/${conversaId}/updatedAt`] = agora
+        updates[`conversas/${uid}/${conversaId}/lastById`] = user.uid
+        updates[`conversas/${uid}/${conversaId}/lastByNome`] = user.uid === clienteId ? clienteNome : profissionalNome
+        updates[`conversas/${uid}/${conversaId}/status`] = nextStatus === ATENDIMENTO_STATUS.FINALIZADO ? 'arquivavel' : 'ativa'
+        updates[`conversas/${uid}/${conversaId}/unread`] = uid !== user.uid
+      }
+
+      const destinatario = user.uid === profissionalId ? clienteId : profissionalId
+      if (destinatario && notificationTitle && notificationMessage) {
+        const notificationId = `notif_atendimento_${nextStatus}_${agora}`
+        const notification = {
+          id: notificationId,
+          tipo: evento,
+          titulo: notificationTitle,
+          mensagem: notificationMessage,
+          pedidoId: pedido.id,
+          fromUid: user.uid,
+          toUid: destinatario,
+          lida: false,
+          criadoEm: agora,
+          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
+          autor: { id: user.uid, nome: user.uid === clienteId ? clienteNome : profissionalNome },
+        }
+        updates[`notifications/${destinatario}/${notificationId}`] = notification
+        updates[`notificacoes/${destinatario}/${notificationId}`] = notification
+      }
+
+      await update(ref(database), updates)
+      const message = {
+        texto,
+        sistema: true,
+        evento,
+        criadoEm: agora,
+        hora: agora,
+        autorId: 'sistema',
+        autorNome: 'Sistema',
+      }
+      await set(ref(database, `chats/${conversaId}/msg_${evento}_${agora}`), message)
+      await set(ref(database, `mensagens/${conversaId}/msg_${evento}_${agora}`), message).catch(() => {})
+
+      if (destinatario && notificationTitle && notificationMessage) {
+        enviarPushParaUsuario(destinatario, {
+          tipo: evento,
+          pedidoId: pedido.id,
+          conversaId,
+          titulo: notificationTitle,
+          mensagem: notificationMessage,
+          prioridade: 'alta',
+          acao: 'abrir_chat',
+        })
+      }
+    } catch (error) {
+      console.error('Erro ao avançar atendimento:', error)
+      setErro(error?.message || 'Não foi possível avançar o atendimento.')
+    } finally {
+      setTransicionando(false)
+    }
+  }
+
+  const marcarChegada = () => registrarTransicaoAtendimento({
+    nextStatus: ATENDIMENTO_STATUS.CHEGOU,
+    atendimentoPatch: { chegouEm: Date.now(), chegouPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
+    topLevelPatch: { chegouEm: Date.now(), chegouPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
+    texto: `${pedido?.aceite?.nome || profile?.nome || 'Profissional'} informou que chegou ao local.`,
+    evento: 'atendimento_chegou',
+    notificationTitle: 'Profissional chegou',
+    notificationMessage: `${pedido?.aceite?.nome || profile?.nome || 'Profissional'} informou que chegou ao local.`,
+  })
+
+  const solicitarFinalizacao = () => registrarTransicaoAtendimento({
+    nextStatus: ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
+    atendimentoPatch: { finalizacaoSolicitadaEm: Date.now(), finalizacaoSolicitadaPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
+    topLevelPatch: { finalizacaoSolicitadaEm: Date.now(), finalizacaoSolicitadaPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
+    texto: `${pedido?.aceite?.nome || profile?.nome || 'Profissional'} solicitou a finalização do atendimento.`,
+    evento: 'finalizacao_solicitada',
+    notificationTitle: 'Finalização solicitada',
+    notificationMessage: 'Confirme a conclusão do atendimento para finalizar o pedido.',
+  })
+
+  const confirmarConclusao = () => registrarTransicaoAtendimento({
+    nextStatus: ATENDIMENTO_STATUS.FINALIZADO,
+    atendimentoPatch: { finalizadoEm: Date.now(), finalizadoPor: { id: user?.uid, nome: criadorNome } },
+    topLevelPatch: { finalizadoEm: Date.now(), finalizadoPor: { id: user?.uid, nome: criadorNome }, avaliacaoPendente: true },
+    texto: `${criadorNome} confirmou que o atendimento foi concluído.`,
+    evento: 'atendimento_finalizado',
+    notificationTitle: 'Atendimento concluído',
+    notificationMessage: 'O cliente confirmou a conclusão do atendimento.',
+  })
+
   if (loading) {
     return (
       <main className="grid min-h-[100dvh] place-items-center bg-[#050b14] px-4 text-white">
@@ -757,10 +881,34 @@ function PedidoDetalhe() {
       ? iniciando
         ? 'Iniciando...'
         : 'Iniciar atendimento'
+    : podeMarcarChegada
+      ? transicionando
+        ? 'Atualizando...'
+        : 'Cheguei ao local'
+    : podeSolicitarFinalizacao
+      ? transicionando
+        ? 'Solicitando...'
+        : 'Solicitar finalização'
+    : podeConfirmarConclusao
+      ? transicionando
+        ? 'Confirmando...'
+        : 'Confirmar conclusão'
     : podeAbrirChat
       ? 'Abrir conversa'
       : 'Voltar para lista'
-  const primaryAction = podeAceitar ? aceitarPedido : podeIniciarAtendimento ? iniciarAtendimento : podeAbrirChat ? abrirChat : voltarParaLista
+  const primaryAction = podeAceitar
+    ? aceitarPedido
+    : podeIniciarAtendimento
+      ? iniciarAtendimento
+      : podeMarcarChegada
+        ? marcarChegada
+        : podeSolicitarFinalizacao
+          ? solicitarFinalizacao
+          : podeConfirmarConclusao
+            ? confirmarConclusao
+            : podeAbrirChat
+              ? abrirChat
+              : voltarParaLista
 
   return (
     <main className="min-h-[100dvh] overflow-x-hidden bg-[#050b14] px-1.5 pb-[calc(env(safe-area-inset-bottom)+6.5rem)] pt-1.5 text-white md:px-5 md:py-5">
@@ -919,14 +1067,14 @@ function PedidoDetalhe() {
           <button
             type="button"
             onClick={primaryAction}
-            disabled={aceitando || iniciando}
+            disabled={aceitando || iniciando || transicionando}
             className={`flex min-w-0 min-h-[48px] flex-row items-center justify-center gap-1.5 rounded-[15px] px-2.5 text-white transition active:scale-[0.99] disabled:opacity-65 lg:min-h-[86px] lg:flex-col lg:gap-0 lg:rounded-[24px] lg:px-6 ${
-              podeIniciarAtendimento
+              (podeIniciarAtendimento || podeMarcarChegada || podeSolicitarFinalizacao || podeConfirmarConclusao)
                 ? 'bg-emerald-500 shadow-[0_14px_34px_rgba(34,197,94,0.28)] lg:shadow-[0_18px_42px_rgba(34,197,94,0.32)]'
                 : 'bg-blue-600 shadow-[0_14px_34px_rgba(37,99,235,0.26)] lg:shadow-[0_18px_42px_rgba(37,99,235,0.3)]'
             }`}
           >
-            <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white lg:mb-2 lg:h-11 lg:w-11 ${podeIniciarAtendimento ? 'text-emerald-600' : 'text-blue-600'}`}>
+            <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white lg:mb-2 lg:h-11 lg:w-11 ${(podeIniciarAtendimento || podeMarcarChegada || podeSolicitarFinalizacao || podeConfirmarConclusao) ? 'text-emerald-600' : 'text-blue-600'}`}>
               <IconCheck className="h-4 w-4 lg:h-7 lg:w-7" />
             </span>
             <span className="min-w-0 text-center text-xs font-black leading-tight md:text-base lg:text-3xl lg:leading-none">{primaryLabel}</span>

@@ -16,6 +16,7 @@ import { motion } from "framer-motion";
 import PainelPatentes from "./PainelPatentes";
 import Patente, { calcularPatentePorServicos } from "./Patente";
 import { CATEGORIES, getCategoryById } from "@/constants/categories";
+import { normalizeAtendimentoStatus, ATENDIMENTO_STATUS } from "@/lib/atendimento";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
   ssr: false,
@@ -28,6 +29,37 @@ const defaultPrivacy = {
   showOnlineStatus: true,
   allowPublicContact: false,
 };
+
+const defaultNotificationPreferences = {
+  orders: true,
+  messages: true,
+  schedules: true,
+  attendances: true,
+  reviews: true,
+};
+
+function normalizeNotificationPreferences(value = {}, fallback = {}) {
+  return {
+    ...defaultNotificationPreferences,
+    ...(fallback || {}),
+    ...(value || {}),
+  };
+}
+
+function getConfigSnapshot(profile = {}) {
+  return {
+    visivel: profile.visivel !== false,
+    notificacoes: profile.notificacoes !== false,
+    mapMostrarOnline: profile.mapMostrarOnline === true,
+    mapAoVivo: profile.mapAoVivo === true,
+    mapLimiteOnline: Math.max(5, Math.min(80, Number(profile.mapLimiteOnline || 30))),
+    animacoes: profile.animacoes !== false,
+    modoEconomico: profile.modoEconomico === true,
+    aparencia: profile.aparencia || "sistema",
+    notificationPreferences: normalizeNotificationPreferences(profile.notificationPreferences),
+    privacy: normalizePrivacy(profile.privacy),
+  };
+}
 
 function normalizePrivacy(value = {}, fallback = {}) {
   const profileVisibilityExplicit =
@@ -82,6 +114,9 @@ const initialProfile = {
   mapAoVivo: false,
   mapLimiteOnline: 30,
   animacoes: true,
+  modoEconomico: false,
+  aparencia: "sistema",
+  notificationPreferences: defaultNotificationPreferences,
   privacy: defaultPrivacy,
 };
 
@@ -260,6 +295,252 @@ function MiniSwitch({ checked, onChange, label }) {
         ].join(" ")}
       />
     </button>
+  );
+}
+
+function ConfigIcon({ children, tone = "blue" }) {
+  const tones = {
+    blue: "bg-blue-600 text-white shadow-blue-200",
+    violet: "bg-violet-600 text-white shadow-violet-200",
+    emerald: "bg-emerald-500 text-white shadow-emerald-200",
+    amber: "bg-amber-400 text-amber-950 shadow-amber-200",
+    slate: "bg-slate-100 text-slate-700 shadow-slate-200",
+    rose: "bg-rose-50 text-rose-600 shadow-rose-100",
+  };
+
+  return (
+    <span className={["grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-sm font-black shadow-lg", tones[tone] || tones.blue].join(" ")}>
+      {children}
+    </span>
+  );
+}
+
+function ConfigToggle({ checked, onChange, label, tone = "blue" }) {
+  const colors = {
+    blue: "bg-blue-600",
+    violet: "bg-violet-600",
+    emerald: "bg-emerald-500",
+    amber: "bg-amber-400",
+  };
+
+  return (
+    <label className="relative inline-flex h-9 w-[74px] shrink-0 cursor-pointer items-center" title={label}>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} aria-label={label} className="peer sr-only" />
+      <span className={["absolute inset-0 rounded-full border p-1 text-[10px] font-black transition", checked ? [colors[tone] || colors.blue, "border-transparent text-white"] : "border-slate-200 bg-slate-100 text-slate-400"].join(" ")}>
+        <span className={["absolute top-1 h-7 w-7 rounded-full bg-white shadow-[0_3px_10px_rgba(15,23,42,0.20)] transition", checked ? "left-[42px]" : "left-1"].join(" ")} />
+        <span className={["absolute top-0 flex h-9 w-full items-center", checked ? "justify-start pl-2" : "justify-end pr-2"].join(" ")}>{checked ? "ON" : "OFF"}</span>
+      </span>
+    </label>
+  );
+}
+
+function ConfigRow({ icon, title, description, children, tone = "blue", danger = false, onClick }) {
+  const content = (
+    <>
+      <ConfigIcon tone={danger ? "rose" : tone}>{icon}</ConfigIcon>
+      <span className="min-w-0 flex-1">
+        <span className={["block text-sm font-black", danger ? "text-rose-600" : "text-slate-900"].join(" ")}>{title}</span>
+        <span className="mt-1 block text-xs font-semibold leading-relaxed text-slate-500">{description}</span>
+      </span>
+      {children}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="flex min-h-[72px] w-full items-center gap-3 border-b border-slate-100 px-3 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100 md:gap-4 md:px-4">
+        {content}
+      </button>
+    );
+  }
+
+  return <div className="flex min-h-[72px] items-center gap-3 border-b border-slate-100 px-3 py-3 last:border-b-0 md:gap-4 md:px-4">{content}</div>;
+}
+
+function ConfigSection({ id, title, description, icon, tone, open, onToggle, children }) {
+  const sectionTone = {
+    blue: "border-blue-100",
+    violet: "border-violet-100",
+    emerald: "border-emerald-100",
+    amber: "border-amber-100",
+  }[tone] || "border-slate-200";
+  const iconTone = tone === "violet" ? "violet" : tone === "emerald" ? "emerald" : tone === "amber" ? "amber" : "blue";
+
+  return (
+    <section className={["overflow-hidden rounded-[24px] border bg-white shadow-[0_16px_38px_rgba(15,23,42,0.07)] md:rounded-[28px]", sectionTone].join(" ")}>
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        aria-expanded={open}
+        className="flex min-h-[82px] w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-slate-50 md:px-5"
+      >
+        <ConfigIcon tone={iconTone}>{icon}</ConfigIcon>
+        <span className="min-w-0 flex-1">
+          <span className="block text-lg font-black text-blue-950 md:text-xl">{title}</span>
+          <span className="mt-1 block text-xs font-semibold text-slate-500 md:text-sm">{description}</span>
+        </span>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-xl font-black text-blue-700" aria-hidden="true">{open ? "-" : "+"}</span>
+      </button>
+      {open ? (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.2 }}
+          className="border-t border-slate-100 px-2 pb-2 md:px-3 md:pb-3"
+        >
+          {children}
+        </motion.div>
+      ) : null}
+    </section>
+  );
+}
+
+function ConfiguracoesOrganizadas({
+  profile,
+  privacy,
+  sections,
+  onToggleSection,
+  onBack,
+  onProfileChange,
+  onMapLimitChange,
+  onPrivacyChange,
+  onNotificationChange,
+  onOpenDados,
+  onLogout,
+  onTogglePush,
+  onTestPush,
+  pushAtivo,
+  pushCanUse,
+  pushSalvando,
+  pushTestando,
+  pushAviso,
+  configAviso,
+}) {
+  const preferences = normalizeNotificationPreferences(profile.notificationPreferences);
+  const friendlyPushAviso = /vapid|service worker|messaging|token|firebase/i.test(String(pushAviso || ""))
+    ? "Nao foi possivel enviar a notificacao de teste."
+    : pushAviso;
+  const setMapLimit = (delta) => {
+    const current = Number(profile.mapLimiteOnline || 30);
+    const next = Math.max(5, Math.min(80, current + delta));
+    onMapLimitChange(next);
+  };
+  const categoryItems = [
+    ["orders", "Pedidos", "#f59e0b", "P"],
+    ["messages", "Mensagens", "#7c3aed", "M"],
+    ["schedules", "Agendamentos", "#2563eb", "A"],
+    ["attendances", "Atendimentos", "#0891b2", "At"],
+    ["reviews", "Avaliacoes", "#eab308", "*"],
+  ];
+
+  return (
+    <div className="-mx-2.5 -mt-2.5 min-h-full overflow-x-hidden bg-[#f3f6fb] pb-8 md:-mx-6 md:-mt-6">
+      <header className="sticky top-0 z-20 bg-[#071a3a] text-white shadow-[0_12px_30px_rgba(7,26,58,0.18)]">
+        <div className="mx-auto flex w-full max-w-[1120px] items-center gap-3 px-4 py-4 md:px-6 md:py-5">
+          <button type="button" onClick={onBack} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#10284f] text-2xl font-black text-white transition hover:bg-[#173767] active:scale-[0.96]" aria-label="Voltar">&larr;</button>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black leading-tight md:text-3xl">Configura&ccedil;&otilde;es</h1>
+            <p className="mt-1 text-sm font-semibold text-blue-100">Personalize sua experi&ecirc;ncia no Corre Aqui.</p>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto flex w-full max-w-[1120px] flex-col gap-4 px-3 py-5 md:gap-5 md:px-6 md:py-6">
+        <ConfigSection id="presenca" title="Presen&ccedil;a e mapa" description="Controle sua visibilidade e como voc&ecirc; aparece no mapa." icon="M" tone="blue" open={sections.presenca} onToggle={onToggleSection}>
+          <ConfigRow icon="P" title="Aparecer dispon&iacute;vel para clientes" description="Permita que outros vejam que voc&ecirc; est&aacute; dispon&iacute;vel." tone="blue">
+            <ConfigToggle checked={profile.visivel !== false} onChange={(checked) => onProfileChange({ visivel: checked })} label="Aparecer disponivel para clientes" tone="blue" />
+          </ConfigRow>
+          <ConfigRow icon="O" title="Mostrar pessoas online no mapa" description="Veja outros profissionais online no mapa." tone="blue">
+            <ConfigToggle checked={profile.mapMostrarOnline === true} onChange={(checked) => onProfileChange({ mapMostrarOnline: checked })} label="Mostrar pessoas online no mapa" tone="blue" />
+          </ConfigRow>
+          <ConfigRow icon="L" title="Compartilhar localiza&ccedil;&atilde;o durante atendimento" description="Cliente acompanha sua localiza&ccedil;&atilde;o em tempo real." tone="blue">
+            <ConfigToggle checked={privacy.shareLocationDuringActiveJob} onChange={(checked) => onPrivacyChange("shareLocationDuringActiveJob", checked)} label="Compartilhar localizacao durante atendimento" tone="blue" />
+          </ConfigRow>
+          <ConfigRow icon="#" title="Quantidade de pessoas no mapa" description="Escolha quantas pessoas online aparecem no mapa." tone="blue">
+            <div className="flex h-11 shrink-0 items-center overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <button type="button" onClick={() => setMapLimit(-5)} className="grid h-11 w-11 place-items-center text-xl font-black text-slate-500 hover:bg-slate-50" aria-label="Diminuir limite">-</button>
+              <span className="min-w-[42px] text-center text-sm font-black text-blue-950">{Math.max(5, Math.min(80, Number(profile.mapLimiteOnline || 30)))}</span>
+              <button type="button" onClick={() => setMapLimit(5)} className="grid h-11 w-11 place-items-center text-xl font-black text-blue-600 hover:bg-blue-50" aria-label="Aumentar limite">+</button>
+            </div>
+          </ConfigRow>
+        </ConfigSection>
+
+        <ConfigSection id="notificacoes" title="Notifica&ccedil;&otilde;es" description="Escolha o que voc&ecirc; deseja receber." icon="!" tone="violet" open={sections.notificacoes} onToggle={onToggleSection}>
+          <ConfigRow icon="!" title="Receber notifica&ccedil;&otilde;es" description="Pedidos, mensagens, agendamentos e atendimentos importantes." tone="violet">
+            <ConfigToggle checked={pushAtivo || profile.notificacoes !== false} onChange={onTogglePush} label="Receber notificacoes" tone="violet" />
+          </ConfigRow>
+          <div className="grid grid-cols-2 gap-2 px-2 py-3 sm:grid-cols-3 md:grid-cols-5 md:gap-3 md:px-3">
+            {categoryItems.map(([key, label, color, symbol]) => (
+              <button
+                key={key}
+                type="button"
+                role="switch"
+                aria-checked={preferences[key]}
+                onClick={() => onNotificationChange(key, !preferences[key])}
+                className={["rounded-2xl border p-3 text-center transition active:scale-[0.98]", preferences[key] ? "border-violet-200 bg-violet-50" : "border-slate-200 bg-slate-50 opacity-70"].join(" ")}
+              >
+                <span className="mx-auto grid h-10 w-10 place-items-center rounded-2xl text-sm font-black text-white" style={{ backgroundColor: color }}>{symbol}</span>
+                <span className="mt-2 block text-[11px] font-black leading-tight text-slate-700">{label}</span>
+                <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-violet-700">{preferences[key] ? "ON" : "OFF"}</span>
+              </button>
+            ))}
+          </div>
+          <ConfigRow icon="&gt;" title="Testar notifica&ccedil;&atilde;o" description="Envie uma notifica&ccedil;&atilde;o de teste para este dispositivo." tone="violet" onClick={pushCanUse ? onTestPush : undefined}>
+            <span className="text-xl font-black text-violet-600">&rarr;</span>
+          </ConfigRow>
+          {!pushCanUse && !pushAviso ? null : friendlyPushAviso ? <div className="mx-3 mb-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-800">{friendlyPushAviso}</div> : null}
+          {pushSalvando || pushTestando ? <div className="px-3 pb-2 text-xs font-bold text-slate-500">Aguarde um momento...</div> : null}
+        </ConfigSection>
+
+        <ConfigSection id="privacidade" title="Privacidade e conta" description="Gerencie seus dados e prefer&ecirc;ncias." icon="S" tone="emerald" open={sections.privacidade} onToggle={onToggleSection}>
+          <ConfigRow icon="P" title="Perfil p&uacute;blico" description="Permita que outros vejam seu perfil." tone="emerald">
+            <ConfigToggle checked={privacy.profileVisible} onChange={(checked) => onPrivacyChange("profileVisible", checked)} label="Perfil publico" tone="emerald" />
+          </ConfigRow>
+          <ConfigRow icon="C" title="Permitir contato p&uacute;blico" description="Outros usu&aacute;rios poder&atilde;o entrar em contato com voc&ecirc;." tone="emerald">
+            <ConfigToggle checked={privacy.allowPublicContact} onChange={(checked) => onPrivacyChange("allowPublicContact", checked)} label="Permitir contato publico" tone="emerald" />
+          </ConfigRow>
+          <ConfigRow icon="D" title="Ver meus dados" description="Veja e gerencie suas informa&ccedil;&otilde;es." tone="emerald" onClick={onOpenDados}>
+            <span className="text-xl font-black text-slate-500">&rarr;</span>
+          </ConfigRow>
+          <ConfigRow icon="S" title="Sair da conta" description="Encerre sua sess&atilde;o neste dispositivo." danger onClick={onLogout}>
+            <span className="text-xl font-black text-rose-500">&rarr;</span>
+          </ConfigRow>
+        </ConfigSection>
+
+        <ConfigSection id="experiencia" title="Experi&ecirc;ncia" description="Ajuste como o app funciona para voc&ecirc;." icon="*" tone="amber" open={sections.experiencia} onToggle={onToggleSection}>
+          <ConfigRow icon="*" title="Anima&ccedil;&otilde;es da interface" description="Deixa o app mais din&acirc;mico e com transi&ccedil;&otilde;es suaves." tone="amber">
+            <ConfigToggle checked={profile.animacoes !== false} onChange={(checked) => onProfileChange({ animacoes: checked })} label="Animacoes da interface" tone="violet" />
+          </ConfigRow>
+          <ConfigRow icon="E" title="Modo econ&ocirc;mico" description="Reduz anima&ccedil;&otilde;es e atualiza&ccedil;&otilde;es em segundo plano." tone="amber">
+            <ConfigToggle checked={profile.modoEconomico === true} onChange={(checked) => onProfileChange({ modoEconomico: checked })} label="Modo economico" tone="amber" />
+          </ConfigRow>
+          <div className="flex flex-col gap-3 px-3 py-4 md:flex-row md:items-center md:justify-between md:px-4">
+            <div className="flex items-center gap-3">
+              <ConfigIcon tone="amber">A</ConfigIcon>
+              <div>
+                <div className="text-sm font-black text-slate-900">Apar&ecirc;ncia</div>
+                <div className="mt-1 text-xs font-semibold text-slate-500">Escolha o tema do aplicativo.</div>
+              </div>
+            </div>
+            <div className="grid w-full grid-cols-3 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:w-auto">
+              {[["sistema", "Sistema"], ["claro", "Claro"], ["escuro", "Escuro"]].map(([value, label]) => (
+                <button key={value} type="button" onClick={() => onProfileChange({ aparencia: value })} className={["min-h-11 rounded-xl px-3 text-xs font-black transition", (profile.aparencia || "sistema") === value ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-200" : "text-slate-500 hover:text-slate-800"].join(" ")}>{label}</button>
+              ))}
+            </div>
+          </div>
+        </ConfigSection>
+
+        <div className="flex items-center gap-3 rounded-[22px] border border-blue-100 bg-blue-50/70 px-4 py-3 text-blue-950 shadow-[0_10px_26px_rgba(37,99,235,0.05)]">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-sm font-black text-white">OK</span>
+          <div>
+            <div className="text-sm font-black">Suas altera&ccedil;&otilde;es s&atilde;o salvas automaticamente.</div>
+            <div className="mt-0.5 text-xs font-semibold text-slate-500">Todas as configura&ccedil;&otilde;es s&atilde;o aplicadas em tempo real.</div>
+          </div>
+          {configAviso ? <span className="ml-auto shrink-0 text-xs font-black text-emerald-700">{configAviso}</span> : null}
+        </div>
+      </main>
+    </div>
   );
 }
 
@@ -829,6 +1110,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     permission: "default",
     reason: "Verificando push...",
   });
+  const [vapidKey, setVapidKey] = useState("");
+  const [vapidConfigured, setVapidConfigured] = useState(false);
   const [pushSalvando, setPushSalvando] = useState(false);
   const [pushTestando, setPushTestando] = useState(false);
   const [pushAviso, setPushAviso] = useState("");
@@ -836,6 +1119,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [cpfSalvoMask, setCpfSalvoMask] = useState("");
   const [cpfAviso, setCpfAviso] = useState("");
   const [privacyAviso, setPrivacyAviso] = useState("");
+  const [configAviso, setConfigAviso] = useState("");
+  const [configSecoesAbertas, setConfigSecoesAbertas] = useState({
+    presenca: true,
+    notificacoes: false,
+    privacidade: false,
+    experiencia: false,
+  });
   const [serviceStats, setServiceStats] = useState({
     total: 0,
     comoCorre: 0,
@@ -866,11 +1156,20 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const drawerScrollRef = useRef(null);
   const portfolioFormRef = useRef(null);
   const portfolioFirstInputRef = useRef(null);
+  const configSaveTimerRef = useRef(null);
+  const configSnapshotRef = useRef("");
+  const configLastSavedRef = useRef(null);
 
   const userBasePath = useMemo(() => (uid ? `users/${uid}` : ""), [uid]);
 
   useEffect(() => {
     settingsLoadedRef.current = false;
+    configSnapshotRef.current = "";
+    configLastSavedRef.current = null;
+    if (configSaveTimerRef.current) {
+      window.clearTimeout(configSaveTimerRef.current);
+      configSaveTimerRef.current = null;
+    }
   }, [open, uid]);
 
   useEffect(() => {
@@ -880,6 +1179,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setProfessionalProfileStep("choice");
     setAddressAviso("");
     setSupportAviso("");
+    setConfigAviso("");
+    setConfigSecoesAbertas({
+      presenca: true,
+      notificacoes: false,
+      privacidade: false,
+      experiencia: false,
+    });
   }, [open, initialTab, initialProfSection]);
 
   useEffect(() => {
@@ -950,6 +1256,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         avatarEmoji: prev.avatarEmoji || avatarEmoji,
         profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
         visivel: mapVisible,
+        notificacoes: data.notificacoes ?? profileData.notificacoes ?? prev.notificacoes,
+        notificationPreferences: normalizeNotificationPreferences(
+          settingsUi.notificationPreferences ?? profileData.notificationPreferences ?? data.notificationPreferences,
+          prev.notificationPreferences,
+        ),
+        modoEconomico: settingsUi.modoEconomico ?? profileData.modoEconomico ?? prev.modoEconomico,
+        aparencia: settingsUi.aparencia ?? profileData.aparencia ?? prev.aparencia,
         privacy: privacyData,
       }));
 
@@ -958,8 +1271,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           ...prev,
           mapMostrarOnline: settingsMapa.mostrarOnline ?? prev.mapMostrarOnline,
           mapAoVivo: settingsMapa.aoVivo ?? prev.mapAoVivo,
-          mapLimiteOnline: settingsMapa.limiteOnline ?? prev.mapLimiteOnline,
+          mapLimiteOnline: Math.max(5, Math.min(80, Number(settingsMapa.limiteOnline ?? prev.mapLimiteOnline))),
           animacoes: settingsUi.animacoes ?? prev.animacoes,
+          modoEconomico: settingsUi.modoEconomico ?? prev.modoEconomico,
+          aparencia: settingsUi.aparencia ?? prev.aparencia,
+          notificationPreferences: normalizeNotificationPreferences(
+            settingsUi.notificationPreferences ?? prev.notificationPreferences,
+            prev.notificationPreferences,
+          ),
+          notificacoes: data.notificacoes ?? profileData.notificacoes ?? prev.notificacoes,
           privacy: privacyData,
           visivel: mapVisible,
         }));
@@ -1001,6 +1321,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             telefone: data.telefone || data.phone || prev.telefone || "",
             email: data.email || prev.email || auth.currentUser?.email || "",
             dataNascimento: data.dataNascimento || prev.dataNascimento || "",
+            notificacoes: data.notificacoes ?? prev.notificacoes,
+            notificationPreferences: normalizeNotificationPreferences(
+              data.notificationPreferences,
+              prev.notificationPreferences,
+            ),
+            modoEconomico: data.modoEconomico ?? prev.modoEconomico,
+            aparencia: data.aparencia || prev.aparencia || "sistema",
             isCorre: data.isCorre ?? corre.ativo ?? prev.isCorre,
             correTitulo: data.correTitulo || corre.titulo || "",
             correBio: data.correBio || corre.bio || "",
@@ -1087,7 +1414,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       pedidos.forEach((p) => {
         const souCliente = p?.criador?.id === uid;
         const souCorre = p?.aceite?.id === uid;
-        const concluido = String(p?.status || "").toLowerCase() === "concluido";
+        const concluido = normalizeAtendimentoStatus(p?.status) === ATENDIMENTO_STATUS.FINALIZADO;
         const modoProfissional = String(p?.modoPedido || "").toLowerCase() === "profissional";
         const valorPedido = getValorPedido(p);
         const dataConclusao = p?.concluidoEm || p?.atualizadoEm || p?.aceitoEm || p?.criadoEm;
@@ -1151,19 +1478,58 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   useEffect(() => {
     if (!open) return;
     let active = true;
-    getPushCapabilities()
-      .then((info) => {
+
+    async function carregarPushConfig() {
+      const suportaNotification = typeof window !== "undefined" && "Notification" in window;
+      const suportaServiceWorker = typeof navigator !== "undefined" && "serviceWorker" in navigator;
+      const permission = suportaNotification ? Notification.permission : "unsupported";
+
+      try {
+        const response = await fetch("/api/firebase-config", { cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+        const hasVapidKey = Boolean(data.vapidKey);
+
+        console.log("[PUSH CONFIG]", {
+          vapidKeyConfigured: data.vapidKeyConfigured,
+          hasVapidKey,
+        });
+
         if (!active) return;
-        setPushInfo(info);
-      })
-      .catch((error) => {
+
+        setVapidKey(data.vapidKey || "");
+        setVapidConfigured(Boolean(data.vapidKeyConfigured && data.vapidKey));
+
+        const supported = suportaNotification && suportaServiceWorker && hasVapidKey;
+        const reason = !suportaNotification
+          ? "Este navegador nao suporta notificacoes web."
+          : !suportaServiceWorker
+            ? "Service worker indisponivel neste navegador."
+            : !hasVapidKey
+              ? "Chave VAPID de notificacoes nao esta configurada no servidor."
+              : "";
+
+        setPushInfo((current) => ({
+          ...current,
+          supported,
+          permission,
+          reason,
+          vapidConfigured: Boolean(data.vapidKeyConfigured && data.vapidKey),
+          serviceWorkerAvailable: suportaServiceWorker,
+        }));
+      } catch (error) {
         if (!active) return;
+        setVapidKey("");
+        setVapidConfigured(false);
         setPushInfo({
           supported: false,
-          permission: typeof Notification !== "undefined" ? Notification.permission : "unsupported",
-          reason: error?.message || "Push indisponivel neste navegador.",
+          permission,
+          reason: error?.message || "Nao foi possivel carregar a configuracao de notificacoes.",
+          serviceWorkerAvailable: suportaServiceWorker,
         });
-      });
+      }
+    }
+
+    carregarPushConfig();
 
     return () => {
       active = false;
@@ -1205,6 +1571,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       await desativarPushNotifications(uid);
       setProfile((p) => ({
         ...p,
+        notificacoes: false,
         pushNotifications: {
           ...(p.pushNotifications || {}),
           enabled: false,
@@ -1250,6 +1617,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   }
 
   async function sairDaConta() {
+    if (!window.confirm("Deseja realmente sair da sua conta?")) return;
+
     try {
       await signOut(auth);
       [
@@ -1537,12 +1906,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       const mapSettings = {
         mostrarOnline: !!profile.mapMostrarOnline,
         aoVivo: !!profile.mapAoVivo,
-        limiteOnline: Math.max(5, Math.min(120, Number(profile.mapLimiteOnline || 30))),
+        limiteOnline: Math.max(5, Math.min(80, Number(profile.mapLimiteOnline || 30))),
         atualizadoEm: serverTimestamp(),
       };
 
       const uiSettings = {
         animacoes: profile.animacoes !== false,
+        modoEconomico: profile.modoEconomico === true,
+        aparencia: profile.aparencia || "sistema",
+        notificationPreferences: normalizeNotificationPreferences(profile.notificationPreferences),
         atualizadoEm: serverTimestamp(),
       };
       const privacySettings = normalizePrivacy(profile.privacy);
@@ -1646,6 +2018,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         dataNascimento: profile.dataNascimento || "",
         bio: profile.bio || "",
         visivel: profile.visivel !== false,
+        notificacoes: profile.notificacoes !== false,
         privacy: privacyPayload,
         isCorre: !!profile.isCorre,
         corre: {
@@ -1720,6 +2093,86 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     }
   };
 
+  const configSnapshot = useMemo(() => getConfigSnapshot(profile), [profile]);
+
+  useEffect(() => {
+    if (!open || !uid || !settingsLoadedRef.current) return undefined;
+
+    const serialized = JSON.stringify(configSnapshot);
+    if (!configSnapshotRef.current) {
+      configSnapshotRef.current = serialized;
+      configLastSavedRef.current = configSnapshot;
+      return undefined;
+    }
+
+    if (serialized === configSnapshotRef.current) return undefined;
+
+    configSnapshotRef.current = serialized;
+    if (configSaveTimerRef.current) window.clearTimeout(configSaveTimerRef.current);
+
+    configSaveTimerRef.current = window.setTimeout(async () => {
+      const privacyPayload = {
+        ...configSnapshot.privacy,
+        atualizadoEm: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      try {
+        await Promise.all([
+          update(ref(database, `${userBasePath}/settings/mapa`), {
+            mostrarOnline: configSnapshot.mapMostrarOnline,
+            aoVivo: configSnapshot.mapAoVivo,
+            limiteOnline: configSnapshot.mapLimiteOnline,
+            atualizadoEm: serverTimestamp(),
+          }),
+          update(ref(database, `${userBasePath}/settings/ui`), {
+            animacoes: configSnapshot.animacoes,
+            modoEconomico: configSnapshot.modoEconomico,
+            aparencia: configSnapshot.aparencia,
+            notificationPreferences: configSnapshot.notificationPreferences,
+            atualizadoEm: serverTimestamp(),
+          }),
+          update(ref(database, `${userBasePath}/profile`), {
+            visivel: configSnapshot.visivel,
+            notificacoes: configSnapshot.notificacoes,
+            notificationPreferences: configSnapshot.notificationPreferences,
+            modoEconomico: configSnapshot.modoEconomico,
+            aparencia: configSnapshot.aparencia,
+          }),
+          update(ref(database, userBasePath), {
+            visivel: configSnapshot.visivel,
+            notificacoes: configSnapshot.notificacoes,
+            privacy: privacyPayload,
+            showOnlineStatus: configSnapshot.privacy.showOnlineStatus,
+            allowPublicContact: configSnapshot.privacy.allowPublicContact,
+            atualizadoEm: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }),
+        ]);
+
+        configLastSavedRef.current = configSnapshot;
+        setConfigAviso("Configuracao salva");
+        window.setTimeout(() => setConfigAviso(""), 1800);
+      } catch {
+        const last = configLastSavedRef.current;
+        if (last) {
+          setProfile((prev) => ({
+            ...prev,
+            ...last,
+            privacy: last.privacy,
+            notificationPreferences: last.notificationPreferences,
+          }));
+          configSnapshotRef.current = JSON.stringify(last);
+        }
+        setConfigAviso("Nao foi possivel salvar. Tente novamente.");
+      }
+    }, 450);
+
+    return () => {
+      if (configSaveTimerRef.current) window.clearTimeout(configSaveTimerRef.current);
+    };
+  }, [configSnapshot, open, uid, userBasePath]);
+
   if (!open) return null;
   if (!uid) return null;
 
@@ -1751,6 +2204,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       : pushPermission === "denied"
         ? "border-rose-200 bg-rose-50 text-rose-700"
         : "border-amber-200 bg-amber-50 text-amber-700";
+  const pushCanUse =
+    pushInfo.supported &&
+    pushInfo.serviceWorkerAvailable !== false &&
+    Boolean(vapidKey) &&
+    vapidConfigured;
+  const pushReason = vapidConfigured && /vapid/i.test(String(pushInfo.reason || "")) ? "" : pushInfo.reason;
   const privacy = normalizePrivacy(profile.privacy);
   const setPrivacyPreference = (field, value) => {
     setPrivacyAviso("");
@@ -1764,6 +2223,24 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         ...prev,
         privacy: nextPrivacy,
       };
+    });
+  };
+  const setNotificationPreference = (field, value) => {
+    setProfile((prev) => ({
+      ...prev,
+      notificationPreferences: {
+        ...normalizeNotificationPreferences(prev.notificationPreferences),
+        [field]: value,
+      },
+    }));
+  };
+  const toggleConfigSection = (section) => {
+    setConfigSecoesAbertas((prev) => {
+      const nextOpen = !prev[section];
+      if (typeof window !== "undefined" && window.innerWidth < 768 && nextOpen) {
+        return Object.fromEntries(Object.keys(prev).map((key) => [key, key === section]));
+      }
+      return { ...prev, [section]: nextOpen };
     });
   };
   const professionalMode = tab === "profissional";
@@ -2072,7 +2549,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           professionalMode ? "bg-[#050b12] text-white" : "bg-white text-slate-950",
         ].join(" ")}
       >
-        {!professionalMode && (
+        {!professionalMode && tab !== "config" && (
         <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
           <div className="mx-auto w-full max-w-7xl px-3 py-2.5 md:px-8 md:py-4 flex items-center justify-between gap-3">
             <div>
@@ -2098,7 +2575,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
         <div className={professionalMode ? "mx-auto min-h-screen w-full max-w-5xl p-3 pb-24 md:p-6 md:pb-28" : "mx-auto w-full max-w-7xl p-2.5 md:p-6"}>
           {/* FOTO + HEADER */}
-          {!professionalMode && !standaloneClientPage && (
+          {!professionalMode && !standaloneClientPage && tab !== "config" && (
           <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#0b73ff_0%,#18bfd2_48%,#ffe36b_100%)] p-4 text-white shadow-[0_22px_70px_rgba(37,99,235,0.22)] md:rounded-[36px] md:p-8">
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -2228,7 +2705,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           )}
 
           {/* MENU DO PERFIL */}
-          {!professionalMode && !standaloneClientPage && (
+          {!professionalMode && !standaloneClientPage && tab !== "config" && (
           <div className="mt-3 rounded-[22px] border border-slate-200 bg-white p-1.5 shadow-[0_14px_36px_rgba(15,23,42,0.08)] md:mt-4 md:rounded-[28px] md:p-2">
             <div className="grid grid-cols-2 gap-1.5 md:gap-2">
               {["config", "monetizacao"].map(
@@ -2798,6 +3275,30 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
           {/* CONFIG */}
           {tab === "config" && (
+            <ConfiguracoesOrganizadas
+              profile={profile}
+              privacy={privacy}
+              sections={configSecoesAbertas}
+              onToggleSection={toggleConfigSection}
+              onBack={onClose}
+              onProfileChange={(changes) => setProfile((prev) => ({ ...prev, ...changes }))}
+              onMapLimitChange={(value) => setProfile((prev) => ({ ...prev, mapLimiteOnline: value }))}
+              onPrivacyChange={setPrivacyPreference}
+              onNotificationChange={setNotificationPreference}
+              onOpenDados={() => setTab("dados")}
+              onLogout={sairDaConta}
+              onTogglePush={(checked) => (checked ? ativarPush() : desativarPush())}
+              onTestPush={testarPush}
+              pushAtivo={pushAtivo}
+              pushCanUse={pushCanUse}
+              pushSalvando={pushSalvando}
+              pushTestando={pushTestando}
+              pushAviso={pushAviso}
+              configAviso={configAviso}
+            />
+          )}
+
+          {false && tab === "config" && (
             <div className="mt-3 space-y-3 md:mt-5 md:space-y-4">
               <div className="hidden rounded-[24px] bg-[linear-gradient(135deg,#0b73ff_0%,#18bfd2_52%,#ffe36b_100%)] p-4 text-white shadow-[0_22px_60px_rgba(37,99,235,0.18)] md:rounded-[32px] md:p-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -2879,9 +3380,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                           Status da permissão: {pushStatusLabel}
                         </div>
 
-                        {!pushInfo.supported && pushInfo.reason ? (
+                        {!pushCanUse && pushReason ? (
                           <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
-                            {pushInfo.reason}
+                            {pushReason}
                           </div>
                         ) : null}
 
@@ -2896,7 +3397,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                         <button
                           type="button"
                           onClick={ativarPush}
-                          disabled={pushSalvando || pushTestando || !pushInfo.supported}
+                          disabled={pushSalvando || pushTestando || !pushCanUse}
                           className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 md:h-11 md:rounded-2xl"
                         >
                           {pushSalvando ? "Ativando..." : "Ativar notificações"}
@@ -2905,7 +3406,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                         <button
                           type="button"
                           onClick={testarPush}
-                          disabled={pushSalvando || pushTestando || !pushInfo.supported}
+                          disabled={pushSalvando || pushTestando || !pushCanUse}
                           className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 md:h-11 md:rounded-2xl"
                         >
                           {pushTestando ? "Enviando..." : "Testar notificação"}
@@ -4180,7 +4681,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             </div>
           )}
 
-          {tab !== "dados" && (!professionalMode || (currentProfSection && currentProfSection !== "perfilProfissional")) && (
+          {tab !== "dados" && tab !== "config" && (!professionalMode || (currentProfSection && currentProfSection !== "perfilProfissional")) && (
           <button
             onClick={salvar}
             disabled={salvando || fotoSalvando}
