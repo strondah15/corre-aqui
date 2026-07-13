@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { get, ref } from 'firebase/database'
+import { get, ref } from '@/lib/firebaseDebug'
 import CadastroPerfilInicial from '@/components/CadastroPerfilInicial'
 import { auth, database } from '@/lib/firebase'
 import { perfilMinimoCompleto } from '@/lib/perfilCadastro'

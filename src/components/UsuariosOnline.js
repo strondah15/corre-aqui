@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { onValue, ref } from 'firebase/database'
+import { onValue, ref } from '@/lib/firebaseDebug'
 import { database } from '@/lib/firebase'
 import { DEBUG_PRESENCE_ENABLED, splitUsuariosOnline } from '@/lib/presence'
 

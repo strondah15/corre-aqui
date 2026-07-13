@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { onAuthStateChanged } from 'firebase/auth'
-import { limitToLast, onValue, query, ref, update } from 'firebase/database'
+import { limitToLast, onValue, query, ref, update } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 

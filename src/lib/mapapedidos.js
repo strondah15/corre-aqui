@@ -1,7 +1,7 @@
 // src/lib/mapapedidos.js
 // Serviço único para criar e normalizar pedidos (Realtime Database + UI otimista)
 
-import { ref, push, set, serverTimestamp } from 'firebase/database'
+import { ref, push, set, serverTimestamp } from './firebaseDebug'
 import { database } from '@/lib/firebase' // se não usar alias, troque para: import { database } from './firebase'
 
 // Converte para número seguro

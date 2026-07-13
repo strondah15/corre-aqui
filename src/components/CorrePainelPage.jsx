@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
-import { onValue, ref } from 'firebase/database'
+import { onValue, ref } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
 import AgendaProfissional from '@/components/AgendaProfissional'
 import CentralNotificacoes from '@/components/CentralNotificacoes'

@@ -26,7 +26,7 @@ import {
   query,
   limitToLast,
   runTransaction,
-} from 'firebase/database'
+} from '@/lib/firebaseDebug'
 import { getOnlineTimestamp, getUserOnlinePreference, isOnlineRecente, setUserOnlinePreference, splitUsuariosOnline } from '@/lib/presence'
 import { createPrivateRequest } from '@/lib/privateRequests'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'

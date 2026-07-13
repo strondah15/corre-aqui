@@ -1,5 +1,5 @@
 // src/lib/presence.js
-import { onDisconnect, onValue, ref, update } from "firebase/database";
+import { onDisconnect, onValue, ref, update } from './firebaseDebug';
 
 const HEARTBEAT_MS = 15_000;
 const LOCATION_REFRESH_MS = 60_000;

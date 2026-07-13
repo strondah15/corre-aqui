@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { database } from '@/lib/firebase'
-import { limitToLast, onValue, query, ref, update } from 'firebase/database'
+import { limitToLast, onValue, query, ref, update } from '@/lib/firebaseDebug'
 
 function getMs(v) {
   if (!v) return 0

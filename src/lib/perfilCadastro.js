@@ -1,5 +1,5 @@
 import { database } from '@/lib/firebase'
-import { ref, serverTimestamp, update } from 'firebase/database'
+import { ref, serverTimestamp, update } from './firebaseDebug'
 
 export const TIPOS_CONTA = {
   cliente: {

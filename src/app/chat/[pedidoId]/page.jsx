@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
-import { onValue, ref } from 'firebase/database'
+import { onValue, ref } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
 import { getOnlineTimestamp, isOnlineRecente } from '@/lib/presence'
 import LoginGate from '@/components/LoginGate'

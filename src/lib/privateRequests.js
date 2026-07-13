@@ -1,6 +1,6 @@
 'use client'
 
-import { push, ref, serverTimestamp, set, update } from 'firebase/database'
+import { push, ref, serverTimestamp, set, update } from './firebaseDebug'
 
 function safeStr(value) {
   return String(value || '').trim()

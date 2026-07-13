@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { onValue, ref, serverTimestamp, update } from 'firebase/database'
+import { onValue, ref, serverTimestamp, update } from '@/lib/firebaseDebug'
 import { database } from '@/lib/firebase'
 import { respondPrivateRequest } from '@/lib/privateRequests'
 

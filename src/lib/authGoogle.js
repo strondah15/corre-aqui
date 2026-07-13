@@ -7,7 +7,7 @@ import {
   signInWithPopup,
   signInWithRedirect,
 } from "firebase/auth";
-import { ref, update, serverTimestamp } from "firebase/database";
+import { ref, update, serverTimestamp } from './firebaseDebug';
 import { getUserOnlinePreference } from "@/lib/presence";
 
 const provider = new GoogleAuthProvider();

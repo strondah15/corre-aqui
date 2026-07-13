@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ref, push, set, serverTimestamp } from 'firebase/database'
+import { ref, push, set, serverTimestamp } from '@/lib/firebaseDebug'
 import { database } from '@/lib/firebase'
 import { CATEGORIES, getCategoryById } from '@/constants/categories'
 

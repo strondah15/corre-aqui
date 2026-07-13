@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { database } from '@/lib/firebase'
-import { ref, push, set, serverTimestamp } from 'firebase/database'
+import { ref, push, set, serverTimestamp } from '@/lib/firebaseDebug'
 import { criarPedido } from '../lib/mapapedidos'
 
 const TIPOS = ['serviço', 'compra', 'ajuda', 'carona', 'outro']

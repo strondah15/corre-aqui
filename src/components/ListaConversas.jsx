@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ref, onValue, update, query, limitToLast } from 'firebase/database'
+import { ref, onValue, update, query, limitToLast } from '@/lib/firebaseDebug'
 import { motion } from 'framer-motion'
 import { database } from '@/lib/firebase'
 import LogoCorreAqui from '@/components/LogoCorreAqui'

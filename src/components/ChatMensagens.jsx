@@ -5,7 +5,7 @@ import { database } from '@/lib/firebase'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
 import { getCategoryById } from '@/constants/categories'
 import { ATENDIMENTO_STATUS, getAtendimentoStep, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
-import { ref, push, onValue, query, limitToLast, update, serverTimestamp, get, set } from 'firebase/database'
+import { ref, push, onValue, query, limitToLast, update, serverTimestamp, get, set } from '@/lib/firebaseDebug'
 import { motion } from 'framer-motion'
 
 function getMsgMs(v) {

@@ -1,7 +1,7 @@
 'use client'
 
 import app, { auth, database } from '@/lib/firebase'
-import { ref, serverTimestamp, update } from 'firebase/database'
+import { ref, serverTimestamp, update } from './firebaseDebug'
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 
 export const MESSAGING_SW_PATH = '/firebase-messaging-sw.js'

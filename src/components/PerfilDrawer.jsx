@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "firebase/auth";
-import { ref, onValue, update, set, serverTimestamp } from "firebase/database";
+import { ref, onValue, update, set, serverTimestamp } from '@/lib/firebaseDebug';
 import { auth, database } from "@/lib/firebase";
 import { uploadProfilePhotoToImgBB } from "@/lib/imgbbClient";
 import {

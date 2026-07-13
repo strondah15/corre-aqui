@@ -1,6 +1,6 @@
 'use client'
 
-import { ref, runTransaction } from 'firebase/database'
+import { ref, runTransaction } from './firebaseDebug'
 import { calcularPatentePorServicos } from '@/components/Patente'
 import { claimAtendimentoRewards } from '@/lib/atendimento'
 

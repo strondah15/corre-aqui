@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
-import { onValue, ref, serverTimestamp, update } from 'firebase/database'
+import { onValue, ref, serverTimestamp, update } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
 import { startPresence } from '@/lib/presence'
 import { ATENDIMENTO_STATUS, transitionAtendimento } from '@/lib/atendimento'

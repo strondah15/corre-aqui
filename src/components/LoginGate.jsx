@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { auth, database } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
-import { ref, update, get, serverTimestamp } from 'firebase/database'
+import { ref, update, get, serverTimestamp } from '@/lib/firebaseDebug'
 import {
   getGoogleRedirectUser,
   isGoogleRedirectPending,

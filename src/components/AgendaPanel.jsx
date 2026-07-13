@@ -2,7 +2,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ref, onValue, update } from 'firebase/database'
+import { ref, onValue, update } from '@/lib/firebaseDebug'
 import { database } from '@/lib/firebase'
 
 function toMillis(value) {

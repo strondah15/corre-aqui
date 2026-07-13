@@ -1,5 +1,5 @@
 // src/lib/pedidos.js
-import { ref, push, set, serverTimestamp } from 'firebase/database'
+import { ref, push, set, serverTimestamp } from './firebaseDebug'
 import { database } from './firebase' // ajuste se seu firebase estiver em outro caminho
 
 export const toNum = (v) => {
