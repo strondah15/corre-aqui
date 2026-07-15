@@ -99,7 +99,7 @@
     },
     "avaliacoes": {
       ".read": "auth != null",
-      ".indexOn": ["avaliado/id", "cliente/id", "criadoEm"],
+      ".indexOn": ["avaliado/id", "cliente/id", "criadoEm", "pedidoId"],
       "$pedidoId": {
         ".write": "auth != null && newData.child('cliente/id').val() === auth.uid",
         ".validate": "!newData.exists() || (newData.child('pedidoId').isString() && newData.child('nota').isNumber() && newData.child('nota').val() >= 1 && newData.child('nota').val() <= 5 && newData.child('cliente/id').isString() && newData.child('avaliado/id').isString())"
@@ -186,7 +186,7 @@
     },
     "agendamentos": {
       ".read": "auth != null",
-      ".indexOn": ["profissionalId", "clienteId", "status", "data"],
+      ".indexOn": ["profissionalId", "clienteId", "status", "data", "pedidoId"],
       "$agendamentoId": {
         ".write": "auth != null && ((!data.exists() && (newData.child('clienteId').val() === auth.uid || newData.child('profissionalId').val() === auth.uid)) || (data.exists() && (data.child('clienteId').val() === auth.uid || data.child('profissionalId').val() === auth.uid) && (newData.child('status').val() !== 'recusado' || (data.child('profissionalId').val() === auth.uid && data.child('status').val() === 'pendente' && newData.child('clienteId').val() === data.child('clienteId').val() && newData.child('profissionalId').val() === data.child('profissionalId').val() && newData.child('valor').val() === data.child('valor').val() && newData.child('servicoId').val() === data.child('servicoId').val()))))",
         ".validate": "!newData.exists() || (newData.child('clienteId').isString() && newData.child('profissionalId').isString() && newData.child('status').isString())"
@@ -270,6 +270,106 @@
       ".write": false
     },
     "adminUserModeration": {
+      ".read": false,
+      ".write": false
+    },
+    "adminOrderDirectory": {
+      ".read": false,
+      ".write": false
+    },
+    "adminOrderIndexes": {
+      ".read": false,
+      ".write": false,
+      "$scope": {
+        "$sort": {
+          ".indexOn": [".value"]
+        }
+      }
+    },
+    "adminOrderSearch": {
+      ".read": false,
+      ".write": false
+    },
+    "adminOrderStats": {
+      ".read": false,
+      ".write": false
+    },
+    "adminOrderRelations": {
+      ".read": false,
+      ".write": false
+    },
+    "adminScheduleDirectory": {
+      ".read": false,
+      ".write": false
+    },
+    "adminScheduleIndexes": {
+      ".read": false,
+      ".write": false,
+      "$scope": {
+        "$sort": {
+          ".indexOn": [".value"]
+        }
+      }
+    },
+    "adminScheduleSearch": {
+      ".read": false,
+      ".write": false
+    },
+    "adminScheduleStats": {
+      ".read": false,
+      ".write": false
+    },
+    "adminScheduleRelations": {
+      ".read": false,
+      ".write": false
+    },
+    "adminNotificationDirectory": {
+      ".read": false,
+      ".write": false
+    },
+    "adminNotificationIndexes": {
+      ".read": false,
+      ".write": false,
+      "$scope": {
+        "$sort": {
+          ".indexOn": [".value"]
+        }
+      }
+    },
+    "adminNotificationSearch": {
+      ".read": false,
+      ".write": false
+    },
+    "adminNotificationStats": {
+      ".read": false,
+      ".write": false
+    },
+    "adminNotificationRelations": {
+      ".read": false,
+      ".write": false
+    },
+    "adminReportDirectory": {
+      ".read": false,
+      ".write": false
+    },
+    "adminReportIndexes": {
+      ".read": false,
+      ".write": false,
+      "$scope": {
+        "$sort": {
+          ".indexOn": [".value"]
+        }
+      }
+    },
+    "adminReportSearch": {
+      ".read": false,
+      ".write": false
+    },
+    "adminReportStats": {
+      ".read": false,
+      ".write": false
+    },
+    "adminReportRelations": {
       ".read": false,
       ".write": false
     }
