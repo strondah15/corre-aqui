@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { onValue, ref, serverTimestamp, update } from '@/lib/firebaseDebug'
-import { database } from '@/lib/firebase'
+import { auth, database } from '@/lib/firebase'
 import { respondPrivateRequest } from '@/lib/privateRequests'
 
 function getMs(value) {
@@ -422,6 +422,7 @@ export default function AgendaProfissional({
   const [erro, setErro] = useState('')
   const [filtro, setFiltro] = useState('hoje')
   const [selectedKey, setSelectedKey] = useState(() => dateKey(Date.now()))
+  const [hiddenPrivateRequestIds, setHiddenPrivateRequestIds] = useState(() => new Set())
 
   useEffect(() => {
     if (!uid) {
@@ -474,8 +475,10 @@ export default function AgendaProfissional({
       })
     })
 
-    return Array.from(byId.values()).sort((a, b) => getAgendaMs(a) - getAgendaMs(b))
-  }, [agendamentos, privateRequests, uid])
+    return Array.from(byId.values())
+      .filter((item) => !hiddenPrivateRequestIds.has(String(item?.id || item?.privateRequestId || '')))
+      .sort((a, b) => getAgendaMs(a) - getAgendaMs(b))
+  }, [agendamentos, hiddenPrivateRequestIds, privateRequests, uid])
 
   const resumo = useMemo(() => {
     const hoje = dateKey(Date.now())
@@ -512,12 +515,40 @@ export default function AgendaProfissional({
     try {
       const item = agendaItems.find((entry) => String(entry?.id || entry?.privateRequestId || '') === String(id))
       if (item?.privateRequest || item?.privateRequestId) {
+        console.info('[AGENDA] responder solicitacao privada', {
+          authUid: auth.currentUser?.uid || uid || null,
+          id: String(item?.id || item?.privateRequestId || id),
+          criadorUid: item?.clienteId || null,
+          destinatarioUid: item?.profissionalId || uid || null,
+          caminho: `privateRequests/${String(item?.id || item?.privateRequestId || id)}`,
+          inboxCliente: `privateRequestInbox/${item?.clienteId || '<clienteUid>'}/${String(item?.id || item?.privateRequestId || id)}`,
+          inboxProfissional: `privateRequestInbox/${item?.profissionalId || uid || '<profissionalUid>'}/${String(item?.id || item?.privateRequestId || id)}`,
+          statusAtual: item?.status || 'pendente',
+          proximoStatus: status,
+          payload: item,
+        })
         const result = await respondPrivateRequest({
           database,
           request: item,
           profissional: { uid, nome, fotoURL },
           status,
         })
+        if (result?.stale) {
+          const hasConfirmedAgenda = agendamentos.some((agenda) => {
+            const agendaId = String(agenda?.privateRequestId || agenda?.id || '')
+            const agendaStatus = String(agenda?.status || '').toLowerCase()
+            return agendaId === String(item?.id || item?.privateRequestId || id)
+              && !['pendente', 'recusado', 'cancelado'].includes(agendaStatus)
+          })
+          if (!hasConfirmedAgenda) {
+            setHiddenPrivateRequestIds((current) => {
+              const next = new Set(current)
+              next.add(String(item?.id || item?.privateRequestId || id))
+              return next
+            })
+          }
+          return
+        }
         if (status === 'aceito') {
           const destino = { ...item, ...result, id: result?.id || item?.id || item?.privateRequestId }
           if (typeof onAbrirPedido === 'function') onAbrirPedido(destino)
@@ -526,11 +557,23 @@ export default function AgendaProfissional({
         return
       }
 
-      await update(ref(database, `agendamentos/${id}`), {
+      const agendamentoPath = `agendamentos/${id}`
+      const agendamentoPayload = {
         status,
         respondidoEm: Date.now(),
         atualizadoEm: serverTimestamp(),
+      }
+      console.info('[AGENDA] responder agendamento', {
+        authUid: auth.currentUser?.uid || uid || null,
+        id,
+        criadorUid: item?.clienteId || null,
+        destinatarioUid: item?.profissionalId || uid || null,
+        caminho: agendamentoPath,
+        statusAtual: item?.status || 'pendente',
+        proximoStatus: status,
+        payload: agendamentoPayload,
       })
+      await update(ref(database, agendamentoPath), agendamentoPayload)
       if (status === 'aceito') {
         const destino = { ...item, id }
         if (typeof onAbrirPedido === 'function') onAbrirPedido(destino)

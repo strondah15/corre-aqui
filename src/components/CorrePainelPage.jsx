@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
+import { reconcilePrivateRequestInbox } from '@/lib/privateRequests'
 import AgendaProfissional from '@/components/AgendaProfissional'
 import CentralNotificacoes from '@/components/CentralNotificacoes'
 import ListaConversas from '@/components/ListaConversas'
@@ -72,15 +73,24 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
       return undefined
     }
 
+    let cancelled = false
     const off = onValue(ref(database, `privateRequestInbox/${uid}`), (snap) => {
       const raw = snap.val() || {}
       const lista = Object.entries(raw)
         .map(([id, value]) => ({ id, ...(value || {}) }))
         .sort((a, b) => Number(b?.atualizadoEm || b?.criadoEm || 0) - Number(a?.atualizadoEm || a?.criadoEm || 0))
-      setPrivateRequests(lista)
-    }, () => setPrivateRequests([]))
 
-    return () => off()
+      void reconcilePrivateRequestInbox({ database, uid, entries: lista }).then(({ valid }) => {
+        if (!cancelled) setPrivateRequests(valid)
+      })
+    }, () => {
+      if (!cancelled) setPrivateRequests([])
+    })
+
+    return () => {
+      cancelled = true
+      off()
+    }
   }, [uid])
 
   const meusPedidos = uid ? pedidos.filter((p) => p?.criador?.id === uid || p?.aceite?.id === uid) : []

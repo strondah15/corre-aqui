@@ -82,7 +82,7 @@ export default function ListaPedidos() {
     })
 
     setMensagem('Pedido aceito com sucesso.')
-    router.push(`/pedido/${encodeURIComponent(String(pedido.id))}?voltar=corre&aceito=1`)
+    router.replace(`/pedido/${encodeURIComponent(String(pedido.id))}?voltar=corre&aceito=1`)
   }
 
   const abertos = pedidos.filter((p) => (p.status || 'aberto') === 'aberto')

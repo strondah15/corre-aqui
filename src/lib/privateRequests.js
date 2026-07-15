@@ -1,6 +1,8 @@
 'use client'
 
-import { push, ref, serverTimestamp, set, update } from './firebaseDebug'
+import { get, push, ref, remove, serverTimestamp, set, update } from './firebaseDebug'
+import { auth } from './firebase'
+import { enviarPushParaUsuario } from './pushSender'
 
 function safeStr(value) {
   return String(value || '').trim()
@@ -14,12 +16,74 @@ function safeId(value) {
   return safeStr(value).replace(/[.#$\[\]/]/g, '_')
 }
 
+function removeUndefined(value) {
+  if (Array.isArray(value)) {
+    return value.map(removeUndefined).filter((entry) => entry !== undefined)
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entry]) => entry !== undefined)
+        .map(([key, entry]) => [key, removeUndefined(entry)]),
+    )
+  }
+  return value
+}
+
+function getServicoId(source = {}) {
+  return safeStr(
+    pickText(
+      source.servicoId,
+      source.serviceId,
+      source.portfolioServicoId,
+      source.itemId,
+      source.servico?.id,
+      source.service?.id,
+    ),
+  )
+}
+
 function getUid(entity = {}) {
   return safeStr(entity.uid || entity.id || entity.userId || entity.clienteId || entity.profissionalId)
 }
 
 function getNome(entity = {}, fallback = 'Corre Aqui') {
   return pickText(entity.nome, entity.displayName, entity.profile?.nome, entity.profissionalNome, entity.clienteNome, fallback)
+}
+
+async function updateWithTrace(database, updates, { context = {} } = {}) {
+  console.log('Updates:', updates)
+
+  for (const [path, payload] of Object.entries(updates || {})) {
+    const target = ref(database, path)
+    const operation = payload && typeof payload === 'object' && !Array.isArray(payload) ? 'update' : 'set'
+    console.log('Atualizando:', path)
+    console.log('Operação:', operation)
+    console.log('Payload:', payload)
+    try {
+      if (operation === 'update') {
+        await update(target, payload)
+      } else {
+        await set(target, payload)
+      }
+    } catch (error) {
+      console.error('[AGENDA] caminho negado:', path)
+      console.error('[AGENDA] operação:', context?.operation)
+      console.error('[AGENDA] UID autenticado:', context?.uid)
+      console.error('[AGENDA] código:', error?.code)
+      console.error('[AGENDA] mensagem:', error?.message)
+      console.error('[AGENDA] payload:', payload)
+      console.error('[AGENDA] contexto completo:', context)
+      console.error('[AGENDA] caminho negado', {
+        ...context,
+        caminho: path,
+        code: error?.code || null,
+        message: error?.message || String(error),
+        error,
+      })
+      throw error
+    }
+  }
 }
 
 function normalizeService(service = {}, provider = {}) {
@@ -75,22 +139,32 @@ function makeNotification({
 }
 
 export async function createBilateralNotification(database, options) {
-  const toUid = safeStr(options?.toUid)
+  const notificationOptions = options || {}
+  const toUid = safeStr(notificationOptions.toUid)
   if (!database || !toUid) return null
 
-  const id = safeId(options?.id || `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
-  const payload = makeNotification({ ...options, id, toUid })
+  const id = safeId(notificationOptions.id || `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+  const payload = makeNotification({ ...notificationOptions, id, toUid })
   const updates = {
     [`notifications/${toUid}/${id}`]: payload,
     [`notificacoes/${toUid}/${id}`]: payload,
   }
 
-  await update(ref(database), updates)
+  await updateWithTrace(database, updates, {
+    context: {
+      operation: 'createBilateralNotification',
+      uid: auth.currentUser?.uid || null,
+      tipo: payload.tipo,
+      pedidoId: payload.pedidoId,
+      authUid: auth.currentUser?.uid || null,
+      destinatarioUid: toUid,
+    },
+  })
   return payload
 }
 
 function requestSummary(request) {
-  return {
+  return removeUndefined({
     id: request.id,
     privateRequestId: request.id,
     privateRequest: true,
@@ -100,7 +174,7 @@ function requestSummary(request) {
     clienteNome: request.clienteNome,
     profissionalId: request.profissionalId,
     profissionalNome: request.profissionalNome,
-    servicoId: request.servicoId,
+    servicoId: getServicoId(request) || undefined,
     servicoTitulo: request.servicoTitulo,
     titulo: request.servicoTitulo,
     descricao: request.descricao,
@@ -111,6 +185,79 @@ function requestSummary(request) {
     criadoEm: request.criadoEm,
     atualizadoEm: request.atualizadoEm,
     actionScreen: request.tipo === 'agendamento' ? 'agenda' : 'privateRequestDetails',
+  })
+}
+
+export async function reconcilePrivateRequestInbox({ database, uid, entries = [] } = {}) {
+  const currentUid = safeStr(uid || auth.currentUser?.uid)
+  const list = Array.isArray(entries) ? entries : []
+
+  if (!database || !currentUid) {
+    return { valid: list, orphanIds: [], removedIds: [] }
+  }
+
+  const results = await Promise.all(
+    list.map(async (item) => {
+      const requestId = safeStr(item?.privateRequestId || item?.id)
+      if (!requestId) {
+        return { item, valid: false, orphan: true, removed: false, requestId: '' }
+      }
+
+      const primaryPath = `privateRequests/${requestId}`
+      try {
+        const primarySnapshot = await get(ref(database, primaryPath))
+        if (primarySnapshot.exists()) {
+          return { item, valid: true, orphan: false, removed: false, requestId }
+        }
+
+        const inboxPath = `privateRequestInbox/${currentUid}/${requestId}`
+        const inboxSnapshot = await get(ref(database, inboxPath))
+        const inboxItem = inboxSnapshot.val()
+        const ownsIndex = inboxSnapshot.exists() && (
+          inboxItem?.clienteId === currentUid || inboxItem?.profissionalId === currentUid
+        )
+        let removed = false
+
+        if (ownsIndex) {
+          try {
+            await remove(ref(database, inboxPath))
+            removed = true
+          } catch (error) {
+            console.error('[AGENDA] limpeza de inbox orfao falhou', {
+              path: inboxPath,
+              requestId,
+              uid: currentUid,
+              error,
+            })
+          }
+        }
+
+        console.warn('[AGENDA] inbox orfao ocultado', {
+          requestId,
+          primaryPath,
+          inboxPath,
+          uid: currentUid,
+          ownsIndex,
+          removed,
+        })
+        return { item, valid: false, orphan: true, removed, requestId }
+      } catch (error) {
+        console.error('[AGENDA] verificacao de inbox falhou', {
+          requestId,
+          primaryPath,
+          uid: currentUid,
+          error,
+        })
+        // A transient read failure must not hide a valid request from the agenda.
+        return { item, valid: true, orphan: false, removed: false, requestId }
+      }
+    }),
+  )
+
+  return {
+    valid: results.filter((result) => result.valid).map((result) => result.item),
+    orphanIds: results.filter((result) => result.orphan).map((result) => result.requestId),
+    removedIds: results.filter((result) => result.orphan && result.removed).map((result) => result.requestId),
   }
 }
 
@@ -162,13 +309,19 @@ export async function createPrivateRequest({
   const summary = requestSummary(request)
 
   await set(requestRef, request)
-  await update(ref(database), {
+  const payload = removeUndefined({
     [`privateRequestInbox/${clienteId}/${requestId}`]: summary,
     [`privateRequestInbox/${profissionalId}/${requestId}`]: summary,
   })
+  console.log('[AGENDA] privateRequestInbox update', {
+    id: requestId,
+    servicoId: request?.servicoId,
+    payload,
+  })
+  await updateWithTrace(database, payload)
 
   const isAgenda = tipo === 'agendamento'
-  await createBilateralNotification(database, {
+  const notification = await createBilateralNotification(database, {
     tipo: isAgenda ? 'agendamento_criado' : 'pedido_direto_criado',
     titulo: isAgenda ? 'Novo agendamento' : 'Novo pedido direto',
     mensagem: isAgenda
@@ -190,6 +343,20 @@ export async function createPrivateRequest({
     },
   })
 
+  void enviarPushParaUsuario(profissionalId, {
+    type: notification?.tipo,
+    title: notification?.titulo,
+    body: notification?.mensagem,
+    pedidoId: requestId,
+    privateRequestId: requestId,
+    servicoId: request.servicoId,
+    fromUid: clienteId,
+    toUid: profissionalId,
+    action: notification?.action,
+    notificationId: notification?.id,
+    prioridade: 'alta',
+  })
+
   return request
 }
 
@@ -199,6 +366,56 @@ function acceptedStatus(tipo) {
 
 export async function respondPrivateRequest({ database, request = {}, profissional = {}, status }) {
   const requestId = safeStr(request.id || request.privateRequestId)
+  if (!database || !requestId) {
+    throw new Error('Solicitacao invalida.')
+  }
+
+  const requestPath = `privateRequests/${requestId}`
+  const storedSnapshot = await get(ref(database, requestPath))
+  const storedRequest = storedSnapshot.val()
+  if (!storedRequest || typeof storedRequest !== 'object') {
+    const currentUid = auth.currentUser?.uid || ''
+    const inboxPath = currentUid ? `privateRequestInbox/${currentUid}/${requestId}` : ''
+    let removedFromInbox = false
+
+    if (currentUid) {
+      try {
+        const inboxSnapshot = await get(ref(database, inboxPath))
+        const inboxItem = inboxSnapshot.val()
+        const ownsIndex = inboxSnapshot.exists() && (
+          inboxItem?.clienteId === currentUid || inboxItem?.profissionalId === currentUid
+        )
+
+        if (ownsIndex) {
+          await remove(ref(database, inboxPath))
+          removedFromInbox = true
+        }
+      } catch (error) {
+        console.error('[AGENDA] nao foi possivel remover inbox orfao', {
+          path: inboxPath,
+          requestId,
+          authUid: currentUid,
+          error,
+        })
+      }
+    }
+
+    console.error('[AGENDA] solicitacao principal ausente', {
+      path: requestPath,
+      inboxPath,
+      requestId,
+      authUid: currentUid || null,
+      removedFromInbox,
+    })
+    return {
+      ok: false,
+      stale: true,
+      removedFromInbox,
+      message: 'Esta solicitacao nao esta mais disponivel e foi removida da agenda.',
+    }
+  }
+
+  request = { ...request, ...storedRequest, id: requestId }
   const tipo = safeStr(request.tipo || 'pedido_direto')
   const clienteId = safeStr(request.clienteId)
   const profissionalId = safeStr(request.profissionalId || getUid(profissional))
@@ -209,6 +426,7 @@ export async function respondPrivateRequest({ database, request = {}, profission
   const profNome = getNome(profissional, request.profissionalNome || 'Profissional')
   const finalStatus = status === 'aceito' ? acceptedStatus(tipo) : 'recusado'
   const agora = Date.now()
+  const servicoId = getServicoId(request)
   const title = safeStr(request.servicoTitulo || request.titulo || 'Serviço solicitado')
   const updatedRequest = {
     ...request,
@@ -220,17 +438,22 @@ export async function respondPrivateRequest({ database, request = {}, profission
     clienteId,
     profissionalId,
     profissionalNome: profNome,
+    ...(servicoId ? { servicoId } : {}),
     atualizadoEm: agora,
     respondidoEm: agora,
   }
   const updatedSummary = requestSummary(updatedRequest)
   const updates = {
-    [`privateRequests/${requestId}/status`]: finalStatus,
-    [`privateRequests/${requestId}/respondidoEm`]: agora,
-    [`privateRequests/${requestId}/atualizadoEm`]: agora,
-    [`privateRequests/${requestId}/atualizadoEmServer`]: serverTimestamp(),
-    [`privateRequests/${requestId}/respondidoPor/id`]: profissionalId,
-    [`privateRequests/${requestId}/respondidoPor/nome`]: profNome,
+    [`privateRequests/${requestId}`]: removeUndefined({
+      status: finalStatus,
+      respondidoEm: agora,
+      atualizadoEm: agora,
+      atualizadoEmServer: serverTimestamp(),
+      respondidoPor: {
+        id: profissionalId,
+        nome: profNome,
+      },
+    }),
     [`privateRequestInbox/${clienteId}/${requestId}`]: updatedSummary,
     [`privateRequestInbox/${profissionalId}/${requestId}`]: updatedSummary,
   }
@@ -273,11 +496,34 @@ export async function respondPrivateRequest({ database, request = {}, profission
     updates[`mensagens/${requestId}/msg_${agora}`] = updates[`chats/${requestId}/msg_${agora}`]
   }
 
-  await update(ref(database), updates)
+  const payload = removeUndefined(updates)
+  console.log('[AGENDA] privateRequestInbox update', {
+    authUid: auth.currentUser?.uid || null,
+    id: requestId,
+    criadorUid: clienteId,
+    destinatarioUid: profissionalId,
+    statusAtual: request?.status || 'pendente',
+    proximoStatus: finalStatus,
+    caminhos: Object.keys(payload),
+    servicoId,
+    payload,
+  })
+  await updateWithTrace(database, payload, {
+    context: {
+      operation: 'respondPrivateRequest',
+      uid: auth.currentUser?.uid || null,
+      authUid: auth.currentUser?.uid || null,
+      requestId,
+      criadorUid: clienteId,
+      destinatarioUid: profissionalId,
+      statusAtual: request?.status || 'pendente',
+      proximoStatus: finalStatus,
+    },
+  })
 
   const isAgenda = tipo === 'agendamento'
   const accepted = finalStatus === 'aceito' || finalStatus === 'agendado'
-  await createBilateralNotification(database, {
+  const notification = await createBilateralNotification(database, {
     tipo: isAgenda
       ? accepted
         ? 'agendamento_aceito'
@@ -300,7 +546,7 @@ export async function respondPrivateRequest({ database, request = {}, profission
         ? `${profNome} aceitou seu pedido`
         : `${profNome} recusou seu pedido`,
     pedidoId: requestId,
-    servicoId: request.servicoId || '',
+    servicoId: servicoId || undefined,
     fromUid: profissionalId,
     toUid: clienteId,
     action: isAgenda
@@ -312,7 +558,7 @@ export async function respondPrivateRequest({ database, request = {}, profission
       : {
           label: accepted ? 'Abrir conversa' : 'Procurar outro profissional',
           screen: accepted ? 'chat' : 'portfolio',
-          id: accepted ? requestId : request.servicoId || requestId,
+          id: accepted ? requestId : servicoId || requestId,
         },
     extra: {
       privateRequestId: requestId,
@@ -320,6 +566,20 @@ export async function respondPrivateRequest({ database, request = {}, profission
       fromNome: profNome,
       autor: { id: profissionalId, nome: profNome },
     },
+  })
+
+  void enviarPushParaUsuario(clienteId, {
+    type: notification?.tipo,
+    title: notification?.titulo,
+    body: notification?.mensagem,
+    pedidoId: requestId,
+    privateRequestId: requestId,
+    servicoId,
+    fromUid: profissionalId,
+    toUid: clienteId,
+    action: notification?.action,
+    notificationId: notification?.id,
+    prioridade: 'alta',
   })
 
   return { ...request, status: finalStatus, respondidoEm: agora }

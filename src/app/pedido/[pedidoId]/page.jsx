@@ -718,7 +718,7 @@ function PedidoDetalhe() {
         })
       }
 
-      router.push(`/chat/${encodeURIComponent(conversaId)}?voltar=${voltar}`)
+      router.replace(`/chat/${encodeURIComponent(conversaId)}?voltar=${voltar}`)
     } catch (error) {
       console.error('Erro ao iniciar atendimento:', error)
       setErro(error?.message || 'Não foi possível iniciar o atendimento agora.')

@@ -28,7 +28,7 @@ import {
   runTransaction,
 } from '@/lib/firebaseDebug'
 import { getOnlineTimestamp, getUserOnlinePreference, isOnlineRecente, setUserOnlinePreference, splitUsuariosOnline } from '@/lib/presence'
-import { createPrivateRequest } from '@/lib/privateRequests'
+import { createPrivateRequest, reconcilePrivateRequestInbox } from '@/lib/privateRequests'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
 import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
 
@@ -1928,18 +1928,24 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       return undefined
     }
 
+    let cancelled = false
     const off = onValue(ref(database, `privateRequestInbox/${meuId}`), (snap) => {
       const raw = snap.val() || {}
       const lista = Object.entries(raw)
         .map(([id, value]) => ({ id, ...(value || {}) }))
         .sort((a, b) => Number(b?.atualizadoEm || b?.criadoEm || 0) - Number(a?.atualizadoEm || a?.criadoEm || 0))
 
-      setPrivateRequests(lista)
+      void reconcilePrivateRequestInbox({ database, uid: meuId, entries: lista }).then(({ valid }) => {
+        if (!cancelled) setPrivateRequests(valid)
+      })
     }, () => {
-      setPrivateRequests([])
+      if (!cancelled) setPrivateRequests([])
     })
 
-    return () => off()
+    return () => {
+      cancelled = true
+      off()
+    }
   }, [meuId])
 
   /* =======================
@@ -2865,7 +2871,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       await set(ref(database, `usersChats/${meuId}/${conversaId}`), true)
 
-      router.push(`/pedido/${encodeURIComponent(String(p.id))}?voltar=corre&aceito=1`)
+      router.replace(`/pedido/${encodeURIComponent(String(p.id))}?voltar=corre&aceito=1`)
       showToast({
         type: 'success',
         title: 'Corre aceito! ✅',

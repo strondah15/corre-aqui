@@ -1,11 +1,12 @@
 'use client'
 
 import app, { auth, database } from '@/lib/firebase'
-import { ref, serverTimestamp, update } from './firebaseDebug'
+import { ref, serverTimestamp, update, remove } from './firebaseDebug'
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 
 export const MESSAGING_SW_PATH = '/firebase-messaging-sw.js'
 const BUILD_VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || ''
+const TOKEN_KEY_STORAGE = 'correAqui:pushTokenKey'
 let resolvedVapidKey = BUILD_VAPID_KEY
 let resolvedVapidKeyPromise = null
 
@@ -26,6 +27,26 @@ function platformInfo() {
   }
 }
 
+function saveLocalTokenKey(uid, key) {
+  try {
+    if (uid && key) localStorage.setItem(`${TOKEN_KEY_STORAGE}:${uid}`, key)
+  } catch {}
+}
+
+function readLocalTokenKey(uid) {
+  try {
+    return uid ? localStorage.getItem(`${TOKEN_KEY_STORAGE}:${uid}`) || '' : ''
+  } catch {
+    return ''
+  }
+}
+
+function clearLocalTokenKey(uid) {
+  try {
+    if (uid) localStorage.removeItem(`${TOKEN_KEY_STORAGE}:${uid}`)
+  } catch {}
+}
+
 async function getVapidKey() {
   if (resolvedVapidKey) return resolvedVapidKey
   if (typeof window === 'undefined') return ''
@@ -35,6 +56,10 @@ async function getVapidKey() {
       .then(async (response) => {
         if (!response.ok) return ''
         const data = await response.json().catch(() => ({}))
+        console.log('[PUSH CONFIG]', {
+          vapidKeyConfigured: data?.vapidKeyConfigured,
+          hasVapidKey: Boolean(data?.vapidKey),
+        })
         return String(data?.vapidKey || '').trim()
       })
       .catch(() => '')
@@ -145,9 +170,26 @@ export async function ativarPushNotifications(uid) {
   const key = tokenKey(token)
   const info = platformInfo()
 
-  await update(ref(database), {
-    [`users/${uid}/notificacoes`]: true,
-    [`users/${uid}/push`]: {
+  await update(ref(database, `users/${uid}`), { notificacoes: true })
+  await update(ref(database, `users/${uid}/push`), {
+    enabled: true,
+    permission,
+    provider: 'firebase_messaging',
+    tokenKey: key,
+    updatedAt: serverTimestamp(),
+    ...info,
+  })
+  await update(ref(database, `users/${uid}/profile`), { notificacoes: true })
+  await update(ref(database, `users/${uid}/profile/pushNotifications`), {
+        enabled: true,
+        permission,
+        provider: 'firebase_messaging',
+        tokenKey: key,
+        updatedAt: serverTimestamp(),
+  })
+
+  await update(ref(database, `userPrivate/${uid}`), {
+    push: {
       enabled: true,
       permission,
       provider: 'firebase_messaging',
@@ -155,24 +197,7 @@ export async function ativarPushNotifications(uid) {
       updatedAt: serverTimestamp(),
       ...info,
     },
-    [`users/${uid}/pushTokens`]: null,
-    [`users/${uid}/profile/notificacoes`]: true,
-    [`users/${uid}/profile/pushNotifications`]: {
-      enabled: true,
-      permission,
-      provider: 'firebase_messaging',
-      tokenKey: key,
-      updatedAt: serverTimestamp(),
-    },
-    [`userPrivate/${uid}/push`]: {
-      enabled: true,
-      permission,
-      provider: 'firebase_messaging',
-      tokenKey: key,
-      updatedAt: serverTimestamp(),
-      ...info,
-    },
-    [`userPrivate/${uid}/pushTokens/${key}`]: {
+    [`pushTokens/${key}`]: {
       token,
       enabled: true,
       active: true,
@@ -182,6 +207,8 @@ export async function ativarPushNotifications(uid) {
       ...info,
     },
   })
+
+  saveLocalTokenKey(uid, key)
 
   return { token, tokenKey: key, permission, swPath: MESSAGING_SW_PATH }
 }
@@ -280,20 +307,33 @@ export async function testarPushNotification(uid) {
 export async function desativarPushNotifications(uid) {
   if (!uid) return
 
+  let key = readLocalTokenKey(uid)
   const messagingSupported = await isSupported().catch(() => false)
-  if (messagingSupported) {
-    await deleteToken(getMessaging(app)).catch(() => {})
+  const messaging = messagingSupported ? getMessaging(app) : null
+
+  if (!key && messaging && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    const vapidKey = await getVapidKey()
+    if (vapidKey) {
+      const registration = await getServiceWorkerRegistration().catch(() => null)
+      const token = registration ? await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration }).catch(() => '') : ''
+      key = tokenKey(token)
+    }
   }
 
-  await update(ref(database), {
-    [`users/${uid}/push/enabled`]: false,
-    [`users/${uid}/push/disabledAt`]: serverTimestamp(),
-    [`users/${uid}/profile/pushNotifications/enabled`]: false,
-    [`users/${uid}/profile/pushNotifications/disabledAt`]: serverTimestamp(),
-    [`users/${uid}/pushTokens`]: null,
-    [`userPrivate/${uid}/push/enabled`]: false,
-    [`userPrivate/${uid}/push/disabledAt`]: serverTimestamp(),
+  if (messaging) await deleteToken(messaging).catch(() => {})
+
+  if (key) await remove(ref(database, `userPrivate/${uid}/pushTokens/${key}`))
+
+  await update(ref(database, `users/${uid}/push`), {
+    enabled: false,
+    disabledAt: serverTimestamp(),
   })
+  await update(ref(database, `users/${uid}/profile/pushNotifications`), {
+        enabled: false,
+        disabledAt: serverTimestamp(),
+  })
+
+  clearLocalTokenKey(uid)
 }
 
 export async function onForegroundPush(callback) {

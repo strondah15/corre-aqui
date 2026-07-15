@@ -19,7 +19,7 @@ export async function enviarPushParaUsuario(toUid, payload = {}) {
         Authorization: `Bearer ${idToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ toUid, ...payload }),
+      body: JSON.stringify({ ...payload, toUid }),
     })
     const data = await response.json().catch(() => ({}))
 

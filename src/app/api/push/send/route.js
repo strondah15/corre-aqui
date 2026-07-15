@@ -5,6 +5,7 @@ import {
   getFirebaseAdminMessaging,
   isFirebaseAdminConfigured,
 } from '@/lib/firebaseAdmin'
+import { buildPushPayload } from '@/lib/pushPayload'
 
 export const runtime = 'nodejs'
 
@@ -26,24 +27,15 @@ function stringData(payload) {
   )
 }
 
-function resolveClickUrl(body) {
-  if (typeof body?.url === 'string' && body.url.startsWith('/')) return body.url
-  if (body?.acao === 'abrir_chat' && body?.conversaId) {
-    return `/chat/${encodeURIComponent(String(body.conversaId))}`
-  }
-  if (body?.acao === 'ver_notificacoes') return '/'
-  return '/'
-}
-
-function getPedidoIds(pedido) {
+function getParticipantIds(pedido) {
   return {
-    criadorId: pedido?.criador?.id ? String(pedido.criador.id) : '',
-    aceiteId: pedido?.aceite?.id ? String(pedido.aceite.id) : '',
+    criadorId: String(pedido?.criador?.id || pedido?.clienteId || '').trim(),
+    aceiteId: String(pedido?.aceite?.id || pedido?.profissionalId || '').trim(),
   }
 }
 
-function canSendForPedido({ actorUid, toUid, pedido }) {
-  const { criadorId, aceiteId } = getPedidoIds(pedido)
+function canSendForContext({ actorUid, toUid, pedido }) {
+  const { criadorId, aceiteId } = getParticipantIds(pedido)
   const actorIsParticipant = actorUid === criadorId || actorUid === aceiteId
   const targetIsParticipant = toUid === criadorId || toUid === aceiteId
   return actorIsParticipant && targetIsParticipant && actorUid !== toUid
@@ -114,7 +106,7 @@ export async function POST(request) {
     }
 
     const toUid = text(body.toUid || body.userId, '', 128)
-    const pedidoId = text(body.pedidoId, '', 128)
+    const pedidoId = text(body.pedidoId || body.privateRequestId, '', 128)
 
     if (!toUid) {
       return NextResponse.json({ ok: false, error: 'missing_target' }, { status: 400 })
@@ -151,9 +143,14 @@ export async function POST(request) {
       }
 
       const pedidoSnap = await db.ref(`pedidos/${pedidoId}`).get()
-      const pedido = pedidoSnap.val()
+      let pedido = pedidoSnap.val()
 
-      if (!pedido || !canSendForPedido({ actorUid, toUid, pedido })) {
+      if (!pedido) {
+        const privateRequestSnap = await db.ref(`privateRequests/${pedidoId}`).get()
+        pedido = privateRequestSnap.val()
+      }
+
+      if (!pedido || !canSendForContext({ actorUid, toUid, pedido })) {
         return NextResponse.json({ ok: false, error: 'forbidden_push_context' }, { status: 403 })
       }
     }
@@ -163,12 +160,7 @@ export async function POST(request) {
     const userPrivateSnap = await db.ref(`userPrivate/${toUid}`).get()
     const userPrivate = userPrivateSnap.val() || {}
 
-    if (
-      user?.profile?.notificacoes === false ||
-      user?.notificacoes === false ||
-      user?.push?.enabled === false ||
-      userPrivate?.push?.enabled === false
-    ) {
+    if (user?.profile?.notificacoes === false || user?.notificacoes === false) {
       return NextResponse.json({ ok: false, skipped: true, reason: 'user_notifications_disabled' })
     }
 
@@ -181,23 +173,24 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, skipped: true, reason: 'no_push_tokens' })
     }
 
-    const title = text(body.titulo || body.title, 'Corre Aqui', 80)
-    const message = text(body.mensagem || body.body || body.message, 'Voce tem uma nova atualizacao.', 180)
-    const url = resolveClickUrl(body)
-    const tag = text(body.tag, `corre-aqui-${pedidoId || `teste-${actorUid}`}-${body.tipo || body.type || 'push'}`, 120)
+    const push = buildPushPayload({ ...body, toUid, pedidoId: body.pedidoId || pedidoId })
     const data = stringData({
-      tipo: body.tipo || body.type || 'notificacao',
-      pedidoId,
-      conversaId: body.conversaId || pedidoId,
-      acao: body.acao || 'ver_notificacoes',
-      url,
-      title,
-      body: message,
-      icon: '/corre-aqui-icon-192.png',
-      badge: '/corre-aqui-icon-192.png',
-      tag,
-      requireInteraction: body.prioridade === 'alta',
+      ...push.data,
+      title: push.title,
+      body: push.body,
+      icon: push.icon,
+      badge: push.badge,
+      image: push.image,
+      tag: push.tag,
+      renotify: push.renotify,
+      requireInteraction: push.requireInteraction,
+      actionLabel: push.action.label,
+      actionScreen: push.action.screen,
+      actionId: push.action.id,
+      actions: push.actions.length ? JSON.stringify(push.actions) : '',
     })
+
+    const link = new URL(push.url || '/', request.url).toString()
 
     let result
     try {
@@ -210,7 +203,7 @@ export async function POST(request) {
             TTL: '86400',
           },
           fcmOptions: {
-            link: url,
+            link,
           },
         },
       })
