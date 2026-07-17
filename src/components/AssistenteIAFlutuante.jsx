@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { database } from '@/lib/firebase'
 import { ref, push, set, serverTimestamp } from '@/lib/firebaseDebug'
 import { criarPedido } from '../lib/mapapedidos'
+import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
+import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
 
 const TIPOS = ['serviço', 'compra', 'ajuda', 'carona', 'outro']
 const URGENCIAS = ['baixa', 'normal', 'alta']
@@ -229,6 +231,9 @@ Confirma?`)
     // 👉 chama o serviço: ele pega as coordenadas (centro do mapa → geolocalização),
     // monta no formato correto (local:{lat,lng}) e grava em /pedidos.
     await criarPedido({ draft, mapRef, meuId, meuNome })
+    showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoCriado, {
+      id: CONTEXTUAL_TIP_IDS.pedidoCriado,
+    })
 
     // feedback + fecha a Assistente
     addMsg?.('ia', 'Pedido criado com sucesso! 🎉')

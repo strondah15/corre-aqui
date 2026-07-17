@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { ref, push, set, serverTimestamp } from '@/lib/firebaseDebug'
 import { database } from '@/lib/firebase'
 import { CATEGORIES, getCategoryById } from '@/constants/categories'
+import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
+import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 
 const DRAFT_KEY = 'correAqui:novoPedido:draft:v1'
 
@@ -317,6 +319,10 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
     } catch {}
 
     await set(novo, payload)
+
+    showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoCriado, {
+      id: CONTEXTUAL_TIP_IDS.pedidoCriado,
+    })
 
     try {
       window?.dispatchEvent?.(new CustomEvent('correaqui:pedido-confirmado', {

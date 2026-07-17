@@ -11,6 +11,8 @@ import { auth, database } from '@/lib/firebase'
 import { isOnlineRecente } from '@/lib/presence'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
+import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
+import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
 
 const MapinhaModal = dynamic(() => import('@/components/MapinhaModal'), { ssr: false })
 const LIST_STATE_PREFIX = 'correAqui:listState:v2'
@@ -594,6 +596,10 @@ function PedidoDetalhe() {
       await set(ref(database, `mensagens/${conversaId}/msg_${agora}`), mensagemSistema)
       if (pedido?.criador?.id) await set(ref(database, `usersChats/${pedido.criador.id}/${conversaId}`), true)
       await set(ref(database, `usersChats/${user.uid}/${conversaId}`), true)
+      showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoAceito, {
+        id: CONTEXTUAL_TIP_IDS.pedidoAceito,
+        target: 'aceitar-pedido',
+      })
     } catch (error) {
       console.error('Erro ao aceitar pedido:', error)
       setErro(error?.message || 'Não foi possível aceitar agora.')
@@ -720,6 +726,11 @@ function PedidoDetalhe() {
         })
       }
 
+      showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.atendimentoIniciado, {
+        id: CONTEXTUAL_TIP_IDS.atendimentoIniciado,
+        target: 'progresso',
+      })
+
       router.replace(`/chat/${encodeURIComponent(conversaId)}?voltar=${voltar}`)
     } catch (error) {
       console.error('Erro ao iniciar atendimento:', error)
@@ -813,6 +824,22 @@ function PedidoDetalhe() {
           prioridade: 'alta',
           action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
           notificationId: `notif_${evento}_${agora}`,
+        })
+      }
+      if (nextStatus === ATENDIMENTO_STATUS.CHEGOU) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.cheguei, {
+          id: CONTEXTUAL_TIP_IDS.cheguei,
+          target: 'progresso',
+        })
+      } else if (nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.solicitarConclusao, {
+          id: CONTEXTUAL_TIP_IDS.solicitarConclusao,
+          target: 'confirmacao-final',
+        })
+      } else if (nextStatus === ATENDIMENTO_STATUS.FINALIZADO) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.conclusaoConfirmada, {
+          id: CONTEXTUAL_TIP_IDS.conclusaoConfirmada,
+          evaluationActive: true,
         })
       }
     } catch (error) {

@@ -6,7 +6,11 @@ import { enviarPushParaUsuario } from '@/lib/pushSender'
 import { getCategoryById } from '@/constants/categories'
 import { ATENDIMENTO_STATUS, getAtendimentoStep, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
 import { ref, push, onValue, query, limitToLast, update, serverTimestamp, get, set } from '@/lib/firebaseDebug'
+import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
+import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
 import { motion } from 'framer-motion'
+
+const chatOpenTipSessionKeys = new Set()
 
 function getMsgMs(v) {
   if (!v) return 0
@@ -467,6 +471,19 @@ export default function ChatMensagens({
     )
     return () => off()
   }, [pedidoId])
+
+  useEffect(() => {
+    if (!pedido?.id || !meuId) return
+    const mode = String(pedido?.aceite?.id || '') === String(meuId) ? 'corre' : 'cliente'
+    const tipSessionKey = `${meuId}:${pedido.id}`
+    if (chatOpenTipSessionKeys.has(tipSessionKey)) return
+    chatOpenTipSessionKeys.add(tipSessionKey)
+    showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.chatAberto, {
+      id: CONTEXTUAL_TIP_IDS.chatAberto,
+      mode,
+      target: 'chat',
+    })
+  }, [meuId, pedido?.aceite?.id, pedido?.id])
 
   useEffect(() => {
     if (!pedidoId || !meuId) return undefined
@@ -1110,6 +1127,22 @@ export default function ChatMensagens({
           prioridade: 'alta',
           action: { label: 'Abrir atendimento', screen: 'chat', id: pedidoId },
           notificationId,
+        })
+      }
+      if (nextStatus === ATENDIMENTO_STATUS.CHEGOU) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.cheguei, {
+          id: CONTEXTUAL_TIP_IDS.cheguei,
+          target: 'progresso',
+        })
+      } else if (nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.solicitarConclusao, {
+          id: CONTEXTUAL_TIP_IDS.solicitarConclusao,
+          target: 'confirmacao-final',
+        })
+      } else if (nextStatus === ATENDIMENTO_STATUS.FINALIZADO) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.conclusaoConfirmada, {
+          id: CONTEXTUAL_TIP_IDS.conclusaoConfirmada,
+          evaluationActive: true,
         })
       }
       onToast?.({ type: 'success', title: 'Atendimento atualizado', message: textoEvento })

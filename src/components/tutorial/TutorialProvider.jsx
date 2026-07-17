@@ -7,7 +7,7 @@ import { get, ref, update } from "firebase/database"
 import { onAuthStateChanged } from "firebase/auth"
 import { auth, database } from "@/lib/firebase"
 import { ASSISTANT_TOPICS, TUTORIAL_ACTIONS, TUTORIAL_EVENTS, TUTORIAL_FLOWS, TUTORIAL_KEYS, findStepIndex, getFlowForMode } from "@/lib/tutorial/tutorialConfig"
-import { CONTEXTUAL_TIP_IDS, CONTEXTUAL_TIP_LIST, getContextualTipConfig, resolveContextualTip } from "@/lib/tutorial/contextualTipsConfig"
+import { CONTEXTUAL_TIP_LIST, getContextualTipConfig, resolveContextualTip } from "@/lib/tutorial/contextualTipsConfig"
 
 const TutorialContext = createContext(null)
 const TARGET_TIMEOUT_MS = 2800
@@ -593,11 +593,12 @@ function AssistantHelpCenter({ onClose, onStart, onTopic }) {
   )
 }
 
-function ContextualTip({ tip, rect, onClose, reducedMotion = false }) {
+function ContextualTip({ tip, rect, onClose, onShown, reducedMotion = false }) {
   const closeRef = useRef(null)
   useEffect(() => {
     closeRef.current?.focus?.()
-  }, [])
+    onShown?.(tip)
+  }, [onShown, tip])
 
   if (!tip) return null
   const position = getBubblePosition(rect, tip.placement)
@@ -810,6 +811,11 @@ export function TutorialProvider({ children }) {
     window.setTimeout(() => setContextualQueueTick((tick) => tick + 1), 80)
   }, [])
 
+  useEffect(() => {
+    if (!contextualTip || (!introOpen && !helpOpen && !activeFlow && !completedFlow)) return
+    closeContextualTip()
+  }, [activeFlow, closeContextualTip, completedFlow, contextualTip, helpOpen, introOpen])
+
   const showContextualTip = useCallback((id, options = {}) => {
     const tip = resolveContextualTip(id, options)
     if (!tip || isContextualTipSeen(tip)) return false
@@ -835,6 +841,86 @@ export function TutorialProvider({ children }) {
     if (!key || readLocalFlag(key)) return false
     return showContextualTip(detail.id || detail.key, detail)
   }, [showContextualTip])
+
+  useEffect(() => {
+    if (contextualProcessingRef.current || contextualTip || introOpen || helpOpen || activeFlow || completedFlow) return undefined
+
+    const queued = contextualQueueRef.current.shift()
+    if (!queued) return undefined
+
+    const tip = resolveContextualTip(queued.id, queued.options)
+    if (!tip || isContextualTipSeen(tip)) {
+      window.setTimeout(() => setContextualQueueTick((tick) => tick + 1), 0)
+      return undefined
+    }
+
+    contextualProcessingRef.current = true
+    const controller = new AbortController()
+    contextualAbortRef.current = controller
+    let displayed = false
+    let requeued = false
+
+    const requeueIfNeeded = () => {
+      if (displayed || requeued) return
+      const currentTip = resolveContextualTip(queued.id, queued.options)
+      if (!currentTip || isContextualTipSeen(currentTip)) return
+      if (contextualQueueRef.current.some((item) => item.id === queued.id)) return
+      contextualQueueRef.current.unshift(queued)
+      requeued = true
+      window.setTimeout(() => setContextualQueueTick((tick) => tick + 1), 0)
+    }
+
+    async function showQueuedTip() {
+      let rect = null
+      try {
+        if (tip.target) {
+          const { element } = await waitForTarget(tip.target, {
+            timeoutMs: 1600,
+            signal: controller.signal,
+          })
+
+          if (element && !controller.signal.aborted) {
+            try {
+              element.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" })
+            } catch {
+              element.scrollIntoView()
+            }
+            await sleep(180, controller.signal)
+            rect = controller.signal.aborted ? null : calculateRect(element)
+          }
+        }
+
+        if (controller.signal.aborted) {
+          requeueIfNeeded()
+          return
+        }
+        displayed = true
+        setContextualTip(tip)
+        setContextualTipRect(rect)
+      } finally {
+        contextualProcessingRef.current = false
+        contextualAbortRef.current = null
+      }
+    }
+
+    showQueuedTip()
+
+    return () => {
+      controller.abort()
+      requeueIfNeeded()
+      contextualProcessingRef.current = false
+      if (contextualAbortRef.current === controller) contextualAbortRef.current = null
+    }
+  }, [
+    activeFlow,
+    completedFlow,
+    contextualQueueTick,
+    contextualTip,
+    helpOpen,
+    introOpen,
+    isContextualTipSeen,
+    markContextualTipSeen,
+  ])
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -1107,6 +1193,11 @@ export function TutorialProvider({ children }) {
 
   useEffect(() => {
     const onKey = (event) => {
+      if (contextualTip && event.key === "Escape") {
+        event.preventDefault()
+        closeContextualTip()
+        return
+      }
       if (!introOpen && !helpOpen && !activeFlow) return
       if (event.key === "Escape") {
         event.preventDefault()
@@ -1131,7 +1222,7 @@ export function TutorialProvider({ children }) {
 
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [activeFlow, canAdvanceTutorial, closeAll, finishFlow, helpOpen, introOpen])
+  }, [activeFlow, canAdvanceTutorial, closeAll, closeContextualTip, contextualTip, finishFlow, helpOpen, introOpen])
 
   const value = useMemo(() => ({
     startTutorial,
@@ -1231,7 +1322,16 @@ export function TutorialProvider({ children }) {
 
       <AnimatePresence>
         {contextualTip ? (
-          <ContextualTip tip={contextualTip} onClose={() => setContextualTip(null)} />
+          <>
+            {contextualTipRect ? <SpotlightOverlay rect={contextualTipRect} /> : null}
+            <ContextualTip
+              tip={contextualTip}
+              rect={contextualTipRect}
+              onClose={closeContextualTip}
+              onShown={markContextualTipSeen}
+              reducedMotion={reducedMotion}
+            />
+          </>
         ) : null}
       </AnimatePresence>
     </TutorialContext.Provider>

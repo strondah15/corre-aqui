@@ -31,6 +31,8 @@ import { createPrivateRequest, reconcilePrivateRequestInbox } from '@/lib/privat
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
 import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
 import { TUTORIAL_ACTIONS, TUTORIAL_EVENTS } from '@/lib/tutorial/tutorialConfig'
+import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
+import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
 
 import PerfilDrawer from '@/components/PerfilDrawer'
 import XpToast from '@/components/XpToast'
@@ -2806,6 +2808,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       await set(ref(database, `usersChats/${meuId}/${conversaId}`), true)
 
+      showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoAceito, {
+        id: CONTEXTUAL_TIP_IDS.pedidoAceito,
+        target: 'aceitar-pedido',
+      })
+
       router.replace(`/pedido/${encodeURIComponent(String(p.id))}?voltar=corre&aceito=1`)
       showToast({
         type: 'success',
@@ -2945,6 +2952,27 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       const message = { texto: text, sistema: true, evento: event, criadoEm: agora, hora: agora, autorId: 'sistema', autorNome: 'Sistema' }
       await set(ref(database, `chats/${conversaId}/msg_${event}_${agora}`), message)
       await set(ref(database, `mensagens/${conversaId}/msg_${event}_${agora}`), message).catch(() => {})
+      if (nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.atendimentoIniciado, {
+          id: CONTEXTUAL_TIP_IDS.atendimentoIniciado,
+          target: 'progresso',
+        })
+      } else if (nextStatus === ATENDIMENTO_STATUS.CHEGOU) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.cheguei, {
+          id: CONTEXTUAL_TIP_IDS.cheguei,
+          target: 'progresso',
+        })
+      } else if (nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.solicitarConclusao, {
+          id: CONTEXTUAL_TIP_IDS.solicitarConclusao,
+          target: 'confirmacao-final',
+        })
+      } else if (nextStatus === ATENDIMENTO_STATUS.FINALIZADO) {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.conclusaoConfirmada, {
+          id: CONTEXTUAL_TIP_IDS.conclusaoConfirmada,
+          evaluationActive: true,
+        })
+      }
       showToast({ type: 'success', title: 'Atendimento atualizado', message: text })
     } catch (error) {
       console.error('Erro ao avançar atendimento:', error)
@@ -3085,6 +3113,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         type: 'success',
         title: 'Fechado!',
         message: 'Serviço concluído. Agora avalie como foi a experiência.',
+      })
+
+      showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.conclusaoConfirmada, {
+        id: CONTEXTUAL_TIP_IDS.conclusaoConfirmada,
+        evaluationActive: true,
       })
 
       setConclusaoPedido(null)
@@ -3608,11 +3641,24 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     )
   }
 
-  const abrirPerfilDrawer = useCallback((initialTab = 'config', initialProfSection = '') => {
+  const abrirPerfilDrawer = useCallback((initialTab = 'config', initialProfSection = '', options = {}) => {
     setPerfilInitialTab(initialTab && initialTab !== 'perfil' ? initialTab : 'config')
     setPerfilInitialProfSection(initialProfSection || '')
     setOpenProfileMenu(false)
     setOpenPerfil(true)
+    if (options?.silentContextualTip !== true && initialTab === 'profissional') {
+      if (initialProfSection === 'portfolio') {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.portfolioAberto, {
+          id: CONTEXTUAL_TIP_IDS.portfolioAberto,
+          target: 'portfolio',
+        })
+      } else if (initialProfSection === 'patentes') {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.patentesAbertas, {
+          id: CONTEXTUAL_TIP_IDS.patentesAbertas,
+          target: 'patentes',
+        })
+      }
+    }
   }, [])
 
   const abrirRecursoEmBreve = useCallback((title) => {
@@ -3698,21 +3744,21 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           setModoApp('corre')
           setClientePainelBaixo('')
           setTab('corre')
-          abrirPerfilDrawer('profissional', 'perfilProfissional')
+          abrirPerfilDrawer('profissional', 'perfilProfissional', { silentContextualTip: true })
           break
         case TUTORIAL_ACTIONS.openPortfolio:
           closeTransientTutorialViews()
           setModoApp('corre')
           setClientePainelBaixo('')
           setTab('corre')
-          abrirPerfilDrawer('profissional', 'portfolio')
+          abrirPerfilDrawer('profissional', 'portfolio', { silentContextualTip: true })
           break
         case TUTORIAL_ACTIONS.openPatents:
           closeTransientTutorialViews()
           setModoApp('corre')
           setClientePainelBaixo('')
           setTab('corre')
-          abrirPerfilDrawer('profissional', 'patentes')
+          abrirPerfilDrawer('profissional', 'patentes', { silentContextualTip: true })
           break
         default:
           break
