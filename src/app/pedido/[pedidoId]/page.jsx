@@ -551,13 +551,14 @@ function PedidoDetalhe() {
         })
 
         enviarPushParaUsuario(pedido.criador.id, {
-          tipo: 'corre_aceito',
+          type: 'pedido_aceito',
           pedidoId: pedido.id,
           conversaId,
           titulo: 'Seu corre foi aceito!',
           mensagem: `${nome} aceitou seu pedido. Converse pelo chat.`,
           prioridade: 'alta',
-          acao: 'abrir_chat',
+          action: { label: 'Ver pedido', screen: 'pedido', id: pedido.id },
+          notificationId: `notif_${agora}`,
         })
       }
 
@@ -708,13 +709,14 @@ function PedidoDetalhe() {
 
       if (clienteId) {
         enviarPushParaUsuario(clienteId, {
-          tipo: 'atendimento_iniciado',
+          type: 'atendimento_iniciado',
           pedidoId: pedido.id,
           conversaId,
           titulo: 'Atendimento iniciado',
           mensagem: `${profissionalNome} iniciou seu atendimento.`,
           prioridade: 'alta',
-          acao: 'abrir_chat',
+          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
+          notificationId: `notif_inicio_${agora}`,
         })
       }
 
@@ -803,13 +805,14 @@ function PedidoDetalhe() {
 
       if (destinatario && notificationTitle && notificationMessage) {
         enviarPushParaUsuario(destinatario, {
-          tipo: evento,
+          type: evento,
           pedidoId: pedido.id,
           conversaId,
           titulo: notificationTitle,
           mensagem: notificationMessage,
           prioridade: 'alta',
-          acao: 'abrir_chat',
+          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
+          notificationId: `notif_${evento}_${agora}`,
         })
       }
     } catch (error) {
@@ -1068,6 +1071,7 @@ function PedidoDetalhe() {
             type="button"
             onClick={primaryAction}
             disabled={aceitando || iniciando || transicionando}
+            data-tutorial={podeConfirmarConclusao ? 'confirmacao-final' : podeAceitar ? 'aceitar-pedido' : 'progresso'}
             className={`flex min-w-0 min-h-[48px] flex-row items-center justify-center gap-1.5 rounded-[15px] px-2.5 text-white transition active:scale-[0.99] disabled:opacity-65 lg:min-h-[86px] lg:flex-col lg:gap-0 lg:rounded-[24px] lg:px-6 ${
               (podeIniciarAtendimento || podeMarcarChegada || podeSolicitarFinalizacao || podeConfirmarConclusao)
                 ? 'bg-emerald-500 shadow-[0_14px_34px_rgba(34,197,94,0.28)] lg:shadow-[0_18px_42px_rgba(34,197,94,0.32)]'

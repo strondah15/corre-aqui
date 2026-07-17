@@ -28,9 +28,13 @@ function stringData(payload) {
 }
 
 function getParticipantIds(pedido) {
+  const criador = pedido?.criador || pedido?.cliente || pedido?.creator || {}
+  const aceite = pedido?.aceite || pedido?.profissional || pedido?.worker || {}
+  const firstId = (...values) => values.find((value) => typeof value === 'string' && value.trim()) || ''
+
   return {
-    criadorId: String(pedido?.criador?.id || pedido?.clienteId || '').trim(),
-    aceiteId: String(pedido?.aceite?.id || pedido?.profissionalId || '').trim(),
+    criadorId: String(firstId(criador.id, criador.uid, criador.userId, pedido?.criadorUid, pedido?.clienteId, pedido?.autorUid)).trim(),
+    aceiteId: String(firstId(aceite.id, aceite.uid, aceite.userId, aceite.por, pedido?.profissionalUid, pedido?.destinatarioUid, pedido?.aceitadorUid)).trim(),
   }
 }
 

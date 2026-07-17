@@ -94,7 +94,10 @@ function showCorreNotification(payload = {}) {
     .filter((action) => action.title)
     .slice(0, 2)
 
-  return self.registration.showNotification(title, {
+  return self.registration.getNotifications(tag).then((existing) => {
+    if (existing.length) return null
+
+    return self.registration.showNotification(title, {
     body,
     icon: data.icon || '/corre-aqui-icon-192.png',
     badge: data.badge || '/corre-aqui-icon-192.png',
@@ -117,6 +120,7 @@ function showCorreNotification(payload = {}) {
       actionId: data.actionId || '',
       actions,
     },
+    })
   })
 }
 
@@ -136,6 +140,12 @@ function normalizePushPayload(event) {
         body: data.body || data.message || notification.body || json.body,
         url: data.url || data.click_action || json.fcmOptions?.link || json.link,
         tag: data.tag || notification.tag || json.collapse_key,
+        icon: data.icon || notification.icon || json.icon,
+        badge: data.badge || notification.badge || json.badge,
+        image: data.image || notification.image || json.image,
+        actions: data.actions || notification.actions || json.actions,
+        renotify: data.renotify ?? notification.renotify ?? json.renotify,
+        requireInteraction: data.requireInteraction ?? notification.requireInteraction ?? json.requireInteraction,
       },
     }
   } catch {

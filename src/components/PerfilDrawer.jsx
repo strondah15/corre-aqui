@@ -17,6 +17,7 @@ import PainelPatentes from "./PainelPatentes";
 import Patente, { calcularPatentePorServicos } from "./Patente";
 import { CATEGORIES, getCategoryById } from "@/constants/categories";
 import { normalizeAtendimentoStatus, ATENDIMENTO_STATUS } from "@/lib/atendimento";
+import { openAssistantHelpCenter } from "@/components/tutorial/TutorialProvider";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
   ssr: false,
@@ -491,6 +492,12 @@ function ConfiguracoesOrganizadas({
           </ConfigRow>
           {!pushCanUse && !pushAviso ? null : friendlyPushAviso ? <div className="mx-3 mb-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-800">{friendlyPushAviso}</div> : null}
           {pushSalvando || pushTestando ? <div className="px-3 pb-2 text-xs font-bold text-slate-500">Aguarde um momento...</div> : null}
+        </ConfigSection>
+
+        <ConfigSection id="assistente" title="Assistente Corre Aqui" description="Tutoriais e dicas para usar melhor o app." icon="?" tone="blue" open={sections.assistente} onToggle={onToggleSection}>
+          <ConfigRow icon="?" title="Abrir assistente" description="Refa&ccedil;a tutoriais de Cliente ou Trabalhar e veja dicas r&aacute;pidas." tone="blue" onClick={openAssistantHelpCenter}>
+            <span className="text-xl font-black text-blue-600">&rarr;</span>
+          </ConfigRow>
         </ConfigSection>
 
         <ConfigSection id="privacidade" title="Privacidade e conta" description="Gerencie seus dados e prefer&ecirc;ncias." icon="S" tone="emerald" open={sections.privacidade} onToggle={onToggleSection}>
@@ -1123,6 +1130,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [configSecoesAbertas, setConfigSecoesAbertas] = useState({
     presenca: true,
     notificacoes: false,
+    assistente: false,
     privacidade: false,
     experiencia: false,
   });
@@ -1488,6 +1496,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         const response = await fetch("/api/firebase-config", { cache: "no-store" });
         const data = await response.json().catch(() => ({}));
         const hasVapidKey = Boolean(data.vapidKey);
+        const vapidConfigured = Boolean(data.vapidKeyConfigured && data.vapidKey);
 
         console.log("[PUSH CONFIG]", {
           vapidKeyConfigured: data.vapidKeyConfigured,
@@ -1499,12 +1508,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         setVapidKey(data.vapidKey || "");
         setVapidConfigured(Boolean(data.vapidKeyConfigured && data.vapidKey));
 
-        const supported = suportaNotification && suportaServiceWorker && hasVapidKey;
+        const supported = suportaNotification && suportaServiceWorker && vapidConfigured;
         const reason = !suportaNotification
           ? "Este navegador nao suporta notificacoes web."
           : !suportaServiceWorker
             ? "Service worker indisponivel neste navegador."
-            : !hasVapidKey
+            : !vapidConfigured
               ? "Chave VAPID de notificacoes nao esta configurada no servidor."
               : "";
 
@@ -1513,7 +1522,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           supported,
           permission,
           reason,
-          vapidConfigured: Boolean(data.vapidKeyConfigured && data.vapidKey),
+          vapidConfigured,
           serviceWorkerAvailable: suportaServiceWorker,
         }));
       } catch (error) {
@@ -3881,6 +3890,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                     <button
                       key={id}
                       type="button"
+                      data-tutorial={id === "perfilProfissional" ? "perfil-profissional" : id}
                       onClick={() => {
                         setProfSection(id);
                         if (id === "perfilProfissional") setProfessionalProfileStep("choice");
@@ -3927,7 +3937,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
               )}
 
               {currentProfSection === "perfilProfissional" && (
-                <section className="mx-auto w-full max-w-[430px] rounded-[26px] border border-slate-200 bg-white p-4 text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.16)] md:max-w-[520px] md:rounded-[32px] md:p-5">
+                <section data-tutorial="perfil-profissional" className="mx-auto w-full max-w-[430px] rounded-[26px] border border-slate-200 bg-white p-4 text-slate-950 shadow-[0_24px_70px_rgba(15,23,42,0.16)] md:max-w-[520px] md:rounded-[32px] md:p-5">
                   <div className="flex h-10 items-center justify-between">
                     <button
                       type="button"
@@ -4166,7 +4176,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
               )}
 
               {currentProfSection === "portfolio" && (
-                <section className="overflow-hidden rounded-[26px] border border-blue-950/12 bg-white p-3 shadow-[0_22px_70px_rgba(15,23,42,0.10)] ring-1 ring-blue-950/5 md:rounded-[34px] md:p-5">
+                <section data-tutorial="portfolio" className="overflow-hidden rounded-[26px] border border-blue-950/12 bg-white p-3 shadow-[0_22px_70px_rgba(15,23,42,0.10)] ring-1 ring-blue-950/5 md:rounded-[34px] md:p-5">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
                       <span className="grid h-16 w-20 shrink-0 place-items-center rounded-[22px] border border-blue-100 bg-blue-50 shadow-[0_14px_30px_rgba(37,99,235,0.14)]">

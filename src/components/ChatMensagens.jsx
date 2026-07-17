@@ -663,13 +663,14 @@ export default function ChatMensagens({
       }).catch(() => {})
 
       enviarPushParaUsuario(outroId, {
-        tipo: 'mensagem_chat',
+        type: 'nova_mensagem',
         pedidoId,
         conversaId: pedidoId,
         titulo: `Nova mensagem de ${nomeMeu}`,
         mensagem: preview,
         prioridade: 'normal',
-        acao: 'abrir_chat',
+        action: { label: 'Abrir conversa', screen: 'chat', id: pedidoId },
+        notificationId: `notif_${agora}`,
       })
     }
   }
@@ -860,13 +861,14 @@ export default function ChatMensagens({
       await registrarMensagemSistema(systemMessage, 'chamar_atencao')
 
       enviarPushParaUsuario(outroId, {
-        tipo: 'chamar_atencao_chat',
+        type: 'chamar_atencao_chat',
         pedidoId,
         conversaId: pedidoId,
         titulo,
         mensagem,
         prioridade: 'alta',
-        acao: 'abrir_chat',
+        action: { label: 'Abrir conversa', screen: 'chat', id: pedidoId },
+        notificationId,
       })
 
       onToast?.({ type: 'success', title: 'Aviso enviado', message: `${outroNome} recebeu um alerta para abrir a conversa.` })
@@ -986,13 +988,14 @@ export default function ChatMensagens({
         })
 
         enviarPushParaUsuario(outroId, {
-          tipo: 'atendimento_finalizado',
+          type: 'atendimento_finalizado',
           pedidoId,
           conversaId: pedidoId,
           titulo: 'Atendimento finalizado',
           mensagem,
           prioridade: 'alta',
-          acao: 'avaliar_pedido',
+          action: { label: 'Avaliar atendimento', screen: 'myOrders', id: pedidoId },
+          notificationId: `notif_finalizado_${agora}`,
         })
       }
 
@@ -1099,13 +1102,14 @@ export default function ChatMensagens({
       await update(ref(database), updates)
       if (outroId) {
         enviarPushParaUsuario(outroId, {
-          tipo: evento,
+          type: evento,
           pedidoId,
           conversaId: pedidoId,
           titulo: nextStatus === ATENDIMENTO_STATUS.CHEGOU ? 'Profissional chegou' : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO ? 'Finalização solicitada' : 'Atendimento concluído',
           mensagem: textoEvento,
           prioridade: 'alta',
-          acao: 'abrir_chat',
+          action: { label: 'Abrir atendimento', screen: 'chat', id: pedidoId },
+          notificationId,
         })
       }
       onToast?.({ type: 'success', title: 'Atendimento atualizado', message: textoEvento })
@@ -1186,7 +1190,7 @@ export default function ChatMensagens({
   const nomeServicoCurto = pedidoTituloChat.length > 46 ? `${pedidoTituloChat.slice(0, 46).trim()}...` : pedidoTituloChat
 
   return (
-    <div className={containerClass}>
+    <div className={containerClass} data-tutorial="chat">
       <div className="shrink-0 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.20),transparent_32%),linear-gradient(180deg,#061322,#020915)] px-2.5 pb-1.5 pt-[max(0.35rem,env(safe-area-inset-top))] sm:px-5 sm:pb-4 sm:pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex h-[44px] items-center gap-1.5 sm:h-[76px] sm:gap-3">
           <button
@@ -1345,7 +1349,7 @@ export default function ChatMensagens({
         </div>
       </div>
 
-      <div className="shrink-0 bg-[#020915] px-2.5 pb-2 sm:px-5 sm:pb-3">
+      <div className="shrink-0 bg-[#020915] px-2.5 pb-2 sm:px-5 sm:pb-3" data-tutorial="progresso">
         <div className="mx-auto rounded-[18px] border border-white/10 bg-[#0a1522] px-3 py-3 shadow-[0_12px_28px_rgba(0,0,0,0.18)] sm:rounded-[22px] sm:px-5 sm:py-4">
           <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 sm:text-xs">Progresso do atendimento</div>
           <div className="relative">

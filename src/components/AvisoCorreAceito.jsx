@@ -61,32 +61,6 @@ function saveFechado(meuId, marker) {
   } catch {}
 }
 
-async function pedirPermissaoNotificacao() {
-  if (typeof window === 'undefined') return false
-  if (!('Notification' in window)) return false
-  if (Notification.permission === 'granted') return true
-  if (Notification.permission === 'denied') return false
-  return (await Notification.requestPermission()) === 'granted'
-}
-
-async function notificarNoTelefone({ title, body, tag }) {
-  try {
-    if (typeof window === 'undefined') return false
-    if (!('Notification' in window)) return false
-    if (Notification.permission !== 'granted') return false
-
-    new Notification(title, {
-      body,
-      tag,
-      icon: '/corre-aqui-icon-192.png',
-      badge: '/corre-aqui-icon-192.png',
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
 function tocarAlertaAceite() {
   try {
     if (typeof window === 'undefined') return
@@ -133,16 +107,7 @@ export default function AvisoCorreAceito({
 }) {
   const [fechados, setFechados] = useState({})
   const [ultimoToast, setUltimoToast] = useState('')
-  const [permStatus, setPermStatus] = useState('default')
   const notificadosRef = useRef(new Set())
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      setPermStatus('unsupported')
-      return
-    }
-    setPermStatus(Notification.permission || 'default')
-  }, [])
 
   useEffect(() => {
     notificadosRef.current = new Set()
@@ -213,27 +178,12 @@ export default function AvisoCorreAceito({
     tocarAlertaAceite()
     vibrarAceite()
 
-    notificarNoTelefone({
-      title: 'Pedido aceito',
-      body: `${pedidoAceito?.aceite?.nome || 'Alguém'} aceitou: ${pedidoAceito?.titulo || 'Corre aqui'} · ${horarioAceite}`,
-      tag: `corre-aceito-${pedidoAceito?.id || markerAtual}`,
-    })
   }, [pedidoAceito, markerAtual, ultimoToast, showToast])
 
   const fechar = () => {
     if (!markerAtual) return
     saveFechado(meuId, markerAtual)
     setFechados((prev) => ({ ...prev, [markerAtual]: true }))
-  }
-
-  const ativarAlertas = async () => {
-    const ok = await pedirPermissaoNotificacao()
-    setPermStatus(ok ? 'granted' : (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'))
-    showToast?.({
-      type: ok ? 'success' : 'info',
-      title: ok ? 'Alertas ativados' : 'Alertas não ativados',
-      message: ok ? 'Você receberá avisos quando houver aceite e mensagens.' : 'Seu navegador não liberou notificações agora.',
-    })
   }
 
   if (!pedidoAceito || !markerAtual) return null
@@ -284,15 +234,6 @@ export default function AvisoCorreAceito({
                 </div>
               </div>
 
-              {permStatus === 'default' ? (
-                <button
-                  type="button"
-                  onClick={ativarAlertas}
-                  className="mt-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-black text-blue-700 transition hover:bg-blue-100 md:mt-3 md:text-xs"
-                >
-                  Ativar alertas do navegador
-                </button>
-              ) : null}
             </div>
 
             <button

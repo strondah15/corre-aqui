@@ -3,6 +3,7 @@
 import { get, push, ref, remove, serverTimestamp, set, update } from './firebaseDebug'
 import { auth } from './firebase'
 import { enviarPushParaUsuario } from './pushSender'
+import { buildPushPayload } from './pushPayload'
 
 function safeStr(value) {
   return String(value || '').trim()
@@ -145,9 +146,29 @@ export async function createBilateralNotification(database, options) {
 
   const id = safeId(notificationOptions.id || `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
   const payload = makeNotification({ ...notificationOptions, id, toUid })
+  const push = buildPushPayload({
+    type: payload.tipo,
+    title: payload.titulo,
+    body: payload.mensagem,
+    pedidoId: payload.pedidoId,
+    privateRequestId: payload.privateRequestId,
+    servicoId: payload.servicoId,
+    fromUid: payload.fromUid,
+    toUid: payload.toUid,
+    action: payload.action,
+    notificationId: id,
+    criadoEm: payload.criadoEm,
+  })
+  const storedPayload = removeUndefined({
+    ...payload,
+    url: push.url,
+    tag: push.tag,
+    createdAt: payload.criadoEm,
+    read: false,
+  })
   const updates = {
-    [`notifications/${toUid}/${id}`]: payload,
-    [`notificacoes/${toUid}/${id}`]: payload,
+    [`notifications/${toUid}/${id}`]: storedPayload,
+    [`notificacoes/${toUid}/${id}`]: storedPayload,
   }
 
   await updateWithTrace(database, updates, {
@@ -160,7 +181,7 @@ export async function createBilateralNotification(database, options) {
       destinatarioUid: toUid,
     },
   })
-  return payload
+  return storedPayload
 }
 
 function requestSummary(request) {

@@ -94,6 +94,7 @@ export default function BottomBar({
         whileTap={{ scale: 0.96 }}
         onClick={() => onTab?.(item.id)}
         title={item.label}
+        data-tutorial={item.id === 'inbox' ? 'chat' : item.id}
         className={[
           'relative flex h-12 min-w-0 flex-1 flex-col items-center justify-center rounded-2xl text-[9px] font-black transition-all duration-200 active:scale-[0.96] md:h-[52px] md:text-[10px]',
           selected

@@ -7,6 +7,8 @@ import Mapadinamico from '@/components/Mapadinamico'
 import PerfilDrawer from '@/components/PerfilDrawer'
 import { auth } from '@/lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
+import { promptClientTutorialIntro, promptWorkerTutorialIntro } from '@/components/tutorial/TutorialProvider'
+import { TUTORIAL_KEYS } from '@/lib/tutorial/tutorialConfig'
 
 const modes = {
   cliente: {
@@ -25,6 +27,28 @@ const modes = {
 
 const LIST_STATE_PREFIX = 'correAqui:listState:v2'
 const LIST_RETURN_FLAG = 'correAqui:returningToList'
+
+function deveMostrarIntroCliente() {
+  try {
+    return (
+      localStorage.getItem(TUTORIAL_KEYS.cliente) !== 'true' &&
+      localStorage.getItem(TUTORIAL_KEYS.clientePulado) !== 'true'
+    )
+  } catch {
+    return false
+  }
+}
+
+function deveMostrarIntroTrabalhar() {
+  try {
+    return (
+      localStorage.getItem(TUTORIAL_KEYS.trabalhar) !== 'true' &&
+      localStorage.getItem(TUTORIAL_KEYS.trabalharPulado) !== 'true'
+    )
+  } catch {
+    return false
+  }
+}
 
 function PinArtwork({ isClient }) {
   return (
@@ -59,13 +83,14 @@ function PinArtwork({ isClient }) {
   )
 }
 
-function ModeCard({ id, mode, selected, onSelect }) {
+function ModeCard({ id, mode, selected, onSelect, tutorialTarget }) {
   const isClient = mode.accent === 'violet'
 
   return (
     <motion.button
       type="button"
       onClick={() => onSelect(id)}
+      data-tutorial={tutorialTarget || undefined}
       whileHover={{ y: -4 }}
       whileTap={{ scale: 0.98 }}
       className={[
@@ -162,6 +187,21 @@ export default function ModoGate() {
       localStorage.setItem('modoApp', mode)
     } catch {}
     setSelectedMode(mode)
+
+    if (mode === 'cliente' && deveMostrarIntroCliente()) {
+      promptClientTutorialIntro({
+        onLater: () => setStage('app'),
+      })
+      return
+    }
+
+    if (mode === 'corre' && deveMostrarIntroTrabalhar()) {
+      promptWorkerTutorialIntro({
+        onLater: () => setStage('app'),
+      })
+      return
+    }
+
     setStage('app')
   }
 
@@ -204,9 +244,16 @@ export default function ModoGate() {
           <p className="mt-1.5 text-[13px] font-semibold text-slate-600 sm:mt-3 sm:text-base">Escolha uma op&ccedil;&atilde;o para continuar</p>
         </header>
 
-        <section className="mt-2.5 grid grid-cols-2 gap-2 sm:mt-9 sm:gap-5" aria-label="Escolha como usar o Corre Aqui">
+        <section data-tutorial="modo" className="mt-2.5 grid grid-cols-2 gap-2 sm:mt-9 sm:gap-5" aria-label="Escolha como usar o Corre Aqui">
           {Object.entries(modes).map(([id, mode]) => (
-            <ModeCard key={id} id={id} mode={mode} selected={selectedMode === id} onSelect={continuar} />
+            <ModeCard
+              key={id}
+              id={id}
+              mode={mode}
+              selected={selectedMode === id}
+              onSelect={continuar}
+              tutorialTarget={id === 'corre' ? 'modo-trabalhar' : undefined}
+            />
           ))}
         </section>
 
@@ -228,6 +275,7 @@ export default function ModoGate() {
         <button
           type="button"
           onClick={() => setOpenPerfilGlobal(true)}
+          data-tutorial="perfil"
           className="mx-auto mt-1.5 flex min-h-10 w-full max-w-[260px] items-center justify-center gap-2 rounded-[16px] border border-white/90 bg-white/55 px-5 text-sm font-black text-[#102451] shadow-[0_10px_24px_rgba(80,83,160,0.08)] backdrop-blur-xl transition hover:bg-white/80 active:scale-[0.98] sm:mt-4 sm:min-h-12 sm:rounded-[18px] sm:text-sm"
         >
           <span className="grid h-7 w-7 place-items-center rounded-full bg-[#102451] text-xs text-white" aria-hidden="true">&#9881;</span>

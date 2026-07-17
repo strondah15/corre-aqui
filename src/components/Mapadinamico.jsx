@@ -11,7 +11,6 @@ import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 
 import { auth, database } from '@/lib/firebase'
-import { onForegroundPush } from '@/lib/pushNotifications'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
@@ -31,6 +30,7 @@ import { getOnlineTimestamp, getUserOnlinePreference, isOnlineRecente, setUserOn
 import { createPrivateRequest, reconcilePrivateRequestInbox } from '@/lib/privateRequests'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
 import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
+import { TUTORIAL_ACTIONS, TUTORIAL_EVENTS } from '@/lib/tutorial/tutorialConfig'
 
 import PerfilDrawer from '@/components/PerfilDrawer'
 import XpToast from '@/components/XpToast'
@@ -515,27 +515,6 @@ const formatDataHora = (v) => {
     year: '2-digit',
   }) + ` às ${hora}`
 }
-
-const notificarTelefone = async ({ title, body, tag }) => {
-  try {
-    if (typeof window === 'undefined') return false
-    if (!('Notification' in window)) return false
-    if (Notification.permission !== 'granted') return false
-
-    new Notification(title || 'Corre Aqui', {
-      body: body || '',
-      tag: tag || `corre-aqui-${Date.now()}`,
-      icon: '/corre-aqui-icon-192.png',
-      badge: '/corre-aqui-icon-192.png',
-    })
-
-    return true
-  } catch (e) {
-    console.warn('Falha ao notificar no telefone/navegador:', e)
-    return false
-  }
-}
-
 
 async function aplicarImpulsionarNoPedido({ pedido, level, meuId, meuNome }) {
   if (!pedido?.id || !meuId) return
@@ -1204,6 +1183,8 @@ function GlobalProfileFab({ fotoURL, avatarEmoji, iniciais, count = 0, onClick, 
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       title="Abrir menu da conta"
+      data-tutorial="perfil"
+      data-tutorial-alt="perfil-profissional"
       style={style}
       className={[
         'fixed z-[99981] grid h-14 w-14 touch-none place-items-center rounded-full border-[5px] border-white bg-[#ffd91a] text-blue-950 shadow-[0_18px_42px_rgba(15,23,42,0.28),0_0_34px_rgba(250,204,21,0.35)] transition-[box-shadow,transform] hover:scale-[1.03] active:scale-[0.96] md:h-[62px] md:w-[62px]',
@@ -1417,7 +1398,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [agendaClienteUser, setAgendaClienteUser] = useState(null)
   const [agendaClienteService, setAgendaClienteService] = useState(null)
   const [privateRequests, setPrivateRequests] = useState([])
-  const [notifPermission, setNotifPermission] = useState('default')
   const notificacoesInicializadasRef = useRef(false)
   const notificacoesVistasRef = useRef(new Set())
   const recompensasEmCursoRef = useRef(new Set())
@@ -1681,41 +1661,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [openPerfil, meuId, meuUserProfile, usersObj])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!('Notification' in window)) {
-      setNotifPermission('unsupported')
-      return
-    }
-    setNotifPermission(Notification.permission || 'default')
-  }, [])
-
-  useEffect(() => {
-    let active = true
-    let unsubscribe = () => {}
-
-    onForegroundPush((payload) => {
-      const notification = payload?.notification || {}
-      const data = payload?.data || {}
-      showToast({
-        type: 'info',
-        title: notification.title || data.title || 'Corre Aqui',
-        message: notification.body || data.body || data.message || 'Você tem uma nova atualização.',
-      })
-    }).then((off) => {
-      if (!active) {
-        off?.()
-        return
-      }
-      unsubscribe = off || (() => {})
-    })
-
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [showToast])
-
-  useEffect(() => {
     notificacoesInicializadasRef.current = false
     notificacoesVistasRef.current = new Set()
   }, [meuId])
@@ -1761,17 +1706,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       notificacoesVistasRef.current.add(nova.id)
 
-      showToast({
-        type: nova.tipo === 'mensagem_chat' ? 'info' : 'success',
-        title: nova.titulo || 'Nova notificação',
-        message: nova.mensagem || 'Você tem uma atualização no Corre Aqui.',
-      })
-
-      notificarTelefone({
-        title: nova.titulo || 'Corre Aqui',
-        body: nova.mensagem || '',
-        tag: `corre-aqui-${nova.id}`,
-      })
     }
 
     const offLegacy = onValue(query(ref(database, `notificacoes/${meuId}`), limitToLast(20)), (snap) => {
@@ -1788,7 +1722,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       offLegacy()
       offModern()
     }
-  }, [meuId, showToast, meuUserProfile])
+  }, [meuId, meuUserProfile])
 
   /* =======================
      modoApp (prioriza initialMode)
@@ -2821,13 +2755,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         })
 
         enviarPushParaUsuario(p.criador.id, {
-          tipo: 'corre_aceito',
+          type: 'pedido_aceito',
           pedidoId: p.id,
           conversaId,
           titulo: 'Seu corre foi aceito!',
           mensagem: `${meuNome || 'Alguem'} aceitou seu pedido. Converse pelo chat.`,
           prioridade: 'alta',
-          acao: 'abrir_chat',
+          action: { label: 'Ver pedido', screen: 'pedido', id: p.id },
+          notificationId: `notif_${agora}`,
         })
       }
 
@@ -3109,13 +3044,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         })
 
         enviarPushParaUsuario(aceitadorId, {
-          tipo: 'servico_concluido',
+          type: 'atendimento_finalizado',
           pedidoId: p.id,
           conversaId: p?.conversaId || p.id,
           titulo: 'Servico confirmado',
           mensagem: `${meuNome || 'Cliente'} confirmou a conclusao: ${p.titulo || 'Corre aqui'}`,
           prioridade: 'media',
-          acao: 'abrir_chat',
+          action: { label: 'Ver atendimento', screen: 'chat', id: p.id },
+          notificationId: `notif_concluido_${concluidoAgora}`,
         })
       }
 
@@ -3227,13 +3163,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         })
 
         enviarPushParaUsuario(avaliadoId, {
-          tipo: 'avaliacao_recebida',
+          type: 'avaliacao_recebida',
           pedidoId: p.id,
           conversaId: p?.conversaId || p.id,
           titulo: 'Você recebeu uma avaliação',
           mensagem: `Nota ${nota.toFixed(1)} em ${p.titulo || 'Corre aqui'}.`,
           prioridade: 'media',
-          acao: 'ver_historico',
+          action: { label: 'Ver historico', screen: 'myOrders', id: p.id },
+          notificationId: `notif_avaliacao_${agora}`,
         })
       }
 
@@ -3701,6 +3638,90 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     setClientePainelBaixo('')
     setChatPedido(null)
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const closeTransientTutorialViews = () => {
+      setOpenProfileMenu(false)
+      setOpenPerfil(false)
+      setOpenIA(false)
+      setOpenMapaAoVivo(false)
+      setMapItem(null)
+      setUsuarioSelecionado(null)
+      setAgendaClienteUser(null)
+      setAgendaClienteService(null)
+      setOpenProfissionaisLateral(false)
+      setOpenCorresLateral(false)
+      setChatPedido(null)
+    }
+
+    const showClientBase = () => {
+      closeTransientTutorialViews()
+      setModoApp('cliente')
+      setTab('corre')
+      setClientePainelBaixo('')
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
+    }
+
+    const showWorkerBase = () => {
+      closeTransientTutorialViews()
+      setModoApp('corre')
+      setTab('corre')
+      setFiltro('abertos')
+      setCategoriaFiltro('todas')
+      setClientePainelBaixo('')
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }))
+    }
+
+    const onTutorialAction = (event) => {
+      const action = event?.detail?.action
+      if (!action) return
+
+      switch (action) {
+        case TUTORIAL_ACTIONS.cleanupTutorialViews:
+          closeTransientTutorialViews()
+          break
+        case TUTORIAL_ACTIONS.showClientHome:
+        case TUTORIAL_ACTIONS.showClientProfessionals:
+        case TUTORIAL_ACTIONS.showClientChatAccess:
+        case TUTORIAL_ACTIONS.showClientProfileAccess:
+          showClientBase()
+          break
+        case TUTORIAL_ACTIONS.showWorkerOrders:
+        case TUTORIAL_ACTIONS.showWorkerCategories:
+        case TUTORIAL_ACTIONS.showWorkerChatAccess:
+          showWorkerBase()
+          break
+        case TUTORIAL_ACTIONS.openProfessionalProfile:
+          closeTransientTutorialViews()
+          setModoApp('corre')
+          setClientePainelBaixo('')
+          setTab('corre')
+          abrirPerfilDrawer('profissional', 'perfilProfissional')
+          break
+        case TUTORIAL_ACTIONS.openPortfolio:
+          closeTransientTutorialViews()
+          setModoApp('corre')
+          setClientePainelBaixo('')
+          setTab('corre')
+          abrirPerfilDrawer('profissional', 'portfolio')
+          break
+        case TUTORIAL_ACTIONS.openPatents:
+          closeTransientTutorialViews()
+          setModoApp('corre')
+          setClientePainelBaixo('')
+          setTab('corre')
+          abrirPerfilDrawer('profissional', 'patentes')
+          break
+        default:
+          break
+      }
+    }
+
+    window.addEventListener(TUTORIAL_EVENTS.action, onTutorialAction)
+    return () => window.removeEventListener(TUTORIAL_EVENTS.action, onTutorialAction)
+  }, [abrirPerfilDrawer])
 
   const onBottomTab = (id) => {
     if (id === 'inicio') {
@@ -4241,7 +4262,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             {/* Painel de filtros do Corre */}
             <div className="mb-3 md:mb-8">
               <div>
-                <div className="flex gap-1.5 overflow-x-auto pt-1.5 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] md:mt-6 md:gap-2 md:pt-2 [&::-webkit-scrollbar]:hidden">
+                <div data-tutorial="categorias" className="flex gap-1.5 overflow-x-auto pt-1.5 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] md:mt-6 md:gap-2 md:pt-2 [&::-webkit-scrollbar]:hidden">
                   {[{ id: 'todas', label: 'Todos', emoji: '✨', accent: '#0f172a', soft: '#eaf2ff' }, ...(CATEGORIES || [])].map((cat) => {
                     const ativo = categoriaFiltro === cat.id
                     const totalCategoria = categoriaPedidosCount[cat.id] || 0
@@ -4363,7 +4384,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 items-stretch gap-2.5 pb-44 md:gap-3 md:pb-28 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 sm:pb-40">
+            <div data-tutorial="lista-pedidos" className="grid grid-cols-1 items-stretch gap-2.5 pb-44 md:gap-3 md:pb-28 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 sm:pb-40">
               {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
                 <div className="rounded-[24px] bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">
                   Nenhum trabalho para mostrar agora.
@@ -4515,6 +4536,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </div>
                         {status === 'aberto' && !cardAberto ? (
                           <button
+                            data-tutorial="aceitar-pedido"
                             className="rounded-[10px] px-3.5 py-1.5 text-[11px] font-black text-white shadow-[0_12px_22px_rgba(15,23,42,0.16)] transition hover:brightness-105 disabled:opacity-60 md:text-xs"
                             style={{ backgroundColor: pedidoTheme.accent }}
                             onClick={(event) => {
@@ -4755,6 +4777,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                       {status === 'aberto' && (
                         <button
+                          data-tutorial="aceitar-pedido"
                           className={`${btnPrimary} disabled:opacity-60`}
                           onClick={() => aceitarCorre(p)}
                           disabled={aceitandoId === p.id}
@@ -5104,6 +5127,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               type="button"
               onClick={() => setOpenIA(true)}
               title="Novo pedido"
+              data-tutorial="criar-pedido"
             className="-mt-8 grid h-[72px] w-[72px] shrink-0 place-items-center rounded-full border-[6px] border-white bg-[#ffd91a] text-blue-950 shadow-[0_18px_38px_rgba(250,204,21,0.34)] transition active:scale-[0.96] md:-mt-[72px] md:h-[116px] md:w-[116px] md:border-[8px] md:border-white"
             >
               <span className="flex flex-col items-center leading-none">
@@ -5116,6 +5140,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               type="button"
               onClick={() => setClientePainelBaixo('conversas')}
               title="Conversas"
+              data-tutorial="chat"
               className={[
                 'relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black transition-all duration-200 active:scale-[0.96] md:h-[104px] md:rounded-[30px] md:text-[20px]',
                 clientePainelBaixo === 'conversas' || clientePainelBaixo === 'chat'

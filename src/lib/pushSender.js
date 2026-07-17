@@ -1,6 +1,7 @@
 'use client'
 
 import { auth } from '@/lib/firebase'
+import { buildPushPayload } from '@/lib/pushPayload'
 
 export async function enviarPushParaUsuario(toUid, payload = {}) {
   try {
@@ -13,13 +14,24 @@ export async function enviarPushParaUsuario(toUid, payload = {}) {
     }
 
     const idToken = await currentUser.getIdToken()
+    const normalized = buildPushPayload({ ...payload, toUid })
     const response = await fetch('/api/push/send', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${idToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ ...payload, toUid }),
+      body: JSON.stringify({
+        ...payload,
+        ...normalized,
+        toUid,
+        type: normalized.type,
+        title: normalized.title,
+        body: normalized.body,
+        url: normalized.url,
+        action: normalized.action,
+        actions: normalized.actions,
+      }),
     })
     const data = await response.json().catch(() => ({}))
 

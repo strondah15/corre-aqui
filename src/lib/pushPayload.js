@@ -14,6 +14,33 @@ const ROUTE_BY_SCREEN = {
   notifications: '/',
 }
 
+const TYPE_ALIASES = {
+  corre_aceito: 'pedido_aceito',
+  mensagem_chat: 'nova_mensagem',
+  servico_concluido: 'atendimento_finalizado',
+  pedido_direto_criado: 'solicitacao_privada',
+  agendamento_criado: 'agendamento_solicitado',
+  atendimento_chegou: 'profissional_chegou',
+}
+
+const SCREEN_BY_TYPE = {
+  pedido_aceito: 'pedido',
+  nova_mensagem: 'chat',
+  solicitacao_privada: 'agenda',
+  agendamento_solicitado: 'agenda',
+  agendamento_aceito: 'myorders',
+  agendamento_recusado: 'portfolio',
+  atendimento_iniciado: 'chat',
+  profissional_chegou: 'chat',
+  finalizacao_solicitada: 'chat',
+  atendimento_finalizado: 'chat',
+  pedido_cancelado: 'myorders',
+  avaliacao_recebida: 'myorders',
+  servico_portfolio_solicitado: 'agenda',
+  denuncia_atualizada: 'notifications',
+  plano_ativado: 'notifications',
+}
+
 const ACTION_LABELS = {
   agenda: 'Ver agenda',
   myorders: 'Ver pedidos',
@@ -27,9 +54,30 @@ const ACTION_LABELS = {
   notifications: 'Abrir notificacoes',
 }
 
+const ACTION_LABELS_BY_TYPE = {
+  pedido_aceito: 'Ver pedido',
+  nova_mensagem: 'Abrir conversa',
+  solicitacao_privada: 'Ver pedido',
+  agendamento_solicitado: 'Ver agenda',
+  agendamento_aceito: 'Ver pedido',
+  agendamento_recusado: 'Procurar outro profissional',
+  atendimento_iniciado: 'Abrir atendimento',
+  profissional_chegou: 'Abrir atendimento',
+  finalizacao_solicitada: 'Abrir atendimento',
+  atendimento_finalizado: 'Ver atendimento',
+  pedido_cancelado: 'Ver pedido',
+  avaliacao_recebida: 'Ver historico',
+  servico_portfolio_solicitado: 'Ver agenda',
+}
+
 function clean(value, fallback = '', max = 180) {
   const text = String(value ?? fallback).trim()
   return text.slice(0, max)
+}
+
+function normalizeType(value) {
+  const type = clean(value, 'notification', 80).toLowerCase()
+  return TYPE_ALIASES[type] || type
 }
 
 function safePath(value) {
@@ -46,14 +94,14 @@ function idFrom(input = {}) {
   return clean(input.pedidoId || input.privateRequestId || input.conversaId || input.action?.id, '')
 }
 
-function inferScreen(input = {}) {
+function inferScreen(input = {}, type = normalizeType(input.type || input.tipo)) {
   const action = clean(input.acao || input.actionType, '').toLowerCase()
   if (action === 'abrir_chat') return 'chat'
   if (action === 'abrir_pedido') return 'pedido'
   if (action === 'avaliar_pedido' || action === 'ver_historico') return 'ver_historico'
   if (action === 'ver_agenda') return 'agenda'
   if (action === 'ver_portfolio') return 'portfolio'
-  return 'notifications'
+  return SCREEN_BY_TYPE[type] || 'notifications'
 }
 
 export function resolvePushRoute(input = {}) {
@@ -63,7 +111,7 @@ export function resolvePushRoute(input = {}) {
   const id = idFrom(input)
   const screen = clean(input.action?.screen || input.screen, '').toLowerCase()
   const action = clean(input.acao || input.actionType, '').toLowerCase()
-  const selectedScreen = screen || (action === 'abrir_chat' ? 'chat' : '')
+  const selectedScreen = screen || (action === 'abrir_chat' ? 'chat' : inferScreen(input))
   const base = ROUTE_BY_SCREEN[selectedScreen] || '/'
 
   if (!id) return base
@@ -77,10 +125,11 @@ export function resolvePushRoute(input = {}) {
 }
 
 export function defaultPushAction(input = {}) {
-  const inferredScreen = inferScreen(input)
+  const type = normalizeType(input.type || input.tipo)
+  const inferredScreen = inferScreen(input, type)
   const screen = clean(input.action?.screen || input.screen, inferredScreen).toLowerCase()
   return {
-    label: clean(input.action?.label || input.actionLabel, ACTION_LABELS[screen] || 'Abrir notificacao', 40),
+    label: clean(input.action?.label || input.actionLabel, ACTION_LABELS_BY_TYPE[type] || ACTION_LABELS[screen] || 'Abrir notificacao', 40),
     screen,
     id: idFrom(input),
   }
@@ -107,7 +156,7 @@ function normalizeActions(input, action, url) {
 }
 
 export function buildPushPayload(input = {}) {
-  const type = clean(input.type || input.tipo, 'notification', 80)
+  const type = normalizeType(input.type || input.tipo)
   const title = clean(input.title || input.titulo, 'Corre Aqui', 80)
   const body = clean(input.body || input.mensagem || input.message, 'Voce tem uma nova atualizacao.', 220)
   const pedidoId = clean(input.pedidoId || input.privateRequestId, '', 128)
@@ -148,6 +197,10 @@ export function buildPushPayload(input = {}) {
       timestamp,
       origem: 'push',
       eventId,
+      tag,
+      actionLabel: action.label,
+      actionScreen: action.screen,
+      actionId: action.id,
     },
   }
 }

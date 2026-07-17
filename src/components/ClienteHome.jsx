@@ -992,7 +992,7 @@ export default function ClienteHome({
     ) : null}
 
     <div className="-mx-2.5 -mt-2 min-h-[calc(100dvh-4rem)] overflow-hidden bg-white pb-24 text-slate-950 md:mx-auto md:mt-0 md:min-h-0 md:w-full md:max-w-[1024px] md:rounded-[40px] md:pb-8 md:shadow-[0_24px_90px_rgba(0,0,0,0.18)]">
-      <div className="relative min-h-[405px] overflow-hidden bg-[#f8fbff] px-4 pb-6 pt-5 md:min-h-[820px] md:px-[52px] md:pb-0 md:pt-8">
+      <div data-tutorial="mapa" className="relative min-h-[405px] overflow-hidden bg-[#f8fbff] px-4 pb-6 pt-5 md:min-h-[820px] md:px-[52px] md:pb-0 md:pt-8">
         <ClienteMapBackdrop />
 
         <div className="relative mt-3 flex items-center justify-between gap-1.5 md:mt-14 md:gap-5">
@@ -1122,7 +1122,7 @@ export default function ClienteHome({
           })}
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-3 md:mt-10 md:gap-8">
+        <div data-tutorial="profissionais" className="mt-5 grid grid-cols-2 gap-3 md:mt-10 md:gap-8">
           <button
             type="button"
             onClick={() => setModo('corre')}
@@ -1185,7 +1185,7 @@ export default function ClienteHome({
         </section>
 
         {portfolioServices.length ? (
-          <section className="mt-7 md:mt-10">
+          <section data-tutorial="portfolio" className="mt-7 md:mt-10">
             <div className="flex items-end justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Serviços do portfólio</h2>
@@ -1211,7 +1211,7 @@ export default function ClienteHome({
           </section>
         ) : null}
 
-        <section className="mt-6 md:mt-10">
+        <section data-tutorial="profissionais" className="mt-6 md:mt-10">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Profissionais e Corres</h2>

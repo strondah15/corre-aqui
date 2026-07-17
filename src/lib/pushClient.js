@@ -5,10 +5,9 @@ import { ref, serverTimestamp, update, remove } from './firebaseDebug'
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 
 export const MESSAGING_SW_PATH = '/firebase-messaging-sw.js'
-const BUILD_VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || ''
 const TOKEN_KEY_STORAGE = 'correAqui:pushTokenKey'
-let resolvedVapidKey = BUILD_VAPID_KEY
-let resolvedVapidKeyPromise = null
+let resolvedVapidConfig = null
+let resolvedVapidConfigPromise = null
 
 function tokenKey(token) {
   return String(token || '')
@@ -47,26 +46,33 @@ function clearLocalTokenKey(uid) {
   } catch {}
 }
 
-async function getVapidKey() {
-  if (resolvedVapidKey) return resolvedVapidKey
-  if (typeof window === 'undefined') return ''
+async function getVapidConfig() {
+  if (resolvedVapidConfig) return resolvedVapidConfig
+  if (typeof window === 'undefined') return { key: '', configured: false }
 
-  if (!resolvedVapidKeyPromise) {
-    resolvedVapidKeyPromise = fetch('/api/firebase-config', { cache: 'no-store' })
+  if (!resolvedVapidConfigPromise) {
+    resolvedVapidConfigPromise = fetch('/api/firebase-config', { cache: 'no-store' })
       .then(async (response) => {
-        if (!response.ok) return ''
+        if (!response.ok) return { key: '', configured: false }
         const data = await response.json().catch(() => ({}))
+        const key = String(data?.vapidKey || '').trim()
+        const configured = Boolean(data?.vapidKeyConfigured && key)
         console.log('[PUSH CONFIG]', {
           vapidKeyConfigured: data?.vapidKeyConfigured,
-          hasVapidKey: Boolean(data?.vapidKey),
+          hasVapidKey: Boolean(key),
         })
-        return String(data?.vapidKey || '').trim()
+        return { key, configured }
       })
-      .catch(() => '')
+      .catch(() => ({ key: '', configured: false }))
   }
 
-  resolvedVapidKey = await resolvedVapidKeyPromise
-  return resolvedVapidKey
+  resolvedVapidConfig = await resolvedVapidConfigPromise
+  return resolvedVapidConfig
+}
+
+async function getVapidKey() {
+  const config = await getVapidConfig()
+  return config.configured ? config.key : ''
 }
 
 export async function getPushCapabilities() {
@@ -108,8 +114,8 @@ export async function getPushCapabilities() {
     }
   }
 
-  const vapidKey = await getVapidKey()
-  if (!vapidKey) {
+  const vapidConfig = await getVapidConfig()
+  if (!vapidConfig.configured || !vapidConfig.key) {
     return {
       supported: false,
       permission: Notification.permission,
@@ -123,7 +129,7 @@ export async function getPushCapabilities() {
     permission: Notification.permission,
     reason: '',
     vapidConfigured: true,
-    vapidSource: BUILD_VAPID_KEY ? 'build' : 'server',
+    vapidSource: 'server',
   }
 }
 

@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import PWARegister from "@/components/PWARegister";
 import HideNextDevIndicatorMobile from "@/components/HideNextDevIndicatorMobile";
+import { TutorialProvider } from "@/components/tutorial/TutorialProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -103,7 +104,9 @@ export default function RootLayout({ children }) {
       >
         <PWARegister />
         <HideNextDevIndicatorMobile />
-        {children}
+        <TutorialProvider>
+          {children}
+        </TutorialProvider>
         <div id="modal-root" />
       </body>
     </html>

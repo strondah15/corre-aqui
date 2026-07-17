@@ -750,7 +750,7 @@ export default function PainelPatentes({
   }
 
   return (
-    <div className="rounded-[30px] bg-[#07111F] p-3 text-white shadow-[0_30px_90px_rgba(0,0,0,0.36)] md:p-4">
+    <div data-tutorial="patentes" className="rounded-[30px] bg-[#07111F] p-3 text-white shadow-[0_30px_90px_rgba(0,0,0,0.36)] md:p-4">
       <div className="space-y-4">
         <Header onBack={onBack} />
         <Tabs activeTipo={activeTipo} onChange={setActiveTipo} />

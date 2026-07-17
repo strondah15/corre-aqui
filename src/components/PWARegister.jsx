@@ -105,7 +105,7 @@ export default function PWARegister() {
         onClick={() => {
           const url = foregroundToast.url
           closeToast()
-          router.push(url)
+          router.replace(url)
         }}
         className="mt-3 h-10 w-full rounded-xl bg-emerald-600 text-sm font-black text-white shadow-[0_10px_22px_rgba(5,150,105,0.22)] transition hover:bg-emerald-700 active:scale-[0.98]"
       >
