@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
@@ -38,11 +38,13 @@ function ordenarPedidos(lista) {
 
 export default function CorrePainelPage({ tipo = 'inbox' }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const meta = META[tipo] || META.inbox
   const [user, setUser] = useState(null)
   const [pedidos, setPedidos] = useState([])
   const [privateRequests, setPrivateRequests] = useState([])
   const uid = user?.uid || ''
+  const focusRequestId = String(searchParams.get('requestId') || '').trim()
 
   useEffect(() => {
     const off = onAuthStateChanged(auth, (authUser) => {
@@ -115,7 +117,7 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
       return
     }
     if (destino === 'agenda' || destino === 'privaterequestdetails') {
-      router.replace('/corre/agenda')
+      router.replace(id ? `/corre/agenda?requestId=${encodeURIComponent(String(id))}` : '/corre/agenda')
       return
     }
     if (destino === 'myorders') {
@@ -190,6 +192,7 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
               nome={user?.displayName || ''}
               fotoURL={user?.photoURL || ''}
               privateRequests={privateRequests}
+              focusRequestId={focusRequestId}
               onAbrirChat={abrirChat}
             />
           ) : null}

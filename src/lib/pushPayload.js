@@ -116,6 +116,7 @@ export function resolvePushRoute(input = {}) {
 
   if (!id) return base
   if (selectedScreen === 'chat') return `${base}/${encodeURIComponent(id)}`
+  if (selectedScreen === 'agenda') return `${base}?requestId=${encodeURIComponent(id)}`
   if (selectedScreen === 'pedido' || selectedScreen === 'pedido_details' || selectedScreen === 'privaterequestdetails' || selectedScreen === 'private_request_details') {
     return `${base}/${encodeURIComponent(id)}`
   }

@@ -27,7 +27,7 @@ import {
   runTransaction,
 } from '@/lib/firebaseDebug'
 import { getOnlineTimestamp, getUserOnlinePreference, isOnlineRecente, setUserOnlinePreference, splitUsuariosOnline } from '@/lib/presence'
-import { createPrivateRequest, reconcilePrivateRequestInbox } from '@/lib/privateRequests'
+import { createPrivateRequest, notifyPublicRequestAccepted, reconcilePrivateRequestInbox } from '@/lib/privateRequests'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
 import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
 import { TUTORIAL_ACTIONS, TUTORIAL_EVENTS } from '@/lib/tutorial/tutorialConfig'
@@ -40,7 +40,6 @@ import ModalIA from './ModalIA'
 import ModalAgenda from './ModalAgenda'
 import ChatMensagens from './ChatMensagens'
 import ListaConversas from './ListaConversas'
-import AvisoCorreAceito from '@/components/AvisoCorreAceito'
 import MeusPedidosCliente from '@/components/MeusPedidosCliente'
 import AgendaProfissional from '@/components/AgendaProfissional'
 import CentralNotificacoes from '@/components/CentralNotificacoes'
@@ -2727,45 +2726,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           updatedAt: agora,
         })
 
-        await update(ref(database, `notificacoes/${p.criador.id}/notif_${agora}`), {
-          tipo: 'corre_aceito',
-          pedidoId: p.id,
-          conversaId,
-          titulo: 'Seu corre foi aceito! 🚀',
-          mensagem: `${meuNome || 'Alguém'} aceitou: ${p.titulo || 'Corre aqui'}`,
-          prioridade: 'alta',
-          acao: 'abrir_chat',
-          lida: false,
-          criadoEm: agora,
-          autor: { id: meuId, nome: meuNome || 'Anônimo' },
-        })
-
-        await update(ref(database, `notifications/${p.criador.id}/notif_${agora}`), {
-          id: `notif_${agora}`,
-          tipo: 'corre_aceito',
-          titulo: 'Seu corre foi aceito!',
-          mensagem: `${meuNome || 'Alguem'} aceitou seu pedido. Converse pelo chat.`,
-          pedidoId: p.id,
-          conversaId,
-          servicoId: p?.servicoId || '',
-          fromUid: meuId,
-          toUid: p.criador.id,
-          lida: false,
-          criadoEm: agora,
-          action: { label: 'Abrir conversa', screen: 'chat', id: conversaId },
-          autor: { id: meuId, nome: meuNome || 'Anonimo' },
-        })
-
-        enviarPushParaUsuario(p.criador.id, {
-          type: 'pedido_aceito',
-          pedidoId: p.id,
-          conversaId,
-          titulo: 'Seu corre foi aceito!',
-          mensagem: `${meuNome || 'Alguem'} aceitou seu pedido. Converse pelo chat.`,
-          prioridade: 'alta',
-          action: { label: 'Ver pedido', screen: 'pedido', id: p.id },
-          notificationId: `notif_${agora}`,
-        })
       }
 
       // ✅ conversa de quem aceitou
@@ -2807,6 +2767,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       }
 
       await set(ref(database, `usersChats/${meuId}/${conversaId}`), true)
+
+      if (p?.criador?.id) {
+        await notifyPublicRequestAccepted({
+          database,
+          pedido: { ...p, conversaId },
+          profissional: {
+            ...meuUserNode,
+            uid: meuId,
+            nome: meuNome || meuUserNode?.nome || 'Corre',
+          },
+          aceitoEm: agora,
+        })
+      }
 
       showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoAceito, {
         id: CONTEXTUAL_TIP_IDS.pedidoAceito,
@@ -3475,10 +3448,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     }
 
     if (destino === 'agenda' || destino === 'privaterequestdetails') {
-      setModoApp('corre')
-      setClientePainelBaixo('')
-      setChatPedido(null)
-      setTab('agenda')
+      const href = id
+        ? `/corre/agenda?requestId=${encodeURIComponent(String(id))}`
+        : '/corre/agenda'
+      router.replace(href)
       return
     }
 
@@ -4283,17 +4256,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               onAbrirPerfil={abrirPerfilCliente}
               onAgendar={abrirAgendaCliente}
               onBackToMode={typeof onBackToMode === 'function' ? voltarModoLimpo : undefined}
-            />
-
-            <AvisoCorreAceito
-              meuId={meuId}
-              corres={corres}
-              enabled={minhasConfiguracoesUi.notificacoes}
-              onAbrirChat={abrirChatFocado}
-              onVerMapa={(pedido) => {
-                setMapItem(pedido)
-              }}
-              showToast={showToast}
             />
 
             {/* ✅ A área pesada de cliente saiu daqui.

@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import PWARegister from "@/components/PWARegister";
 import HideNextDevIndicatorMobile from "@/components/HideNextDevIndicatorMobile";
+import EventNotificationHost from "@/components/EventNotificationHost";
 import { TutorialProvider } from "@/components/tutorial/TutorialProvider";
 import "./globals.css";
 
@@ -107,6 +108,7 @@ export default function RootLayout({ children }) {
         <TutorialProvider>
           {children}
         </TutorialProvider>
+        <EventNotificationHost />
         <div id="modal-root" />
       </body>
     </html>

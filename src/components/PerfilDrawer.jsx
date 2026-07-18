@@ -17,7 +17,7 @@ import PainelPatentes from "./PainelPatentes";
 import Patente, { calcularPatentePorServicos } from "./Patente";
 import { CATEGORIES, getCategoryById } from "@/constants/categories";
 import { normalizeAtendimentoStatus, ATENDIMENTO_STATUS } from "@/lib/atendimento";
-import { openAssistantHelpCenter } from "@/components/tutorial/TutorialProvider";
+import { openAssistantHelpCenter, startClientTutorial, startWorkerTutorial } from "@/components/tutorial/TutorialProvider";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
   ssr: false,
@@ -38,6 +38,12 @@ const defaultNotificationPreferences = {
   attendances: true,
   reviews: true,
 };
+
+const configSectionIds = ["presenca", "notificacoes", "assistente", "privacidade", "experiencia"];
+
+function createConfigSectionsState(openSection = "presenca") {
+  return Object.fromEntries(configSectionIds.map((section) => [section, section === openSection]));
+}
 
 function normalizeNotificationPreferences(value = {}, fallback = {}) {
   return {
@@ -417,6 +423,8 @@ function ConfiguracoesOrganizadas({
   pushTestando,
   pushAviso,
   configAviso,
+  onStartClientTutorial,
+  onStartWorkerTutorial,
 }) {
   const preferences = normalizeNotificationPreferences(profile.notificationPreferences);
   const friendlyPushAviso = /vapid|service worker|messaging|token|firebase/i.test(String(pushAviso || ""))
@@ -496,6 +504,12 @@ function ConfiguracoesOrganizadas({
 
         <ConfigSection id="assistente" title="Assistente Corre Aqui" description="Tutoriais e dicas para usar melhor o app." icon="?" tone="blue" open={sections.assistente} onToggle={onToggleSection}>
           <ConfigRow icon="?" title="Abrir assistente" description="Refa&ccedil;a tutoriais de Cliente ou Trabalhar e veja dicas r&aacute;pidas." tone="blue" onClick={openAssistantHelpCenter}>
+            <span className="text-xl font-black text-blue-600">&rarr;</span>
+          </ConfigRow>
+          <ConfigRow icon="C" title="Ativar tutorial Cliente" description="Rever como pedir ajuda, criar pedido, chat e pedidos." tone="blue" onClick={onStartClientTutorial}>
+            <span className="text-xl font-black text-blue-600">&rarr;</span>
+          </ConfigRow>
+          <ConfigRow icon="T" title="Ativar tutorial Trabalhar" description="Rever pedidos, agenda, atendimento, portf&oacute;lio e patentes." tone="blue" onClick={onStartWorkerTutorial}>
             <span className="text-xl font-black text-blue-600">&rarr;</span>
           </ConfigRow>
         </ConfigSection>
@@ -1127,13 +1141,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [cpfAviso, setCpfAviso] = useState("");
   const [privacyAviso, setPrivacyAviso] = useState("");
   const [configAviso, setConfigAviso] = useState("");
-  const [configSecoesAbertas, setConfigSecoesAbertas] = useState({
-    presenca: true,
-    notificacoes: false,
-    assistente: false,
-    privacidade: false,
-    experiencia: false,
-  });
+  const [configSecoesAbertas, setConfigSecoesAbertas] = useState(() => createConfigSectionsState("presenca"));
   const [serviceStats, setServiceStats] = useState({
     total: 0,
     comoCorre: 0,
@@ -1188,12 +1196,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setAddressAviso("");
     setSupportAviso("");
     setConfigAviso("");
-    setConfigSecoesAbertas({
-      presenca: true,
-      notificacoes: false,
-      privacidade: false,
-      experiencia: false,
-    });
+    setConfigSecoesAbertas(createConfigSectionsState("presenca"));
   }, [open, initialTab, initialProfSection]);
 
   useEffect(() => {
@@ -1646,6 +1649,18 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     } catch {
       window.location.href = "/";
     }
+  }
+
+  function iniciarTutorialManual(tipo) {
+    onClose?.();
+    window.setTimeout(() => {
+      if (tipo === "trabalhar") {
+        startWorkerTutorial();
+        return;
+      }
+
+      startClientTutorial();
+    }, 180);
   }
 
   async function handleProfilePhotoUpload(file) {
@@ -2247,7 +2262,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setConfigSecoesAbertas((prev) => {
       const nextOpen = !prev[section];
       if (typeof window !== "undefined" && window.innerWidth < 768 && nextOpen) {
-        return Object.fromEntries(Object.keys(prev).map((key) => [key, key === section]));
+        return createConfigSectionsState(section);
       }
       return { ...prev, [section]: nextOpen };
     });
@@ -3304,6 +3319,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
               pushTestando={pushTestando}
               pushAviso={pushAviso}
               configAviso={configAviso}
+              onStartClientTutorial={() => iniciarTutorialManual("cliente")}
+              onStartWorkerTutorial={() => iniciarTutorialManual("trabalhar")}
             />
           )}
 

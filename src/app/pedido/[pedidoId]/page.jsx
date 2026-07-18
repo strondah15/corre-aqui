@@ -11,6 +11,7 @@ import { auth, database } from '@/lib/firebase'
 import { isOnlineRecente } from '@/lib/presence'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
+import { notifyPublicRequestAccepted } from '@/lib/privateRequests'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
 
@@ -523,45 +524,6 @@ function PedidoDetalhe() {
           updatedAt: agora,
         })
 
-        await update(ref(database, `notificacoes/${pedido.criador.id}/notif_${agora}`), {
-          tipo: 'corre_aceito',
-          pedidoId: pedido.id,
-          conversaId,
-          titulo: 'Seu corre foi aceito!',
-          mensagem: `${nome} aceitou seu pedido. Converse pelo chat.`,
-          prioridade: 'alta',
-          acao: 'abrir_chat',
-          lida: false,
-          criadoEm: agora,
-          autor: { id: user.uid, nome },
-        })
-
-        await update(ref(database, `notifications/${pedido.criador.id}/notif_${agora}`), {
-          id: `notif_${agora}`,
-          tipo: 'corre_aceito',
-          titulo: 'Seu corre foi aceito!',
-          mensagem: `${nome} aceitou seu pedido. Converse pelo chat.`,
-          pedidoId: pedido.id,
-          conversaId,
-          servicoId: pedido?.servicoId || '',
-          fromUid: user.uid,
-          toUid: pedido.criador.id,
-          lida: false,
-          criadoEm: agora,
-          action: { label: 'Abrir conversa', screen: 'chat', id: conversaId },
-          autor: { id: user.uid, nome },
-        })
-
-        enviarPushParaUsuario(pedido.criador.id, {
-          type: 'pedido_aceito',
-          pedidoId: pedido.id,
-          conversaId,
-          titulo: 'Seu corre foi aceito!',
-          mensagem: `${nome} aceitou seu pedido. Converse pelo chat.`,
-          prioridade: 'alta',
-          action: { label: 'Ver pedido', screen: 'pedido', id: pedido.id },
-          notificationId: `notif_${agora}`,
-        })
       }
 
       await update(ref(database, `conversas/${user.uid}/${conversaId}`), {
@@ -596,6 +558,14 @@ function PedidoDetalhe() {
       await set(ref(database, `mensagens/${conversaId}/msg_${agora}`), mensagemSistema)
       if (pedido?.criador?.id) await set(ref(database, `usersChats/${pedido.criador.id}/${conversaId}`), true)
       await set(ref(database, `usersChats/${user.uid}/${conversaId}`), true)
+      if (pedido?.criador?.id) {
+        await notifyPublicRequestAccepted({
+          database,
+          pedido: { ...pedido, conversaId },
+          profissional: { ...profile, uid: user.uid, nome, photoURL: profile?.fotoURL || user.photoURL || '' },
+          aceitoEm: agora,
+        })
+      }
       showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoAceito, {
         id: CONTEXTUAL_TIP_IDS.pedidoAceito,
         target: 'aceitar-pedido',

@@ -400,6 +400,7 @@ export default function ChatMensagens({
   onClose,
   onToast,
   modoPagina = false,
+  initialDetailsOpen = false,
 }) {
   const [mensagens, setMensagens] = useState([])
   const [texto, setTexto] = useState('')
@@ -411,7 +412,7 @@ export default function ChatMensagens({
   const [chamandoAtencao, setChamandoAtencao] = useState(false)
   const [fechado, setFechado] = useState(false)
   const [pedido, setPedido] = useState(null)
-  const [detalhesPedidoAberto, setDetalhesPedidoAberto] = useState(false)
+  const [detalhesPedidoAberto, setDetalhesPedidoAberto] = useState(Boolean(initialDetailsOpen))
   const [avisoAtendimentoVisivel, setAvisoAtendimentoVisivel] = useState(true)
 
   const mediaRef = useRef(null)

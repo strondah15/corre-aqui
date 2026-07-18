@@ -1,18 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref, serverTimestamp, update } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
 import { startPresence } from '@/lib/presence'
 import { ATENDIMENTO_STATUS, transitionAtendimento } from '@/lib/atendimento'
+import { notifyPublicRequestAccepted } from '@/lib/privateRequests'
 
 export default function ListaPedidos() {
   const router = useRouter()
   const [pedidos, setPedidos] = useState([])
   const [user, setUser] = useState(null)
   const [mensagem, setMensagem] = useState('')
+  const acceptingIdsRef = useRef(new Set())
 
   useEffect(() => {
     const off = onAuthStateChanged(auth, (authUser) => {
@@ -63,26 +65,48 @@ export default function ListaPedidos() {
       return
     }
 
-    const agora = Date.now()
-    const nome = localStorage.getItem('meuNome') || user.displayName || 'Corre'
+    const pedidoId = String(pedido?.id || '').trim()
+    if (!pedidoId || acceptingIdsRef.current.has(pedidoId)) return
 
-    await transitionAtendimento({
-      database,
-      pedidoId: pedido.id,
-      actorUid: user.uid,
-      expectedStatus: ATENDIMENTO_STATUS.ABERTO,
-      nextStatus: ATENDIMENTO_STATUS.ACEITO,
-      atendimentoPatch: { aceitoEm: agora, aceitoPor: { id: user.uid, nome } },
-      topLevelPatch: {
-        aceite: { id: user.uid, nome, local: null, aceitoEm: agora },
-        conversaId: pedido.id,
+    acceptingIdsRef.current.add(pedidoId)
+
+    try {
+      const agora = Date.now()
+      const nome = localStorage.getItem('meuNome') || user.displayName || 'Corre'
+
+      await transitionAtendimento({
+        database,
+        pedidoId,
+        actorUid: user.uid,
+        expectedStatus: ATENDIMENTO_STATUS.ABERTO,
+        nextStatus: ATENDIMENTO_STATUS.ACEITO,
+        atendimentoPatch: { aceitoEm: agora, aceitoPor: { id: user.uid, nome } },
+        topLevelPatch: {
+          aceite: { id: user.uid, nome, local: null, aceitoEm: agora },
+          conversaId: pedidoId,
+          aceitoEm: agora,
+          atualizadoEmServer: serverTimestamp(),
+        },
+      })
+
+      await notifyPublicRequestAccepted({
+        database,
+        pedido: { ...pedido, id: pedidoId, conversaId: pedidoId },
+        profissional: {
+          uid: user.uid,
+          nome,
+          photoURL: localStorage.getItem('fotoURL') || user.photoURL || '',
+        },
         aceitoEm: agora,
-        atualizadoEmServer: serverTimestamp(),
-      },
-    })
+      })
 
-    setMensagem('Pedido aceito com sucesso.')
-    router.replace(`/pedido/${encodeURIComponent(String(pedido.id))}?voltar=corre&aceito=1`)
+      setMensagem('Pedido aceito com sucesso.')
+      router.replace(`/pedido/${encodeURIComponent(pedidoId)}?voltar=corre&aceito=1`)
+    } catch (error) {
+      setMensagem(error?.message || 'Não foi possível aceitar o pedido agora.')
+    } finally {
+      acceptingIdsRef.current.delete(pedidoId)
+    }
   }
 
   const abertos = pedidos.filter((p) => (p.status || 'aberto') === 'aberto')

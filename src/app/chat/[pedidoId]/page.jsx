@@ -226,6 +226,7 @@ function ChatPageContent() {
             planoAtual={userNode?.plano || 'free'}
             mostrarAnuncio={false}
             modoPagina
+            initialDetailsOpen={searchParams?.get('detalhes') === '1'}
             onClose={voltarParaOrigem}
             onToast={setToast}
           />

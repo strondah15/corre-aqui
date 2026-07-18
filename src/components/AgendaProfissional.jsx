@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { onValue, ref, serverTimestamp, update } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
@@ -325,7 +325,11 @@ function StatusPill({ status, compact = false }) {
   )
 }
 
-function AgendaItem({ item, uid, salvandoId, onResponder }) {
+function agendaDomId(id) {
+  return `agenda-request-${String(id || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`
+}
+
+function AgendaItem({ item, uid, salvandoId, onResponder, focused = false }) {
   const status = String(item.status || 'pendente').toLowerCase()
   const meta = statusInfo[status] || statusInfo.pendente
   const souProf = item.profissionalId === uid
@@ -334,10 +338,11 @@ function AgendaItem({ item, uid, salvandoId, onResponder }) {
 
   return (
     <motion.article
+      id={agendaDomId(item.id)}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="relative overflow-hidden rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] md:rounded-[20px] md:p-5"
+      className={`relative overflow-hidden rounded-[18px] border bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] transition md:rounded-[20px] md:p-5 ${focused ? 'border-blue-500 ring-4 ring-blue-100 shadow-[0_18px_46px_rgba(37,99,235,0.18)]' : 'border-slate-200'}`}
     >
       <div className={`absolute inset-y-0 left-0 w-1.5 ${meta.bar}`} />
       <div className="grid gap-4 md:grid-cols-[90px_minmax(0,1fr)_220px_24px] md:items-center">
@@ -408,6 +413,7 @@ export default function AgendaProfissional({
   nome = '',
   fotoURL = '',
   privateRequests = [],
+  focusRequestId = '',
   notificacoesCount = 0,
   onAbrirPerfil,
   onAbrirNotificacoes,
@@ -423,6 +429,7 @@ export default function AgendaProfissional({
   const [filtro, setFiltro] = useState('hoje')
   const [selectedKey, setSelectedKey] = useState(() => dateKey(Date.now()))
   const [hiddenPrivateRequestIds, setHiddenPrivateRequestIds] = useState(() => new Set())
+  const lastFocusedRequestRef = useRef('')
 
   useEffect(() => {
     if (!uid) {
@@ -507,6 +514,29 @@ export default function AgendaProfissional({
   }, [agendaItems, filtro, selectedKey])
 
   const listaRender = compacto ? listaFiltrada.slice(0, 4) : listaFiltrada
+
+  useEffect(() => {
+    const targetId = String(focusRequestId || '').trim()
+    if (!targetId) {
+      lastFocusedRequestRef.current = ''
+      return undefined
+    }
+    if (loading) return undefined
+    const targetExists = agendaItems.some((item) => String(item?.id || item?.privateRequestId || '') === targetId)
+    if (!targetExists) return undefined
+
+    if (filtro !== 'todos') {
+      setFiltro('todos')
+      return undefined
+    }
+
+    if (lastFocusedRequestRef.current === targetId) return undefined
+    lastFocusedRequestRef.current = targetId
+    const timer = window.setTimeout(() => {
+      document.getElementById(agendaDomId(targetId))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
+    return () => window.clearTimeout(timer)
+  }, [agendaItems, filtro, focusRequestId, loading])
 
   const responder = async (id, status) => {
     if (!id || salvandoId) return
@@ -692,7 +722,14 @@ export default function AgendaProfissional({
         ) : (
           <div className="mt-3 space-y-2.5">
             {listaRender.map((item) => (
-              <AgendaItem key={item.id} item={item} uid={uid} salvandoId={salvandoId} onResponder={responder} />
+              <AgendaItem
+                key={item.id}
+                item={item}
+                uid={uid}
+                salvandoId={salvandoId}
+                onResponder={responder}
+                focused={String(item?.id || item?.privateRequestId || '') === String(focusRequestId || '')}
+              />
             ))}
           </div>
         )}

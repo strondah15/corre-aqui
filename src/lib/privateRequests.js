@@ -4,6 +4,7 @@ import { get, push, ref, remove, serverTimestamp, set, update } from './firebase
 import { auth } from './firebase'
 import { enviarPushParaUsuario } from './pushSender'
 import { buildPushPayload } from './pushPayload'
+import { createEventNotificationId, EVENT_NOTIFICATION_TYPES } from './eventNotifications'
 
 function safeStr(value) {
   return String(value || '').trim()
@@ -342,9 +343,18 @@ export async function createPrivateRequest({
   await updateWithTrace(database, payload)
 
   const isAgenda = tipo === 'agendamento'
+  const scheduleEventId = isAgenda
+    ? createEventNotificationId({
+        type: EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO,
+        sourceId: requestId,
+        toUid: profissionalId,
+        state: 'pendente',
+      })
+    : undefined
   const notification = await createBilateralNotification(database, {
+    id: scheduleEventId,
     tipo: isAgenda ? 'agendamento_criado' : 'pedido_direto_criado',
-    titulo: isAgenda ? 'Novo agendamento' : 'Novo pedido direto',
+    titulo: isAgenda ? 'Nova solicitação de agendamento' : 'Novo pedido direto',
     mensagem: isAgenda
       ? `${request.clienteNome} solicitou agendamento para ${request.servicoTitulo}`
       : `${request.clienteNome} solicitou ${request.servicoTitulo}`,
@@ -353,14 +363,37 @@ export async function createPrivateRequest({
     fromUid: clienteId,
     toUid: profissionalId,
     action: {
-      label: isAgenda ? 'Ver agenda' : 'Ver pedido',
+      label: isAgenda ? 'Ver solicitação' : 'Ver pedido',
       screen: isAgenda ? 'agenda' : 'privateRequestDetails',
       id: requestId,
     },
     extra: {
+      ...(isAgenda
+        ? {
+            eventId: scheduleEventId,
+            tipoEvento: EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO,
+            eventoStatus: 'pendente',
+            origem: 'privateRequest',
+            criadorUid: clienteId,
+            destinatarioUid: profissionalId,
+            solicitacaoId: requestId,
+            agendamentoId: requestId,
+            atorNome: request.clienteNome,
+            atorFotoURL: request.clienteFotoURL || undefined,
+            clienteNome: request.clienteNome,
+            clienteFotoURL: request.clienteFotoURL || undefined,
+            servicoTitulo: request.servicoTitulo,
+            dataAgendamento: request.data || undefined,
+            horaAgendamento: request.hora || undefined,
+            duracao: request.duracao || undefined,
+            localResumo: request.servicoSnapshot?.regiao || undefined,
+            observacao: request.descricao || undefined,
+            statusAtual: request.status,
+          }
+        : {}),
       privateRequestId: requestId,
       fromNome: request.clienteNome,
-      autor: { id: clienteId, nome: request.clienteNome },
+      autor: { id: clienteId, nome: request.clienteNome, fotoURL: request.clienteFotoURL || undefined },
     },
   })
 
@@ -379,6 +412,102 @@ export async function createPrivateRequest({
   })
 
   return request
+}
+
+export async function notifyPublicRequestAccepted({ database, pedido = {}, profissional = {}, aceitoEm = Date.now() }) {
+  const pedidoId = safeStr(pedido.id || pedido.pedidoId)
+  const clienteId = safeStr(pedido?.criador?.id || pedido.clienteId)
+  const profissionalId = safeStr(profissional.uid || profissional.id || pedido?.aceite?.id)
+  if (!database || !pedidoId || !clienteId || !profissionalId) return null
+
+  const profissionalNome = getNome(profissional, pedido?.aceite?.nome || 'Corre/Profissional')
+  const profissionalFotoURL = pickText(
+    profissional.fotoURL,
+    profissional.photoURL,
+    profissional.avatarURL,
+    profissional.profile?.fotoURL,
+    profissional.profile?.photoURL,
+    pedido?.aceite?.fotoURL,
+  )
+  const tipoAtuacao = pickText(
+    profissional.tipoAtuacao,
+    profissional.perfilProfissional?.tipoAtuacao,
+    profissional.profissional?.tipoAtuacao,
+    profissional.role === 'profissional' ? 'Profissional' : '',
+    'Corre/Profissional',
+  )
+  const patenteNome = pickText(
+    profissional.patenteNome,
+    profissional.patente?.nome,
+    profissional.patentes?.corre?.nome,
+    profissional.profile?.patenteNome,
+  )
+  const avaliacaoValue = Number(
+    profissional.avaliacaoMedia ||
+      profissional.nota ||
+      profissional.rating ||
+      profissional.trustStats?.media ||
+      0,
+  )
+  const eventId = createEventNotificationId({
+    type: EVENT_NOTIFICATION_TYPES.PEDIDO_ACEITO,
+    sourceId: pedidoId,
+    toUid: clienteId,
+    state: 'aceito',
+  })
+  const conversaId = safeStr(pedido.conversaId || pedidoId)
+  const servicoTitulo = pickText(pedido.titulo, pedido.servicoTitulo, pedido.categoriaNome, 'Pedido Corre Aqui')
+  const notification = await createBilateralNotification(database, {
+    id: eventId,
+    tipo: 'corre_aceito',
+    titulo: 'Seu pedido foi aceito',
+    mensagem: `${profissionalNome} aceitou seu pedido. Vocês já podem conversar.`,
+    pedidoId,
+    servicoId: getServicoId(pedido) || undefined,
+    fromUid: profissionalId,
+    toUid: clienteId,
+    action: { label: 'Conversar agora', screen: 'chat', id: conversaId },
+    extra: {
+      eventId,
+      tipoEvento: EVENT_NOTIFICATION_TYPES.PEDIDO_ACEITO,
+      eventoStatus: 'aceito',
+      origem: 'pedido',
+      criadorUid: clienteId,
+      destinatarioUid: clienteId,
+      conversaId,
+      atorNome: profissionalNome,
+      atorFotoURL: profissionalFotoURL || undefined,
+      profissionalNome,
+      profissionalFotoURL: profissionalFotoURL || undefined,
+      tipoAtuacao,
+      patenteNome: patenteNome || undefined,
+      avaliacao: Number.isFinite(avaliacaoValue) && avaliacaoValue > 0 ? avaliacaoValue : undefined,
+      servicoTitulo,
+      categoriaNome: pickText(pedido.categoriaNome, pedido.categoriaLabel) || undefined,
+      valor: pedido.valor ?? undefined,
+      aceitoEm,
+      statusAtual: 'aceito',
+      proximoPasso: `Converse com ${profissionalNome} para confirmar endereço, valor e detalhes do atendimento.`,
+      autor: { id: profissionalId, nome: profissionalNome, fotoURL: profissionalFotoURL || undefined },
+      fromNome: profissionalNome,
+    },
+  })
+
+  void enviarPushParaUsuario(clienteId, {
+    type: 'pedido_aceito',
+    title: notification?.titulo,
+    body: notification?.mensagem,
+    pedidoId,
+    conversaId,
+    servicoId: getServicoId(pedido) || undefined,
+    fromUid: profissionalId,
+    toUid: clienteId,
+    action: notification?.action,
+    notificationId: eventId,
+    prioridade: 'alta',
+  })
+
+  return notification
 }
 
 function acceptedStatus(tipo) {
@@ -544,7 +673,53 @@ export async function respondPrivateRequest({ database, request = {}, profission
 
   const isAgenda = tipo === 'agendamento'
   const accepted = finalStatus === 'aceito' || finalStatus === 'agendado'
+  if (isAgenda) {
+    const sourceEventId = createEventNotificationId({
+      type: EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO,
+      sourceId: requestId,
+      toUid: profissionalId,
+      state: 'pendente',
+    })
+    const results = await Promise.allSettled(
+      ['notifications', 'notificacoes'].map(async (rootName) => {
+        const notificationRef = ref(database, `${rootName}/${profissionalId}/${sourceEventId}`)
+        const snapshot = await get(notificationRef)
+        if (!snapshot.exists()) return
+        await update(notificationRef, {
+          lida: true,
+          read: true,
+          eventoStatus: accepted ? 'confirmado' : 'recusado',
+          statusAtual: finalStatus,
+          respondidoEm: agora,
+        })
+      }),
+    )
+    results.forEach((result) => {
+      if (result.status === 'rejected') {
+        console.warn('[AGENDA] resposta salva, mas o balão original não foi atualizado:', result.reason)
+      }
+    })
+  }
+
+  const acceptedEventType = isAgenda
+    ? EVENT_NOTIFICATION_TYPES.AGENDAMENTO_ACEITO
+    : EVENT_NOTIFICATION_TYPES.PEDIDO_ACEITO
+  const responseEventId = accepted
+    ? createEventNotificationId({
+        type: acceptedEventType,
+        sourceId: requestId,
+        toUid: clienteId,
+        state: finalStatus,
+      })
+    : undefined
+  const profissionalFotoURL = pickText(
+    profissional.fotoURL,
+    profissional.photoURL,
+    profissional.avatarURL,
+    request.profissionalFotoURL,
+  )
   const notification = await createBilateralNotification(database, {
+    id: responseEventId,
     tipo: isAgenda
       ? accepted
         ? 'agendamento_aceito'
@@ -570,22 +745,45 @@ export async function respondPrivateRequest({ database, request = {}, profission
     servicoId: servicoId || undefined,
     fromUid: profissionalId,
     toUid: clienteId,
-    action: isAgenda
-      ? {
-          label: accepted ? 'Ver pedido' : 'Escolher outro horário',
-          screen: accepted ? 'myOrders' : 'portfolio',
-          id: requestId,
-        }
+    action: accepted
+      ? { label: 'Conversar agora', screen: 'chat', id: requestId }
       : {
-          label: accepted ? 'Abrir conversa' : 'Procurar outro profissional',
-          screen: accepted ? 'chat' : 'portfolio',
-          id: accepted ? requestId : servicoId || requestId,
+          label: isAgenda ? 'Escolher outro horário' : 'Procurar outro profissional',
+          screen: 'portfolio',
+          id: servicoId || requestId,
         },
     extra: {
+      ...(accepted
+        ? {
+            eventId: responseEventId,
+            tipoEvento: acceptedEventType,
+            eventoStatus: finalStatus,
+            origem: 'privateRequest',
+            criadorUid: clienteId,
+            destinatarioUid: clienteId,
+            solicitacaoId: requestId,
+            agendamentoId: isAgenda ? requestId : undefined,
+            atorNome: profNome,
+            atorFotoURL: profissionalFotoURL || undefined,
+            profissionalNome: profNome,
+            profissionalFotoURL: profissionalFotoURL || undefined,
+            tipoAtuacao: pickText(profissional.tipoAtuacao, profissional.role, 'Corre/Profissional'),
+            patenteNome: pickText(profissional.patenteNome, profissional.patente?.nome) || undefined,
+            avaliacao: Number(profissional.avaliacaoMedia || profissional.nota || 0) || undefined,
+            servicoTitulo: title,
+            dataAgendamento: request.data || undefined,
+            horaAgendamento: request.hora || undefined,
+            localResumo: request.servicoSnapshot?.regiao || undefined,
+            observacao: request.descricao || undefined,
+            aceitoEm: agora,
+            statusAtual: finalStatus,
+            proximoPasso: `Converse com ${profNome} para confirmar endereço, valor e detalhes do atendimento.`,
+          }
+        : {}),
       privateRequestId: requestId,
       conversaId: requestId,
       fromNome: profNome,
-      autor: { id: profissionalId, nome: profNome },
+      autor: { id: profissionalId, nome: profNome, fotoURL: profissionalFotoURL || undefined },
     },
   })
 

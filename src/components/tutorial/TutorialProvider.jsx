@@ -329,47 +329,61 @@ function SpotlightOverlay({ rect }) {
 }
 
 function getBubblePosition(rect, preferredPlacement = "") {
-  const width = Math.min(420, isBrowser() ? window.innerWidth - 32 : 420)
-
-  if (!isBrowser() || !rect) {
+  if (!isBrowser()) {
     return {
       style: {
-        left: "50%",
-        top: "50%",
-        transform: "translate(-50%, -50%)",
-        width: "min(420px, calc(100vw - 32px))",
+        left: "16px",
+        top: "20vh",
+        width: "calc(100vw - 32px)",
       },
       placement: "center",
     }
   }
 
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
   const margin = 14
-  const estimatedHeight = 260
   const edge = 16
-  const isMobile = window.innerWidth < 640
-  const spaceBelow = window.innerHeight - rect.bottom
+  const isCompact = viewportWidth < 768
+  const width = Math.min(420, Math.max(280, viewportWidth - edge * 2))
+  const estimatedHeight = isCompact ? 238 : 260
+  const clampLeft = (value) => Math.min(Math.max(edge, value), Math.max(edge, viewportWidth - width - edge))
+  const clampTop = (value) => Math.min(Math.max(edge, value), Math.max(edge, viewportHeight - estimatedHeight - edge))
+
+  if (!rect) {
+    return {
+      style: {
+        left: clampLeft((viewportWidth - width) / 2),
+        top: clampTop((viewportHeight - estimatedHeight) / 2),
+        width,
+      },
+      placement: "center",
+    }
+  }
+
+  const spaceBelow = viewportHeight - rect.bottom
   const spaceAbove = rect.top
-  const spaceRight = window.innerWidth - rect.right
+  const spaceRight = viewportWidth - rect.right
   const spaceLeft = rect.left
 
-  const clampLeft = (value) => Math.min(Math.max(edge, value), window.innerWidth - width - edge)
-  const clampTop = (value) => Math.min(Math.max(edge, value), Math.max(edge, window.innerHeight - estimatedHeight - edge))
   const centeredLeft = clampLeft(rect.left + rect.width / 2 - width / 2)
 
   const placeBelow = () => ({ style: { left: centeredLeft, top: clampTop(rect.bottom + margin), width }, placement: "top" })
   const placeAbove = () => ({ style: { left: centeredLeft, top: clampTop(rect.top - estimatedHeight - margin), width }, placement: "bottom" })
-  const placeRight = () => ({ style: { left: rect.right + margin, top: clampTop(rect.top + rect.height / 2 - estimatedHeight / 2), width }, placement: "left" })
-  const placeLeft = () => ({ style: { left: rect.left - width - margin, top: clampTop(rect.top + rect.height / 2 - estimatedHeight / 2), width }, placement: "right" })
+  const placeRight = () => ({ style: { left: clampLeft(rect.right + margin), top: clampTop(rect.top + rect.height / 2 - estimatedHeight / 2), width }, placement: "left" })
+  const placeLeft = () => ({ style: { left: clampLeft(rect.left - width - margin), top: clampTop(rect.top + rect.height / 2 - estimatedHeight / 2), width }, placement: "right" })
+
+  if (isCompact) {
+    if (preferredPlacement === "top" && spaceAbove >= estimatedHeight + margin) return placeAbove()
+    if (preferredPlacement === "bottom" && spaceBelow >= estimatedHeight + margin) return placeBelow()
+    if (spaceBelow >= estimatedHeight + margin || spaceBelow >= spaceAbove) return placeBelow()
+    return placeAbove()
+  }
 
   if (preferredPlacement === "top" && spaceAbove >= estimatedHeight + margin) return placeAbove()
   if (preferredPlacement === "bottom" && spaceBelow >= estimatedHeight + margin) return placeBelow()
   if (preferredPlacement === "left" && spaceLeft >= width + margin) return placeLeft()
   if (preferredPlacement === "right" && spaceRight >= width + margin) return placeRight()
-
-  if (isMobile) {
-    if (spaceBelow >= estimatedHeight + margin || spaceBelow >= spaceAbove) return placeBelow()
-    return placeAbove()
-  }
 
   if (spaceRight >= width + margin) {
     return placeRight()
@@ -420,7 +434,7 @@ function TutorialBubble({ flow, step, stepIndex, total, rect, onBack, onNext, on
       animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
       exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
       transition={{ duration: reducedMotion ? 0.01 : 0.18 }}
-      className="fixed z-[110010] rounded-[24px] border border-white/15 bg-slate-950/96 p-4 text-white shadow-[0_26px_80px_rgba(2,6,23,0.58)] backdrop-blur-xl"
+      className="fixed z-[110010] max-h-[calc(100dvh-32px)] overflow-y-auto rounded-[24px] border border-white/15 bg-slate-950/96 p-4 text-white shadow-[0_26px_80px_rgba(2,6,23,0.58)] backdrop-blur-xl"
       style={style}
       role="dialog"
       aria-modal="true"
