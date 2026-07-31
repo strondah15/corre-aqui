@@ -5,6 +5,7 @@ import { ref, onValue, query, limitToLast } from '@/lib/firebaseDebug'
 import { database } from '@/lib/firebase'
 import CardProfissional from './CardProfissional'
 import { CATEGORIES, categoryMatches, getCategoryById } from '@/constants/categories'
+import { canAppearInPublicDirectory } from '@/lib/publicWorkProfile'
 
 
 const safeStr = (v) => String(v || '').trim()
@@ -60,6 +61,34 @@ function normalizeUsers(raw) {
     const profile = user.profile || {}
     const profissional = user.profissional || {}
     const avatarEmoji = user.avatarEmoji || profile.avatarEmoji || user.perfil?.avatarEmoji || ''
+    const primaryCategoryId = safeStr(
+      user.primaryCategoryId ||
+        user.categoriaId ||
+        user.categoryId ||
+        profile.primaryCategoryId ||
+        profile.categoriaId ||
+        profile.categoryId ||
+        ''
+    )
+    const hasProfissionalNode = profissional && typeof profissional === 'object' && Object.keys(profissional).length > 0
+    const isProfissional = !!(user.isProfissional || profile.isProfissional || profissional?.ativo || (hasProfissionalNode && profissional.ativo !== false))
+    const isCorre = !!(user.isCorre || profile.isCorre || profile?.corre?.ativo || user?.corre?.ativo)
+    const profCategoriasBase = Array.isArray(user.profCategorias)
+      ? user.profCategorias
+      : Array.isArray(profile.profCategorias)
+        ? profile.profCategorias
+        : Array.isArray(profissional.profCategorias)
+          ? profissional.profCategorias
+          : []
+    const correCategoriasBase = Array.isArray(user.correCategorias)
+      ? user.correCategorias
+      : Array.isArray(profile.correCategorias)
+        ? profile.correCategorias
+        : Array.isArray(user.servicos)
+          ? user.servicos
+          : Array.isArray(profile.servicos)
+            ? profile.servicos
+            : []
 
     return {
       uid,
@@ -68,24 +97,13 @@ function normalizeUsers(raw) {
       fotoURL: getFotoURL(user, profile, profissional, avatarEmoji),
       avatarEmoji,
       cidade: user.cidade || profile.cidade || '',
-      isProfissional: !!(user.isProfissional || profile.isProfissional || profissional?.ativo || profissional),
-      isCorre: !!(user.isCorre || profile.isCorre || profile?.corre?.ativo || user?.corre?.ativo),
-      profCategorias: Array.isArray(user.profCategorias)
-        ? user.profCategorias
-        : Array.isArray(profile.profCategorias)
-          ? profile.profCategorias
-          : Array.isArray(profissional.profCategorias)
-            ? profissional.profCategorias
-            : [],
-      correCategorias: Array.isArray(user.correCategorias)
-        ? user.correCategorias
-        : Array.isArray(profile.correCategorias)
-          ? profile.correCategorias
-          : Array.isArray(user.servicos)
-            ? user.servicos
-            : Array.isArray(profile.servicos)
-              ? profile.servicos
-              : [],
+      profileStatus: user.profileStatus || user.publicStatus || user.statusPublico || profile.profileStatus || profile.publicStatus || '',
+      primaryCategoryId,
+      categoriaId: primaryCategoryId,
+      isProfissional,
+      isCorre,
+      profCategorias: profCategoriasBase.length || !primaryCategoryId || !isProfissional ? profCategoriasBase : [primaryCategoryId],
+      correCategorias: correCategoriasBase.length || !primaryCategoryId || !isCorre ? correCategoriasBase : [primaryCategoryId],
       corre: user.corre || profile.corre || {},
       correTitulo:
         user?.corre?.titulo ||
@@ -169,7 +187,7 @@ export default function ListaProfissionais({
   const [buscaLocal, setBuscaLocal] = useState(search || '')
   const [categoriaLocal, setCategoriaLocal] = useState(categoriaId || '')
   const sourceItems = useMemo(
-    () => (hasExternalItems ? normalizeUsers(itemsSource) : items),
+    () => (hasExternalItems ? normalizeUsers(itemsSource) : items).filter((item) => canAppearInPublicDirectory(item)),
     [hasExternalItems, itemsSource, items]
   )
 
@@ -192,12 +210,12 @@ export default function ListaProfissionais({
     setLoading(true)
 
     // ✅ leitura simples (depois otimizamos com índices / queries)
-    const usersRef = query(ref(database, 'users'), limitToLast(Number(limit) || 200))
+    const usersRef = query(ref(database, 'publicProfiles'), limitToLast(Number(limit) || 200))
 
     const off = onValue(
       usersRef,
       (snap) => {
-        const list = normalizeUsers(snap.val())
+        const list = normalizeUsers(snap.val()).filter((item) => canAppearInPublicDirectory(item))
         profissionaisCache = list
         profissionaisCacheReady = true
         setItems(list)

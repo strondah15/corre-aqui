@@ -88,7 +88,7 @@ export default function CadastroPerfilInicial({
             </h1>
             <p className="mt-2 text-xs leading-snug text-slate-600 sm:mt-3 sm:text-sm sm:leading-relaxed">
               O Corre Aqui usa esse cadastro para mostrar seu nome, sua cidade, suas conversas,
-              pedidos, patentes e notificações no mesmo perfil.
+              pedidos, reputação e notificações no mesmo perfil.
             </p>
 
             <div className="mt-6 hidden gap-3 text-sm text-slate-700 sm:grid">
@@ -101,7 +101,7 @@ export default function CadastroPerfilInicial({
               <div className="rounded-2xl border border-blue-100 bg-white p-4">
                 <b className="text-blue-950">Perfil reativavel</b>
                 <div className="mt-1 text-xs leading-relaxed text-slate-600">
-                  Depois você ajusta foto, patentes, serviços e configurações pelo perfil.
+                  Depois você ajusta foto, serviços, reputação e configurações pelo perfil.
                 </div>
               </div>
             </div>

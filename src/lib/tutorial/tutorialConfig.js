@@ -10,7 +10,7 @@ export const TUTORIAL_KEYS = {
   dicaPedido: "correAquiDicaPedidoVista",
   dicaAceite: "correAquiDicaAceiteVista",
   dicaPortfolio: "correAquiDicaPortfolioVista",
-  dicaPatentes: "correAquiDicaPatentesVista",
+  dicaReputacao: "correAquiDicaReputacaoVista",
   dicaProgresso: "correAquiDicaProgressoVista",
 }
 
@@ -28,7 +28,7 @@ export const TUTORIAL_ACTIONS = {
   showWorkerChatAccess: "show-worker-chat-access",
   openProfessionalProfile: "open-professional-profile",
   openPortfolio: "open-portfolio",
-  openPatents: "open-patents",
+  openReputation: "open-reputation",
   cleanupTutorialViews: "cleanup-tutorial-views",
 }
 
@@ -43,7 +43,7 @@ export const TUTORIAL_FLOWS = {
         route: "/",
         target: "modo",
         title: "Escolha de modo",
-        text: "Escolha como deseja usar o Corre Aqui. Voce pode trocar de modo quando quiser.",
+        text: "Escolha Quero contratar para usar o app como cliente sem criar perfil profissional publico.",
         placement: "bottom",
         interaction: "none",
         allowInformativeFallback: false,
@@ -133,7 +133,7 @@ export const TUTORIAL_FLOWS = {
         route: "/",
         target: "modo-trabalhar",
         title: "Modo Trabalhar",
-        text: "Escolha Trabalhar para encontrar pedidos proximos e oferecer seus servicos.",
+        text: "Escolha Trabalhar para criar sua ficha publica de trabalho antes de aparecer para clientes.",
         placement: "bottom",
         interaction: "none",
         allowInformativeFallback: false,
@@ -143,7 +143,7 @@ export const TUTORIAL_FLOWS = {
         route: "/corre",
         target: "perfil-profissional",
         title: "Perfil profissional",
-        text: "Esta e a area do seu perfil profissional. Complete seus dados para transmitir mais confianca aos clientes.",
+        text: "Esta e a area da sua ficha publica. Complete servicos, portfolio e disponibilidade para transmitir mais confianca.",
         prepare: [TUTORIAL_ACTIONS.openProfessionalProfile],
         placement: "left",
         interaction: "none",
@@ -217,12 +217,12 @@ export const TUTORIAL_FLOWS = {
         informativeWhenMissing: true,
       },
       {
-        id: "patentes",
+        id: "reputacao",
         route: "/corre",
-        target: "patentes",
-        title: "Patentes e recompensas",
-        text: "Aqui voce acompanha XP, moedas e evolucao de patente conforme conclui atendimentos.",
-        prepare: [TUTORIAL_ACTIONS.openPatents],
+        target: "reputacao",
+        title: "Construa sua reputação",
+        text: "Avaliações reais, serviços concluídos e bom atendimento ajudam clientes a confiar no seu trabalho.",
+        prepare: [TUTORIAL_ACTIONS.openReputation],
         placement: "left",
         interaction: "none",
         allowInformativeFallback: true,
@@ -264,10 +264,10 @@ export const ASSISTANT_TOPICS = [
     target: "portfolio",
   },
   {
-    id: "patentes",
-    label: "Como funcionam as patentes",
+    id: "reputacao",
+    label: "Como construir minha reputação",
     flow: "trabalhar",
-    target: "patentes",
+    target: "reputacao",
   },
 ]
 

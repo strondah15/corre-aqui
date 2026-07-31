@@ -16,7 +16,7 @@ export default function PrivacidadePage() {
           Podemos coletar dados de conta, como nome, e-mail, foto, identificador de usuario, cidade, telefone/WhatsApp quando informado e tipo de perfil escolhido.
         </p>
         <p>
-          Tambem podemos tratar dados de uso do app: pedidos criados ou aceitos, status do servico, mensagens de chat, anexos, agenda, avaliacoes, denuncias, problemas registrados, notificacoes, patentes, preferencias e dados tecnicos basicos.
+          Tambem podemos tratar dados de uso do app: pedidos criados ou aceitos, status do servico, mensagens de chat, anexos, agenda, avaliacoes, denuncias, problemas registrados, notificacoes, preferencias e dados tecnicos basicos.
         </p>
         <p>
           Quando autorizado, podemos usar localizacao para mapa ao vivo, pedidos proximos, profissionais/corres disponiveis e melhoria da experiencia local.
@@ -85,4 +85,3 @@ export default function PrivacidadePage() {
     </LegalPage>
   )
 }
-

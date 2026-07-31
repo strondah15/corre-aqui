@@ -56,9 +56,9 @@ export default function TermosPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="6. Avaliacoes, patentes e verificado">
+      <LegalSection title="6. Avaliacoes, reputacao e verificado">
         <p>
-          Avaliacoes, historico, patentes, selos e indicativos de perfil verificado sao sinais de confianca dentro do app. Eles nao representam garantia total de qualidade, idoneidade, cumprimento do servico ou ausencia de risco.
+          Avaliacoes, historico de servicos e indicativos de perfil verificado sao sinais de confianca dentro do app. Eles nao representam garantia total de qualidade, idoneidade, cumprimento do servico ou ausencia de risco.
         </p>
       </LegalSection>
 
@@ -91,4 +91,3 @@ export default function TermosPage() {
     </LegalPage>
   )
 }
-

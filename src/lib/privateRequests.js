@@ -436,12 +436,6 @@ export async function notifyPublicRequestAccepted({ database, pedido = {}, profi
     profissional.role === 'profissional' ? 'Profissional' : '',
     'Corre/Profissional',
   )
-  const patenteNome = pickText(
-    profissional.patenteNome,
-    profissional.patente?.nome,
-    profissional.patentes?.corre?.nome,
-    profissional.profile?.patenteNome,
-  )
   const avaliacaoValue = Number(
     profissional.avaliacaoMedia ||
       profissional.nota ||
@@ -480,7 +474,6 @@ export async function notifyPublicRequestAccepted({ database, pedido = {}, profi
       profissionalNome,
       profissionalFotoURL: profissionalFotoURL || undefined,
       tipoAtuacao,
-      patenteNome: patenteNome || undefined,
       avaliacao: Number.isFinite(avaliacaoValue) && avaliacaoValue > 0 ? avaliacaoValue : undefined,
       servicoTitulo,
       categoriaNome: pickText(pedido.categoriaNome, pedido.categoriaLabel) || undefined,
@@ -768,7 +761,6 @@ export async function respondPrivateRequest({ database, request = {}, profission
             profissionalNome: profNome,
             profissionalFotoURL: profissionalFotoURL || undefined,
             tipoAtuacao: pickText(profissional.tipoAtuacao, profissional.role, 'Corre/Profissional'),
-            patenteNome: pickText(profissional.patenteNome, profissional.patente?.nome) || undefined,
             avaliacao: Number(profissional.avaliacaoMedia || profissional.nota || 0) || undefined,
             servicoTitulo: title,
             dataAgendamento: request.data || undefined,

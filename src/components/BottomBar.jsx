@@ -117,11 +117,11 @@ export default function BottomBar({
   return (
     <div
       className={[
-        'fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[9998] px-3 transition-all duration-300 ease-out will-change-transform md:inset-x-auto md:right-6 md:bottom-6 md:px-0',
+        'fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[9998] px-3 transition-all duration-300 ease-out md:inset-x-auto md:right-6 md:bottom-6 md:px-0',
         collapsed ? 'translate-y-[135%] opacity-0 pointer-events-none' : 'translate-y-0 opacity-100',
       ].join(' ')}
     >
-      <div className="mx-auto flex h-[66px] w-full max-w-[430px] items-center justify-between gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.24)] backdrop-blur-xl md:max-w-[470px] md:border-white/10 md:bg-slate-950/92 md:px-3 md:text-white">
+      <div className="mx-auto flex h-[66px] w-full max-w-[430px] items-center justify-between gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.24)] md:max-w-[470px] md:border-white/10 md:bg-slate-950/95 md:px-3 md:text-white">
         {navItems.map(navButton)}
       </div>
     </div>

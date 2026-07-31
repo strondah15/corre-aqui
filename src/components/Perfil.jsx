@@ -32,7 +32,7 @@ export default function Perfil() {
           </div>
           <h1 className="mt-3 text-2xl font-black text-blue-950">Perfil do app</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">
-            Entre primeiro para editar cadastro, notificacoes, patentes e preferencias.
+            Entre primeiro para editar cadastro, notificacoes, reputacao e preferencias.
           </p>
           <button
             type="button"

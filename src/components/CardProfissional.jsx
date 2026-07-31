@@ -3,6 +3,7 @@
 import { memo, useCallback, useMemo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { getCategoryById } from '@/constants/categories'
+import ProfessionalReputationSummary from '@/components/ProfessionalReputationSummary'
 
 function safeUrl(u) {
   const s = String(u || '').trim()
@@ -158,23 +159,7 @@ function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
   const expCorre = pickText(item?.correExperiencia, corre?.experiencia)
   const whats = pickText(item?.profWhats, prof?.whatsapp, profile?.whatsapp)
 
-  const servicosFeitos = Number(
-    item?.servicosCorre ||
-      item?.['serviçosCorre'] ||
-      item?.servicosProf ||
-      item?.['serviçosProf'] ||
-      profile?.servicosCorre ||
-      profile?.['serviçosCorre'] ||
-      0
-  )
-  const notaMedia = Number(
-    item?.avaliacaoMedia ||
-      item?.notaMedia ||
-      item?.trustStats?.notaMedia ||
-      profile?.avaliacaoMedia ||
-      profile?.notaMedia ||
-      0
-  )
+  const servicosFeitos = Number(item?.reputation?.completedServices || item?.servicosConcluidos || 0)
   const perfilVerificado = !!(
     item?.verificado ||
     item?.verified ||
@@ -304,19 +289,11 @@ function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
         </div>
       </div>
 
-      <div className="relative mt-2 grid grid-cols-3 gap-1.5 md:mt-4 md:gap-2">
-        <div className="rounded-xl bg-slate-50 px-2 py-2 text-center ring-1 ring-slate-200 md:rounded-2xl md:py-2.5">
-          <div className="text-sm font-black md:text-base">{Number.isFinite(notaMedia) && notaMedia > 0 ? notaMedia.toFixed(1) : '--'}</div>
-          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Nota</div>
-        </div>
-        <div className="rounded-xl bg-slate-50 px-2 py-2 text-center ring-1 ring-slate-200 md:rounded-2xl md:py-2.5">
-          <div className="text-sm font-black md:text-base">{servicosFeitos || 0}</div>
-          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Serviços</div>
-        </div>
-        <div className="rounded-xl bg-slate-50 px-2 py-2 text-center ring-1 ring-slate-200 md:rounded-2xl md:py-2.5">
-          <div className="truncate text-sm font-black md:text-base">{agendaStatus.agendaAberta ? 'Aberta' : 'Fechada'}</div>
-          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Agenda</div>
-        </div>
+      <div className="relative mt-3 flex items-center justify-between gap-2 border-y border-slate-100 py-2.5">
+        <ProfessionalReputationSummary source={item} compact className="flex-1" />
+        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${agendaStatus.agendaAberta ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+          Agenda {agendaStatus.agendaAberta ? 'aberta' : 'fechada'}
+        </span>
       </div>
 
       {categorias.length ? (

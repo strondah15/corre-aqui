@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus } from '@/lib/atendimento'
 
 const CLIENTE_LIST_STATE_KEY = 'correAqui:listState:v2:cliente'
+const COMMERCIAL_HIGHLIGHTS_UI_ENABLED = false
 
 function getMs(value) {
   if (!value) return 0
@@ -99,6 +100,32 @@ function getStatusKey(pedido) {
   if (status === 'concluido' || status === 'finalizado' || status === 'feito') return 'concluido'
   if (status === 'cancelado' || status === 'recusado') return 'cancelado'
   return 'aberto'
+}
+
+function hasActiveCommercialBoost(pedido) {
+  const candidates = [
+    pedido?.featuredBoost,
+    pedido?.featuredRequestEntitlement,
+    pedido?.boost,
+  ]
+
+  return candidates.some((boost) => {
+    if (!boost || typeof boost !== 'object') return false
+    const active = boost.active === true || boost.ativo === true || String(boost.status || '').toLowerCase() === 'active'
+    if (!active) return false
+    const expiresAt = getMs(boost.expiresAt || boost.expiraEm || boost.validoAte || boost.until)
+    return !expiresAt || expiresAt > Date.now()
+  })
+}
+
+function canBoostPedido(pedido, meuId) {
+  if (!pedido || pedido.privateRequest) return false
+  if (String(pedido?.criador?.id || '') !== String(meuId || '')) return false
+  if (getStatusKey(pedido) !== 'aberto') return false
+  if (pedido?.aceite?.id || pedido?.aceitoPor || pedido?.aceitadorId) return false
+  if (pedido?.bloqueado || pedido?.blocked || pedido?.moderado || pedido?.moderation?.blocked) return false
+  if (hasActiveCommercialBoost(pedido)) return false
+  return true
 }
 
 function getStatusMeta(pedido) {
@@ -228,6 +255,7 @@ export default function MeusPedidosCliente({
   onConfirmarServicoFeito,
   onProblemaServico,
   onAvaliarServico,
+  onBoostPedido,
   onToast,
 }) {
   const router = useRouter()
@@ -401,6 +429,7 @@ export default function MeusPedidosCliente({
               const podeConcluir = statusKey === 'aguardando_confirmacao' && String(pedido?.criador?.id || '') === String(meuId || '')
               const podeAvaliar = statusKey === 'concluido' && !pedido?.avaliacao
               const podeRelatar = statusKey === 'aceito' || statusKey === 'aguardando_confirmacao' || statusKey === 'concluido'
+              const podeImpulsionar = COMMERCIAL_HIGHLIGHTS_UI_ENABLED && canBoostPedido(pedido, meuId)
 
               return (
                 <motion.article
@@ -474,8 +503,18 @@ export default function MeusPedidosCliente({
                     </button>
                   </div>
 
-                  {(podeConcluir || podeAvaliar || podeRelatar || localOk) ? (
+                  {(podeImpulsionar || podeConcluir || podeAvaliar || podeRelatar || localOk) ? (
                     <div className="mt-2 flex flex-wrap gap-2">
+                      {podeImpulsionar ? (
+                        <button
+                          type="button"
+                          onClick={() => onBoostPedido?.(pedido)}
+                          className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-black text-amber-700 transition active:scale-[0.98]"
+                        >
+                          Impulsionar pedido
+                        </button>
+                      ) : null}
+
                       {podeConcluir ? (
                         <button
                           type="button"

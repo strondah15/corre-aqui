@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "firebase/auth";
-import { ref, onValue, update, set, serverTimestamp } from '@/lib/firebaseDebug';
+import { ref, get, onValue, update, set, runTransaction, serverTimestamp } from '@/lib/firebaseDebug';
 import { auth, database } from "@/lib/firebase";
 import { uploadProfilePhotoToImgBB } from "@/lib/imgbbClient";
 import {
@@ -13,15 +13,17 @@ import {
 } from "@/lib/pushNotifications";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import PainelPatentes from "./PainelPatentes";
-import Patente, { calcularPatentePorServicos } from "./Patente";
+import ProfessionalReputationSummary from "./ProfessionalReputationSummary";
 import { CATEGORIES, getCategoryById } from "@/constants/categories";
 import { normalizeAtendimentoStatus, ATENDIMENTO_STATUS } from "@/lib/atendimento";
 import { openAssistantHelpCenter, startClientTutorial, startWorkerTutorial } from "@/components/tutorial/TutorialProvider";
+import { clearPrivatePublicProfileFields, normalizeProfileStatus } from "@/lib/publicWorkProfile";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
   ssr: false,
 });
+
+const COMMERCIAL_HIGHLIGHTS_UI_ENABLED = false;
 
 const defaultPrivacy = {
   profileVisible: true,
@@ -38,6 +40,17 @@ const defaultNotificationPreferences = {
   attendances: true,
   reviews: true,
 };
+
+const blockedPublicProfileStatuses = new Set([
+  "blocked",
+  "bloqueado",
+  "suspended",
+  "suspenso",
+  "deleted",
+  "deletado",
+  "removed",
+  "removido",
+]);
 
 const configSectionIds = ["presenca", "notificacoes", "assistente", "privacidade", "experiencia"];
 
@@ -87,6 +100,7 @@ function normalizePrivacy(value = {}, fallback = {}) {
 }
 
 const initialProfile = {
+  createdAt: null,
   nome: "",
   cidade: "",
   bairro: "",
@@ -131,8 +145,7 @@ const tabLabel = {
   corre: "Corre",
   profissional: "Corre/Pro",
   config: "Configurações",
-  monetizacao: "Em breve",
-  patentes: "Patentes",
+  monetizacao: "Destaque",
 };
 
 const tabIcon = {
@@ -140,20 +153,19 @@ const tabIcon = {
   profissional: "🧑‍🔧",
   config: "⚙️",
   monetizacao: "📢",
-  patentes: "🏆",
 };
 
 const planoInfo = {
   EmBreve: {
-    nome: "Em breve",
-    icon: "✨",
-    badge: "bg-emerald-500/15 border-emerald-400/20 text-emerald-300",
-    descricao: "Recursos premium e anúncios locais serão liberados futuramente.",
+    nome: "Corre Aqui Destaque",
+    icon: "👑",
+    badge: "bg-yellow-300/20 border-yellow-300/30 text-yellow-200",
+    descricao: "Apareca para mais clientes por R$ 9,99 por 30 dias.",
   },
 };
 
 const trustItems = [
-  { icon: "⭐", title: "Sistema de patentes", text: "Evolução por experiência e serviços concluídos." },
+  { icon: "★", title: "Reputação profissional", text: "Avaliações e serviços concluídos com dados reais." },
   { icon: "💬", title: "Histórico de conversas", text: "Combinações ficam registradas no chat do pedido." },
   { icon: "✅", title: "Avaliações dos serviços", text: "Reputação construída depois de cada conclusão." },
   { icon: "🟢", title: "Perfil verificado em breve", text: "Selo de confiança planejado, sem biometria nesta etapa." },
@@ -161,6 +173,8 @@ const trustItems = [
 ];
 
 function PlanoResumo({ onOpenPlanos }) {
+  if (!COMMERCIAL_HIGHLIGHTS_UI_ENABLED) return null;
+
   const atual = planoInfo.EmBreve;
 
   return (
@@ -168,13 +182,13 @@ function PlanoResumo({ onOpenPlanos }) {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-[0.18em] font-black text-blue-700">
-            Crescimento justo
+            Ganhe mais visibilidade
           </div>
           <div className="mt-1 text-sm font-extrabold text-blue-950">
-            💚 Sem taxa do app
+            👑 Corre Aqui Destaque
           </div>
           <div className="mt-1 max-w-xl text-xs font-semibold leading-relaxed text-slate-600 md:text-sm">
-            100% do valor combinado fica com quem faz o serviço. Recursos premium e anúncios locais chegam em breve.
+            Apareca para mais clientes por R$ 9,99 por 30 dias. O destaque aumenta sua visibilidade sem alterar reputacao, avaliacoes ou historico real.
           </div>
         </div>
 
@@ -190,7 +204,7 @@ function PlanoResumo({ onOpenPlanos }) {
             onClick={onOpenPlanos}
             className="h-11 rounded-2xl bg-blue-700 px-6 text-sm font-extrabold text-white shadow-[0_14px_32px_rgba(37,99,235,0.25)] transition hover:bg-blue-800 active:scale-[0.98] md:w-80"
           >
-            Ver recursos em breve
+            Conhecer plano
           </button>
         </div>
       </div>
@@ -509,7 +523,7 @@ function ConfiguracoesOrganizadas({
           <ConfigRow icon="C" title="Ativar tutorial Cliente" description="Rever como pedir ajuda, criar pedido, chat e pedidos." tone="blue" onClick={onStartClientTutorial}>
             <span className="text-xl font-black text-blue-600">&rarr;</span>
           </ConfigRow>
-          <ConfigRow icon="T" title="Ativar tutorial Trabalhar" description="Rever pedidos, agenda, atendimento, portf&oacute;lio e patentes." tone="blue" onClick={onStartWorkerTutorial}>
+          <ConfigRow icon="T" title="Ativar tutorial Trabalhar" description="Rever pedidos, agenda, atendimento, portf&oacute;lio e reputa&ccedil;&atilde;o." tone="blue" onClick={onStartWorkerTutorial}>
             <span className="text-xl font-black text-blue-600">&rarr;</span>
           </ConfigRow>
         </ConfigSection>
@@ -663,16 +677,6 @@ function ProfMenuIcon({ id }) {
       </>
     ),
     avaliacoes: <path {...common} d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.2l-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" />,
-    patentes: (
-      <>
-        <path {...common} d="M8 4h8v3a4 4 0 0 1-8 0V4Z" />
-        <path {...common} d="M8 6H5a3 3 0 0 0 3 3" />
-        <path {...common} d="M16 6h3a3 3 0 0 1-3 3" />
-        <path {...common} d="M12 11v5" />
-        <path {...common} d="M9 20h6" />
-        <path {...common} d="M10 16h4v4h-4z" />
-      </>
-    ),
     config: (
       <>
         <path {...common} d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
@@ -1052,11 +1056,21 @@ function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", priv
     ocupadoAte: profile.ocupadoAte || "",
     agendaAberta: profile.agendaAberta !== false,
   };
+  const publicWhatsapp = privacySettings.allowPublicContact === true ? profissional.whatsapp : "";
+  const correCategorias = Array.isArray(profile.correCategorias) ? profile.correCategorias : [];
+  const profCategorias = Array.isArray(profile.profCategorias) ? profile.profCategorias : [];
+  const primaryCategoryId =
+    profile.primaryCategoryId ||
+    profile.categoriaId ||
+    (profile.isProfissional ? profCategorias[0] : correCategorias[0]) ||
+    correCategorias[0] ||
+    profCategorias[0] ||
+    "";
 
   return {
     uid,
     id: uid,
-    nome: String(profile.nome || "").trim() || "Profissional",
+    nome: String(profile.nome || "").trim(),
     fotoURL: fotoPrincipal || null,
     photoURL: fotoPrincipal || null,
     avatar: fotoPrincipal || profile.avatarEmoji || "",
@@ -1064,14 +1078,18 @@ function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", priv
     cidade: profile.cidade || "",
     bio: profile.bio || "",
     visivel: profile.visivel !== false,
+    visibility: privacySettings.profileVisible !== false ? "public" : "private",
+    profileStatus: privacySettings.profileVisible !== false ? "active" : "paused",
     profileVisible: privacySettings.profileVisible !== false,
     profileVisibilityExplicit: privacySettings.profileVisibilityExplicit === true,
     showOnlineStatus: privacySettings.showOnlineStatus !== false,
     allowPublicContact: privacySettings.allowPublicContact === true,
     isCorre: !!profile.isCorre,
     isProfissional: !!profile.isProfissional,
-    correCategorias: Array.isArray(profile.correCategorias) ? profile.correCategorias : [],
-    profCategorias: Array.isArray(profile.profCategorias) ? profile.profCategorias : [],
+    primaryCategoryId,
+    categoriaId: primaryCategoryId,
+    correCategorias,
+    profCategorias,
     correTitulo: corre.titulo,
     correResumo: corre.bio,
     correRegiao: corre.regiao,
@@ -1079,13 +1097,15 @@ function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", priv
     profResumo: profissional.descricao || profissional.titulo,
     profCidadeAtende: profissional.regiao,
     profPrecoBase: profissional.preco,
-    profWhats: profissional.whatsapp,
+    profWhats: publicWhatsapp,
     profExperiencia: profissional.experiencia,
     corre,
-    profissional,
-    profPortfolio,
+    profissional: {
+      ...profissional,
+      whatsapp: publicWhatsapp,
+    },
     portfolio: portfolioListToMap(profPortfolio),
-    plano: profile.plano || "Free",
+    createdAt: profile.createdAt || profile.criadoEm || null,
     statusProfissional: profile.statusProfissional || "disponivel",
     agendaAberta: profile.agendaAberta !== false,
     updatedAt: serverTimestamp(),
@@ -1111,6 +1131,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [profile, setProfile] = useState(initialProfile);
   const [portfolioDraft, setPortfolioDraft] = useState(createEmptyPortfolioDraft);
   const [portfolioEditingId, setPortfolioEditingId] = useState("");
+  const [portfolioSaving, setPortfolioSaving] = useState(false);
   const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
   const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
   const [addresses, setAddresses] = useState([]);
@@ -1159,19 +1180,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     ticketMedioCorre: 0,
     ticketMedioProf: 0,
     ganhosRecentes: [],
-  });
-  const [accountStats, setAccountStats] = useState({
-    xp: 0,
-    moedas: 0,
-    servicosCorre: 0,
-    servicosProf: 0,
-    patenteCorre: 1,
-    patenteProf: 0,
+    tempoMedioRespostaMs: null,
+    amostrasResposta: 0,
+    clientesRecorrentes: 0,
   });
   const settingsLoadedRef = useRef(false);
   const drawerScrollRef = useRef(null);
   const portfolioFormRef = useRef(null);
   const portfolioFirstInputRef = useRef(null);
+  const portfolioSavingRef = useRef(false);
   const configSaveTimerRef = useRef(null);
   const configSnapshotRef = useRef("");
   const configLastSavedRef = useRef(null);
@@ -1190,7 +1207,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
   useEffect(() => {
     if (!open) return;
-    setTab(initialTab && initialTab !== "perfil" ? initialTab : "config");
+    const nextInitialTab = initialTab && initialTab !== "perfil" ? initialTab : "config";
+    setTab(nextInitialTab === "monetizacao" && !COMMERCIAL_HIGHLIGHTS_UI_ENABLED ? "config" : nextInitialTab);
     setProfSection(initialTab === "profissional" ? initialProfSection || "perfilProfissional" : "");
     setProfessionalProfileStep("choice");
     setAddressAviso("");
@@ -1212,21 +1230,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         showOnlineStatus: data.showOnlineStatus ?? data.profile?.showOnlineStatus,
       });
       const mapVisible = data.visivel ?? data.profile?.visivel ?? true;
-
-      const servicosCorre = Number(data.servicosCorre ?? data["serviçosCorre"] ?? 0);
-      const servicosProf = Number(data.servicosProf ?? data["serviçosProf"] ?? 0);
-      const isProfissionalUser = !!(data.isProfissional || data.profile?.isProfissional || data.profissional?.ativo);
-
-      setAccountStats({
-        xp: Number(data.xp || 0),
-        moedas: Number(data.moedas || 0),
-        servicosCorre,
-        servicosProf,
-        patenteCorre: Math.max(Number(data.patenteCorre || 1), calcularPatentePorServicos(servicosCorre)),
-        patenteProf: isProfissionalUser
-          ? Math.max(Number(data.patenteProf || 1), calcularPatentePorServicos(servicosProf))
-          : 0,
-      });
 
       const profileData = data.profile || {};
       const portfolioSalvo = normalizePortfolio(
@@ -1254,6 +1257,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
       setProfile((prev) => ({
         ...prev,
+        createdAt: data.createdAt || data.criadoEm || profileData.createdAt || profileData.criadoEm || prev.createdAt,
         nome: prev.nome || profileData.nome || data.nome || "",
         cidade: prev.cidade || profileData.cidade || data.cidade || "",
         bairro: prev.bairro || profileData.bairro || data.bairro || "",
@@ -1420,6 +1424,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       let ganhosCorreSemana = 0;
       let ganhosProfSemana = 0;
       const ganhosRecentes = [];
+      const temposResposta = [];
+      const conclusoesPorCliente = {};
       const inicioSemana = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
       pedidos.forEach((p) => {
@@ -1430,6 +1436,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         const valorPedido = getValorPedido(p);
         const dataConclusao = p?.concluidoEm || p?.atualizadoEm || p?.aceitoEm || p?.criadoEm;
         const msConclusao = getMs(dataConclusao);
+
+        if (souCorre) {
+          const criadoEm = getMs(p?.criadoEm || p?.createdAt);
+          const aceitoEm = getMs(p?.aceite?.aceitoEm || p?.aceitoEm || p?.atendimento?.aceitoEm);
+          const intervalo = aceitoEm - criadoEm;
+          if (criadoEm && aceitoEm > criadoEm && intervalo <= 7 * 24 * 60 * 60 * 1000) {
+            temposResposta.push(intervalo);
+          }
+        }
 
         if (concluido && (souCliente || souCorre)) total += 1;
         if (concluido && souCorre && modoProfissional) {
@@ -1452,6 +1467,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         }
 
         if (concluido && souCorre) {
+          const clienteId = String(p?.criador?.id || p?.criadorUid || p?.clienteId || "").trim();
+          if (clienteId) conclusoesPorCliente[clienteId] = (conclusoesPorCliente[clienteId] || 0) + 1;
           ganhosRecentes.push({
             id: p.id,
             titulo: p.titulo || p.tipo || "Servico concluido",
@@ -1464,6 +1481,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       });
 
       const ganhosTotal = ganhosCorreTotal + ganhosProfTotal;
+      const tempoMedioRespostaMs = temposResposta.length >= 3
+        ? temposResposta.reduce((sum, value) => sum + value, 0) / temposResposta.length
+        : null;
+      const clientesRecorrentes = Object.values(conclusoesPorCliente).filter((totalCliente) => totalCliente >= 2).length;
 
       setServiceStats({
         total,
@@ -1482,6 +1503,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         ticketMedioCorre: comoCorre ? ganhosCorreTotal / comoCorre : 0,
         ticketMedioProf: comoProfissional ? ganhosProfTotal / comoProfissional : 0,
         ganhosRecentes: ganhosRecentes.sort((a, b) => (b.ms || 0) - (a.ms || 0)).slice(0, 12),
+        tempoMedioRespostaMs,
+        amostrasResposta: temposResposta.length,
+        clientesRecorrentes,
       });
     });
   }, [open, uid]);
@@ -1949,12 +1973,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       };
 
       const fotoPrincipal = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
+      const publicProfileSnap = await get(ref(database, `publicProfiles/${uid}`)).catch(() => null);
+      const shouldSyncPublicWorkProfile = !!(publicProfileSnap?.exists?.() && publicProfileSnap.val());
       const publicPortfolioMap = privacySettings.profileVisible
         ? portfolioListToPublicMap(profPortfolio, profile, uid, fotoPrincipal)
         : {};
-      const publicProfilePayload = privacySettings.profileVisible
-        ? profileToPublicProfile(profile, uid, fotoPrincipal, privacySettings, profPortfolio)
-        : null;
+      const publicProfilePayload = profileToPublicProfile(profile, uid, fotoPrincipal, privacySettings, profPortfolio);
       const profilePublic = { ...profile };
       delete profilePublic.privacy;
       delete profilePublic.cpf;
@@ -2073,11 +2097,26 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         updatedAt: serverTimestamp(),
       });
 
-      await set(
-        ref(database, `publicPortfolio/${uid}`),
-        Object.keys(publicPortfolioMap).length ? publicPortfolioMap : null
-      );
-      await set(ref(database, `publicProfiles/${uid}`), publicProfilePayload);
+      if (shouldSyncPublicWorkProfile) {
+        await set(
+          ref(database, `publicPortfolio/${uid}`),
+          Object.keys(publicPortfolioMap).length ? publicPortfolioMap : null
+        );
+        await runTransaction(ref(database, `publicProfiles/${uid}`), (current) => {
+          const currentStatus = normalizeProfileStatus(current || {});
+          if (blockedPublicProfileStatuses.has(currentStatus)) return current;
+
+          return clearPrivatePublicProfileFields({
+            ...(current || {}),
+            ...publicProfilePayload,
+            uid,
+            id: uid,
+            createdAt: current?.createdAt || publicProfilePayload.createdAt || serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            atualizadoEm: serverTimestamp(),
+          });
+        });
+      }
 
       console.warn("[PRESENCE] caminho legado detectado", {
         path: `usuariosOnline/${uid}`,
@@ -2207,13 +2246,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     profile.perfilVerificado ||
     profile.trust?.verificado
   );
-  const nivelCorreAtual = Math.max(
-    Number(accountStats.patenteCorre || 1),
-    calcularPatentePorServicos(accountStats.servicosCorre)
-  );
-  const nivelProfAtual = profile.isProfissional
-    ? Math.max(Number(accountStats.patenteProf || 1), calcularPatentePorServicos(accountStats.servicosProf))
-    : 0;
   const pushAtivo = profile.pushNotifications?.enabled === true;
   const pushPermission = pushInfo.permission || "default";
   const pushStatusLabel =
@@ -2268,10 +2300,20 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     });
   };
   const professionalMode = tab === "profissional";
+  const visibleProfileTabs = COMMERCIAL_HIGHLIGHTS_UI_ENABLED ? ["config", "monetizacao"] : ["config"];
   const taxaConclusaoProf = serviceStats.total
     ? Math.max(0, Math.round(((serviceStats.total - serviceStats.problemas) / serviceStats.total) * 100))
     : 0;
   const portfolioItems = normalizePortfolio(profile.profPortfolio);
+  const professionalReputation = {
+    rating: serviceStats.notaMedia,
+    reviewCount: serviceStats.avaliacoes,
+    completedServices: serviceStats.comoCorre + serviceStats.comoProfissional,
+    memberSince: profile.createdAt,
+    averageResponseTimeMs: serviceStats.tempoMedioRespostaMs,
+    responseSamples: serviceStats.amostrasResposta,
+    returningClients: serviceStats.clientesRecorrentes,
+  };
   const portfolioDraftFotos = normalizePortfolioFotos(portfolioDraft);
   const selectedWorkMode = profile.isCorre && profile.isProfissional
     ? "ambos"
@@ -2321,10 +2363,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       title: "Avaliacoes",
       desc: "Reputacao, nota e historico de confianca.",
     },
-    patentes: {
-      title: "Patentes Corre/Pro",
-      desc: "Evolucao por servicos concluidos.",
-    },
     config: {
       title: "Configuracoes",
       desc: "Disponibilidade, agenda e visibilidade.",
@@ -2364,6 +2402,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setPortfolioDraft((prev) => ({ ...prev, [field]: value }));
   };
   const adicionarPortfolioItem = () => {
+    if (portfolioSavingRef.current) return;
+
+    portfolioSavingRef.current = true;
+    setPortfolioSaving(true);
+
     const fotos = normalizePortfolioFotos(portfolioDraft);
     const categoriaMeta = getCategoryById(portfolioDraft.categoriaId || portfolioDraft.categoria);
     const categoriaId = String(portfolioDraft.categoriaId || categoriaMeta?.id || "").trim();
@@ -2395,6 +2438,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     if (!item.nome && !item.descricao && !item.valor && !item.categoria && !item.fotos.length) {
       setPortfolioPhotoError("Preencha pelo menos o nome do serviço para adicionar.");
       portfolioFirstInputRef.current?.focus();
+      portfolioSavingRef.current = false;
+      setPortfolioSaving(false);
       return;
     }
 
@@ -2408,6 +2453,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setPortfolioDraft(createEmptyPortfolioDraft());
     setPortfolioEditingId("");
     setPortfolioPhotoError("");
+    window.setTimeout(() => {
+      portfolioSavingRef.current = false;
+      setPortfolioSaving(false);
+    }, 300);
   };
   const editarPortfolioItem = (item) => {
     const normalized = normalizePortfolio([item])[0] || item;
@@ -2731,8 +2780,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           {/* MENU DO PERFIL */}
           {!professionalMode && !standaloneClientPage && tab !== "config" && (
           <div className="mt-3 rounded-[22px] border border-slate-200 bg-white p-1.5 shadow-[0_14px_36px_rgba(15,23,42,0.08)] md:mt-4 md:rounded-[28px] md:p-2">
-            <div className="grid grid-cols-2 gap-1.5 md:gap-2">
-              {["config", "monetizacao"].map(
+            <div className={`grid gap-1.5 md:gap-2 ${visibleProfileTabs.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+              {visibleProfileTabs.map(
                 (t) => (
                   <button
                     key={t}
@@ -3653,7 +3702,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                 <label className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 md:mt-4 md:gap-4 md:px-4 md:py-4">
                   <div>
                     <div className="text-sm font-extrabold text-slate-950">Animações da interface</div>
-                    <div className="text-xs font-semibold text-slate-500">Mantém transições e feedbacks de XP/patente mais vivos.</div>
+                    <div className="text-xs font-semibold text-slate-500">Mantém transições e feedbacks da interface mais vivos.</div>
                   </div>
                   <ToggleSwitch
                     checked={profile.animacoes}
@@ -3898,7 +3947,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                   ["perfilProfissional", "Meu perfil profissional", "Como voce trabalha no Corre Aqui."],
                   ["portfolio", "Portfólio de serviços", "Serviços, preço, região e experiência."],
                   ["avaliacoes", "Avaliações", "Nota, histórico e reputação."],
-                  ["patentes", "Patentes", "Niveis de experiencia e confianca."],
                   ["config", "Configurações", "Conta, seguranca e privacidade."],
                   ["ajuda", "Ajuda", "Duvidas e suporte."],
                 ].map(([id, label, desc], index, arr) => {
@@ -3973,6 +4021,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                       i
                     </button>
                   </div>
+
+                  <ProfessionalReputationSummary
+                    data-tutorial="reputacao"
+                    reputation={professionalReputation}
+                    className="mt-4"
+                  />
 
                   {professionalProfileStep === "choice" && (
                     <div className="pt-8">
@@ -4465,9 +4519,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                       <button
                         type="button"
                         onClick={adicionarPortfolioItem}
-                        className="h-10 rounded-xl bg-blue-700 px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]"
+                        disabled={portfolioSaving || portfolioPhotoUploading}
+                        className={[
+                          "h-10 rounded-xl bg-blue-700 px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]",
+                          portfolioSaving || portfolioPhotoUploading ? "cursor-not-allowed opacity-60" : "",
+                        ].join(" ")}
                       >
-                        {portfolioEditingId ? "Salvar serviço" : "Adicionar"}
+                        {portfolioSaving ? "Salvando..." : portfolioEditingId ? "Salvar serviço" : "Adicionar"}
                       </button>
                     </div>
                   </div>
@@ -4584,33 +4642,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
               {currentProfSection === "avaliacoes" && (
                 <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
-                  <div className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">Avaliações</div>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    {[
-                      ["Nota", serviceStats.notaMedia ? `${serviceStats.notaMedia.toFixed(1)} ★` : "--"],
-                      ["Avaliações", serviceStats.avaliacoes],
-                      ["Problemas", serviceStats.problemas],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-[18px] border border-slate-100 bg-slate-50 px-2 py-3 text-center">
-                        <div className="text-lg font-black text-blue-950">{value}</div>
-                        <div className="mt-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</div>
-                      </div>
-                    ))}
-                  </div>
+                  <ProfessionalReputationSummary reputation={professionalReputation} />
                   <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3 text-xs font-bold leading-relaxed text-slate-600">
                     As avaliações aparecem após serviços concluídos. Quanto mais histórico positivo, mais confiança o perfil transmite.
                   </div>
-                </section>
-              )}
-
-              {currentProfSection === "patentes" && (
-                <section className="overflow-hidden rounded-[30px] border border-white/10 bg-[#07111F] p-1.5 shadow-[0_24px_70px_rgba(15,23,42,0.28)] md:p-2">
-                  <PainelPatentes
-                    accountStats={accountStats}
-                    serviceStats={serviceStats}
-                    isProfissional={profile.isProfissional}
-                    onBack={onClose}
-                  />
                 </section>
               )}
 
@@ -4671,21 +4706,21 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           )}
 
           {/* MONETIZAÇÃO */}
-          {tab === "monetizacao" && (
+          {COMMERCIAL_HIGHLIGHTS_UI_ENABLED && tab === "monetizacao" && (
             <div className="mt-3 space-y-3 md:mt-5 md:space-y-4">
               <div className="rounded-[20px] bg-gradient-to-br from-emerald-500/10 via-[#0b1628] to-blue-500/10 border border-cyan-400/10 p-3 shadow-[0_0_35px_rgba(34,211,238,0.06)] md:rounded-[28px] md:p-4">
                 <div className="text-base font-black text-white md:text-lg">
-                  💚 Corre Aqui sem taxa
+                  👑 Ganhe mais visibilidade
                 </div>
                 <div className="mt-1 text-xs leading-snug text-slate-300 md:text-sm md:leading-relaxed">
-                  O trabalhador fica com 100% do valor do serviço. Recursos premium, anúncios locais e boosts serão preparados com calma, sem cobrança obrigatória agora.
+                  Assine o Corre Aqui Destaque para aparecer na area de Profissionais em Destaque por 30 dias. O plano nao altera reputacao, avaliacoes ou historico real.
                 </div>
 
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 md:mt-4 md:gap-3">
                   {[
-                    "✨ Premium em breve",
-                    "📢 Anúncios locais",
-                    "🚀 Boosts futuros",
+                    "👑 Destaque regional",
+                    "💳 R$ 9,99 por 30 dias",
+                    "✅ Sem taxa sobre servicos",
                   ].map((item) => (
                     <div
                       key={item}

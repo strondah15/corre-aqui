@@ -21,7 +21,7 @@ export default function TelaBoasVindas({ onEntrar }) {
             Encontre alguém perto para resolver hoje.
           </p>
           <p className="mt-2 text-xs leading-relaxed text-white/76 sm:mt-3 sm:text-sm">
-            Peça ajuda, combine pelo chat, acompanhe o serviço e construa reputação com avaliações e patentes.
+            Peça ajuda, combine pelo chat, acompanhe o serviço e construa reputação com avaliações reais.
           </p>
         </div>
 

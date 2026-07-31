@@ -3,6 +3,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CATEGORIES, categoryMatches, getCategoryById } from '@/constants/categories'
 import ListaProfissionais from './ListaProfissionais'
+import { buildProfessionalReputation } from '@/lib/professionalReputation'
+import { canAppearInPublicDirectory } from '@/lib/publicWorkProfile'
 
 const glass =
   'bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.24)] text-white backdrop-blur-xl select-none'
@@ -68,10 +70,79 @@ const normalizePortfolioEntries = (...values) => values
   .flatMap((value) => {
     if (!value) return []
     if (Array.isArray(value)) return value
-    if (typeof value === 'object') return Object.values(value)
+    if (typeof value === 'object') {
+      return Object.entries(value).map(([key, item]) => {
+        if (!item || typeof item !== 'object') return item
+        return {
+          key: safeStr(item.key || key),
+          ...item,
+          id: safeStr(item.id || item.serviceId || item.portfolioItemId || item.portfolioServicoId || key),
+        }
+      })
+    }
     return []
   })
   .filter(Boolean)
+
+const firstPortfolioPhoto = (service = {}) => {
+  const fotos = normalizePortfolioFotos(service)
+  return fotos[0] || safeUrl(service.fotoURL || service.imageUrl || service.coverUrl)
+}
+
+const getPortfolioOwnerId = (service = {}, fallback = '') => safeStr(
+  service.profissionalId ||
+    service.ownerId ||
+    service.uid ||
+    service.providerId ||
+    service.userId ||
+    service.provider?.uid ||
+    service.provider?.id ||
+    fallback
+)
+
+const getPortfolioRecordId = (service = {}) => safeStr(
+  service.serviceId ||
+    service.portfolioItemId ||
+    service.portfolioServicoId ||
+    service.key ||
+    service.id
+)
+
+const portfolioLegacyToken = (value) => safeStr(value)
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim()
+
+const getPortfolioServiceKey = (service = {}, ownerFallback = '') => {
+  const ownerId = getPortfolioOwnerId(service, ownerFallback)
+  const recordId = getPortfolioRecordId(service)
+
+  if (ownerId && recordId) return `${ownerId}:${recordId}`
+  if (recordId) return `service:${recordId}`
+
+  const titulo = portfolioLegacyToken(service.nome || service.titulo || service.title || service.descricao)
+  const createdAt = safeStr(service.createdAt || service.criadoEm || service.updatedAt || service.atualizadoEm)
+  const foto = firstPortfolioPhoto(service)
+  return `legacy:${ownerId || 'sem-dono'}:${titulo}:${createdAt}:${foto}`
+}
+
+const dedupePortfolioServices = (services = []) => {
+  const byKey = new Map()
+
+  services.filter(Boolean).forEach((service) => {
+    const key = getPortfolioServiceKey(service)
+    const current = byKey.get(key)
+    const next = { ...service, uniqueKey: service.uniqueKey || key }
+
+    if (!current || (next.updatedAt || 0) >= (current.updatedAt || 0)) {
+      byKey.set(key, current ? { ...current, ...next, provider: { ...current.provider, ...next.provider } } : next)
+    }
+  })
+
+  return Array.from(byKey.values())
+}
 
 const isActivePortfolioService = (service) => {
   if (!service || typeof service !== 'object') return false
@@ -147,7 +218,7 @@ function ClienteHeroMapIcon() {
 }
 
 function CategoryTileIcon({ id }) {
-  const common = 'h-10 w-10 drop-shadow-[0_8px_14px_rgba(37,99,235,0.12)] md:h-14 md:w-14'
+  const common = 'h-8 w-8 drop-shadow-[0_6px_12px_rgba(37,99,235,0.12)] md:h-11 md:w-11'
 
   if (!id) {
     return (
@@ -338,7 +409,7 @@ function CategoryTileIcon({ id }) {
 
 function StatCardArt({ type }) {
   return (
-    <svg viewBox="0 0 160 96" className="pointer-events-none absolute inset-y-0 right-0 h-full w-32 opacity-55 md:w-[260px]" fill="none" aria-hidden="true">
+    <svg viewBox="0 0 160 96" className="pointer-events-none absolute inset-y-0 right-0 h-full w-24 opacity-45 md:w-40" fill="none" aria-hidden="true">
       <path d="M0 82c34-32 66-42 96-30 24 10 34 28 64 16" stroke={type === 'corre' ? '#facc15' : '#93c5fd'} strokeWidth="1.1" />
       <path d="M0 91c34-32 66-42 96-30 24 10 34 28 64 16" stroke={type === 'corre' ? '#facc15' : '#93c5fd'} strokeWidth="1.1" />
       {type === 'corre' ? (
@@ -414,7 +485,17 @@ const normalizeProvider = (u) => {
     (Array.isArray(profile?.profCategorias) && profile.profCategorias.length > 0)
   )
 
-  const profCategorias = Array.isArray(u?.profCategorias)
+  const primaryCategoryId = safeStr(
+    u?.primaryCategoryId ||
+      u?.categoriaId ||
+      u?.categoryId ||
+      profile?.primaryCategoryId ||
+      profile?.categoriaId ||
+      profile?.categoryId ||
+      ''
+  )
+
+  const profCategoriasBase = Array.isArray(u?.profCategorias)
     ? u.profCategorias
     : Array.isArray(profile?.profCategorias)
       ? profile.profCategorias
@@ -423,10 +504,13 @@ const normalizeProvider = (u) => {
       : Array.isArray(profile?.profissional?.profCategorias)
         ? profile.profissional.profCategorias
       : []
+  const profCategorias = profCategoriasBase.length || !primaryCategoryId || !isProfissional
+    ? profCategoriasBase
+    : [primaryCategoryId]
 
   const profResumo = safeStr(u?.profResumo || profile?.profResumo || profile?.descricao || profile?.titulo || u?.profissional?.profResumo || u?.profissional?.descricao || u?.profissional?.titulo || profile?.profissional?.descricao || profile?.profissional?.titulo || '')
   const profCidadeAtende = safeStr(
-    u?.profCidadeAtende || profile?.profCidadeAtende || u?.profissional?.profCidadeAtende || profile?.profissional?.regiao || profile?.cidade || ''
+    u?.profCidadeAtende || profile?.profCidadeAtende || u?.profissional?.profCidadeAtende || profile?.profissional?.regiao || u?.regiao || u?.cidade || profile?.cidade || ''
   )
   const profPrecoBase = safeStr(u?.profPrecoBase || profile?.profPrecoBase || profile?.preco || u?.profissional?.profPrecoBase || u?.profissional?.preco || profile?.profissional?.preco || '')
   const profWhats = safeStr(u?.profWhats || profile?.profWhats || u?.profissional?.profWhats || u?.profissional?.whatsapp || profile?.profissional?.whatsapp || '')
@@ -437,17 +521,20 @@ const normalizeProvider = (u) => {
   const okLoc = Number.isFinite(lat) && Number.isFinite(lng)
 
   const corre = u?.corre || profile?.corre || {}
-  const correCategorias = Array.isArray(u?.correCategorias)
+  const correCategoriasBase = Array.isArray(u?.correCategorias)
     ? u.correCategorias
     : Array.isArray(profile?.correCategorias)
       ? profile.correCategorias
       : Array.isArray(corre?.categorias)
         ? corre.categorias
         : []
+  const correCategorias = correCategoriasBase.length || !primaryCategoryId || !isCorre
+    ? correCategoriasBase
+    : [primaryCategoryId]
 
   const correTitulo = safeStr(u?.correTitulo || corre?.titulo || 'Corre rápido')
   const correResumo = safeStr(u?.correResumo || profile?.correResumo || corre?.bio || profile?.bio || '')
-  const correRegiao = safeStr(u?.correRegiao || profile?.correRegiao || corre?.regiao || profCidadeAtende || profile?.cidade || '')
+  const correRegiao = safeStr(u?.correRegiao || profile?.correRegiao || corre?.regiao || profCidadeAtende || u?.regiao || u?.cidade || profile?.cidade || '')
   const correTransporte = safeStr(u?.correTransporte || corre?.transporte || '')
   const correDisponibilidade = safeStr(u?.correDisponibilidade || corre?.disponibilidade || '')
   const profExperiencia = safeStr(u?.profExperiencia || u?.profissional?.profExperiencia || u?.profissional?.experiencia || '')
@@ -470,6 +557,9 @@ const normalizeProvider = (u) => {
     avatarEmoji,
     online: u?.online === true,
     profileVisible,
+    profileStatus: u?.profileStatus || u?.publicStatus || u?.statusPublico || profile?.profileStatus || profile?.publicStatus || '',
+    primaryCategoryId,
+    categoriaId: primaryCategoryId,
     isCorre,
     isProfissional,
     profCategorias,
@@ -487,6 +577,7 @@ const normalizeProvider = (u) => {
     portfolio,
     regiao: correRegiao || profCidadeAtende,
     local: okLoc ? { lat, lng } : null,
+    reputation: buildProfessionalReputation(u),
   }
 }
 
@@ -523,10 +614,13 @@ const normalizePortfolioService = (service, provider = {}, index = 0) => {
   )
   const providerFoto = safeUrl(service.profissionalFotoURL || service.providerFotoURL || provider.fotoURL || provider.photoURL)
   const updatedAt = Number(service.updatedAt || service.atualizadoEm || service.createdAt || service.criadoEm || 0) || 0
+  const serviceId = getPortfolioRecordId(service)
+  const uniqueKey = getPortfolioServiceKey({ ...service, profissionalId: providerUid, serviceId }, providerUid)
 
   return {
-    id: `${providerUid}_${safeStr(service.id || service.key || index)}`,
-    serviceId: safeStr(service.id || service.key || index),
+    id: serviceId ? `${providerUid}_${serviceId}` : uniqueKey,
+    serviceId,
+    uniqueKey,
     profissionalId: providerUid,
     titulo,
     descricao: safeStr(service.descricao || service.description),
@@ -560,7 +654,7 @@ const normalizePortfolioService = (service, provider = {}, index = 0) => {
 const normalizePublicPortfolioServices = (publicPortfolio = {}) => {
   if (!publicPortfolio || typeof publicPortfolio !== 'object') return []
 
-  return Object.entries(publicPortfolio).flatMap(([uid, services]) =>
+  return dedupePortfolioServices(Object.entries(publicPortfolio).flatMap(([uid, services]) =>
     normalizePortfolioEntries(services).map((service, index) =>
       normalizePortfolioService(service, {
         uid,
@@ -572,7 +666,7 @@ const normalizePublicPortfolioServices = (publicPortfolio = {}) => {
         regiao: service?.regiao,
       }, index)
     )
-  ).filter(Boolean)
+  ).filter(Boolean))
 }
 
 const PortfolioServiceCard = memo(function PortfolioServiceCard({ service, onAbrirPerfil, onAgendar }) {
@@ -778,51 +872,59 @@ export default function ClienteHome({
 
   const onlineProviders = useMemo(() => {
     const list = Array.isArray(onlineUsers) ? onlineUsers : []
-    return list.map((item) => normalizeProvider({ ...item, online: true })).filter(Boolean)
+    return list
+      .map((item) => normalizeProvider({ ...item, online: true }))
+      .filter((provider) => provider && canAppearInPublicDirectory(provider))
   }, [onlineUsers])
 
   const registeredProviders = useMemo(() => {
     const list = Array.isArray(registeredUsers) ? registeredUsers : []
     return list
       .map((item) => normalizeProvider({ ...item, online: false }))
-      .filter((provider) => provider && provider.profileVisible !== false && (provider.isCorre || provider.isProfissional))
+      .filter((provider) => provider && canAppearInPublicDirectory(provider))
   }, [registeredUsers])
+
+  const publicProviderBaseByUid = useMemo(() => {
+    const byUid = new Map()
+    registeredProviders.forEach((provider) => {
+      byUid.set(provider.uid, provider)
+    })
+    onlineProviders.forEach((provider) => {
+      const current = byUid.get(provider.uid) || {}
+      byUid.set(provider.uid, {
+        ...current,
+        ...provider,
+        portfolio: dedupePortfolioServices([...(current.portfolio || []), ...(provider.portfolio || [])]),
+        online: true,
+      })
+    })
+    return byUid
+  }, [registeredProviders, onlineProviders])
 
   const portfolioProviders = useMemo(() => {
     const byUid = new Map()
     normalizePublicPortfolioServices(publicPortfolio).forEach((service) => {
       const uid = service.profissionalId
-      if (!uid) return
+      const baseProvider = publicProviderBaseByUid.get(uid)
+      if (!uid || !baseProvider) return
       const current = byUid.get(uid) || {
-        uid,
-        id: uid,
-        nome: service.providerName || 'Profissional',
-        fotoURL: service.providerFoto || '',
-        isCorre: service.isCorre === true,
-        isProfissional: true,
-        profCategorias: [],
-        correCategorias: [],
-        profResumo: service.descricao || service.titulo || '',
-        profCidadeAtende: service.regiao || '',
-        profPrecoBase: service.valor || '',
+        ...baseProvider,
         portfolio: [],
-        online: false,
-        profileVisible: true,
       }
       const categorias = new Set([...(current.profCategorias || [])])
       if (service.categoriaId) categorias.add(service.categoriaId)
       byUid.set(uid, {
         ...current,
-        nome: current.nome || service.providerName || 'Profissional',
-        fotoURL: current.fotoURL || service.providerFoto || '',
         profCidadeAtende: current.profCidadeAtende || service.regiao || '',
         profPrecoBase: current.profPrecoBase || service.valor || '',
         profCategorias: Array.from(categorias),
-        portfolio: [...(current.portfolio || []), service],
+        portfolio: dedupePortfolioServices([...(current.portfolio || []), service]),
       })
     })
-    return Array.from(byUid.values()).map(normalizeProvider).filter(Boolean)
-  }, [publicPortfolio])
+    return Array.from(byUid.values())
+      .map(normalizeProvider)
+      .filter((provider) => provider && canAppearInPublicDirectory(provider))
+  }, [publicPortfolio, publicProviderBaseByUid])
 
   const providers = useMemo(() => {
     const byUid = new Map()
@@ -834,7 +936,7 @@ export default function ClienteHome({
       byUid.set(provider.uid, {
         ...current,
         ...provider,
-        portfolio: provider.portfolio?.length ? provider.portfolio : current.portfolio || [],
+        portfolio: dedupePortfolioServices([...(current.portfolio || []), ...(provider.portfolio || [])]),
       })
     })
     onlineProviders.forEach((provider) => {
@@ -842,15 +944,13 @@ export default function ClienteHome({
       byUid.set(provider.uid, {
         ...current,
         ...provider,
-        portfolio: provider.portfolio?.length ? provider.portfolio : current.portfolio || [],
+        portfolio: dedupePortfolioServices([...(current.portfolio || []), ...(provider.portfolio || [])]),
         profileVisible: current.profileVisible === false || provider.profileVisible === false ? false : true,
         online: true,
       })
     })
 
-    return Array.from(byUid.values()).filter((provider) => (
-      provider.profileVisible !== false && (provider.isCorre || provider.isProfissional)
-    ))
+    return Array.from(byUid.values()).filter((provider) => canAppearInPublicDirectory(provider))
   }, [onlineProviders, registeredProviders, portfolioProviders])
 
   const allFilteredProviders = useMemo(() => {
@@ -901,32 +1001,24 @@ export default function ClienteHome({
 
   const portfolioServices = useMemo(() => {
     const publicServices = normalizePublicPortfolioServices(publicPortfolio)
+      .filter((service) => publicProviderBaseByUid.has(service.profissionalId))
+      .map((service) => {
+        const provider = publicProviderBaseByUid.get(service.profissionalId)
+        return normalizePortfolioService(service, provider, service.serviceId || 0)
+      })
+      .filter(Boolean)
     const onlineServices = providers.flatMap((provider) =>
       normalizePortfolioEntries(provider.portfolio).map((service, index) =>
         normalizePortfolioService(service, provider, index)
       )
     ).filter(Boolean)
 
-    const dedup = new Map()
-    ;[...publicServices, ...onlineServices].forEach((service) => {
-      const key = `${service.profissionalId}_${service.serviceId}`
-      if (!dedup.has(key)) {
-        dedup.set(key, service)
-        return
-      }
-
-      const current = dedup.get(key)
-      if ((service.updatedAt || 0) >= (current.updatedAt || 0)) {
-        dedup.set(key, { ...current, ...service, provider: { ...current.provider, ...service.provider } })
-      }
-    })
-
-    return Array.from(dedup.values())
+    return dedupePortfolioServices([...publicServices, ...onlineServices])
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
       .slice(0, 12)
-  }, [providers, publicPortfolio])
+  }, [providers, publicPortfolio, publicProviderBaseByUid])
 
-  const destaqueProviders = useMemo(
+  const onlinePreviewProviders = useMemo(
     () => onlineList.slice(0, 8),
     [onlineList]
   )
@@ -1096,7 +1188,7 @@ export default function ClienteHome({
       </div>
 
       <div className="-mt-1 rounded-t-[30px] bg-white px-5 pt-5 md:mt-0 md:rounded-t-none md:px-[52px] md:pt-9">
-        <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-[34px] [&::-webkit-scrollbar]:hidden">
+        <div className="flex gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-5 [&::-webkit-scrollbar]:hidden">
           {categoriasRapidas.map((cat) => {
             const ativo = catId === cat.id
             const tileColor = getClientCategoryColor(cat.id, cat.accent)
@@ -1106,15 +1198,15 @@ export default function ClienteHome({
                 type="button"
                 onClick={() => setCatId(cat.id)}
                 className={[
-                  'flex h-[100px] w-[80px] shrink-0 flex-col items-center justify-center rounded-[20px] border bg-white text-center shadow-[0_16px_34px_rgba(37,99,235,0.08)] transition active:scale-[0.97] min-[390px]:h-[112px] min-[390px]:w-[92px] md:h-[202px] md:w-[199px] md:rounded-[30px]',
+                  'flex h-[82px] w-[74px] shrink-0 flex-col items-center justify-center rounded-[18px] border bg-white px-1 text-center shadow-[0_12px_26px_rgba(37,99,235,0.08)] transition active:scale-[0.97] min-[390px]:h-[88px] min-[390px]:w-[82px] md:h-[152px] md:w-[168px] md:rounded-[26px]',
                   ativo ? 'border-blue-200 ring-2 ring-blue-500/20' : 'border-slate-100',
                 ].join(' ')}
                 style={{ color: tileColor }}
               >
-                <span className="grid h-12 place-items-center md:h-20">
+                <span className="grid h-9 place-items-center md:h-14">
                   <CategoryTileIcon id={cat.id} />
                 </span>
-                <span className="mt-2 block max-w-[72px] text-[11px] font-black leading-[1.08] text-slate-800 md:mt-4 md:max-w-[150px] md:text-[24px]">
+                <span className="mt-1 flex min-h-[24px] max-w-[70px] items-center justify-center text-[10.5px] font-black leading-[1.08] text-slate-800 min-[390px]:max-w-[76px] min-[390px]:text-[11px] md:mt-2 md:min-h-[42px] md:max-w-[138px] md:text-[18px]">
                   {cat.label}
                 </span>
               </button>
@@ -1122,40 +1214,40 @@ export default function ClienteHome({
           })}
         </div>
 
-        <div data-tutorial="profissionais" className="mt-5 grid grid-cols-2 gap-3 md:mt-10 md:gap-8">
+        <div data-tutorial="profissionais" className="mt-4 grid grid-cols-2 gap-3 md:mt-6 md:gap-5">
           <button
             type="button"
             onClick={() => setModo('corre')}
             className={[
-              'relative min-h-[112px] overflow-hidden rounded-[22px] border p-4 text-left shadow-[0_14px_30px_rgba(245,158,11,0.12)] transition active:scale-[0.98] md:min-h-[238px] md:rounded-[30px] md:p-10',
+              'relative h-[96px] overflow-hidden rounded-[20px] border p-3 text-left shadow-[0_12px_26px_rgba(245,158,11,0.10)] transition active:scale-[0.98] md:h-[104px] md:rounded-[24px] md:p-4',
               modo === 'corre' ? 'border-yellow-200 bg-[#fff1b8]' : 'border-yellow-100 bg-[#fff7d6]',
             ].join(' ')}
           >
             <StatCardArt type="corre" />
-            <div className="relative text-[11px] font-black uppercase tracking-[0.12em] text-amber-600 md:text-[24px]">Corres</div>
-            <div className="relative mt-3 text-3xl font-black leading-none text-blue-950 md:mt-7 md:text-[64px]">{providerCounts.corre}</div>
-            <div className="relative mt-1 text-sm font-bold text-blue-950 md:text-[24px]">cadastrados</div>
+            <div className="relative text-[10px] font-black uppercase tracking-[0.1em] text-amber-600 md:text-xs">Corres</div>
+            <div className="relative mt-1.5 text-[28px] font-black leading-none text-blue-950 md:text-4xl">{providerCounts.corre}</div>
+            <div className="relative mt-0.5 text-xs font-bold text-blue-950 md:text-sm">cadastrados</div>
           </button>
           <button
             type="button"
             onClick={() => setModo('profissional')}
             className={[
-              'relative min-h-[112px] overflow-hidden rounded-[22px] border p-4 text-left shadow-[0_14px_30px_rgba(37,99,235,0.12)] transition active:scale-[0.98] md:min-h-[238px] md:rounded-[30px] md:p-10',
+              'relative h-[96px] overflow-hidden rounded-[20px] border p-3 text-left shadow-[0_12px_26px_rgba(37,99,235,0.10)] transition active:scale-[0.98] md:h-[104px] md:rounded-[24px] md:p-4',
               modo === 'profissional' ? 'border-blue-200 bg-[#e7f2ff]' : 'border-blue-100 bg-[#edf7ff]',
             ].join(' ')}
           >
             <StatCardArt type="profissional" />
-            <div className="relative text-[11px] font-black uppercase tracking-[0.12em] text-blue-600 md:text-[24px]">Profissionais</div>
-            <div className="relative mt-3 text-3xl font-black leading-none text-blue-950 md:mt-7 md:text-[64px]">{providerCounts.profissional}</div>
-            <div className="relative mt-1 text-sm font-bold text-blue-950 md:text-[24px]">com ficha</div>
+            <div className="relative text-[10px] font-black uppercase tracking-[0.1em] text-blue-600 md:text-xs">Profissionais</div>
+            <div className="relative mt-1.5 text-[28px] font-black leading-none text-blue-950 md:text-4xl">{providerCounts.profissional}</div>
+            <div className="relative mt-0.5 text-xs font-bold text-blue-950 md:text-sm">com ficha</div>
           </button>
         </div>
 
-        <section className="mt-7 md:mt-10">
-          <div className="flex items-end justify-between gap-3">
+        <section className="mt-5 md:mt-7">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Online agora</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-400">Veja quem pode aceitar seu pedido imediatamente.</p>
+              <h2 className="text-xl font-black leading-none text-slate-950 md:text-3xl">Online agora</h2>
+              <p className="mt-1 text-[13px] font-semibold leading-snug text-slate-400 md:text-sm">Veja quem pode aceitar seu pedido imediatamente.</p>
             </div>
             <button
               type="button"
@@ -1166,8 +1258,8 @@ export default function ClienteHome({
             </button>
           </div>
 
-          <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
-            {destaqueProviders.map((item) => (
+          <div className="mt-3 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
+            {onlinePreviewProviders.map((item) => (
               <ProviderMiniCard
                 key={item.uid}
                 item={item}
@@ -1201,7 +1293,7 @@ export default function ClienteHome({
             <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
               {portfolioServices.map((service) => (
                 <PortfolioServiceCard
-                  key={service.id}
+                  key={service.uniqueKey || service.id}
                   service={service}
                   onAbrirPerfil={onAbrirPerfil}
                   onAgendar={onAgendar}
@@ -1211,7 +1303,7 @@ export default function ClienteHome({
           </section>
         ) : null}
 
-        <section data-tutorial="profissionais" className="mt-6 md:mt-10">
+        <section id="profissionais-corres" data-tutorial="profissionais" className="mt-6 scroll-mt-24 md:mt-10">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Profissionais e Corres</h2>

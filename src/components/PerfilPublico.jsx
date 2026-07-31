@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { getCategoryById } from '@/constants/categories'
+import { buildProfessionalReputation } from '@/lib/professionalReputation'
+import ProfessionalReputationSummary from './ProfessionalReputationSummary'
 import ModalAgenda from './ModalAgenda'
 
 function pickText(...values) {
@@ -91,15 +93,6 @@ function getInitials(name) {
     .join('')
 
   return initials.toUpperCase() || 'CA'
-}
-
-function MetricBox({ value, label }) {
-  return (
-    <div className="min-w-0 rounded-[14px] border border-slate-100 bg-white px-2 py-2 text-center shadow-[0_8px_22px_rgba(15,23,42,0.05)]">
-      <div className="truncate text-base font-black leading-none text-slate-950">{value}</div>
-      <div className="mt-1 truncate text-[8px] font-black uppercase tracking-[0.08em] text-slate-400">{label}</div>
-    </div>
-  )
 }
 
 function InfoRow({ icon, label, value, tone = 'blue' }) {
@@ -249,17 +242,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
 
     const isCorre = !!(user.isCorre || profile.isCorre || corre?.ativo || user.corre)
     const isProfissional = !!(user.isProfissional || profile.isProfissional || prof?.ativo || user.profissional)
-    const servicosFeitos = Number(
-      user.servicosCorre ||
-        user.serviçosCorre ||
-        user.servicosProf ||
-        user.serviçosProf ||
-        profile.servicosCorre ||
-        profile.serviçosCorre ||
-        trustStats.servicos ||
-        0
-    )
-    const notaMedia = Number(user.avaliacaoMedia || user.notaMedia || profile.avaliacaoMedia || profile.notaMedia || trustStats.notaMedia || 0)
+    const notaCalculada = Number(user.avaliacaoMedia || user.notaMedia || profile.avaliacaoMedia || profile.notaMedia || trustStats.notaMedia || 0)
     const avaliacoes = normalizeList(user.avaliacoes, profile.avaliacoes, user.reviews, profile.reviews, trustStats.avaliacoes)
       .map((a) => ({
         nota: Number(a?.nota || a?.rating || a?.stars || 0),
@@ -269,6 +252,12 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       .filter((a) => a.nota || a.comentario)
       .slice(0, 3)
     const totalAvaliacoes = Number(user.totalAvaliacoes || profile.totalAvaliacoes || trustStats.totalAvaliacoes || avaliacoes.length || 0)
+    const reputation = buildProfessionalReputation(
+      { ...user, profile, trustStats },
+      { rating: notaCalculada, reviewCount: totalAvaliacoes }
+    )
+    const servicosFeitos = reputation.completedServices
+    const notaMedia = reputation.rating
     const perfilVerificado = !!(
       user.verificado ||
       user.verified ||
@@ -395,6 +384,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       notaMedia,
       avaliacoes,
       totalAvaliacoes,
+      reputation,
       perfilVerificado,
       agendaAberta,
       ocupadoAte,
@@ -441,7 +431,6 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
     navigator.clipboard?.writeText(window.location.href).catch(() => {})
   }
 
-  const notaLabel = Number.isFinite(dados.notaMedia) && dados.notaMedia > 0 ? dados.notaMedia.toFixed(1) : '--'
   const statusLabel = dados.emServico
     ? `Em serviço ${dados.ocupadoAte ? `até ${formatOcupadoAte(dados.ocupadoAte)}` : ''}`.trim()
     : 'Disponível agora'
@@ -506,20 +495,18 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.12)]" />
                   {statusLabel}
                 </div>
-                <div className="mt-1 flex items-center gap-1.5">
-                  <RatingStars nota={dados.notaMedia} />
-                  <span className="text-xs font-bold text-slate-600">{notaLabel}</span>
-                  {dados.totalAvaliacoes > 0 ? <span className="text-xs font-semibold text-slate-400">({dados.totalAvaliacoes})</span> : null}
-                </div>
+                {dados.reputation.rating ? (
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <RatingStars nota={dados.reputation.rating} />
+                    <span className="text-xs font-bold text-slate-600">{dados.reputation.rating.toFixed(1)}</span>
+                    <span className="text-xs font-semibold text-slate-400">({dados.reputation.reviewCount})</span>
+                  </div>
+                ) : <div className="mt-1 text-xs font-semibold text-slate-400">Ainda sem avaliações</div>}
               </div>
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <MetricBox value={notaLabel} label="Nota" />
-            <MetricBox value={dados.portfolio.length || dados.servicosFeitos || 0} label="Serviços" />
-            <MetricBox value={dados.totalAvaliacoes || 0} label="Avaliações" />
-          </div>
+          <ProfessionalReputationSummary reputation={dados.reputation} className="mt-3" />
 
           <section className="mt-4">
             <div className="text-xs font-black text-slate-950">Sobre</div>

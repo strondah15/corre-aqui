@@ -1033,7 +1033,7 @@ export function TutorialProvider({ children }) {
       setIntroConfig({
         flow: "trabalhar",
         title: "Otimo! Vou mostrar como encontrar pedidos, atender clientes e evoluir no Corre Aqui.",
-        text: "O tour destaca perfil, categorias, portfolio, pedidos, chat, progresso e patentes.",
+        text: "O tour destaca perfil, categorias, portfolio, pedidos, chat, progresso e reputação.",
         startLabel: "Comecar",
         laterLabel: "Agora nao",
       })
@@ -1078,7 +1078,7 @@ export function TutorialProvider({ children }) {
       setIntroConfig({
         flow: "trabalhar",
         title: "Otimo! Vou mostrar como encontrar pedidos, atender clientes e evoluir no Corre Aqui.",
-        text: "O tour destaca perfil, categorias, portfolio, pedidos, chat, progresso e patentes.",
+        text: "O tour destaca perfil, categorias, portfolio, pedidos, chat, progresso e reputação.",
         startLabel: "Comecar",
         laterLabel: "Agora nao",
         onStart: detail.onStart,

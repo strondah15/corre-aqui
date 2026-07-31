@@ -156,7 +156,7 @@ function buildCardData(notification = {}, source = {}) {
     source.cidade,
   )
   const note = text(notification.observacao, notification.descricao, source.descricao)
-  const role = text(notification.tipoAtuacao, notification.patenteNome)
+  const role = text(notification.tipoAtuacao)
   const rating = Number(notification.avaliacao || 0)
 
   return {

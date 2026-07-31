@@ -197,7 +197,7 @@ export default function LoginPage() {
           {[
             ['🔒', 'Mais segurança', 'Sem entrada anônima na experiência principal.'],
             ['💬', 'Chat confiável', 'As conversas ficam conectadas ao mesmo perfil.'],
-            ['⭐', 'Reputação real', 'Patentes, avaliações e histórico ganham valor.'],
+            ['★', 'Reputação real', 'Avaliações e histórico mostram a experiência no app.'],
           ].map(([icon, title, text]) => (
             <div key={title} className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3">
               <div className="flex items-start gap-3">

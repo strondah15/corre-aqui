@@ -62,8 +62,60 @@
       ".indexOn": ["updatedAt", "isCorre", "isProfissional", "profileVisible"],
       "$uid": {
         ".write": "auth != null && auth.uid === $uid",
-        ".validate": "!newData.exists() || (newData.child('uid').val() === $uid && newData.child('nome').isString() && newData.child('profileVisible').val() === true && !newData.child('cpf').exists() && !newData.child('cpfDigits').exists() && !newData.child('cpfMasked').exists() && !newData.child('cpfStatus').exists() && !newData.child('cpfVerificacao').exists() && !newData.child('documento').exists() && !newData.child('documentoVerificacao').exists() && !newData.child('admin').exists() && !newData.child('role').exists() && !newData.child('pushTokens').exists())"
+        ".validate": "!newData.exists() || (newData.child('uid').val() === $uid && newData.child('nome').isString() && (!newData.child('profileVisible').exists() || newData.child('profileVisible').isBoolean()) && (!newData.child('visivel').exists() || newData.child('visivel').isBoolean()) && (!newData.child('isCorre').exists() || newData.child('isCorre').isBoolean()) && (!newData.child('isProfissional').exists() || newData.child('isProfissional').isBoolean()) && (!newData.child('profileType').exists() || newData.child('profileType').val() === 'corre' || newData.child('profileType').val() === 'professional' || newData.child('profileType').val() === 'both') && (newData.child('profileVisible').val() === false || newData.child('visivel').val() === false || (newData.child('nome').val().length > 1 && (newData.child('isCorre').val() === true || newData.child('isProfissional').val() === true || newData.child('profileType').val() === 'corre' || newData.child('profileType').val() === 'professional' || newData.child('profileType').val() === 'both') && ((newData.child('primaryCategoryId').isString() && newData.child('primaryCategoryId').val().length > 0) || (newData.child('categoriaId').isString() && newData.child('categoriaId').val().length > 0) || newData.child('correCategorias').hasChildren() || newData.child('profCategorias').hasChildren()) && ((newData.child('cidade').isString() && newData.child('cidade').val().length > 1) || (newData.child('city').isString() && newData.child('city').val().length > 1) || (newData.child('regiao').isString() && newData.child('regiao').val().length > 1)))) && !((data.child('profileStatus').val() === 'blocked' || data.child('profileStatus').val() === 'bloqueado' || data.child('profileStatus').val() === 'suspended' || data.child('profileStatus').val() === 'suspenso' || data.child('profileStatus').val() === 'deleted' || data.child('profileStatus').val() === 'deletado') && newData.child('profileStatus').val() !== data.child('profileStatus').val()) && !newData.child('email').exists() && !newData.child('telefone').exists() && !newData.child('phone').exists() && !newData.child('endereco').exists() && !newData.child('address').exists() && !newData.child('dataNascimento').exists() && !newData.child('cpf').exists() && !newData.child('cpfDigits').exists() && !newData.child('cpfMasked').exists() && !newData.child('cpfStatus').exists() && !newData.child('cpfVerificacao').exists() && !newData.child('documento').exists() && !newData.child('documentoVerificacao').exists() && !newData.child('admin').exists() && !newData.child('role').exists() && !newData.child('pushTokens').exists())",
+        "plano": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "assinatura": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "reputation": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "trust": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "rating": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "reviewCount": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "avaliacaoMedia": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "totalAvaliacoes": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "servicosConcluidos": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "completedServices": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "xp": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "moedas": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "patente": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "patenteCorre": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "patenteProf": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "verificado": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "verified": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "perfilVerificado": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "destaque": { ".validate": "!newData.exists() || newData.val() === data.val()" },
+        "featured": { ".validate": "!newData.exists() || newData.val() === data.val()" }
       }
+    },
+    "featuredProfessionalEntitlements": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": ["active", "status", "expiresAt", "updatedAt"]
+    },
+    "featuredRequestEntitlements": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": ["active", "status", "expiresAt", "categoryId", "ownerUid", "updatedAt"]
+    },
+    "commercialCheckoutAttempts": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": ["userId", "productId", "status", "createdAt"]
+    },
+    "commercialCheckoutAttemptsByUser": {
+      ".read": false,
+      ".write": false
+    },
+    "commercialCheckoutAttemptsByExternalReference": {
+      ".read": false,
+      ".write": false
+    },
+    "commercialAuditLogs": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": ["createdAt", "type", "userId", "pedidoId", "productId"]
+    },
+    "processedPaymentEvents": {
+      ".read": false,
+      ".write": false
     },
     "admins": {
       "$uid": {

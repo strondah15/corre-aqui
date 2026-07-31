@@ -4,11 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { database } from '@/lib/firebase'
 import { enviarPushParaUsuario } from '@/lib/pushSender'
 import { getCategoryById } from '@/constants/categories'
-import { ATENDIMENTO_STATUS, getAtendimentoStep, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
+import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
 import { ref, push, onValue, query, limitToLast, update, serverTimestamp, get, set } from '@/lib/firebaseDebug'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 
 const chatOpenTipSessionKeys = new Set()
 
@@ -106,14 +106,28 @@ function statusAtendimentoMeta(status) {
   return legacyStatusAtendimentoMeta(s)
 }
 
-const TIMELINE_COMPACTA = ['Aceito', 'Em andamento', 'Chegou', 'Finalizado']
+const TIMELINE_GUIADA = ['Aceito', 'A caminho', 'Cheguei', 'Confirmar', 'Finalizado']
 
 const SUGESTOES = [
-  'Pode me passar mais detalhes?',
-  'Qual melhor horário?',
-  'Estou a caminho.',
-  'Combinado, obrigado.',
+  { label: 'Estou a caminho', texto: 'Já estou a caminho.', icon: '🚗' },
+  { label: 'Cheguei', texto: 'Cheguei ao local.', icon: '📍' },
+  { label: 'Pode me atender?', texto: 'Pode me atender?', icon: '💬' },
+  { label: 'Enviei foto', texto: 'Enviei uma foto do serviço.', icon: '📷' },
+  { label: 'Preciso de mais tempo', texto: 'Preciso de mais tempo.', icon: '⏱' },
+  { label: 'Combinar valor', texto: 'Podemos combinar o valor?', icon: '💰' },
+  { label: 'Obrigado', texto: 'Obrigado!', icon: '✨' },
+  { label: 'Serviço concluído', texto: 'O serviço foi concluído.', icon: '✅' },
 ]
+
+function getGuidedTimelineStep(status) {
+  const normalized = normalizeAtendimentoStatus(status)
+  if (normalized === ATENDIMENTO_STATUS.FINALIZADO) return 4
+  if (normalized === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) return 3
+  if (normalized === ATENDIMENTO_STATUS.CHEGOU) return 2
+  if (normalized === ATENDIMENTO_STATUS.EM_ANDAMENTO) return 1
+  if (normalized === ATENDIMENTO_STATUS.ACEITO) return 0
+  return -1
+}
 
 const LIMITE_TEXTO = 700
 const LIMITE_FALLBACK_DATABASE_BYTES = 900 * 1024
@@ -289,6 +303,40 @@ function IconChevronDown(props) {
   )
 }
 
+function IconCar(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path d="m5.5 11 1.8-4h9.4l1.8 4M4 11h16v6H4v-6Z" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 17v2M17 17v2M4 13h3M17 13h3" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function IconTools(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path d="M14.5 6.5a4 4 0 0 0-5-5l2.1 2.1-2.8 2.8-2.1-2.1a4 4 0 0 0 5 5l7.1 7.1a1.7 1.7 0 0 1-2.4 2.4l-7.1-7.1" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m8.2 13.8-4.8 4.8a1.7 1.7 0 0 0 2.4 2.4l4.8-4.8" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function IconFlag(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+      <path d="M6 21V4m0 1h10l-1.6 3L16 11H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function TimelineIcon({ index, className }) {
+  if (index === 0) return <IconCheck className={className} />
+  if (index === 1) return <IconCar className={className} />
+  if (index === 2) return <IconMapPin className={className} />
+  if (index === 3) return <IconTools className={className} />
+  return <IconFlag className={className} />
+}
+
 function formatarTamanho(bytes) {
   const n = Number(bytes || 0)
   if (!n) return ''
@@ -402,6 +450,7 @@ export default function ChatMensagens({
   modoPagina = false,
   initialDetailsOpen = false,
 }) {
+  const reduzirMovimento = useReducedMotion()
   const [mensagens, setMensagens] = useState([])
   const [texto, setTexto] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -421,6 +470,8 @@ export default function ChatMensagens({
   const chunksRef = useRef([])
   const timerRef = useRef(null)
   const chatRef = useRef(null)
+  const initialScrollDoneRef = useRef(false)
+  const shouldStickToBottomRef = useRef(true)
   const cameraInputRef = useRef(null)
   const arquivoInputRef = useRef(null)
 
@@ -436,6 +487,11 @@ export default function ChatMensagens({
   })()
 
   useEffect(() => {
+    initialScrollDoneRef.current = false
+    shouldStickToBottomRef.current = true
+  }, [pedidoId])
+
+  useEffect(() => {
     if (!pedidoId) return
 
     const mensagensRef = query(ref(database, `chats/${pedidoId}`), limitToLast(80))
@@ -449,13 +505,21 @@ export default function ChatMensagens({
 
       requestAnimationFrame(() => {
         try {
-          if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+          const ultima = lista[lista.length - 1]
+          const ultimaFoiMinha = String(ultima?.userId || '') === String(meuId || '')
+          const deveRolar = !initialScrollDoneRef.current || shouldStickToBottomRef.current || ultimaFoiMinha
+
+          if (chatRef.current && deveRolar) {
+            chatRef.current.scrollTop = chatRef.current.scrollHeight
+            shouldStickToBottomRef.current = true
+          }
+          initialScrollDoneRef.current = true
         } catch {}
       })
     })
 
     return () => off()
-  }, [pedidoId])
+  }, [meuId, pedidoId])
 
   useEffect(() => {
     if (!pedidoId) {
@@ -1186,7 +1250,6 @@ export default function ChatMensagens({
   const outroDotClass = outroOnline
     ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)]'
     : 'bg-slate-500 shadow-none'
-  const podeEnviarMensagem = Boolean(texto.trim() || anexoSelecionado)
   const pedidoStatusMeta = statusAtendimentoMeta(pedido?.status)
   const pedidoStatus = normalizeAtendimentoStatus(pedido?.status)
   const souClienteAtendimento = String(pedido?.criador?.id || '') === String(meuId || '')
@@ -1195,11 +1258,6 @@ export default function ChatMensagens({
     (souTrabalhadorAtendimento && [ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU].includes(pedidoStatus))
     || (souClienteAtendimento && pedidoStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO)
   )
-  const acaoAtendimentoLabel = pedidoStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
-    ? 'Cheguei ao local'
-    : pedidoStatus === ATENDIMENTO_STATUS.CHEGOU
-      ? 'Solicitar finalização'
-      : 'Confirmar conclusão'
   const pedidoTituloChat = pedido?.titulo || pedido?.servicoTitulo || pedidoTitulo || 'Atendimento Corre Aqui'
   const pedidoValorChat = formatarValorPedido(pedido?.valor)
   const pedidoDataChat = formatarDataPedido(pedido?.atendimentoIniciadoEm || pedido?.aceitoEm || pedido?.criadoEm || pedido?.createdAt)
@@ -1210,8 +1268,16 @@ export default function ChatMensagens({
   const categoriaAccent = categoriaMeta?.accent || '#facc15'
   const categoriaSoft = categoriaMeta?.soft || '#fff7cc'
   const pedidoIcon = pedido?.categoriaIcon || pedido?.icone || '⚡'
-  const timelineStep = getAtendimentoStep(pedido?.status)
-  const compactTimelineStep = Math.max(0, Math.min(3, timelineStep))
+  const guidedTimelineStep = getGuidedTimelineStep(pedido?.status)
+  const sugestoesVisiveis = SUGESTOES.filter((sugestao) => {
+    if (pedidoStatus === ATENDIMENTO_STATUS.CANCELADO) return false
+    if (sugestao.label === 'Cheguei') return pedidoStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+    if (sugestao.label === 'Serviço concluído') return pedidoStatus === ATENDIMENTO_STATUS.FINALIZADO
+    if (sugestao.label === 'Estou a caminho') {
+      return [ATENDIMENTO_STATUS.ACEITO, ATENDIMENTO_STATUS.EM_ANDAMENTO].includes(pedidoStatus)
+    }
+    return true
+  })
   const notaRelacionada = outroUser?.nota || outroUser?.notaMedia || outroUser?.avaliacao || outroUser?.rating || ''
   const distanciaRelacionada = pedido?.distanciaKm || pedido?.distancia || pedido?.localizacao?.distanciaKm || ''
   const distanciaLabel = typeof distanciaRelacionada === 'number'
@@ -1219,24 +1285,29 @@ export default function ChatMensagens({
     : String(distanciaRelacionada || '').trim()
   const tempoRelacionada = pedido?.tempoEstimado || pedido?.duracaoEstimada || ''
   const containerClass = modoPagina
-    ? 'fixed inset-y-0 left-1/2 z-[100000] flex h-[100svh] min-h-0 w-full max-w-[900px] -translate-x-1/2 flex-col overflow-hidden border-x border-white/5 bg-[#020915] text-white shadow-[0_0_80px_rgba(0,0,0,0.35)] supports-[height:100dvh]:h-[100dvh]'
-    : 'relative z-[9999] flex h-[min(88dvh,760px)] max-h-[calc(100dvh-1rem)] w-full max-w-[440px] flex-col overflow-hidden rounded-[24px] border border-emerald-400/15 bg-[#020915] text-white shadow-[0_30px_100px_rgba(0,0,0,0.55)] sm:max-w-[520px] sm:rounded-[32px]'
+    ? 'fixed inset-y-0 left-1/2 z-[100000] flex h-[100svh] min-h-0 w-full max-w-[900px] -translate-x-1/2 flex-col overflow-hidden border-x border-white/[0.06] bg-[#030b15] text-white shadow-[0_0_90px_rgba(0,0,0,0.42)] supports-[height:100dvh]:h-[100dvh]'
+    : 'relative z-[9999] flex h-[min(92dvh,820px)] max-h-[calc(100dvh-0.75rem)] w-full max-w-[440px] flex-col overflow-hidden rounded-[24px] border border-emerald-400/15 bg-[#030b15] text-white shadow-[0_30px_100px_rgba(0,0,0,0.6)] sm:max-w-[560px] sm:rounded-[28px]'
   const nomeServicoCurto = pedidoTituloChat.length > 46 ? `${pedidoTituloChat.slice(0, 46).trim()}...` : pedidoTituloChat
+  const acaoAtendimentoCurta = pedidoStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+    ? 'Cheguei'
+    : pedidoStatus === ATENDIMENTO_STATUS.CHEGOU
+      ? 'Finalizar'
+      : 'Confirmar'
 
   return (
     <div className={containerClass} data-tutorial="chat">
-      <div className="shrink-0 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.20),transparent_32%),linear-gradient(180deg,#061322,#020915)] px-2.5 pb-1.5 pt-[max(0.35rem,env(safe-area-inset-top))] sm:px-5 sm:pb-4 sm:pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div className="flex h-[44px] items-center gap-1.5 sm:h-[76px] sm:gap-3">
+      <div className="shrink-0 border-b border-white/[0.06] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_38%),linear-gradient(180deg,#071625,#030b15)] px-3 pb-2 pt-[max(0.4rem,env(safe-area-inset-top))] sm:px-5 sm:pb-3 sm:pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="flex h-12 items-center gap-2 sm:h-16 sm:gap-3">
           <button
             type="button"
             onClick={fecharChat}
             aria-label={modoPagina ? 'Voltar' : 'Fechar conversa'}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-white transition hover:bg-white/[0.08] active:scale-95 sm:h-11 sm:w-11"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-slate-200 transition hover:bg-white/[0.08] active:scale-95 sm:h-11 sm:w-11"
           >
-            {modoPagina ? <IconBack className="h-5 w-5 sm:h-7 sm:w-7" /> : <IconClose className="h-4 w-4 sm:h-6 sm:w-6" />}
+            {modoPagina ? <IconBack className="h-5 w-5 sm:h-6 sm:w-6" /> : <IconClose className="h-4 w-4 sm:h-5 sm:w-5" />}
           </button>
 
-          <div className="relative h-9 w-9 shrink-0 overflow-visible rounded-full border border-cyan-300/25 bg-gradient-to-br from-blue-500 to-emerald-400 shadow-[0_12px_24px_rgba(14,165,233,0.22)] sm:h-14 sm:w-14 sm:shadow-[0_16px_34px_rgba(14,165,233,0.26)]">
+          <div className="relative h-10 w-10 shrink-0 overflow-visible rounded-full border border-cyan-300/30 bg-gradient-to-br from-blue-500 to-emerald-400 shadow-[0_10px_24px_rgba(14,165,233,0.22)] sm:h-12 sm:w-12">
             {outroFoto ? (
               <div
                 className="h-full w-full overflow-hidden rounded-full bg-cover bg-center"
@@ -1244,23 +1315,23 @@ export default function ChatMensagens({
                 aria-hidden="true"
               />
             ) : (
-              <div className="grid h-full w-full place-items-center text-sm font-black text-white sm:text-xl">{outroInicial}</div>
+              <div className="grid h-full w-full place-items-center text-sm font-black text-white sm:text-lg">{outroInicial}</div>
             )}
-            <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[#061322] sm:bottom-1 sm:h-4 sm:w-4 ${outroDotClass}`} />
+            <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[#061322] sm:h-3.5 sm:w-3.5 ${outroDotClass}`} />
           </div>
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-base font-black tracking-tight text-white sm:text-2xl">{outroNome}</div>
+            <div className="truncate text-[17px] font-black tracking-tight text-white sm:text-xl">{outroNome}</div>
             <div className="hidden">
               <span>Você: <b className="text-slate-200">{nomeMeu}</b></span>
               <span className="h-1 w-1 rounded-full bg-slate-600" />
               <span>Outro: <b className="text-slate-200">{outroNome}</b></span>
             </div>
-            <div className={`mt-0.5 flex items-center gap-1 text-[11px] font-bold sm:mt-1 sm:gap-2 sm:text-base ${outroStatusClass}`}>
-              <span className={`h-2 w-2 rounded-full sm:h-3 sm:w-3 ${outroDotClass}`} />
+            <div className={`mt-0.5 flex items-center gap-1 text-[11px] font-bold sm:text-xs ${outroStatusClass}`}>
+              <span className={`h-2 w-2 rounded-full ${outroDotClass}`} />
               {outroStatusLabel}
             </div>
             {(notaRelacionada || distanciaLabel || tempoRelacionada) ? (
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-bold text-slate-400 sm:mt-1.5 sm:text-xs">
+              <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-[9px] font-bold text-slate-400 sm:text-[11px]">
                 {notaRelacionada ? <span className="text-yellow-300">★ {notaRelacionada}</span> : null}
                 {distanciaLabel ? <span>⌖ {distanciaLabel}</span> : null}
                 {tempoRelacionada ? <span>◷ {tempoRelacionada}</span> : null}
@@ -1268,7 +1339,7 @@ export default function ChatMensagens({
             ) : null}
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <div className="hidden rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-black text-slate-200 sm:px-3 sm:py-1.5 sm:text-xs">
               {mensagens.length} msg
             </div>
@@ -1282,17 +1353,17 @@ export default function ChatMensagens({
             </button>
             <button
               type="button"
-              className="grid h-8 w-8 place-items-center rounded-full border border-emerald-400/25 bg-emerald-500/5 text-white shadow-[0_10px_22px_rgba(0,0,0,0.16)] transition hover:bg-emerald-500/10 active:scale-95 sm:h-14 sm:w-14"
+              className="grid h-9 w-9 place-items-center rounded-full border border-emerald-400/25 bg-emerald-500/[0.08] text-emerald-300 transition hover:bg-emerald-500/15 active:scale-95 sm:h-11 sm:w-11"
               aria-label="Ligar"
             >
-              <IconPhone className="h-4 w-4 sm:h-6 sm:w-6" />
+              <IconPhone className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
             <button
               type="button"
-              className="grid h-8 w-8 place-items-center rounded-full border border-emerald-400/25 bg-emerald-500/5 text-white shadow-[0_10px_22px_rgba(0,0,0,0.16)] transition hover:bg-emerald-500/10 active:scale-95 sm:h-14 sm:w-14"
+              className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.09] active:scale-95 sm:h-11 sm:w-11"
               aria-label="Mais opcoes"
             >
-              <IconMore className="h-4 w-4 sm:h-6 sm:w-6" />
+              <IconMore className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
           </div>
         </div>
@@ -1315,11 +1386,11 @@ export default function ChatMensagens({
         </div>
       ) : null}
 
-      <div className="shrink-0 bg-[#020915] px-2.5 pb-1.5 sm:px-5 sm:pb-3">
-        <div className="overflow-hidden rounded-[16px] border border-emerald-400/20 bg-[linear-gradient(145deg,#0a1b2a,#07111f)] shadow-[0_12px_28px_rgba(0,0,0,0.22)] sm:rounded-[22px]">
-          <div className="flex items-center gap-2 p-2.5 sm:gap-3 sm:p-3">
+      <div className="shrink-0 bg-[#030b15] px-3 pb-1 pt-2 sm:px-5 sm:pb-2 sm:pt-3">
+        <div className="overflow-hidden rounded-[20px] border border-emerald-400/20 bg-[linear-gradient(145deg,#0a1b2a,#07111f)] shadow-[0_12px_30px_rgba(0,0,0,0.24)]">
+          <div className="flex min-h-[66px] items-center gap-2.5 p-2.5 sm:min-h-[74px] sm:gap-3 sm:p-3">
             <div
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-[15px] border text-xl shadow-[0_10px_22px_rgba(15,23,42,0.18)] sm:h-12 sm:w-12 sm:text-2xl"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border text-xl shadow-[0_10px_22px_rgba(15,23,42,0.2)] sm:h-12 sm:w-12 sm:text-2xl"
               style={{ backgroundColor: categoriaSoft, borderColor: categoriaAccent, color: categoriaAccent }}
               aria-label={categoriaLabel || 'Categoria do serviço'}
               title={categoriaLabel || undefined}
@@ -1330,13 +1401,13 @@ export default function ChatMensagens({
             </div>
             <div className="min-w-0 flex-1">
               {categoriaLabel ? (
-                <div className="truncate text-[9px] font-black uppercase tracking-[0.12em]" style={{ color: categoriaAccent }}>
+                <div className="truncate text-[8px] font-black uppercase tracking-[0.14em] sm:text-[9px]" style={{ color: categoriaAccent }}>
                   {categoriaLabel}
                 </div>
               ) : null}
-              <div className="truncate text-[15px] font-black leading-tight text-white sm:text-lg">{nomeServicoCurto}</div>
-              <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] font-black text-slate-400 sm:text-sm">
-                <span className="shrink-0 text-emerald-400">{pedidoValorChat}</span>
+              <div className="truncate text-[14px] font-black leading-tight text-white sm:text-base">{nomeServicoCurto}</div>
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] font-black text-slate-400 sm:text-[11px]">
+                <span className="shrink-0 text-emerald-400">{pedidoValorChat || 'Combinar valor'}</span>
                 <span className="text-slate-600">•</span>
                 <span className="truncate">{pedidoStatusMeta.label}</span>
               </div>
@@ -1344,7 +1415,7 @@ export default function ChatMensagens({
             <button
               type="button"
               onClick={() => setDetalhesPedidoAberto((v) => !v)}
-              className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-3 text-[11px] font-black text-slate-200 transition hover:bg-white/[0.10] active:scale-[0.98] sm:h-10 sm:px-4 sm:text-xs"
+              className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-2.5 text-[10px] font-black text-slate-200 transition hover:bg-white/[0.10] active:scale-[0.98] sm:h-9 sm:px-3 sm:text-[11px]"
             >
               Detalhes
               <IconChevronDown className={`h-4 w-4 transition ${detalhesPedidoAberto ? 'rotate-180' : ''}`} />
@@ -1352,11 +1423,15 @@ export default function ChatMensagens({
           </div>
 
           {detalhesPedidoAberto ? (
-            <div className="border-t border-white/10 px-3 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-3">
+            <motion.div
+              initial={reduzirMovimento ? false : { opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="overflow-hidden border-t border-white/10 px-3 pb-3 pt-2 sm:px-4 sm:pb-3 sm:pt-3"
+            >
               <div className="hidden flex items-center gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {TIMELINE_COMPACTA.map((label, index) => {
-                  const done = index <= compactTimelineStep
-                  const current = index === compactTimelineStep
+                {TIMELINE_GUIADA.map((label, index) => {
+                  const done = index <= guidedTimelineStep
+                  const current = index === guidedTimelineStep
                   return (
                     <div key={label} className="flex shrink-0 items-center gap-1.5">
                       <span
@@ -1369,45 +1444,54 @@ export default function ChatMensagens({
                         {done ? <IconCheck className="h-3.5 w-3.5" /> : index + 1}
                       </span>
                       <span className={`text-[11px] font-black ${current ? 'text-emerald-300' : done ? 'text-slate-200' : 'text-slate-500'}`}>{label}</span>
-                      {index < TIMELINE_COMPACTA.length - 1 ? <span className="h-px w-5 bg-white/15" /> : null}
+                      {index < TIMELINE_GUIADA.length - 1 ? <span className="h-px w-5 bg-white/15" /> : null}
                     </div>
                   )
                 })}
               </div>
-              <div className="mt-2 grid gap-2 text-[12px] font-semibold leading-snug text-slate-300 sm:grid-cols-[1fr_auto] sm:text-sm">
-                <p>{pedido?.descricao || pedido?.descricaoPedido || 'Combine os detalhes finais deste atendimento pelo chat.'}</p>
+              <div className="grid gap-2 text-[11px] font-semibold leading-snug text-slate-300 sm:grid-cols-[1fr_auto] sm:text-xs">
+                <p className="max-h-20 overflow-y-auto break-words pr-1">
+                  {pedido?.descricao || pedido?.descricaoPedido || 'Combine os detalhes finais deste atendimento pelo chat.'}
+                </p>
                 <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] font-black text-slate-300">{pedidoDataChat}</span>
               </div>
-            </div>
+            </motion.div>
           ) : null}
         </div>
       </div>
 
-      <div className="shrink-0 bg-[#020915] px-2.5 pb-2 sm:px-5 sm:pb-3" data-tutorial="progresso">
-        <div className="mx-auto rounded-[18px] border border-white/10 bg-[#0a1522] px-3 py-3 shadow-[0_12px_28px_rgba(0,0,0,0.18)] sm:rounded-[22px] sm:px-5 sm:py-4">
-          <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 sm:text-xs">Progresso do atendimento</div>
+      <div className="shrink-0 bg-[#030b15] px-3 pb-2 pt-1 sm:px-5 sm:pb-3" data-tutorial="progresso">
+        <div className="mx-auto rounded-[18px] border border-white/[0.08] bg-white/[0.025] px-2 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.18)] sm:px-4 sm:py-3">
           <div className="relative">
-            <div className="absolute left-[12.5%] right-[12.5%] top-3 h-0.5 bg-white/10 sm:top-4" />
-            <div
-              className="absolute left-[12.5%] top-3 h-0.5 bg-emerald-400 transition-[width] duration-500 sm:top-4"
-              style={{ width: `${(compactTimelineStep / 3) * 75}%` }}
-            />
-            <div className="relative grid grid-cols-4 gap-1">
-              {['Aceito', 'Em andamento', 'Chegou', 'Finalizado'].map((label, index) => {
-                const done = index <= compactTimelineStep
-                const current = index === compactTimelineStep
+            <div className="absolute left-[10%] right-[10%] top-4 h-0.5 overflow-hidden rounded-full bg-white/10 sm:top-[18px]">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500"
+                initial={false}
+                animate={{ width: `${(Math.max(guidedTimelineStep, 0) / 4) * 100}%` }}
+                transition={reduzirMovimento ? { duration: 0 } : { duration: 0.45, ease: 'easeOut' }}
+              />
+            </div>
+            <div className="relative grid grid-cols-5 gap-0.5">
+              {TIMELINE_GUIADA.map((label, index) => {
+                const done = index < guidedTimelineStep
+                const current = index === guidedTimelineStep
                 return (
                   <div key={label} className="min-w-0 text-center">
-                    <span
+                    <motion.span
+                      key={`${label}-${current ? pedidoStatus : 'rest'}`}
+                      initial={current && !reduzirMovimento ? { scale: 0.9 } : false}
+                      animate={{ scale: 1 }}
+                      transition={reduzirMovimento ? { duration: 0 } : { duration: 0.24, ease: 'easeOut' }}
+                      aria-current={current ? 'step' : undefined}
                       className={[
-                        'mx-auto grid h-6 w-6 place-items-center rounded-full border text-[10px] font-black transition sm:h-8 sm:w-8 sm:text-xs',
+                        'mx-auto grid h-8 w-8 place-items-center rounded-full border transition sm:h-9 sm:w-9',
                         done ? 'border-emerald-300 bg-emerald-500 text-white' : 'border-slate-600 bg-[#0d1a29] text-slate-500',
-                        current ? 'ring-4 ring-emerald-400/15' : '',
+                        current ? 'border-cyan-300 bg-cyan-500 text-white ring-4 ring-cyan-400/15 shadow-[0_0_18px_rgba(34,211,238,0.34)]' : '',
                       ].join(' ')}
                     >
-                      {done ? <IconCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : index + 1}
-                    </span>
-                    <span className={`mt-1 block truncate text-[10px] font-black sm:text-xs ${current ? 'text-emerald-300' : done ? 'text-slate-200' : 'text-slate-500'}`}>
+                      <TimelineIcon index={index} className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+                    </motion.span>
+                    <span className={`mt-1 block text-[8px] font-black leading-[1.05] sm:text-[10px] ${current ? 'text-cyan-300' : done ? 'text-slate-200' : 'text-slate-500'}`}>
                       {label}
                     </span>
                   </div>
@@ -1420,14 +1504,18 @@ export default function ChatMensagens({
 
       <div
         ref={chatRef}
-        className="min-h-0 flex-1 overscroll-contain overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.16),transparent_30%),linear-gradient(180deg,#050b12_0%,#06111f_100%)] px-2.5 py-1.5 sm:px-5 sm:py-5"
+        onScroll={(event) => {
+          const element = event.currentTarget
+          shouldStickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 96
+        }}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_100%_8%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_0%_78%,rgba(16,185,129,0.07),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.012)_25%,transparent_25%)_0_0/28px_28px,#030b15] px-3 py-2 sm:px-5 sm:py-4"
       >
         {avisoAtendimentoVisivel ? (
           <div className="mb-2 flex justify-center sm:mb-3">
             <button
               type="button"
               onClick={() => setAvisoAtendimentoVisivel(false)}
-              className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-black text-emerald-100 shadow-[0_8px_20px_rgba(0,0,0,0.16)] transition hover:bg-emerald-500/15 sm:text-xs"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-500/[0.09] px-2.5 py-1 text-[10px] font-bold text-emerald-100 shadow-[0_8px_20px_rgba(0,0,0,0.16)] transition hover:bg-emerald-500/15 sm:px-3 sm:py-1.5 sm:text-[11px]"
               aria-label="Fechar aviso de atendimento"
             >
               <IconShield className="h-4 w-4 shrink-0 text-emerald-300" />
@@ -1437,9 +1525,9 @@ export default function ChatMensagens({
           </div>
         ) : null}
 
-        <div className="mb-2 flex items-center gap-2 sm:mb-5 sm:gap-4">
+        <div className="mb-2 flex items-center gap-2 sm:mb-4 sm:gap-4">
           <span className="h-px flex-1 bg-white/10" />
-          <span className="rounded-full bg-white/8 px-2.5 py-0.5 text-[11px] font-black text-slate-400 sm:px-4 sm:py-1.5 sm:text-sm">Hoje</span>
+          <span className="rounded-full bg-white/[0.06] px-2.5 py-0.5 text-[10px] font-black text-slate-400 sm:px-3 sm:py-1 sm:text-[11px]">Hoje</span>
           <span className="h-px flex-1 bg-white/10" />
         </div>
 
@@ -1456,27 +1544,40 @@ export default function ChatMensagens({
             </div>
           </div>
         ) : (
-          <div className="space-y-1.5 sm:space-y-3">
-            {mensagens.map((msg, index) => {
-              const minha =
-                (msg.userId && meuId && String(msg.userId) === String(meuId)) ||
-                (!msg.userId && msg.autor && meuNome && String(msg.autor) === String(meuNome))
-              const sistema = msg.sistema || msg.autorId === 'sistema'
-              const hora = formatarHoraMensagem(msg.hora || msg.criadoEm || msg.createdAt)
+            <div>
+              {mensagens.map((msg, index) => {
+                const minha =
+                  (msg.userId && meuId && String(msg.userId) === String(meuId)) ||
+                  (!msg.userId && msg.autor && meuNome && String(msg.autor) === String(meuNome))
+                const sistema = msg.sistema || msg.autorId === 'sistema'
+                const hora = formatarHoraMensagem(msg.hora || msg.criadoEm || msg.createdAt)
+                const anterior = mensagens[index - 1]
+                const proxima = mensagens[index + 1]
+                const autorAtual = String(msg.userId || msg.autorId || msg.autor || '')
+                const mesmoAutorAnterior = Boolean(
+                  anterior
+                  && !(anterior.sistema || anterior.autorId === 'sistema')
+                  && String(anterior.userId || anterior.autorId || anterior.autor || '') === autorAtual
+                )
+                const mesmoAutorProximo = Boolean(
+                  proxima
+                  && !(proxima.sistema || proxima.autorId === 'sistema')
+                  && String(proxima.userId || proxima.autorId || proxima.autor || '') === autorAtual
+                )
 
               if (sistema) {
                 const chip = compactSystemChip(msg)
                 return (
                   <motion.div
                     key={msg.id}
-                    initial={{ opacity: 0, y: 8 }}
+                    initial={reduzirMovimento ? false : { opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex justify-center"
+                    transition={reduzirMovimento ? { duration: 0 } : { duration: 0.2 }}
+                    className={`${index === 0 ? '' : 'mt-2.5'} flex justify-center`}
                   >
-                    <div className="inline-flex max-w-[92%] items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-black leading-tight text-emerald-100 shadow-[0_8px_18px_rgba(0,0,0,0.14)] sm:max-w-[70%] sm:px-3 sm:py-1.5 sm:text-xs">
+                    <div className="inline-flex max-w-[94%] items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-500/[0.09] px-2.5 py-1 text-[10px] font-bold leading-tight text-emerald-100 shadow-[0_8px_18px_rgba(0,0,0,0.14)] sm:max-w-[72%] sm:px-3 sm:py-1.5 sm:text-[11px]">
                       <span className="shrink-0 text-emerald-300">{chip.icon}</span>
-                      <span className="truncate">{chip.label}</span>
+                      <span className="break-words text-center">{chip.label}</span>
                       {hora ? <span className="shrink-0 text-[10px] font-bold text-slate-500">{hora}</span> : null}
                     </div>
                   </motion.div>
@@ -1486,32 +1587,32 @@ export default function ChatMensagens({
               return (
                 <motion.div
                   key={msg.id}
-                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                  initial={reduzirMovimento ? false : { opacity: 0, y: 10, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.22, delay: Math.min(index * 0.018, 0.14), ease: 'easeOut' }}
-                  className={`flex items-end gap-2 ${minha ? 'justify-end' : 'justify-start'}`}
+                  transition={reduzirMovimento ? { duration: 0 } : { duration: 0.22, delay: Math.min(index * 0.018, 0.14), ease: 'easeOut' }}
+                  className={`flex items-end gap-2 ${index === 0 ? '' : mesmoAutorAnterior ? 'mt-1' : 'mt-2.5'} ${minha ? 'justify-end' : 'justify-start'}`}
                 >
-                  {!minha ? (
-                    <div className="mb-1 grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full border border-emerald-400/25 bg-gradient-to-br from-blue-500 to-emerald-400 text-[10px] font-black text-white sm:h-9 sm:w-9 sm:text-xs">
+                  {!minha && !mesmoAutorProximo ? (
+                    <div className="mb-1 grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-gradient-to-br from-blue-500 to-emerald-400 text-[10px] font-black text-white sm:h-8 sm:w-8 sm:text-xs">
                       {outroFoto ? (
                         <div className="h-full w-full bg-cover bg-center" style={{ backgroundImage: `url(${JSON.stringify(outroFoto)})` }} aria-hidden="true" />
                       ) : outroInicial}
                     </div>
-                  ) : null}
-                  <div className={`max-w-[82%] sm:max-w-[72%] ${minha ? 'text-right' : 'text-left'}`}>
+                  ) : !minha ? <div className="h-7 w-7 shrink-0 sm:h-8 sm:w-8" aria-hidden="true" /> : null}
+                  <div className={`min-w-0 max-w-[82%] sm:max-w-[70%] ${minha ? 'text-right' : 'text-left'}`}>
                     <div className="hidden mb-0.5 px-1 text-[9px] font-bold uppercase tracking-wide text-slate-500 sm:mb-1 sm:text-[10px]">
                       {minha ? 'Você' : safeName(msg.autor, outroNome)}
                     </div>
                     <div
                       className={[
-                        'rounded-[16px] px-2.5 py-1.5 shadow-[0_10px_24px_rgba(0,0,0,0.18)] sm:rounded-[22px] sm:px-4 sm:py-3',
-                        minha
-                          ? 'rounded-br-md border border-emerald-400/25 bg-emerald-700/80 text-white'
-                          : 'rounded-bl-md border border-white/10 bg-[#121c2b] text-white',
+                        'rounded-[17px] px-3 py-2 shadow-[0_10px_24px_rgba(0,0,0,0.2)] sm:rounded-[20px] sm:px-4 sm:py-2.5',
+                         minha
+                          ? `${mesmoAutorAnterior ? 'rounded-tr-[9px]' : ''} ${mesmoAutorProximo ? 'rounded-br-[9px]' : 'rounded-br-[5px]'} border border-emerald-400/25 bg-[linear-gradient(135deg,rgba(6,95,70,0.96),rgba(4,120,87,0.78))] text-white`
+                          : `${mesmoAutorAnterior ? 'rounded-tl-[9px]' : ''} ${mesmoAutorProximo ? 'rounded-bl-[9px]' : 'rounded-bl-[5px]'} border border-cyan-300/[0.09] bg-[linear-gradient(135deg,#142235,#101a29)] text-white`,
                       ].join(' ')}
                     >
                       {msg.texto ? (
-                        <div className="whitespace-pre-wrap break-words text-[14px] leading-snug sm:text-[17px]">{msg.texto}</div>
+                        <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[14px] leading-snug sm:text-base">{msg.texto}</div>
                       ) : null}
 
                       <MensagemAnexo anexo={msg.anexo} audioLegacy={msg.audio} duracao={msg.duracao} />
@@ -1529,7 +1630,7 @@ export default function ChatMensagens({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-emerald-400/10 bg-[#020915]/96 px-2.5 py-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))] shadow-[0_-14px_34px_rgba(0,0,0,0.24)] backdrop-blur sm:px-5 sm:py-4 sm:pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="shrink-0 border-t border-emerald-400/10 bg-[#030b15]/96 px-2.5 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:px-5 sm:py-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <input
           ref={cameraInputRef}
           type="file"
@@ -1546,84 +1647,83 @@ export default function ChatMensagens({
           onChange={(e) => selecionarArquivo(e)}
         />
 
-        <div className="mb-1.5 flex gap-1.5 overflow-x-auto border-t border-emerald-400/12 pt-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-2.5 sm:gap-2 sm:pt-2.5">
+        <div className="mb-1.5 flex touch-pan-x gap-1.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-2 sm:gap-2">
           <button
             type="button"
             onClick={() => enviar('Minha localização está disponível no pedido.')}
             disabled={enviando || anexando || gravando}
-            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-emerald-400/25 bg-emerald-500/8 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-emerald-500/15 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-emerald-500/15 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-10 sm:px-3 sm:text-[11px]"
           >
-            <IconMapPin className="h-4 w-4 text-emerald-400 sm:h-5 sm:w-5" />
+            <IconMapPin className="h-4 w-4 text-emerald-400" />
             Local
           </button>
           <button
             type="button"
             onClick={chamarAtencao}
             disabled={!outroId || enviando || anexando || gravando || chamandoAtencao}
-            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-orange-400/25 bg-orange-500/10 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-orange-500/15 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-orange-400/25 bg-orange-500/10 px-2.5 text-[10px] font-black text-white transition hover:bg-orange-500/15 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-10 sm:px-3 sm:text-[11px]"
           >
-            <IconBell className="h-4 w-4 text-orange-300 sm:h-5 sm:w-5" />
+            <IconBell className="h-4 w-4 text-orange-300" />
             {chamandoAtencao ? 'Enviando' : 'Chamar'}
           </button>
           <button
             type="button"
             onClick={() => cameraInputRef.current?.click()}
             disabled={!pedidoId || enviando || anexando || gravando}
-            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-blue-400/25 bg-blue-500/8 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-blue-500/15 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-blue-400/25 bg-blue-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-blue-500/15 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-10 sm:px-3 sm:text-[11px]"
           >
-            <IconCamera className="h-4 w-4 text-blue-400 sm:h-5 sm:w-5" />
+            <IconCamera className="h-4 w-4 text-blue-400" />
             Foto
           </button>
           <button
             type="button"
             onClick={gravando ? solicitarParadaGravacao : iniciarGravacao}
             disabled={!pedidoId || enviando || anexando}
-            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-purple-400/25 bg-purple-500/8 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-purple-500/15 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-purple-400/25 bg-purple-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-purple-500/15 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-10 sm:px-3 sm:text-[11px]"
           >
-            <IconMic className="h-4 w-4 text-purple-400 sm:h-5 sm:w-5" />
+            <IconMic className="h-4 w-4 text-purple-400" />
             {gravando ? 'Parar áudio' : 'Áudio'}
           </button>
           <button
             type="button"
             onClick={() => onToast?.({ type: 'info', title: 'Valor', message: 'Alteracao de valor sera registrada com confirmacao do cliente.' })}
-            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-yellow-400/25 bg-yellow-500/8 px-1 text-center text-[9px] font-black leading-tight text-white transition hover:bg-yellow-500/15 sm:h-12 sm:w-[78px] sm:text-[11px]"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-yellow-400/25 bg-yellow-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-yellow-500/15 active:scale-[0.97] sm:h-10 sm:px-3 sm:text-[11px]"
           >
-            <IconDollar className="h-4 w-4 text-yellow-400 sm:h-5 sm:w-5" />
+            <IconDollar className="h-4 w-4 text-yellow-400" />
             Valor
           </button>
           <button
             type="button"
             onClick={finalizarAtendimento}
             disabled={!pedidoId || !podeAvancarAtendimento || enviando || anexando || gravando}
-            className="grid h-10 w-[62px] shrink-0 place-items-center rounded-xl border border-emerald-400/35 bg-emerald-500/18 px-1 text-center text-[9px] font-black leading-tight text-white shadow-[0_8px_18px_rgba(34,197,94,0.16)] transition hover:bg-emerald-400/20 disabled:opacity-50 sm:h-12 sm:w-[78px] sm:text-[11px]"
+            className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-black transition active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 sm:h-10 sm:px-3 sm:text-[11px] ${
+              podeAvancarAtendimento
+                ? 'border-emerald-300/35 bg-emerald-500/20 text-white shadow-[0_8px_18px_rgba(34,197,94,0.14)] hover:bg-emerald-400/25'
+                : 'border-white/10 bg-white/[0.04] text-slate-500'
+            }`}
           >
-            <IconCheck className="h-4 w-4 text-emerald-300 sm:h-5 sm:w-5" />
-            {acaoAtendimentoLabel}
+            <IconCheck className="h-4 w-4 text-emerald-300" />
+            {acaoAtendimentoCurta}
           </button>
         </div>
 
         {!gravando ? (
-          <div className="mb-1.5 flex gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-2">
-            {SUGESTOES.map((s, index) => {
-              const resposta = [
-                'Minha localiza\u00e7\u00e3o',
-                'J\u00e1 estou a caminho',
-                'Cheguei!',
-                'Obrigado!',
-              ][index] || s
-
-              return (
+          <div className="relative mb-1.5 sm:mb-2">
+            <div className="flex touch-pan-x snap-x gap-1.5 overflow-x-auto overscroll-x-contain pr-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {sugestoesVisiveis.map((sugestao) => (
               <button
-                key={resposta}
+                key={sugestao.label}
                 type="button"
-                onClick={() => enviar(resposta)}
+                onClick={() => enviar(sugestao.texto)}
                 disabled={enviando || anexando || !!anexoSelecionado}
-                className="shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[11px] font-bold text-slate-200 transition hover:border-emerald-400/30 hover:bg-emerald-500/[0.08] disabled:opacity-50 sm:px-3 sm:py-1.5 sm:text-xs"
+                className="inline-flex h-7 shrink-0 snap-start items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.045] px-2.5 text-[10px] font-bold text-slate-200 transition hover:border-emerald-400/30 hover:bg-emerald-500/[0.08] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 sm:h-8 sm:px-3 sm:text-[11px]"
               >
-                {resposta}
+                <span aria-hidden="true">{sugestao.icon}</span>
+                {sugestao.label}
               </button>
-              )
-            })}
+              ))}
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#030b15] to-transparent" aria-hidden="true" />
           </div>
         ) : null}
 
@@ -1661,13 +1761,13 @@ export default function ChatMensagens({
           </div>
         ) : null}
 
-        <div className="flex items-center gap-1.5 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={() => arquivoInputRef.current?.click()}
             disabled={!pedidoId || enviando || anexando || gravando}
             className={[
-              'grid h-10 w-10 shrink-0 place-items-center rounded-full border text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-14 sm:w-14',
+              'grid h-10 w-10 shrink-0 place-items-center rounded-full border text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-11 sm:w-11',
               gravando
                 ? 'border-red-400/40 bg-red-500/20 text-red-100'
                 : 'border-white/10 bg-white/[0.07] hover:bg-white/[0.12]',
@@ -1675,7 +1775,7 @@ export default function ChatMensagens({
             title="Anexar"
             aria-label="Anexar"
           >
-            <IconPlus className="h-5 w-5 sm:h-8 sm:w-8" />
+            <IconPlus className="h-5 w-5 sm:h-6 sm:w-6" />
           </button>
           <button
             type="button"
@@ -1702,7 +1802,7 @@ export default function ChatMensagens({
 
           <div className="min-w-0 flex-1">
             {gravando ? (
-              <div className="flex h-10 items-center rounded-full border border-red-500/30 bg-red-500/10 px-3 text-xs font-mono text-red-200 sm:h-14 sm:px-5 sm:text-sm">
+              <div className="flex h-10 items-center rounded-full border border-red-500/30 bg-red-500/10 px-3 text-xs font-mono text-red-200 sm:h-11 sm:px-4 sm:text-sm">
                 Gravando... {formatarTempo(tempo)}
               </div>
             ) : (
@@ -1712,40 +1812,45 @@ export default function ChatMensagens({
                 onKeyDown={onKeyDown}
                 placeholder={anexoSelecionado ? 'Adicionar legenda...' : 'Digite sua mensagem...'}
                 rows={1}
-                className="h-10 min-h-10 w-full max-h-20 resize-none rounded-full border border-white/10 bg-white/[0.08] px-3 py-2.5 text-sm leading-tight text-white outline-none placeholder:text-slate-500 focus:ring-2 focus:ring-emerald-500/35 sm:h-14 sm:min-h-14 sm:max-h-28 sm:px-5 sm:py-4 sm:text-base"
+                onFocus={() => {
+                  requestAnimationFrame(() => {
+                    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+                  })
+                }}
+                className="min-h-10 w-full max-h-20 resize-none overflow-y-auto rounded-[20px] border border-white/10 bg-white/[0.065] px-3 py-2.5 text-sm leading-tight text-white outline-none [field-sizing:content] placeholder:text-slate-500 focus:border-emerald-400/30 focus:ring-2 focus:ring-emerald-500/15 sm:min-h-11 sm:max-h-24 sm:rounded-[22px] sm:px-4 sm:py-3 sm:text-sm"
               />
             )}
           </div>
 
           <button
             type="button"
-            className="hidden h-10 w-10 shrink-0 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 min-[430px]:grid sm:h-12 sm:w-12"
+            className="hidden h-9 w-9 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/[0.07] min-[400px]:grid sm:h-10 sm:w-10"
             aria-label="Emoji"
           >
-            <IconSmile className="h-5 w-5 sm:h-7 sm:w-7" />
+            <IconSmile className="h-5 w-5" />
           </button>
 
           <button
             type="button"
             onClick={gravando ? solicitarParadaGravacao : iniciarGravacao}
             disabled={!pedidoId || enviando || anexando}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-300 transition hover:bg-white/10 disabled:opacity-50 sm:h-12 sm:w-12"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/[0.07] disabled:opacity-50 sm:h-10 sm:w-10"
             aria-label={gravando ? 'Parar audio' : 'Gravar audio'}
           >
-            {gravando ? <IconStop className="h-5 w-5 text-red-300 sm:h-7 sm:w-7" /> : <IconMic className="h-5 w-5 sm:h-7 sm:w-7" />}
+            {gravando ? <IconStop className="h-5 w-5 text-red-300" /> : <IconMic className="h-5 w-5" />}
           </button>
 
           <button
             type="button"
             onClick={() => enviar()}
             disabled={enviando || anexando || (!texto.trim() && !anexoSelecionado) || gravando}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-[0_10px_24px_rgba(34,197,94,0.26)] transition hover:bg-emerald-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-14 sm:w-14 [&_span]:hidden"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-[0_10px_24px_rgba(34,197,94,0.26)] transition hover:bg-emerald-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-11 sm:w-11 [&_span]:hidden"
           >
             {enviando || anexando ? (
               '...'
             ) : (
               <>
-                <IconSend className="h-5 w-5 sm:h-8 sm:w-8" />
+                <IconSend className="h-5 w-5 sm:h-6 sm:w-6" />
                 <span className="sm:hidden">➤</span>
                 <span className="hidden sm:inline">Enviar</span>
               </>

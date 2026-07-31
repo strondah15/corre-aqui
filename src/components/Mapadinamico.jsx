@@ -1,8 +1,3 @@
-// XP_PATENTE_SYSTEM
-// aceitar serviço = +3 XP
-// concluir serviço = +10 XP
-// avaliação positiva = +5 XP
-
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -33,9 +28,10 @@ import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
 import { TUTORIAL_ACTIONS, TUTORIAL_EVENTS } from '@/lib/tutorial/tutorialConfig'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
+import { REQUEST_BOOST_PRODUCT_ID } from '@/lib/commercialProducts'
+import { canAppearInPublicDirectory, mergePublicProfileWithPresence } from '@/lib/publicWorkProfile'
 
 import PerfilDrawer from '@/components/PerfilDrawer'
-import XpToast from '@/components/XpToast'
 import ModalIA from './ModalIA'
 import ModalAgenda from './ModalAgenda'
 import ChatMensagens from './ChatMensagens'
@@ -49,8 +45,6 @@ import LogoCorreAqui from '@/components/LogoCorreAqui'
 
 // ✅ NOVOS COMPONENTES
 import BottomBar from '@/components/BottomBar'
-import Patente, { calcularPatentePorServicos, getPatenteTitle } from '@/components/Patente'
-import PatenteUpModal from '@/components/PatenteUpModal'
 
 import ClienteHome from '@/components/ClienteHome'
 import ListaProfissionais from '@/components/ListaProfissionais'
@@ -60,6 +54,7 @@ import PerfilPublico from '@/components/PerfilPublico'
 import { CATEGORIES, categoryMatches, getCanonicalCategoryId, getCategoryById } from '@/constants/categories'
 
 const MapinhaModal = dynamic(() => import('./MapinhaModal'), { ssr: false })
+const COMMERCIAL_HIGHLIGHTS_UI_ENABLED = false
 
 /* =======================
    Helpers
@@ -75,187 +70,6 @@ const pickFoto = (...vals) => vals.map((v) => String(v || '').trim()).find(isFot
 
 const safeText = (v) => String(v || '').trim()
 
-const publicTime = (...values) => {
-  for (const value of values) {
-    const numeric = Number(value)
-    if (Number.isFinite(numeric) && numeric > 0) return numeric
-    const parsed = Date.parse(String(value || ''))
-    if (Number.isFinite(parsed) && parsed > 0) return parsed
-  }
-  return Date.now()
-}
-
-const isExplicitPrivateProfile = (privacy = {}) =>
-  privacy.profileVisible === false &&
-  (privacy.profileVisibilityExplicit === true || privacy.profileVisibleExplicit === true)
-
-const normalizePublicPortfolioItems = (...values) => values
-  .flatMap((value) => {
-    if (!value) return []
-    if (Array.isArray(value)) return value
-    if (typeof value === 'object') {
-      return Object.entries(value).map(([key, item]) => ({
-        id: item?.id || key,
-        ...(item || {}),
-      }))
-    }
-    return []
-  })
-  .filter((item) => item && typeof item === 'object')
-  .slice(0, 12)
-
-const buildPublicVitrinePayload = (uid, user = {}, fallback = {}) => {
-  if (!uid || !user || typeof user !== 'object') return { profile: null, portfolio: null }
-
-  const profile = user.profile || {}
-  const privacy = user.privacy || profile.privacy || {}
-  if (isExplicitPrivateProfile(privacy)) return { profile: null, portfolio: null }
-
-  const corre = user.corre || profile.corre || {}
-  const profissional = user.profissional || profile.profissional || {}
-  const fotoPrincipal = pickFoto(
-    fallback.fotoURL,
-    user.fotoURL,
-    profile.fotoURL,
-    user.photoURL,
-    profile.photoURL,
-    user.avatar,
-    profile.avatar
-  )
-  const avatarEmoji =
-    user.avatarEmoji ||
-    profile.avatarEmoji ||
-    (!isFotoValor(user.avatar) ? user.avatar : '') ||
-    (!isFotoValor(profile.avatar) ? profile.avatar : '') ||
-    fallback.avatarEmoji ||
-    ''
-  const nome = safeText(user.nome || profile.nome || fallback.nome || 'Profissional')
-  const cidade = safeText(user.cidade || profile.cidade || profissional.regiao || corre.regiao || '')
-  const isCorre = !!(user.isCorre || profile.isCorre || corre.ativo)
-  const isProfissional = !!(user.isProfissional || profile.isProfissional || profissional.ativo)
-  const portfolioItems = normalizePublicPortfolioItems(
-    user.profPortfolio,
-    user.portfolio,
-    profile.profPortfolio,
-    profile.portfolio,
-    profissional.profPortfolio,
-    profissional.portfolio
-  )
-
-  if (!isCorre && !isProfissional && !portfolioItems.length) {
-    return { profile: null, portfolio: null }
-  }
-
-  const publicPortfolio = portfolioItems.reduce((acc, item, index) => {
-    const id = safeText(item.id || item.key || `portfolio_${uid}_${index}`)
-    const categoriaMeta = getCategoryById(item.categoriaId || item.categoria)
-    const categoriaId = safeText(item.categoriaId || categoriaMeta?.id || '')
-    const categoriaNome = safeText(item.categoriaNome || item.categoria || categoriaMeta?.label || '')
-    const nomeServico = safeText(item.nome || item.titulo || item.title)
-    const fotos = normalizePublicPortfolioItems(item.fotos)
-    const fotoURL = pickFoto(item.fotoURL, item.foto, fotos[0]?.url, fotos[0]) || ''
-    const serviceFotos = Array.isArray(item.fotos)
-      ? item.fotos.map((foto) => pickFoto(foto?.url, foto)).filter(Boolean).slice(0, 5)
-      : fotoURL
-        ? [fotoURL]
-        : []
-
-    if (!id || !nomeServico || item.ativo === false) return acc
-
-    acc[id] = {
-      id,
-      nome: nomeServico,
-      titulo: nomeServico,
-      descricao: safeText(item.descricao || item.description),
-      categoriaId,
-      categoriaNome,
-      categoria: categoriaNome,
-      preco: safeText(item.preco || item.price),
-      faixaPreco: safeText(item.faixaPreco || item.valor || item.priceRange || item.preco),
-      valor: safeText(item.faixaPreco || item.valor || item.priceRange || item.preco),
-      tempoMedio: safeText(item.tempoMedio || item.tempo || item.duration),
-      fotos: serviceFotos,
-      fotoURL: serviceFotos[0] || '',
-      regiao: safeText(item.regiao || item.regiaoAtendimento || item.region || cidade),
-      atendeDomicilio: item.atendeDomicilio ?? item.domicilio ?? true,
-      urgente: item.urgente === true || item.urgent === true,
-      ativo: true,
-      profissionalId: uid,
-      uid,
-      profissionalNome: nome,
-      providerName: nome,
-      profissionalFotoURL: fotoPrincipal || '',
-      providerFotoURL: fotoPrincipal || '',
-      cidade,
-      isCorre,
-      isProfissional: true,
-      createdAt: publicTime(item.createdAt, item.criadoEm),
-      updatedAt: publicTime(item.updatedAt, item.atualizadoEm, item.createdAt, item.criadoEm),
-    }
-    return acc
-  }, {})
-
-  const profPortfolio = Object.values(publicPortfolio)
-  const publicProfile = {
-    uid,
-    id: uid,
-    nome,
-    fotoURL: fotoPrincipal || null,
-    photoURL: fotoPrincipal || null,
-    avatar: fotoPrincipal || avatarEmoji || '',
-    avatarEmoji,
-    cidade,
-    bio: safeText(user.bio || profile.bio || corre.bio || profissional.descricao),
-    visivel: user.visivel !== false && profile.visivel !== false,
-    profileVisible: true,
-    profileVisibilityExplicit: privacy.profileVisibilityExplicit === true || privacy.profileVisibleExplicit === true,
-    showOnlineStatus: user.showOnlineStatus ?? privacy.showOnlineStatus ?? true,
-    allowPublicContact: user.allowPublicContact ?? privacy.allowPublicContact ?? false,
-    isCorre,
-    isProfissional,
-    correCategorias: Array.isArray(user.correCategorias) ? user.correCategorias : Array.isArray(profile.correCategorias) ? profile.correCategorias : [],
-    profCategorias: Array.isArray(user.profCategorias) ? user.profCategorias : Array.isArray(profile.profCategorias) ? profile.profCategorias : [],
-    correTitulo: safeText(user.correTitulo || profile.correTitulo || corre.titulo || 'Corre rapido'),
-    correResumo: safeText(user.correResumo || profile.correResumo || corre.bio || profile.bio),
-    correRegiao: safeText(user.correRegiao || profile.correRegiao || corre.regiao || cidade),
-    correTransporte: safeText(user.correTransporte || profile.correTransporte || corre.transporte),
-    profResumo: safeText(user.profResumo || profile.profResumo || profile.descricao || profissional.descricao || profissional.titulo),
-    profCidadeAtende: safeText(user.profCidadeAtende || profile.profCidadeAtende || profissional.regiao || cidade),
-    profPrecoBase: safeText(user.profPrecoBase || profile.profPrecoBase || profile.preco || profissional.preco),
-    profWhats: safeText(user.profWhats || profile.profWhats || profissional.whatsapp),
-    profExperiencia: safeText(user.profExperiencia || profile.profExperiencia || profissional.experiencia),
-    corre: {
-      ativo: isCorre,
-      titulo: safeText(corre.titulo || user.correTitulo || profile.correTitulo || 'Corre rapido'),
-      bio: safeText(corre.bio || user.correResumo || profile.correResumo || profile.bio),
-      transporte: safeText(corre.transporte || user.correTransporte || profile.correTransporte),
-      regiao: safeText(corre.regiao || user.correRegiao || profile.correRegiao || cidade),
-    },
-    profissional: {
-      ativo: isProfissional,
-      titulo: safeText(profissional.titulo || profile.titulo),
-      descricao: safeText(profissional.descricao || profile.descricao),
-      preco: safeText(profissional.preco || profile.preco),
-      whatsapp: safeText(profissional.whatsapp || profile.whatsapp),
-      regiao: safeText(profissional.regiao || profile.profRegiao || cidade),
-      experiencia: safeText(profissional.experiencia || profile.profExperiencia),
-      agendaAberta: user.agendaAberta ?? profissional.agendaAberta ?? true,
-    },
-    profPortfolio,
-    portfolio: publicPortfolio,
-    plano: user.plano || profile.plano || 'Free',
-    statusProfissional: user.statusProfissional || profile.statusProfissional || profissional.statusProfissional || 'disponivel',
-    agendaAberta: user.agendaAberta ?? profile.agendaAberta ?? profissional.agendaAberta ?? true,
-    updatedAt: Date.now(),
-    atualizadoEm: Date.now(),
-  }
-
-  return {
-    profile: publicProfile,
-    portfolio: Object.keys(publicPortfolio).length ? publicPortfolio : null,
-  }
-}
-
 const compactCategoryLabel = (label, max = 12) => {
   const text = String(label || '').trim()
   if (!text || text.length <= max) return text
@@ -267,6 +81,10 @@ const DEBUG_PRESENCE =
 const DEBUG_NAV_PERF = process.env.NODE_ENV !== 'production'
 const LIST_STATE_PREFIX = 'correAqui:listState:v2'
 const LIST_RETURN_FLAG = 'correAqui:returningToList'
+const PEDIDOS_PAGE_SIZE = 10
+const PEDIDO_NOVO_MS = 24 * 60 * 60 * 1000
+const PEDIDO_RECENTE_MS = 3 * 24 * 60 * 60 * 1000
+const PEDIDO_ANTIGO_MS = 7 * 24 * 60 * 60 * 1000
 let pedidosCache = []
 let pedidosCacheReady = false
 
@@ -389,7 +207,7 @@ async function getMyLocation() {
 }
 
 /* =======================
-   🔥 PATENTE + TAXA + BOOST + MISSÕES
+   Destaque temporário de pedidos
 ======================= */
 const BOOST_LEVELS = {
   1: { minutos: 30, label: 'Destaque (em breve)', emoji: '🚀', preco: 2.99 },
@@ -413,13 +231,6 @@ const isPedidoEmergencia = (p) => {
 
 const isPedidoDestaque = (p) => {
   return !!(p?.destaque || p?.boost?.tipo === 'destaque' || Number(p?.boost?.level || 0) === 1)
-}
-
-const prioridadePedido = (p) => {
-  if ((p?.status || 'aberto') !== 'aberto') return 0
-  if (isPedidoEmergencia(p) && isBoostAtivo(p)) return 300
-  if (isPedidoDestaque(p) && isBoostAtivo(p)) return 200
-  return 100
 }
 
 const boostInfo = (p) => {
@@ -494,6 +305,98 @@ const getMs = (v) => {
   return 0
 }
 
+const getPedidoTimeInfo = (pedido) => {
+  const reactivatedAt = getMs(
+    pedido?.reactivatedAt ||
+    pedido?.reativadoEm ||
+    pedido?.reativadoAt ||
+    pedido?.reactivated_at
+  )
+  const createdAt = getMs(
+    pedido?.criadoEm ||
+    pedido?.createdAt ||
+    pedido?.criadoEmMs ||
+    pedido?.created_at ||
+    pedido?.atualizadoEm ||
+    pedido?.updatedAt
+  )
+  const timestamp = reactivatedAt || createdAt
+
+  return {
+    timestamp,
+    reactivatedAt,
+    createdAt,
+    hasValidDate: timestamp > 0,
+    isReactivated: reactivatedAt > 0,
+  }
+}
+
+const getRequestFreshness = (pedido, serverNow = Date.now()) => {
+  const now = Number(serverNow || Date.now())
+  const timeInfo = getPedidoTimeInfo(pedido)
+
+  if (!timeInfo.hasValidDate) {
+    return {
+      status: 'sem_data',
+      label: 'Sem data',
+      ageMs: null,
+      timestamp: 0,
+      visibleInPublicList: true,
+      isReactivated: false,
+    }
+  }
+
+  const ageMs = Math.max(0, now - timeInfo.timestamp)
+  if (ageMs <= PEDIDO_NOVO_MS) {
+    return {
+      status: 'novo',
+      label: 'Novo',
+      ageMs,
+      timestamp: timeInfo.timestamp,
+      visibleInPublicList: true,
+      isReactivated: timeInfo.isReactivated,
+    }
+  }
+
+  if (ageMs <= PEDIDO_RECENTE_MS) {
+    return {
+      status: 'recente',
+      label: 'Recente',
+      ageMs,
+      timestamp: timeInfo.timestamp,
+      visibleInPublicList: true,
+      isReactivated: timeInfo.isReactivated,
+    }
+  }
+
+  if (ageMs <= PEDIDO_ANTIGO_MS) {
+    return {
+      status: 'antigo',
+      label: 'Antigo',
+      ageMs,
+      timestamp: timeInfo.timestamp,
+      visibleInPublicList: true,
+      isReactivated: timeInfo.isReactivated,
+    }
+  }
+
+  return {
+    status: 'potencialmente_expirado',
+    label: 'Expirado',
+    ageMs,
+    timestamp: timeInfo.timestamp,
+    visibleInPublicList: false,
+    isReactivated: timeInfo.isReactivated,
+  }
+}
+
+const getFreshnessBadgeClass = (status) => {
+  if (status === 'novo') return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+  if (status === 'antigo') return 'bg-amber-50 text-amber-700 ring-amber-200'
+  if (status === 'sem_data') return 'bg-slate-100 text-slate-600 ring-slate-200'
+  return 'bg-blue-50 text-blue-700 ring-blue-200'
+}
+
 const formatDataHora = (v) => {
   const ms = getMs(v)
   if (!ms) return 'Sem horário'
@@ -544,7 +447,6 @@ async function aplicarImpulsionarNoPedido({ pedido, level, meuId, meuNome }) {
     atualizadoEm: serverTimestamp(),
   })
 
-  await missãoIncrementar(meuId, 'boostou')
 }
 
 /** =======================
@@ -695,6 +597,33 @@ const formatDistancePedido = (pedido, userNode) => {
   if (!Number.isFinite(km) || km > 150) return 'Distância indisponível'
   if (km < 1) return `${Math.max(100, Math.round(km * 1000))} m`
   return `${km.toFixed(km >= 10 ? 0 : 1).replace('.', ',')} km`
+}
+
+const getPedidoDistanceForSort = (pedido, userNode) => {
+  const pedidoLocal = getLatLngFrom(pedido)
+  const meuLocal = getLatLngFrom(userNode)
+  const km = distanceKmBetween(meuLocal, pedidoLocal)
+  return Number.isFinite(km) ? km : null
+}
+
+const comparePedidosDisponiveis = (a, b, userNode, serverNow) => {
+  const statusA = normalizeAtendimentoStatus(a?.status)
+  const statusB = normalizeAtendimentoStatus(b?.status)
+  const abertoA = statusA === ATENDIMENTO_STATUS.ABERTO ? 1 : 0
+  const abertoB = statusB === ATENDIMENTO_STATUS.ABERTO ? 1 : 0
+  if (abertoB !== abertoA) return abertoB - abertoA
+
+  const timeA = getRequestFreshness(a, serverNow).timestamp || getPedidoTimeInfo(a).timestamp || 0
+  const timeB = getRequestFreshness(b, serverNow).timestamp || getPedidoTimeInfo(b).timestamp || 0
+  if (timeB !== timeA) return timeB - timeA
+
+  const distA = getPedidoDistanceForSort(a, userNode)
+  const distB = getPedidoDistanceForSort(b, userNode)
+  if (distA != null && distB != null && distA !== distB) return distA - distB
+  if (distA != null && distB == null) return -1
+  if (distA == null && distB != null) return 1
+
+  return String(a?.id || '').localeCompare(String(b?.id || ''), 'pt-BR')
 }
 
 const formatTempoPostado = (value) => {
@@ -874,7 +803,6 @@ function ProfessionalOverview({
   disponivel,
   categorias = [],
   stats,
-  patenteProf,
   onPerfil,
   onAgenda,
   onInbox,
@@ -968,7 +896,9 @@ function ProfessionalOverview({
               </div>
             </div>
           </div>
-          <Patente tipo="prof" nivel={patenteProf || 1} size="sm" />
+          <div className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black text-slate-600">
+            Reputação real
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2">
@@ -1259,7 +1189,6 @@ function GlobalProfileMenu({
   onPortfolio,
   onAgenda,
   onGanhos,
-  onPatentes,
   onAvaliacoesRecebidas,
   onConfiguracoes,
   onAjuda,
@@ -1323,7 +1252,6 @@ function GlobalProfileMenu({
             <ProfileMenuRow icon="💼" label="Portfólio de serviços" onClick={onPortfolio} />
             <ProfileMenuRow icon="📅" label="Agenda" onClick={onAgenda} />
             <ProfileMenuRow icon="💰" label="Ganhos" onClick={onGanhos} />
-            <ProfileMenuRow icon="♦" label="Patentes" onClick={onPatentes} />
             <ProfileMenuRow icon="★" label="Avaliações recebidas" onClick={onAvaliacoesRecebidas} />
           </section>
 
@@ -1347,13 +1275,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [openProfileMenu, setOpenProfileMenu] = useState(false)
   const [perfilInitialTab, setPerfilInitialTab] = useState('config')
   const [perfilInitialProfSection, setPerfilInitialProfSection] = useState('')
-  const [showXpToast, setShowXpToast] = useState(false)
-  const [xpToastInfo, setXpToastInfo] = useState({
-    xp: 10,
-    texto: 'Serviço concluído',
-  })
-  const [patenteUp, setPatenteUp] = useState(null)
-
   const [meuNome, setMeuNome] = useState('')
   const [meuId, setMeuId] = useState('')
 
@@ -1399,6 +1320,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [agendaClienteUser, setAgendaClienteUser] = useState(null)
   const [agendaClienteService, setAgendaClienteService] = useState(null)
   const [privateRequests, setPrivateRequests] = useState([])
+  const [boostPedidoModal, setBoostPedidoModal] = useState(null)
+  const [boostCheckoutLoading, setBoostCheckoutLoading] = useState(false)
+  const [boostCheckoutResult, setBoostCheckoutResult] = useState(null)
   const notificacoesInicializadasRef = useRef(false)
   const notificacoesVistasRef = useRef(new Set())
   const recompensasEmCursoRef = useRef(new Set())
@@ -1407,6 +1331,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [loadingPedidos, setLoadingPedidos] = useState(() => !pedidosCacheReady)
   const [erroPedidos, setErroPedidos] = useState(null)
   const [abrindoPedidoId, setAbrindoPedidoId] = useState(null)
+  const [pedidosRenderLimit, setPedidosRenderLimit] = useState(PEDIDOS_PAGE_SIZE)
+  const [pedidosFreshnessNow, setPedidosFreshnessNow] = useState(() => Date.now())
 
   const [aceitandoId, setAceitandoId] = useState(null)
   const [atendimentoId, setAtendimentoId] = useState(null)
@@ -1439,6 +1365,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const listStateKey = useMemo(() => `${LIST_STATE_PREFIX}:${initialMode}`, [initialMode])
 
   useEffect(() => {
+    const timer = window.setInterval(() => setPedidosFreshnessNow(Date.now()), 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
     if (!meuId || !Array.isArray(corres)) return
 
     corres
@@ -1452,20 +1383,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         recompensasEmCursoRef.current.add(pedido.id)
 
         contabilizarAtendimentoFinalizado({ database, pedido, uid: meuId })
-          .then((resultado) => {
-            if (!resultado?.contabilizado) return
-            const patenteResultado = resultado.patente
-            setXpToastInfo({ xp: 10, texto: 'Servico concluido. XP, moedas e patente atualizados.' })
-            setShowXpToast(true)
-            window.setTimeout(() => setShowXpToast(false), 2600)
-            if (patenteResultado?.subiu) {
-              setPatenteUp({
-                patente: getPatenteTitle(patenteResultado.tipo, patenteResultado.patenteDepois),
-                tipo: patenteResultado.tipo,
-                nivel: patenteResultado.patenteDepois,
-              })
-            }
-          })
           .catch((error) => console.warn('Nao foi possivel contabilizar as recompensas:', error))
           .finally(() => recompensasEmCursoRef.current.delete(pedido.id))
       })
@@ -2084,36 +2001,76 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [meuId])
 
-  useEffect(() => {
-    if (!meuId || !meuUserProfile) return undefined
+  const profissionalStats = useMemo(() => {
+    const meus = (Array.isArray(corres) ? corres : []).filter((pedido) => pedido?.aceite?.id === meuId)
+    const concluidos = meus.filter((pedido) => normalizeAtendimentoStatus(pedido?.status) === ATENDIMENTO_STATUS.FINALIZADO)
+    const ativos = meus.filter((pedido) => isPedidoAtivoStatus(pedido?.status))
+    const notas = concluidos
+      .map((pedido) => Number(pedido?.avaliacao?.nota || pedido?.avaliacaoNota || 0))
+      .filter((nota) => Number.isFinite(nota) && nota > 0)
+    const ganhosTotal = concluidos.reduce((sum, pedido) => sum + getValorPedido(pedido?.valor), 0)
+    const taxaConclusao = meus.length ? Math.round((concluidos.length / meus.length) * 100) : 0
+    const notaMedia = notas.length ? notas.reduce((sum, nota) => sum + nota, 0) / notas.length : 0
+    const ticketMedio = concluidos.length ? ganhosTotal / concluidos.length : 0
 
-    let cancelled = false
-    const payload = buildPublicVitrinePayload(meuId, meuUserProfile, {
-      nome: meuNome,
-      fotoURL,
-      avatarEmoji,
+    const temposResposta = meus
+      .map((pedido) => {
+        const criadoEm = getMs(pedido?.criadoEm || pedido?.createdAt)
+        const aceitoEm = getMs(pedido?.aceite?.aceitoEm || pedido?.aceitoEm || pedido?.atendimento?.aceitoEm)
+        if (!criadoEm || !aceitoEm || aceitoEm <= criadoEm) return null
+        const intervalo = aceitoEm - criadoEm
+        return intervalo <= 7 * 24 * 60 * 60 * 1000 ? intervalo : null
+      })
+      .filter((value) => Number.isFinite(value) && value > 0)
+    const tempoMedioRespostaMs = temposResposta.length >= 3
+      ? temposResposta.reduce((sum, value) => sum + value, 0) / temposResposta.length
+      : null
+
+    const conclusoesPorCliente = concluidos.reduce((acc, pedido) => {
+      const clienteId = safeText(pedido?.criador?.id || pedido?.criadorUid || pedido?.clienteId)
+      if (clienteId) acc[clienteId] = (acc[clienteId] || 0) + 1
+      return acc
+    }, {})
+    const clientesRecorrentes = Object.values(conclusoesPorCliente).filter((total) => total >= 2).length
+
+    const hoje = new Date()
+    const semana = Array.from({ length: 7 }, (_, idx) => {
+      const date = new Date(hoje)
+      date.setDate(hoje.getDate() - (6 - idx))
+      const key = date.toISOString().slice(0, 10)
+      return {
+        key,
+        label: date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''),
+        value: 0,
+      }
+    })
+    const byKey = Object.fromEntries(semana.map((day) => [day.key, day]))
+
+    concluidos.forEach((pedido) => {
+      const ms = getMs(pedido?.concluidoEm || pedido?.atualizadoEm || pedido?.aceitoEm || pedido?.criadoEm)
+      if (!ms) return
+      const key = new Date(ms).toISOString().slice(0, 10)
+      if (byKey[key]) byKey[key].value += getValorPedido(pedido?.valor)
     })
 
-    ;(async () => {
-      try {
-        await set(ref(database, `publicProfiles/${meuId}`), payload.profile)
-      } catch (error) {
-        console.warn('[CLIENTE_HOME] erro publicando publicProfiles', error)
-      }
+    const ganhosSemana = semana.reduce((sum, item) => sum + Number(item.value || 0), 0)
 
-      if (cancelled) return
-
-      try {
-        await set(ref(database, `publicPortfolio/${meuId}`), payload.portfolio)
-      } catch (error) {
-        console.warn('[CLIENTE_HOME] erro publicando publicPortfolio', error)
-      }
-    })()
-
-    return () => {
-      cancelled = true
+    return {
+      total: meus.length,
+      ativos: ativos.length,
+      concluidos: concluidos.length,
+      ganhosTotal,
+      ganhosSemana,
+      taxaConclusao,
+      notaMedia,
+      avaliacoes: notas.length,
+      ticketMedio,
+      tempoMedioRespostaMs,
+      amostrasResposta: temposResposta.length,
+      clientesRecorrentes,
+      semana,
     }
-  }, [meuId, meuUserProfile, meuNome, fotoURL, avatarEmoji])
+  }, [corres, meuId])
 
   /* =======================
      3) Ler pedidos
@@ -2244,19 +2201,42 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return () => off()
   }, [meuId])
 
+  const registeredUsers = useMemo(() => {
+    return Object.entries(registeredUsersObj || {})
+      .map(([uid, value]) => ({
+        uid,
+        id: uid,
+        ...(value || {}),
+      }))
+      .filter((profile) => canAppearInPublicDirectory(profile))
+  }, [registeredUsersObj])
+
+  const publicProfilesByUid = useMemo(() => {
+    return new Map(
+      registeredUsers
+        .map((profile) => [String(profile?.uid || profile?.id || ''), profile])
+        .filter(([uid]) => uid)
+    )
+  }, [registeredUsers])
+
   const { usuariosOnlineLista, usuariosOnlineMapa } = useMemo(() => {
-    return splitUsuariosOnline(usersObj)
-  }, [usersObj])
+    const now = Date.now()
+    const publicPresence = Object.fromEntries(
+      Object.entries(usersObj || {})
+        .map(([uid, presence]) => {
+          const publicProfile = publicProfilesByUid.get(String(uid))
+          const merged = publicProfile
+            ? mergePublicProfileWithPresence(publicProfile, { uid, id: uid, ...(presence || {}) }, now)
+            : null
+          return merged ? [uid, merged] : null
+        })
+        .filter(Boolean)
+    )
+
+    return splitUsuariosOnline(publicPresence, now)
+  }, [usersObj, publicProfilesByUid])
 
   const onlineUsers = usuariosOnlineLista
-
-  const registeredUsers = useMemo(() => {
-    return Object.entries(registeredUsersObj || {}).map(([uid, value]) => ({
-      uid,
-      id: uid,
-      ...(value || {}),
-    }))
-  }, [registeredUsersObj])
 
   const onlineUsersFiltrados = useMemo(() => {
     const t = buscaUsuarioMapa.trim().toLowerCase()
@@ -2277,6 +2257,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
   }, [onlineUsers])
 
+  const meuPublicProfile = useMemo(() => {
+    if (!meuId) return null
+    const profile = registeredUsersObj?.[meuId]
+    return profile ? { uid: meuId, id: meuId, ...(profile || {}) } : null
+  }, [registeredUsersObj, meuId])
+
   const meuUserNode = useMemo(() => {
     if (!meuId) return null
     const presenceNode = usersObj?.[meuId] || {}
@@ -2284,6 +2270,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     return {
       ...presenceNode,
       ...profileNode,
+      ...(meuPublicProfile || {}),
       online: presenceNode?.online ?? profileNode?.online,
       lastSeen: presenceNode?.lastSeen ?? profileNode?.lastSeen,
       updatedAt: presenceNode?.updatedAt ?? profileNode?.updatedAt,
@@ -2291,7 +2278,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       latitude: presenceNode?.latitude ?? profileNode?.latitude,
       longitude: presenceNode?.longitude ?? profileNode?.longitude,
     }
-  }, [usersObj, meuId, meuUserProfile])
+  }, [usersObj, meuId, meuUserProfile, meuPublicProfile])
 
   useEffect(() => {
     if (!meuUserNode) return
@@ -2330,7 +2317,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     } catch {}
   }, [meuUserNode])
 
-  const isProfissional = useMemo(() => !!meuUserNode?.isProfissional, [meuUserNode])
+  const isProfissional = useMemo(() => !!(meuUserNode?.isProfissional || meuPublicProfile?.isProfissional), [meuUserNode, meuPublicProfile])
 
   const minhasIniciais = useMemo(() => {
     const partes = String(meuNome || 'Corre Aqui').trim().split(/\s+/).filter(Boolean)
@@ -2341,19 +2328,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     const arr = meuUserNode?.profCategorias
     return Array.isArray(arr) ? arr : []
   }, [meuUserNode])
-
-  const minhaPatenteCorre = useMemo(() => {
-    const servicos = Number(meuUserNode?.servicosCorre ?? meuUserNode?.['serviçosCorre'] ?? 0)
-    return Math.max(Number(meuUserNode?.patenteCorre || 1), calcularPatentePorServicos(servicos))
-  }, [meuUserNode])
-  const minhaPatenteProf = useMemo(
-    () => {
-      if (!isProfissional) return 0
-      const servicos = Number(meuUserNode?.servicosProf ?? meuUserNode?.['serviçosProf'] ?? 0)
-      return Math.max(Number(meuUserNode?.patenteProf || 1), calcularPatentePorServicos(servicos))
-    },
-    [meuUserNode, isProfissional]
-  )
 
   const minhasConfiguracoesMapa = useMemo(() => {
     const mapa = meuUserNode?.settings?.mapa || {}
@@ -2404,6 +2378,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         if (filtro === 'abertos' && status !== ATENDIMENTO_STATUS.ABERTO) return false
         if (filtro === 'meus' && p?.aceite?.id !== meuId) return false
         if (filtro === 'finalizados' && status !== ATENDIMENTO_STATUS.FINALIZADO) return false
+        if (status === ATENDIMENTO_STATUS.ABERTO && !getRequestFreshness(p, pedidosFreshnessNow).visibleInPublicList) return false
 
         const cat = p?.categoriaId ?? p?.categoria ?? p?.category ?? null
         if (categoriaFiltro === 'sem') {
@@ -2422,16 +2397,51 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         }
         return true
       })
-      .sort((a, b) => {
-        const pa = prioridadePedido(a)
-        const pb = prioridadePedido(b)
-        if (pb !== pa) return pb - pa
+      .sort((a, b) => comparePedidosDisponiveis(a, b, meuUserNode, pedidosFreshnessNow))
+  }, [corres, filtro, buscaTerm, meuId, categoriaFiltro, isProfissional, meuUserNode, pedidosFreshnessNow])
 
-        const ta = getMs(a?.criadoEm || a?.createdAt || a?.atualizadoEm || 0)
-        const tb = getMs(b?.criadoEm || b?.createdAt || b?.atualizadoEm || 0)
-        return tb - ta
-      })
-  }, [corres, filtro, buscaTerm, meuId, categoriaFiltro, isProfissional])
+  useEffect(() => {
+    setPedidosRenderLimit(PEDIDOS_PAGE_SIZE)
+  }, [filtro, categoriaFiltro, buscaTerm])
+
+  const pedidosAntigosOcultosCount = useMemo(() => {
+    if (filtro === 'meus' || filtro === 'finalizados') return 0
+
+    return (corres || []).filter((p) => {
+      const modo = String(p?.modoPedido || 'geral').toLowerCase()
+      if (modo === 'profissional' && !isProfissional) return false
+
+      const status = normalizeAtendimentoStatus(p?.status)
+      if (status !== ATENDIMENTO_STATUS.ABERTO) return false
+      if (getRequestFreshness(p, pedidosFreshnessNow).visibleInPublicList) return false
+
+      const cat = p?.categoriaId ?? p?.categoria ?? p?.category ?? null
+      if (categoriaFiltro === 'sem') {
+        if (cat) return false
+      } else if (categoriaFiltro !== 'todas') {
+        if (!categoryMatches(cat, categoriaFiltro)) return false
+      }
+
+      if (buscaTerm) {
+        const t = buscaTerm
+        const hay =
+          (p.titulo || '').toLowerCase().includes(t) ||
+          (p.descricao || '').toLowerCase().includes(t) ||
+          (p.criador?.nome || '').toLowerCase().includes(t)
+        if (!hay) return false
+      }
+
+      return true
+    }).length
+  }, [corres, filtro, categoriaFiltro, buscaTerm, isProfissional, pedidosFreshnessNow])
+
+  const pedidosRenderizados = useMemo(
+    () => (corresFiltrados || []).slice(0, pedidosRenderLimit),
+    [corresFiltrados, pedidosRenderLimit]
+  )
+  const pedidosTotalElegivel = corresFiltrados.length
+  const pedidosTotalRenderizado = pedidosRenderizados.length
+  const pedidosTemMais = pedidosTotalRenderizado < pedidosTotalElegivel
 
   const categoriaPedidosCount = useMemo(() => {
     const counts = { todas: 0, sem: 0 }
@@ -2447,6 +2457,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       if (filtro === 'abertos' && status !== 'aberto') return
       if (filtro === 'meus' && p?.aceite?.id !== meuId) return
       if (filtro === 'finalizados' && status !== ATENDIMENTO_STATUS.FINALIZADO) return
+      if (status === ATENDIMENTO_STATUS.ABERTO && !getRequestFreshness(p, pedidosFreshnessNow).visibleInPublicList) return
 
       if (buscaTerm) {
         const t = buscaTerm
@@ -2470,7 +2481,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
 
     return counts
-  }, [corres, filtro, buscaTerm, meuId, isProfissional])
+  }, [corres, filtro, buscaTerm, meuId, isProfissional, pedidosFreshnessNow])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof router.prefetch !== 'function' || modoApp !== 'corre') return undefined
@@ -2505,54 +2516,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       },
       { abertos: 0, meus: 0, concluidos: 0 }
     )
-  }, [corres, meuId])
-
-  const profissionalStats = useMemo(() => {
-    const meus = (Array.isArray(corres) ? corres : []).filter((p) => p?.aceite?.id === meuId)
-    const concluidos = meus.filter((p) => normalizeAtendimentoStatus(p?.status) === ATENDIMENTO_STATUS.FINALIZADO)
-    const ativos = meus.filter((p) => isPedidoAtivoStatus(p?.status))
-    const notas = concluidos
-      .map((p) => Number(p?.avaliacao?.nota || p?.avaliacaoNota || 0))
-      .filter((n) => Number.isFinite(n) && n > 0)
-    const ganhosTotal = concluidos.reduce((sum, p) => sum + getValorPedido(p?.valor), 0)
-    const taxaConclusao = meus.length ? Math.round((concluidos.length / meus.length) * 100) : 0
-    const notaMedia = notas.length ? notas.reduce((sum, n) => sum + n, 0) / notas.length : 0
-    const ticketMedio = concluidos.length ? ganhosTotal / concluidos.length : 0
-
-    const hoje = new Date()
-    const semana = Array.from({ length: 7 }, (_, idx) => {
-      const d = new Date(hoje)
-      d.setDate(hoje.getDate() - (6 - idx))
-      const key = d.toISOString().slice(0, 10)
-      return {
-        key,
-        label: d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''),
-        value: 0,
-      }
-    })
-    const byKey = Object.fromEntries(semana.map((d) => [d.key, d]))
-
-    concluidos.forEach((p) => {
-      const ms = getMs(p?.concluidoEm || p?.atualizadoEm || p?.aceitoEm || p?.criadoEm)
-      if (!ms) return
-      const key = new Date(ms).toISOString().slice(0, 10)
-      if (byKey[key]) byKey[key].value += getValorPedido(p?.valor)
-    })
-
-    const ganhosSemana = semana.reduce((sum, item) => sum + Number(item.value || 0), 0)
-
-    return {
-      total: meus.length,
-      ativos: ativos.length,
-      concluidos: concluidos.length,
-      ganhosTotal,
-      ganhosSemana,
-      taxaConclusao,
-      notaMedia,
-      avaliacoes: notas.length,
-      ticketMedio,
-      semana,
-    }
   }, [corres, meuId])
 
   const ganhosStatsPorModo = useMemo(() => {
@@ -2627,6 +2590,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const ganhosRecentes = useMemo(() => {
     return ganhosSelecionados?.recentes || []
   }, [ganhosSelecionados])
+
+  const aceitarCorreRef = useRef(null)
 
   async function aceitarCorre(p) {
     if (!meuId) {
@@ -2799,6 +2764,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       setAceitandoId(null)
     }
   }
+  aceitarCorreRef.current = aceitarCorre
 
   async function cancelarAceite(p) {
     if (cancelandoId) return
@@ -3057,30 +3023,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       }
 
       if (meuId && aceitadorId && aceitadorId === meuId && p?.criador?.id !== meuId) {
-        const recompensaResultado = await contabilizarAtendimentoFinalizado({ database, pedido: p, uid: meuId })
-
-      if (recompensaResultado.contabilizado) try {
-        const patenteResultado = recompensaResultado.patente
-
-        setXpToastInfo({
-          xp: 10,
-          texto: 'Serviço concluído. XP, moedas e patente atualizados.',
-        })
-        setShowXpToast(true)
-        setTimeout(() => setShowXpToast(false), 2600)
-
-        if (patenteResultado?.subiu) {
-          setPatenteUp({
-            patente: getPatenteTitle(patenteResultado.tipo, patenteResultado.patenteDepois),
-            tipo: patenteResultado.tipo,
-            nivel: patenteResultado.patenteDepois,
-          })
-        }
-      } catch (xpError) {
-        console.warn('Serviço concluído, mas XP/patente não atualizou:', xpError)
+        await contabilizarAtendimentoFinalizado({ database, pedido: p, uid: meuId })
       }
-
-        }
 
       showToast({
         type: 'success',
@@ -3431,6 +3375,62 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     router.push(`/chat/${encodeURIComponent(String(pedido.id))}?voltar=${modoApp}`)
   }, [modoApp, router, saveListState])
 
+  const abrirBoostPedido = useCallback((pedido) => {
+    if (!COMMERCIAL_HIGHLIGHTS_UI_ENABLED) return
+    if (!pedido?.id) return
+    setBoostCheckoutResult(null)
+    setBoostPedidoModal(pedido)
+  }, [])
+
+  const criarCheckoutBoost = useCallback(async () => {
+    if (!COMMERCIAL_HIGHLIGHTS_UI_ENABLED) return
+    if (!boostPedidoModal?.id) return
+    setBoostCheckoutLoading(true)
+    setBoostCheckoutResult(null)
+
+    try {
+      const user = auth.currentUser
+      if (!user) {
+        setBoostCheckoutResult({ type: 'error', message: 'Entre na sua conta para impulsionar o pedido.' })
+        return
+      }
+
+      const token = await user.getIdToken()
+      const response = await fetch('/api/request-boost/checkout', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          productId: REQUEST_BOOST_PRODUCT_ID,
+          pedidoId: boostPedidoModal.id,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.ok) {
+        setBoostCheckoutResult({
+          type: 'error',
+          message: data?.reason || data?.error || 'Nao foi possivel criar o checkout agora.',
+        })
+        return
+      }
+
+      setBoostCheckoutResult({
+        type: 'success',
+        message: data?.message || 'Checkout criado. Aguarde a confirmacao do pagamento.',
+      })
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+      }
+    } catch (error) {
+      console.error('[BOOST] checkout do pedido falhou:', error)
+      setBoostCheckoutResult({ type: 'error', message: 'Falha temporaria ao criar checkout.' })
+    } finally {
+      setBoostCheckoutLoading(false)
+    }
+  }, [boostPedidoModal])
+
   const abrirAcaoNotificacao = useCallback((screen, notificacao = {}) => {
     const action = notificacao?.action || {}
     const destino = String(screen || action?.screen || '').toLowerCase()
@@ -3625,10 +3625,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           id: CONTEXTUAL_TIP_IDS.portfolioAberto,
           target: 'portfolio',
         })
-      } else if (initialProfSection === 'patentes') {
-        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.patentesAbertas, {
-          id: CONTEXTUAL_TIP_IDS.patentesAbertas,
-          target: 'patentes',
+      } else if (initialProfSection === 'perfilProfissional') {
+        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.reputacaoAberta, {
+          id: CONTEXTUAL_TIP_IDS.reputacaoAberta,
+          target: 'reputacao',
         })
       }
     }
@@ -3726,12 +3726,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           setTab('corre')
           abrirPerfilDrawer('profissional', 'portfolio', { silentContextualTip: true })
           break
-        case TUTORIAL_ACTIONS.openPatents:
+        case TUTORIAL_ACTIONS.openReputation:
           closeTransientTutorialViews()
           setModoApp('corre')
           setClientePainelBaixo('')
           setTab('corre')
-          abrirPerfilDrawer('profissional', 'patentes', { silentContextualTip: true })
+          abrirPerfilDrawer('profissional', 'perfilProfissional', { silentContextualTip: true })
           break
         default:
           break
@@ -3825,8 +3825,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       : 112
 
   return (
-    <div className={`relative min-h-screen overflow-hidden text-slate-900 corre-aqui-no-select ${modoApp === 'corre' ? 'bg-[#eef7fc]' : 'bg-[#050b12]'}`}>
-      <div className={`pointer-events-none fixed inset-0 z-0 ${modoApp === 'corre' ? 'bg-[linear-gradient(180deg,#dff2fc_0%,#f7fbfe_48%,#eef7fc_100%)]' : 'bg-[linear-gradient(135deg,#06111a_0%,#071724_46%,#050812_100%)]'}`} />
+    <div className={`relative min-h-[100dvh] overflow-x-hidden text-slate-900 corre-aqui-no-select ${modoApp === 'corre' ? 'bg-[#eef7fc]' : 'bg-white md:bg-[#050b12]'}`}>
+      <div className={`pointer-events-none absolute inset-0 z-0 min-h-full ${modoApp === 'corre' ? 'bg-[linear-gradient(180deg,#dff2fc_0%,#f7fbfe_48%,#eef7fc_100%)]' : 'bg-white md:bg-[linear-gradient(135deg,#06111a_0%,#071724_46%,#050812_100%)]'}`} />
       <style>{`
         .corre-aqui-no-select,
         .corre-aqui-no-select * {
@@ -3998,7 +3998,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                           </div>
                         </div>
                         <span className="rounded-full bg-[#ffd91a] px-3 py-1 text-[10px] font-black text-blue-950">
-                          {corresFiltrados.length} pedidos
+                          {pedidosTotalElegivel} pedidos
                         </span>
                       </div>
                       <div className="mt-3 grid grid-cols-3 gap-2">
@@ -4244,10 +4244,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         {modoApp === 'cliente' && (
           <div className="space-y-4">
             <ClienteHome
+              currentUid={meuId}
               meuNome={meuNome}
               onlineUsers={onlineUsers}
               registeredUsers={registeredUsers}
               publicPortfolio={publicPortfolioObj}
+              viewerLocation={meuUserProfile?.local || meuUserProfile?.location || meuUserProfile?.profile?.local || null}
+              viewerRegion={meuUserProfile?.cidade || meuUserProfile?.profile?.cidade || ''}
               onCriarPedido={() => setOpenIA(true)}
               onIrAoVivo={() => {
                 setOpenMapaAoVivo(true)
@@ -4388,22 +4391,29 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 <div className="text-[11px] font-bold text-slate-500 md:text-xs">Toque em detalhes para ver a ficha completa.</div>
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black text-slate-600 ring-1 ring-slate-200">
-                {corresFiltrados.length}
+                {pedidosTotalRenderizado} de {pedidosTotalElegivel}
               </span>
             </div>
 
-            <div data-tutorial="lista-pedidos" className="grid grid-cols-1 items-stretch gap-2.5 pb-44 md:gap-3 md:pb-28 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 sm:pb-40">
-              {!loadingPedidos && !erroPedidos && corresFiltrados.length === 0 && (
-                <div className="rounded-[24px] bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">
+            {pedidosAntigosOcultosCount > 0 ? (
+              <div className="mb-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+                {pedidosAntigosOcultosCount} pedido{pedidosAntigosOcultosCount === 1 ? '' : 's'} antigo{pedidosAntigosOcultosCount === 1 ? '' : 's'} oculto{pedidosAntigosOcultosCount === 1 ? '' : 's'} da lista publica.
+              </div>
+            ) : null}
+
+            <div data-tutorial="lista-pedidos" className="grid grid-cols-1 items-stretch gap-2.5 pb-52 min-[360px]:grid-cols-2 min-[360px]:gap-3 sm:pb-48 md:grid-cols-2 md:gap-3 md:pb-32 lg:grid-cols-3 xl:grid-cols-4">
+              {!loadingPedidos && !erroPedidos && pedidosTotalElegivel === 0 && (
+                <div className="col-span-full rounded-[24px] bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">
                   Nenhum trabalho para mostrar agora.
                 </div>
               )}
 
-              {corresFiltrados.map((p, index) => {
+              {pedidosRenderizados.map((p, index) => {
                 const status = normalizeAtendimentoStatus(p.status)
                 const aceitoPorMim = p?.aceite?.id === meuId
                 const temAceitador = !!p?.aceite?.id
                 const mapOk = !!(p?.local?.lat != null && p?.local?.lng != null)
+                const freshness = getRequestFreshness(p, pedidosFreshnessNow)
 
                 const b = boostInfo(p)
                 const cardAberto = cardAbertoId === p.id
@@ -4412,11 +4422,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 const catObj = getCatObj(p?.categoriaId || p?.categoria)
                 const combinaComigo =
                   isProfissional && p?.categoriaId && (minhasCategoriasProf || []).includes(p.categoriaId)
-
-                const criadorId = p?.criador?.id
-                const userCriador = criadorId ? usersObj?.[criadorId] : null
-                const patenteCriadorCorre = Number(userCriador?.patenteCorre || 1)
-                const patenteCriadorProf = Number(userCriador?.patenteProf || 0)
 
                 const statusLabel =
                     status === ATENDIMENTO_STATUS.FINALIZADO
@@ -4446,8 +4451,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     whileHover={{ y: -3, scale: 1.008 }}
                     whileTap={{ scale: 0.985 }}
                     className={[
-                      "corre-card-clean group relative flex min-h-[132px] flex-col overflow-hidden rounded-[16px] border-[1.5px] bg-white text-slate-950",
-                      "shadow-[0_12px_26px_rgba(15,23,42,0.14)] ring-1 ring-slate-300/70 transition [content-visibility:auto] [contain-intrinsic-size:160px] md:min-h-[136px] md:rounded-[18px]",
+                      "corre-card-clean group relative flex min-h-[182px] w-full flex-col overflow-hidden rounded-[20px] border-[1.5px] bg-white text-slate-950",
+                      "shadow-[0_8px_18px_rgba(15,23,42,0.10)] ring-1 ring-slate-300/60 transition [content-visibility:auto] [contain-intrinsic-size:190px] md:min-h-[190px] md:max-w-[360px] md:rounded-[22px]",
                       cardAberto ? "shadow-[0_20px_48px_rgba(15,23,42,0.16)]" : "",
                       b.destaque ? "border-fuchsia-300/80 ring-2 ring-fuchsia-300/30" : "",
                       b.emergencia ? "border-red-400 ring-2 ring-red-400/55" : "",
@@ -4457,8 +4462,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         ? {
                             borderColor: `${pedidoTheme.accent}70`,
                             boxShadow: cardAberto
-                              ? '0 20px 48px rgba(15,23,42,0.18), 0 0 0 1px rgba(15,23,42,0.08)'
-                              : `0 12px 26px rgba(15,23,42,0.14), 0 0 0 1px ${pedidoTheme.accent}24`,
+                              ? '0 16px 34px rgba(15,23,42,0.16), 0 0 0 1px rgba(15,23,42,0.08)'
+                              : `0 8px 18px rgba(15,23,42,0.10), 0 0 0 1px ${pedidoTheme.accent}22`,
                           }
                         : undefined
                     }
@@ -4480,22 +4485,23 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     ) : status === 'aberto' ? (
                       <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-slate-50 via-white to-transparent md:h-20" />
                     ) : null}
-                    <div className="pointer-events-none absolute -right-8 top-8 h-20 w-20 rounded-full blur-xl transition md:h-24 md:w-24" style={{ backgroundColor: pedidoTheme.soft }} />
-                    <svg className="pointer-events-none absolute inset-x-0 bottom-0 h-11 w-full opacity-95" viewBox="0 0 360 70" preserveAspectRatio="none" aria-hidden="true">
+                    <div className="pointer-events-none absolute -right-7 top-11 h-14 w-14 rounded-full blur-xl transition md:h-20 md:w-20" style={{ backgroundColor: pedidoTheme.soft }} />
+                    <svg className="pointer-events-none absolute inset-x-0 bottom-0 h-8 w-full opacity-70" viewBox="0 0 360 70" preserveAspectRatio="none" aria-hidden="true">
                       <path d="M0 42 C70 16 112 62 184 39 C246 19 296 42 360 22 L360 70 L0 70 Z" fill={pedidoTheme.wave} />
                     </svg>
 
-                    <div className="relative z-10 grid flex-1 grid-cols-[minmax(0,1fr)_auto] gap-2.5 p-3.5 pt-5 md:gap-3 md:p-4 md:pt-5">
+                    <div className="relative z-10 grid min-h-[182px] flex-1 grid-rows-[auto_1fr_auto] gap-2.5 p-3 pt-5 md:min-h-[190px] md:p-3.5 md:pt-5">
                       <button
                         type="button"
                         onClick={() => abrirFichaPedido(p)}
                         aria-busy={abrindoEstePedido}
                         className="min-w-0 text-left"
+                        title={tituloPedido}
                       >
-                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1">
                           <span
                             className={[
-                              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em]",
+                              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[8.5px] font-black uppercase tracking-[0.08em]",
                               status === 'aberto'
                                 ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
                                 : isPedidoAtivoStatus(status)
@@ -4506,38 +4512,43 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                             <span className="h-1.5 w-1.5 rounded-full bg-current" />
                             {statusLabel}
                           </span>
-                          <span className="min-w-0 max-w-[150px] truncate text-[10px] font-bold text-slate-500 md:max-w-[220px]">
+                          <span className="min-w-0 max-w-[72px] truncate text-[10px] font-bold text-slate-500 min-[390px]:max-w-[90px] md:max-w-[180px] md:text-[11px]" title={catObj ? catObj.label : p?.categoriaId ? String(p.categoriaId) : 'Geral'} aria-label={catObj ? catObj.label : p?.categoriaId ? String(p.categoriaId) : 'Geral'}>
                             {catObj ? catObj.label : p?.categoriaId ? String(p.categoriaId) : 'Geral'}
                           </span>
+                          {status === ATENDIMENTO_STATUS.ABERTO && freshness.status !== 'recente' ? (
+                            <span className={["rounded-full px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.08em] ring-1", getFreshnessBadgeClass(freshness.status)].join(" ")}>
+                              {freshness.label}
+                            </span>
+                          ) : null}
                         </div>
 
-                        <div className="mt-2 line-clamp-2 break-words text-lg font-black leading-[1.05] text-slate-950 md:text-[21px]">
+                        <div className="mt-2 line-clamp-2 min-h-[40px] break-words text-[17px] font-black leading-[1.12] text-slate-950 md:text-[18px]">
                           {tituloPedido}
                         </div>
 
-                        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-slate-500 md:text-xs">
-                          <span>{distanciaPedido}</span>
+                        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] font-bold leading-tight text-slate-500 md:text-[11px]">
+                          <span className="line-clamp-1">{distanciaPedido}</span>
                           <span className="text-slate-300">•</span>
-                          <span>{tempoPostado}</span>
+                          <span className="line-clamp-1">{tempoPostado}</span>
                           <span className="text-slate-300">•</span>
-                          <span>{dataCurtaPedido}</span>
+                          <span className="line-clamp-1">{dataCurtaPedido}</span>
                           {combinaComigo && (
                             <>
                               <span className="text-slate-300">•</span>
-                              <span className="text-emerald-700">Combina com voce</span>
+                              <span className="line-clamp-1 text-emerald-700">Combina</span>
                             </>
                           )}
                         </div>
                       </button>
 
-                      <div className="flex shrink-0 flex-col items-end justify-between gap-1.5 text-right">
+                      <div className="flex w-full items-center justify-between gap-0.5 text-right min-[390px]:gap-1">
                         <div
-                          className="rounded-full px-1.5 py-0.5 text-[12px] font-black text-blue-950 md:text-sm"
+                          className="max-w-[42px] break-words rounded-full px-0.5 py-0.5 text-left text-[9.5px] font-black leading-tight text-blue-950 min-[390px]:max-w-[58px] min-[390px]:text-[10px] md:max-w-[96px] md:px-1 md:text-xs"
                         >
                           {temValor ? formatMoneyBR(valorNumerico) : 'Combinar'}
                         </div>
                         <div
-                          className="grid h-12 w-12 place-items-center rounded-full text-2xl shadow-[0_12px_22px_rgba(15,23,42,0.08)] ring-1 ring-white/80 md:h-14 md:w-14 md:text-3xl"
+                          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-sm shadow-[0_8px_14px_rgba(15,23,42,0.08)] ring-1 ring-white/80 min-[390px]:h-7 min-[390px]:w-7 min-[390px]:text-base md:h-9 md:w-9 md:text-xl"
                           style={{ backgroundColor: pedidoTheme.soft, color: pedidoTheme.accent }}
                         >
                           <span className="drop-shadow-sm">{pedidoTheme.icon}</span>
@@ -4545,7 +4556,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         {status === 'aberto' && !cardAberto ? (
                           <button
                             data-tutorial="aceitar-pedido"
-                            className="rounded-[10px] px-3.5 py-1.5 text-[11px] font-black text-white shadow-[0_12px_22px_rgba(15,23,42,0.16)] transition hover:brightness-105 disabled:opacity-60 md:text-xs"
+                            className="min-h-[38px] min-w-[48px] flex-1 rounded-[13px] px-1 py-2 text-[10px] font-black text-white shadow-[0_10px_18px_rgba(15,23,42,0.14)] transition hover:brightness-105 disabled:opacity-60 min-[390px]:min-w-[52px] min-[390px]:px-1.5 min-[390px]:text-[10.5px] md:min-w-[58px] md:px-2 md:text-xs"
                             style={{ backgroundColor: pedidoTheme.accent }}
                             onClick={(event) => {
                               event.stopPropagation()
@@ -4558,7 +4569,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                             {abrindoEstePedido ? 'Abrindo...' : aceitandoId === p.id ? '...' : 'Aceitar'}
                           </button>
                         ) : (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] text-slate-600 ring-1 ring-slate-200">
+                          <span className="min-h-[38px] min-w-[48px] flex-1 rounded-[13px] bg-slate-100 px-1 py-2 text-center text-[9px] font-black uppercase tracking-[0.06em] text-slate-600 ring-1 ring-slate-200 min-[390px]:min-w-[52px] min-[390px]:px-1.5 min-[390px]:text-[9.5px] md:min-w-[58px] md:px-2">
                             {statusLabel}
                           </span>
                         )}
@@ -4708,12 +4719,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     {/* taxa removida / incentivo ao profissional */}
                     <div className="relative z-10 mx-3 rounded-2xl bg-emerald-500/10 border border-emerald-300/50 px-2.5 md:mx-4 md:px-3 py-2 text-[11px] md:text-[12px] text-emerald-800 font-black shadow-sm">
                       ✅ Sem taxa do app: <b>100% do valor fica com quem faz o serviço</b>
-                    </div>
-
-                    {/* patentes do criador */}
-                    <div className="relative z-10 mx-3 flex gap-2 flex-wrap md:mx-4">
-                      <Patente tipo="corre" nivel={patenteCriadorCorre} size="sm" showLabel={false} />
-                      {patenteCriadorProf > 0 && <Patente tipo="prof" nivel={patenteCriadorProf} size="sm" />}
                     </div>
 
                       </>
@@ -4887,6 +4892,27 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   </motion.div>
                 )
               })}
+
+              {!loadingPedidos && !erroPedidos && pedidosTotalElegivel > 0 ? (
+                <div className="col-span-full flex flex-col items-center gap-2 rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 text-center">
+                  <div className="text-[11px] font-black text-slate-500">
+                    {pedidosTotalRenderizado} de {pedidosTotalElegivel} pedidos
+                  </div>
+                  {pedidosTemMais ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPedidosRenderLimit((current) => Math.min(current + PEDIDOS_PAGE_SIZE, pedidosTotalElegivel))
+                      }}
+                      className="min-h-10 rounded-full bg-blue-950 px-4 text-xs font-black text-white shadow-[0_10px_20px_rgba(15,23,42,0.16)] transition hover:bg-blue-900 active:scale-[0.98]"
+                    >
+                      Carregar mais pedidos
+                    </button>
+                  ) : (
+                    <div className="text-xs font-bold text-slate-500">Todos os pedidos foram carregados.</div>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
         )}
@@ -5082,11 +5108,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       {modoApp === 'cliente' && !isMapOpen && !openIA && (
         <div
           className={[
-            'fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[99980] px-3 pointer-events-none transition-all duration-300 ease-out will-change-transform md:left-1/2 md:right-auto md:bottom-7 md:w-full md:max-w-[1024px] md:-translate-x-1/2 md:px-[52px]',
+            'fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.45rem)] z-[99980] px-3 pointer-events-none transition-all duration-300 ease-out md:left-1/2 md:right-auto md:bottom-7 md:w-full md:max-w-[1024px] md:-translate-x-1/2 md:px-[52px]',
             bottomBarsHidden ? 'translate-y-[135%] opacity-0' : 'translate-y-0 opacity-100',
           ].join(' ')}
         >
-          <div className="pointer-events-auto mx-auto grid h-[66px] w-full max-w-[360px] grid-cols-[1fr_1fr_72px_1fr] items-center gap-1 rounded-[28px] border border-slate-200 bg-white px-2 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.22)] backdrop-blur-xl md:h-[146px] md:max-w-[820px] md:grid-cols-[1fr_1fr_132px_1fr] md:gap-4 md:rounded-[36px] md:border-slate-100 md:bg-white md:px-8 md:text-slate-700">
+          <div className="pointer-events-auto mx-auto grid h-[66px] w-full max-w-[360px] grid-cols-[1fr_1fr_72px_1fr] items-center gap-1 rounded-[28px] border border-slate-200 bg-white px-2 text-slate-950 shadow-[0_18px_58px_rgba(15,23,42,0.22)] md:h-[146px] md:max-w-[820px] md:grid-cols-[1fr_1fr_132px_1fr] md:gap-4 md:rounded-[36px] md:border-slate-100 md:bg-white md:px-8 md:text-slate-700">
             <button
               type="button"
               onClick={() => {
@@ -5302,6 +5328,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   }}
                   onProblemaServico={abrirProblema}
                   onAvaliarServico={abrirAvaliacao}
+                  onBoostPedido={abrirBoostPedido}
                   onToast={showToast}
                 />
               )}
@@ -5382,6 +5409,94 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           </div>
         </div>
       )}
+
+      {COMMERCIAL_HIGHLIGHTS_UI_ENABLED && boostPedidoModal ? (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-md md:p-4">
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="w-full max-w-md overflow-hidden rounded-[26px] border border-amber-200 bg-white text-slate-950 shadow-[0_28px_95px_rgba(15,23,42,0.32)]"
+          >
+            <div className="relative overflow-hidden bg-gradient-to-r from-blue-950 via-blue-900 to-slate-950 px-5 py-5 text-white">
+              <div className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full border-[22px] border-amber-300/15" aria-hidden="true" />
+              <div className="relative flex items-center gap-3">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#ffd91a] text-2xl text-blue-950 shadow-[0_12px_26px_rgba(245,158,11,0.28)]">
+                  🚀
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Impulso comercial</div>
+                  <h2 className="mt-1 text-xl font-black">Impulsionar pedido</h2>
+                  <p className="mt-1 line-clamp-1 text-xs font-semibold text-blue-100">
+                    {boostPedidoModal?.titulo || 'Seu pedido'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="rounded-[20px] border border-blue-100 bg-blue-50/70 p-4">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-700">Preco fixo</div>
+                    <div className="mt-1 text-3xl font-black text-blue-950">R$ 9,99</div>
+                  </div>
+                  <span className="rounded-full bg-[#ffd91a] px-3 py-1.5 text-[11px] font-black text-blue-950">
+                    ate 24h
+                  </span>
+                </div>
+                <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-600">
+                  Seu pedido entra em &quot;Pedidos em Destaque&quot; para profissionais compativeis da sua regiao.
+                </p>
+              </div>
+
+              <ul className="space-y-2 text-sm font-bold text-slate-700">
+                <li className="flex gap-2"><span className="text-emerald-600">✓</span> Mais exposicao no carrossel superior.</li>
+                <li className="flex gap-2"><span className="text-emerald-600">✓</span> Encerramento automatico ao ser aceito, cancelado ou finalizado.</li>
+                <li className="flex gap-2"><span className="text-emerald-600">✓</span> Nao altera ordem organica, avaliacao ou reputacao.</li>
+              </ul>
+
+              <div className="rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-relaxed text-amber-900">
+                O impulso aumenta a visibilidade, mas nao garante aceite ou contratacao.
+              </div>
+
+              {boostCheckoutResult ? (
+                <div
+                  className={[
+                    'rounded-[18px] px-4 py-3 text-sm font-bold',
+                    boostCheckoutResult.type === 'success'
+                      ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border border-red-200 bg-red-50 text-red-700',
+                  ].join(' ')}
+                >
+                  {boostCheckoutResult.message}
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBoostPedidoModal(null)
+                    setBoostCheckoutResult(null)
+                  }}
+                  className="h-12 rounded-2xl border border-slate-200 bg-white text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+                  disabled={boostCheckoutLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={criarCheckoutBoost}
+                  className="h-12 rounded-2xl bg-blue-600 text-sm font-black text-white shadow-[0_14px_30px_rgba(37,99,235,0.24)] transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70"
+                  disabled={boostCheckoutLoading}
+                >
+                  {boostCheckoutLoading ? 'Criando...' : 'Impulsionar'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
 
       {conclusaoPedido ? (
         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 md:p-4">
@@ -5596,21 +5711,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       {/* ✅ ClienteHome agora controla Corre/Profissionais e mostra a lista rica direto no centro.
           Removido bloco duplicado de busca/filtros e qualquer botão flutuante extra. */}
 
-      <XpToast
-        open={showXpToast}
-        xp={xpToastInfo.xp}
-        texto={xpToastInfo.texto}
-      />
-
-      <PatenteUpModal
-        open={!!patenteUp}
-        patente={patenteUp?.patente}
-        tipo={patenteUp?.tipo}
-        nivel={patenteUp?.nivel}
-        animado={minhasConfiguracoesUi.animacoes}
-        onClose={() => setPatenteUp(null)}
-      />
-
       {showGlobalProfileFab ? (
         <GlobalProfileFab
           fotoURL={fotoURL}
@@ -5644,7 +5744,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         onPortfolio={() => abrirPerfilDrawer('profissional', 'portfolio')}
         onAgenda={() => abrirAreaProfissional('agenda')}
         onGanhos={() => abrirAreaProfissional('ganhos')}
-        onPatentes={() => abrirPerfilDrawer('profissional', 'patentes')}
         onAvaliacoesRecebidas={() => abrirPerfilDrawer('profissional', 'avaliacoes')}
         onConfiguracoes={() => abrirPerfilDrawer('config')}
         onAjuda={() => abrirPerfilDrawer('ajuda')}
@@ -5681,7 +5780,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               : 'bottom-[calc(env(safe-area-inset-bottom)+5.35rem)] md:bottom-28',
           ].join(' ')}
         >
-          <span className="rounded-xl bg-slate-950/88 px-3 py-1.5 text-center text-[11px] font-black leading-tight text-white shadow-[0_10px_28px_rgba(0,0,0,0.28)] ring-1 ring-white/10 backdrop-blur">
+          <span className="rounded-xl bg-slate-950 px-3 py-1.5 text-center text-[11px] font-black leading-tight text-white shadow-[0_10px_28px_rgba(0,0,0,0.28)] ring-1 ring-white/10">
             Você<br />
             está {correDisponivel ? 'online' : 'offline'}
           </span>

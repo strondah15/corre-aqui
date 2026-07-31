@@ -7,7 +7,7 @@ export const CONTEXTUAL_TIP_IDS = {
   solicitarConclusao: "solicitar-conclusao",
   conclusaoConfirmada: "conclusao-confirmada",
   portfolioAberto: "portfolio-aberto",
-  patentesAbertas: "patentes-abertas",
+  reputacaoAberta: "reputacao-aberta",
 }
 
 const aliases = {
@@ -26,8 +26,8 @@ const aliases = {
   "conclusao-confirmada": CONTEXTUAL_TIP_IDS.conclusaoConfirmada,
   portfolio: CONTEXTUAL_TIP_IDS.portfolioAberto,
   "portfolio-aberto": CONTEXTUAL_TIP_IDS.portfolioAberto,
-  patentes: CONTEXTUAL_TIP_IDS.patentesAbertas,
-  "patentes-abertas": CONTEXTUAL_TIP_IDS.patentesAbertas,
+  reputacao: CONTEXTUAL_TIP_IDS.reputacaoAberta,
+  "reputacao-aberta": CONTEXTUAL_TIP_IDS.reputacaoAberta,
 }
 
 export const CONTEXTUAL_TIP_CONFIG = {
@@ -131,16 +131,16 @@ export const CONTEXTUAL_TIP_CONFIG = {
     target: "portfolio",
     placement: "left",
   },
-  [CONTEXTUAL_TIP_IDS.patentesAbertas]: {
-    id: CONTEXTUAL_TIP_IDS.patentesAbertas,
-    localKey: "correAquiDicaPatentesVista",
-    remoteKey: "dicaPatentesVista",
-    title: "Patentes e recompensas",
-    text: "Conclua atendimentos para ganhar XP, moedas e evoluir sua patente.",
+  [CONTEXTUAL_TIP_IDS.reputacaoAberta]: {
+    id: CONTEXTUAL_TIP_IDS.reputacaoAberta,
+    localKey: "correAquiDicaReputacaoVista",
+    remoteKey: "dicaReputacaoVista",
+    title: "Sua reputação profissional",
+    text: "Avaliações reais e serviços concluídos ajudam clientes a conhecer seu trabalho.",
     icon: "★",
     tone: "amber",
     priority: 6,
-    target: "patentes",
+    target: "reputacao",
     placement: "left",
   },
 }

@@ -540,7 +540,7 @@ export default function LoginGate({ children }) {
             {[
               ['🔒', 'Perfil protegido', 'Histórico e configurações ficam ligados à sua conta.'],
               ['💬', 'Conversas salvas', 'Combine serviços com mais segurança pelo chat.'],
-              ['⭐', 'Reputação', 'Patentes e avaliações acompanham sua evolução.'],
+              ['★', 'Reputação', 'Avaliações reais acompanham seu histórico profissional.'],
             ].map(([icon, title, text]) => (
               <div key={title} className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3">
                 <div className="flex items-start gap-3">
