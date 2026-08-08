@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/.codex-mobile-screens/
+/.codex-video-frames/
 
 # next.js
 /.next/
@@ -45,3 +47,9 @@ next-env.d.ts
 .env.local
 .env*.local
 serviceAccountKey.json
+
+# local backup archives
+/public.zip
+/src/components.zip
+/src/components/*.zip
+/src/lib/firebase.zip
