@@ -3,6 +3,7 @@
 import { memo, useCallback, useMemo } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { getCategoryById } from '@/constants/categories'
+import { getProfessionDisplayName, normalizeProfessionSearchText } from '@/constants/professions'
 import ProfessionalReputationSummary from '@/components/ProfessionalReputationSummary'
 
 function safeUrl(u) {
@@ -48,6 +49,11 @@ function getFotoURL(item, usarGoogleFallback = true) {
 
 function pickText(...values) {
   return values.map((v) => String(v || '').trim()).find(Boolean) || ''
+}
+
+function isSpecificProfessionLabel(label) {
+  const normalized = normalizeProfessionSearchText(label)
+  return normalized && !['corre rapido', 'profissional local', 'profissional'].includes(normalized)
 }
 
 function formatOcupadoAte(v) {
@@ -147,12 +153,18 @@ function CardProfissional({ item, onAbrir, onWhatsapp, onAgendar }) {
   const isOnline = item?.online === true
   const agendaStatus = getAgendaStatus(item)
 
-  const tituloProf = pickText(prof?.titulo, item?.profTitulo, profile?.titulo, item?.titulo, 'Profissional local')
+  const professionProf = getProfessionDisplayName(item, { mode: 'profissional', fallback: '' })
+  const professionCorre = getProfessionDisplayName(item, { mode: 'corre', fallback: '' })
+  const tituloProf = isSpecificProfessionLabel(professionProf)
+    ? professionProf
+    : pickText(prof?.titulo, item?.profTitulo, profile?.titulo, item?.titulo, 'Profissional local')
   const resumoProf = pickText(item?.profResumo, prof?.descricao, profile?.descricao, prof?.especialidade)
   const profExperiencia = pickText(item?.profExperiencia, prof?.experiencia)
   const preco = pickText(item?.profPrecoBase, prof?.preco, profile?.preco)
 
-  const tituloCorre = pickText(item?.correTitulo, corre?.titulo, 'Corre rápido')
+  const tituloCorre = isSpecificProfessionLabel(professionCorre)
+    ? professionCorre
+    : pickText(item?.correTitulo, corre?.titulo, 'Corre rápido')
   const resumoCorre = pickText(item?.correResumo, corre?.bio, profile?.bio)
   const transporte = pickText(item?.correTransporte, corre?.transporte)
   const dispCorre = pickText(item?.correDisponibilidade, corre?.disponibilidade)

@@ -15,7 +15,7 @@ function safeImageName(uid) {
 }
 
 export async function POST(request) {
-  const apiKey = String(process.env.IMGBB_API_KEY || process.env.NEXT_PUBLIC_IMGBB_API_KEY || '').trim()
+  const apiKey = String(process.env.IMGBB_API_KEY || '').trim()
   if (!apiKey) {
     return jsonError('imgbb_config_missing', 500, 'IMGBB_API_KEY nao esta configurada no servidor.')
   }

@@ -5,10 +5,13 @@ import { ref, onValue, query, limitToLast } from '@/lib/firebaseDebug'
 import { database } from '@/lib/firebase'
 import CardProfissional from './CardProfissional'
 import { CATEGORIES, categoryMatches, getCategoryById } from '@/constants/categories'
+import { getProfessionDisplayName, getProfessionSearchText, normalizeProfessionSearchText } from '@/constants/professions'
 import { canAppearInPublicDirectory } from '@/lib/publicWorkProfile'
+import { buildProfessionalReputation } from '@/lib/professionalReputation'
 
 
 const safeStr = (v) => String(v || '').trim()
+const DIRECTORY_PAGE_SIZE = 12
 let profissionaisCache = []
 let profissionaisCacheReady = false
 
@@ -49,6 +52,154 @@ function getFotoURL(user = {}, profile = {}, profissional = {}, avatarEmoji = ''
   return getFotoPersonalizada(user, profile, profissional) || (!avatarEmoji ? getGoogleFoto(user, profile, profissional) : '')
 }
 
+function safeImageUrl(v) {
+  const s = safeStr(v)
+  if (!s) return ''
+  if (/^https?:\/\//i.test(s)) return s
+  if (/^blob:/i.test(s)) return s
+  if (/^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(s)) return s
+  return ''
+}
+
+function getFirstCategoryId(...values) {
+  for (const value of values) {
+    if (!value) continue
+    if (Array.isArray(value)) {
+      const found = value.find(Boolean)
+      if (found) return found
+      continue
+    }
+    return value
+  }
+  return ''
+}
+
+function isSpecificProfessionLabel(label) {
+  const normalized = normalizeProfessionSearchText(label)
+  return normalized && !['corre rapido', 'profissional local', 'profissional'].includes(normalized)
+}
+
+function getCompactCategoryLabel(item = {}, mode = 'profissional') {
+  const profile = item?.profile || {}
+  const profissional = item?.profissional || {}
+  const corre = item?.corre || {}
+  const professionLabel = getProfessionDisplayName(item, { mode, fallback: '' })
+  if (isSpecificProfessionLabel(professionLabel)) return professionLabel
+
+  const categoryId = mode === 'corre'
+    ? getFirstCategoryId(item?.correCategorias, profile?.correCategorias, corre?.categorias, item?.servicos, profile?.servicos)
+    : getFirstCategoryId(item?.profCategorias, profile?.profCategorias, profissional?.profCategorias, profissional?.categorias)
+  const category = getCategoryById(categoryId)
+
+  return safeStr(
+    category?.label ||
+      (mode === 'corre'
+        ? item?.correTitulo || corre?.titulo || 'Corre rápido'
+        : profissional?.titulo || item?.profTitulo || profile?.titulo || item?.titulo || 'Profissional')
+  )
+}
+
+function getCompactLocation(item = {}) {
+  const profile = item?.profile || {}
+  const profissional = item?.profissional || {}
+  const corre = item?.corre || {}
+
+  return safeStr(
+    item?.bairro ||
+      profile?.bairro ||
+      item?.profCidadeAtende ||
+      profissional?.regiao ||
+      profissional?.cidade ||
+      item?.correRegiao ||
+      corre?.regiao ||
+      item?.cidade ||
+      profile?.cidade
+  )
+}
+
+function CompactDirectoryCard({ item, mode, onAbrir }) {
+  const profile = item?.profile || {}
+  const profissional = item?.profissional || {}
+  const corre = item?.corre || {}
+  const nome = safeStr(item?.nome || profile?.nome || 'Profissional')
+  const emoji = safeStr(item?.avatarEmoji || profile?.avatarEmoji || item?.perfil?.avatarEmoji) || (mode === 'corre' ? '⚡' : '💼')
+  const fotoURL = safeImageUrl(item?.fotoURL || profile?.fotoURL || profissional?.fotoURL || corre?.fotoURL || item?.photoURL || profile?.photoURL)
+  const tipoLabel = mode === 'corre' ? 'Corre rápido' : 'Profissional'
+  const especialidade = getCompactCategoryLabel(item, mode)
+  const cidade = getCompactLocation(item) || 'Região não informada'
+  const isOnline = item?.online === true
+  const reputation = buildProfessionalReputation(item)
+  const ratingLabel = reputation.rating ? `★ ${reputation.rating.toFixed(1).replace('.', ',')} · ${reputation.reviewCount}` : 'Novo no app'
+  const servicesLabel = `${reputation.completedServices} serviço${reputation.completedServices === 1 ? '' : 's'}`
+  const avatarStyle = fotoURL ? { backgroundImage: `url(${JSON.stringify(fotoURL)})` } : undefined
+  const handleAbrir = () => onAbrir?.(item)
+
+  return (
+    <article
+      className="group relative flex min-h-[176px] flex-col overflow-hidden rounded-[20px] border border-blue-100 bg-white p-3 text-left shadow-[0_8px_22px_rgba(15,23,42,0.08)] ring-1 ring-slate-900/[0.03] transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_12px_28px_rgba(37,99,235,0.12)] min-[390px]:min-h-[170px] md:min-h-[184px] md:p-3.5"
+    >
+      <div className="pointer-events-none absolute -right-8 -top-10 h-20 w-20 rounded-full bg-blue-100/70 blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-10 -left-8 h-20 w-20 rounded-full bg-yellow-100/80 blur-2xl" />
+
+      <div className="relative flex min-w-0 items-start gap-2.5">
+        <div
+          className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl border border-white bg-slate-100 bg-cover bg-center shadow-[0_8px_18px_rgba(15,23,42,0.12)] ring-[3px] ring-blue-50"
+          style={avatarStyle}
+          aria-label={nome}
+        >
+          {fotoURL ? (
+            <span className="sr-only">{nome}</span>
+          ) : (
+            <div className="grid h-full w-full place-items-center text-xl" aria-hidden="true">{emoji}</div>
+          )}
+          {isOnline ? <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" /> : null}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h3 className="line-clamp-2 text-[13px] font-black leading-[1.08] text-slate-950 md:text-sm" title={nome}>
+            {nome}
+          </h3>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className={[
+              'rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.08em]',
+              mode === 'corre' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800',
+            ].join(' ')}>
+              {tipoLabel}
+            </span>
+            {isOnline ? (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-emerald-700">
+                Online
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="relative mt-2 min-w-0 space-y-1">
+        <p className="truncate text-[11px] font-black text-slate-700 md:text-xs" title={especialidade}>
+          {especialidade}
+        </p>
+        <p className="truncate text-[11px] font-semibold text-slate-500" title={cidade}>
+          {cidade}
+        </p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] font-black text-slate-500 md:text-[11px]">
+          <span className={reputation.rating ? 'text-amber-600' : 'text-slate-500'}>{ratingLabel}</span>
+          <span aria-hidden="true">·</span>
+          <span>{servicesLabel}</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleAbrir}
+        className="relative mt-auto h-9 w-full rounded-xl bg-blue-600 px-3 text-[11px] font-black text-white shadow-[0_8px_18px_rgba(37,99,235,0.2)] transition hover:bg-blue-500 active:scale-[0.98] md:h-10 md:text-xs"
+      >
+        Ver perfil
+      </button>
+    </article>
+  )
+}
+
 function normalizeUsers(raw) {
   const entries = Array.isArray(raw)
     ? raw.map((value, index) => [value?.uid || value?.id || `provider_${index}`, value])
@@ -70,6 +221,32 @@ function normalizeUsers(raw) {
         profile.categoryId ||
         ''
     )
+    const professionId = safeStr(
+      user.professionId ||
+        user.profissaoId ||
+        profile.professionId ||
+        profile.profissaoId ||
+        profissional.professionId ||
+        user.corre?.professionId ||
+        profile.corre?.professionId ||
+        ''
+    )
+    const professionName = safeStr(
+      user.professionName ||
+        user.profissaoNome ||
+        user.customProfession ||
+        profile.professionName ||
+        profile.profissaoNome ||
+        profile.customProfession ||
+        profissional.professionName ||
+        profissional.profissaoNome ||
+        user.profTitulo ||
+        profile.profTitulo ||
+        user.correTitulo ||
+        profile.correTitulo ||
+        ''
+    )
+    const professionSource = safeStr(user.professionSource || profile.professionSource || (professionId ? 'catalog' : professionName ? 'custom' : ''))
     const hasProfissionalNode = profissional && typeof profissional === 'object' && Object.keys(profissional).length > 0
     const isProfissional = !!(user.isProfissional || profile.isProfissional || profissional?.ativo || (hasProfissionalNode && profissional.ativo !== false))
     const isCorre = !!(user.isCorre || profile.isCorre || profile?.corre?.ativo || user?.corre?.ativo)
@@ -100,6 +277,12 @@ function normalizeUsers(raw) {
       profileStatus: user.profileStatus || user.publicStatus || user.statusPublico || profile.profileStatus || profile.publicStatus || '',
       primaryCategoryId,
       categoriaId: primaryCategoryId,
+      professionId,
+      professionName,
+      professionSource,
+      customProfession: safeStr(user.customProfession || profile.customProfession || ''),
+      profissaoId: professionId,
+      profissaoNome: professionName,
       isProfissional,
       isCorre,
       profCategorias: profCategoriasBase.length || !primaryCategoryId || !isProfissional ? profCategoriasBase : [primaryCategoryId],
@@ -186,6 +369,7 @@ export default function ListaProfissionais({
   const [loading, setLoading] = useState(() => !hasExternalItems && !profissionaisCacheReady)
   const [buscaLocal, setBuscaLocal] = useState(search || '')
   const [categoriaLocal, setCategoriaLocal] = useState(categoriaId || '')
+  const [visibleLimit, setVisibleLimit] = useState(DIRECTORY_PAGE_SIZE)
   const sourceItems = useMemo(
     () => (hasExternalItems ? normalizeUsers(itemsSource) : items).filter((item) => canAppearInPublicDirectory(item)),
     [hasExternalItems, itemsSource, items]
@@ -200,6 +384,10 @@ export default function ListaProfissionais({
   useEffect(() => {
     setCategoriaLocal(categoriaId || '')
   }, [categoriaId])
+
+  useEffect(() => {
+    if (compact) setVisibleLimit(DIRECTORY_PAGE_SIZE)
+  }, [compact, mode, buscaLocal, categoriaLocal])
 
   useEffect(() => {
     if (hasExternalItems) {
@@ -238,7 +426,7 @@ export default function ListaProfissionais({
   }, [categoriaLocal])
 
   const filtrados = useMemo(() => {
-    const t = String(buscaLocal || '').trim().toLowerCase()
+    const t = normalizeProfessionSearchText(buscaLocal)
     return (sourceItems || [])
       .filter((u) => {
         const isProf = !!u.isProfissional
@@ -263,29 +451,30 @@ export default function ListaProfissionais({
         }
 
         if (!t) return true
-        const nome = String(u.nome || u.profile?.nome || '').toLowerCase()
-        const resumo = String(
+        const nome = normalizeProfessionSearchText(u.nome || u.profile?.nome || '')
+        const resumo = normalizeProfessionSearchText(
           u.profResumo ||
           u.correResumo ||
           u.profissional?.descricao ||
           u.profile?.descricao ||
           ''
-        ).toLowerCase()
-        const cidade = String(
+        )
+        const cidade = normalizeProfessionSearchText(
           u.profCidadeAtende ||
           u.correRegiao ||
           u.cidade ||
           u.profile?.cidade ||
           ''
-        ).toLowerCase()
-        const titulo = String(
+        )
+        const titulo = normalizeProfessionSearchText(
           u.profissional?.titulo ||
           u.profile?.titulo ||
           u.correTitulo ||
           ''
-        ).toLowerCase()
-        const transporte = String(u.correTransporte || '').toLowerCase()
-        return nome.includes(t) || resumo.includes(t) || cidade.includes(t) || titulo.includes(t) || transporte.includes(t)
+        )
+        const transporte = normalizeProfessionSearchText(u.correTransporte || '')
+        const profissao = getProfessionSearchText(u)
+        return nome.includes(t) || resumo.includes(t) || cidade.includes(t) || titulo.includes(t) || transporte.includes(t) || profissao.includes(t)
       })
       .sort((a, b) => {
         const onlineDiff = Number(b.online === true) - Number(a.online === true)
@@ -300,6 +489,9 @@ export default function ListaProfissionais({
     const url = `https://wa.me/55${w}`
     window.open(url, '_blank', 'noopener,noreferrer')
   }, [])
+
+  const renderedItems = compact ? filtrados.slice(0, visibleLimit) : filtrados
+  const hasMore = compact && visibleLimit < filtrados.length
 
   const glass =
     'bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.22)] ring-1 ring-white/5 backdrop-blur-xl'
@@ -376,16 +568,37 @@ export default function ListaProfissionais({
             </div>
           </div>
         ) : (
-          <div className={compact ? 'grid grid-cols-1 items-stretch gap-2 md:grid-cols-2 md:gap-4 xl:grid-cols-3 2xl:grid-cols-4' : 'grid grid-cols-1 items-stretch gap-2.5 md:grid-cols-2 md:gap-4 xl:grid-cols-3 2xl:grid-cols-4'}>
-            {filtrados.map((u) => (
-              <CardProfissional
-                key={u.uid}
-                item={u}
-                onAbrir={onAbrirPerfil}
-                onWhatsapp={openWhatsapp}
-                onAgendar={onAgendar}
-              />
-            ))}
+          <div className={compact ? 'space-y-3' : ''}>
+            <div className={compact ? 'grid grid-cols-1 items-stretch gap-2.5 min-[360px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5' : 'grid grid-cols-1 items-stretch gap-2.5 md:grid-cols-2 md:gap-4 xl:grid-cols-3 2xl:grid-cols-4'}>
+              {renderedItems.map((u) => (
+                compact ? (
+                  <CompactDirectoryCard
+                    key={u.uid}
+                    item={u}
+                    mode={mode}
+                    onAbrir={onAbrirPerfil}
+                  />
+                ) : (
+                  <CardProfissional
+                    key={u.uid}
+                    item={u}
+                    onAbrir={onAbrirPerfil}
+                    onWhatsapp={openWhatsapp}
+                    onAgendar={onAgendar}
+                  />
+                )
+              ))}
+            </div>
+
+            {hasMore ? (
+              <button
+                type="button"
+                onClick={() => setVisibleLimit((value) => value + DIRECTORY_PAGE_SIZE)}
+                className="mx-auto flex h-10 min-w-[180px] items-center justify-center rounded-full border border-white/15 bg-white/10 px-4 text-xs font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:bg-white/15 active:scale-[0.98]"
+              >
+                Carregar mais {Math.min(DIRECTORY_PAGE_SIZE, filtrados.length - visibleLimit)}
+              </button>
+            ) : null}
           </div>
         )}
       </div>

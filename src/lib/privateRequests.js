@@ -6,6 +6,12 @@ import { enviarPushParaUsuario } from './pushSender'
 import { buildPushPayload } from './pushPayload'
 import { createEventNotificationId, EVENT_NOTIFICATION_TYPES } from './eventNotifications'
 
+const DEBUG_PRIVATE_REQUESTS = process.env.NODE_ENV !== 'production'
+
+function debugPrivateRequests(...args) {
+  if (DEBUG_PRIVATE_REQUESTS) console.log(...args)
+}
+
 function safeStr(value) {
   return String(value || '').trim()
 }
@@ -54,14 +60,14 @@ function getNome(entity = {}, fallback = 'Corre Aqui') {
 }
 
 async function updateWithTrace(database, updates, { context = {} } = {}) {
-  console.log('Updates:', updates)
+  debugPrivateRequests('Updates:', updates)
 
   for (const [path, payload] of Object.entries(updates || {})) {
     const target = ref(database, path)
     const operation = payload && typeof payload === 'object' && !Array.isArray(payload) ? 'update' : 'set'
-    console.log('Atualizando:', path)
-    console.log('Operação:', operation)
-    console.log('Payload:', payload)
+    debugPrivateRequests('Atualizando:', path)
+    debugPrivateRequests('Operação:', operation)
+    debugPrivateRequests('Payload:', payload)
     try {
       if (operation === 'update') {
         await update(target, payload)
@@ -69,20 +75,29 @@ async function updateWithTrace(database, updates, { context = {} } = {}) {
         await set(target, payload)
       }
     } catch (error) {
-      console.error('[AGENDA] caminho negado:', path)
-      console.error('[AGENDA] operação:', context?.operation)
-      console.error('[AGENDA] UID autenticado:', context?.uid)
-      console.error('[AGENDA] código:', error?.code)
-      console.error('[AGENDA] mensagem:', error?.message)
-      console.error('[AGENDA] payload:', payload)
-      console.error('[AGENDA] contexto completo:', context)
-      console.error('[AGENDA] caminho negado', {
-        ...context,
-        caminho: path,
-        code: error?.code || null,
-        message: error?.message || String(error),
-        error,
-      })
+      if (DEBUG_PRIVATE_REQUESTS) {
+        console.error('[AGENDA] caminho negado:', path)
+        console.error('[AGENDA] operação:', context?.operation)
+        console.error('[AGENDA] UID autenticado:', context?.uid)
+        console.error('[AGENDA] código:', error?.code)
+        console.error('[AGENDA] mensagem:', error?.message)
+        console.error('[AGENDA] payload:', payload)
+        console.error('[AGENDA] contexto completo:', context)
+        console.error('[AGENDA] caminho negado', {
+          ...context,
+          caminho: path,
+          code: error?.code || null,
+          message: error?.message || String(error),
+          error,
+        })
+      } else {
+        console.error('[AGENDA] operacao recusada', {
+          raiz: String(path || '').split('/').filter(Boolean)[0] || 'desconhecida',
+          operation: context?.operation || operation,
+          code: error?.code || null,
+          message: error?.message || String(error),
+        })
+      }
       throw error
     }
   }
@@ -335,7 +350,7 @@ export async function createPrivateRequest({
     [`privateRequestInbox/${clienteId}/${requestId}`]: summary,
     [`privateRequestInbox/${profissionalId}/${requestId}`]: summary,
   })
-  console.log('[AGENDA] privateRequestInbox update', {
+  debugPrivateRequests('[AGENDA] privateRequestInbox update', {
     id: requestId,
     servicoId: request?.servicoId,
     payload,
@@ -640,7 +655,7 @@ export async function respondPrivateRequest({ database, request = {}, profission
   }
 
   const payload = removeUndefined(updates)
-  console.log('[AGENDA] privateRequestInbox update', {
+  debugPrivateRequests('[AGENDA] privateRequestInbox update', {
     authUid: auth.currentUser?.uid || null,
     id: requestId,
     criadorUid: clienteId,

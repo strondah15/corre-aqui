@@ -1,7 +1,34 @@
 import { NextResponse } from 'next/server'
+import { getFirebaseAdminAuth, isFirebaseAdminConfigured } from '@/lib/firebaseAdmin'
+
+async function requireAuthenticatedUser(request) {
+  if (!isFirebaseAdminConfigured()) {
+    const error = new Error('Firebase Admin nao configurado.')
+    error.status = 503
+    throw error
+  }
+
+  const authorization = request.headers.get('authorization') || ''
+  const idToken = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : ''
+  if (!idToken) {
+    const error = new Error('missing_auth_token')
+    error.status = 401
+    throw error
+  }
+
+  try {
+    await getFirebaseAdminAuth().verifyIdToken(idToken)
+  } catch {
+    const error = new Error('invalid_auth_token')
+    error.status = 401
+    throw error
+  }
+}
 
 export async function POST(req) {
   try {
+    await requireAuthenticatedUser(req)
+
     const { mensagem } = await req.json()
     const texto = String(mensagem || '').trim().slice(0, 2000)
 
@@ -54,8 +81,8 @@ export async function POST(req) {
   } catch (error) {
     console.error('Erro na rota /api/chatgpt:', error)
     return NextResponse.json(
-      { error: 'Erro ao processar a mensagem.' },
-      { status: 500 }
+      { error: error?.status === 401 ? 'Autenticacao necessaria.' : 'Erro ao processar a mensagem.' },
+      { status: error?.status || 500 }
     )
   }
 }

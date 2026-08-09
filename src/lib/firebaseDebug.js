@@ -16,8 +16,9 @@ import {
   update as firebaseUpdate,
 } from 'firebase/database'
 
-// Temporary diagnostics for locating Realtime Database permission failures.
-const DEBUG_DATABASE = true
+// Verbose RTDB tracing is development-only. Production keeps a compact error
+// summary without exposing auth state, payload context or stack traces.
+const DEBUG_DATABASE = process.env.NODE_ENV !== 'production'
 
 function getPath(target) {
   const path = target?._path?.toString?.() || target?._query?._path?.toString?.()
@@ -89,7 +90,15 @@ function logSuccess(operation, type, target, extra = {}) {
 }
 
 function logFailure(operation, type, target, error, extra = {}) {
-  if (!DEBUG_DATABASE) return
+  if (!DEBUG_DATABASE) {
+    console.error('[RTDB] operation:error', {
+      operation,
+      type,
+      code: error?.code || null,
+      message: error?.message || String(error),
+    })
+    return
+  }
   const authState = getAuthState()
   console.error('[RTDB DEBUG] operation:error', {
     operation,

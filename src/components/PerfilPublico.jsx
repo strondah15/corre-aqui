@@ -2,12 +2,18 @@
 
 import { useMemo, useState } from 'react'
 import { getCategoryById } from '@/constants/categories'
+import { getProfessionDisplayName, normalizeProfessionSearchText } from '@/constants/professions'
 import { buildProfessionalReputation } from '@/lib/professionalReputation'
 import ProfessionalReputationSummary from './ProfessionalReputationSummary'
 import ModalAgenda from './ModalAgenda'
 
 function pickText(...values) {
   return values.map((v) => String(v || '').trim()).find(Boolean) || ''
+}
+
+function isSpecificProfessionLabel(label) {
+  const normalized = normalizeProfessionSearchText(label)
+  return normalized && !['corre rapido', 'profissional local', 'profissional'].includes(normalized)
 }
 
 function safeUrl(value) {
@@ -277,7 +283,11 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
     const whatsapp = pickText(prof?.whatsapp, user.profWhats, profile.whatsapp, user.whatsapp)
     const whatsappLimpo = normalizeWhatsapp(whatsapp)
 
-    const profTitulo = pickText(prof?.titulo, user.profTitulo, profile.titulo, 'Profissional local')
+    const professionProf = getProfessionDisplayName(user, { mode: 'profissional', fallback: '' })
+    const professionCorre = getProfessionDisplayName(user, { mode: 'corre', fallback: '' })
+    const profTitulo = isSpecificProfessionLabel(professionProf)
+      ? professionProf
+      : pickText(prof?.titulo, user.profTitulo, profile.titulo, 'Profissional local')
     const profPreco = pickText(user.profPrecoBase, prof?.preco, profile.preco)
     const profExperiencia = pickText(user.profExperiencia, prof?.experiencia)
     const profCategoriasRaw = user.profCategorias || prof.categorias || profile.profCategorias || []
@@ -353,7 +363,9 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       }, new Map()).values()
     ).slice(0, 8)
 
-    const correTitulo = pickText(user.correTitulo, corre?.titulo, 'Corre rápido')
+    const correTitulo = isSpecificProfessionLabel(professionCorre)
+      ? professionCorre
+      : pickText(user.correTitulo, corre?.titulo, 'Corre rápido')
     const correTransporte = pickText(user.correTransporte, corre?.transporte)
     const correDisponibilidade = pickText(user.correDisponibilidade, corre?.disponibilidade)
     const correExperiencia = pickText(user.correExperiencia, corre?.experiencia)

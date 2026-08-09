@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CATEGORIES, categoryMatches, getCategoryById } from '@/constants/categories'
+import { getProfessionDisplayName, getProfessionSearchText, normalizeProfessionSearchText } from '@/constants/professions'
 import ListaProfissionais from './ListaProfissionais'
 import { buildProfessionalReputation } from '@/lib/professionalReputation'
 import { canAppearInPublicDirectory } from '@/lib/publicWorkProfile'
@@ -13,6 +14,11 @@ const floatingSection =
   'bg-white/[0.08] border border-white/10 shadow-[0_22px_80px_rgba(0,0,0,0.22)] text-white backdrop-blur-xl select-none'
 
 const safeStr = (v) => String(v || '').trim()
+
+const isSpecificProfessionLabel = (label) => {
+  const normalized = normalizeProfessionSearchText(label)
+  return normalized && !['corre rapido', 'profissional local', 'profissional', 'servico profissional'].includes(normalized)
+}
 
 const safeUrl = (v) => {
   const url = safeStr(v)
@@ -514,6 +520,35 @@ const normalizeProvider = (u) => {
   )
   const profPrecoBase = safeStr(u?.profPrecoBase || profile?.profPrecoBase || profile?.preco || u?.profissional?.profPrecoBase || u?.profissional?.preco || profile?.profissional?.preco || '')
   const profWhats = safeStr(u?.profWhats || profile?.profWhats || u?.profissional?.profWhats || u?.profissional?.whatsapp || profile?.profissional?.whatsapp || '')
+  const professionId = safeStr(
+    u?.professionId ||
+      u?.profissaoId ||
+      profile?.professionId ||
+      profile?.profissaoId ||
+      u?.profissional?.professionId ||
+      profile?.profissional?.professionId ||
+      u?.corre?.professionId ||
+      profile?.corre?.professionId ||
+      ''
+  )
+  const professionName = safeStr(
+    u?.professionName ||
+      u?.profissaoNome ||
+      u?.customProfession ||
+      profile?.professionName ||
+      profile?.profissaoNome ||
+      profile?.customProfession ||
+      u?.profissional?.professionName ||
+      profile?.profissional?.professionName ||
+      u?.profTitulo ||
+      profile?.profTitulo ||
+      u?.corre?.professionName ||
+      profile?.corre?.professionName ||
+      u?.correTitulo ||
+      profile?.correTitulo ||
+      ''
+  )
+  const professionSource = safeStr(u?.professionSource || profile?.professionSource || (professionId ? 'catalog' : professionName ? 'custom' : ''))
 
   const local = u?.local || null
   const lat = Number(local?.lat)
@@ -560,6 +595,12 @@ const normalizeProvider = (u) => {
     profileStatus: u?.profileStatus || u?.publicStatus || u?.statusPublico || profile?.profileStatus || profile?.publicStatus || '',
     primaryCategoryId,
     categoriaId: primaryCategoryId,
+    professionId,
+    professionName,
+    professionSource,
+    customProfession: safeStr(u?.customProfession || profile?.customProfession || ''),
+    profissaoId: professionId,
+    profissaoNome: professionName,
     isCorre,
     isProfissional,
     profCategorias,
@@ -758,9 +799,10 @@ const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPer
     ? item?.correCategorias?.[0] || item?.profCategorias?.[0] || 'servicos_gerais'
     : item?.profCategorias?.[0] || 'servicos_gerais'
   const categoria = getCategoryById(categoriaId)
+  const professionTitle = getProfessionDisplayName(item, { mode: modo, fallback: '' })
   const titulo = modo === 'corre'
-    ? safeStr(item?.correTitulo) || 'Corre rápido'
-    : safeStr(item?.profResumo) || 'Serviço profissional'
+    ? (isSpecificProfessionLabel(professionTitle) ? professionTitle : safeStr(item?.correTitulo) || 'Corre rápido')
+    : (isSpecificProfessionLabel(professionTitle) ? professionTitle : safeStr(item?.profResumo) || 'Serviço profissional')
   const regiao = safeStr(item?.correRegiao || item?.profCidadeAtende || item?.regiao) || 'Perto de você'
   const preco = safeStr(item?.profPrecoBase || item?.correPreco || item?.precoBase) || 'A combinar'
   const avatarStyle = useMemo(
@@ -954,7 +996,7 @@ export default function ClienteHome({
   }, [onlineProviders, registeredProviders, portfolioProviders])
 
   const allFilteredProviders = useMemo(() => {
-    const t = busca.trim().toLowerCase()
+    const t = normalizeProfessionSearchText(busca)
 
     const byCat = catId
       ? providers.filter((p) => {
@@ -968,11 +1010,12 @@ export default function ClienteHome({
     const bySearch = !t
       ? byCat
       : byCat.filter((p) => {
-          const nome = safeStr(p.nome).toLowerCase()
-          const cidade = safeStr(p.profCidadeAtende || p.correRegiao || p.regiao).toLowerCase()
-          const resumo = safeStr(p.profResumo || p.correResumo).toLowerCase()
-          const titulo = safeStr(p.correTitulo).toLowerCase()
-          return nome.includes(t) || cidade.includes(t) || resumo.includes(t) || titulo.includes(t)
+          const nome = normalizeProfessionSearchText(p.nome)
+          const cidade = normalizeProfessionSearchText(p.profCidadeAtende || p.correRegiao || p.regiao)
+          const resumo = normalizeProfessionSearchText(p.profResumo || p.correResumo)
+          const titulo = normalizeProfessionSearchText(p.correTitulo)
+          const profissao = getProfessionSearchText(p)
+          return nome.includes(t) || cidade.includes(t) || resumo.includes(t) || titulo.includes(t) || profissao.includes(t)
         })
 
     return bySearch.slice(0, 60)

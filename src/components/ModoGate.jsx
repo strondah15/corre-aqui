@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import Mapadinamico from '@/components/Mapadinamico'
@@ -10,7 +10,14 @@ import { onAuthStateChanged } from 'firebase/auth'
 import { get, ref, runTransaction, serverTimestamp, update } from '@/lib/firebaseDebug'
 import { promptClientTutorialIntro, promptWorkerTutorialIntro } from '@/components/tutorial/TutorialProvider'
 import { TUTORIAL_KEYS } from '@/lib/tutorial/tutorialConfig'
-import { CATEGORIES } from '@/constants/categories'
+import { CATEGORIES, getCategoryById } from '@/constants/categories'
+import {
+  POPULAR_PROFESSION_CATEGORY_IDS,
+  findProfessionById,
+  sanitizeCustomProfession,
+  searchProfessions,
+  suggestProfessionCategory,
+} from '@/constants/professions'
 import {
   PUBLIC_WORK_PROFILE_TYPES,
   buildQuickPublicWorkProfilePayload,
@@ -160,9 +167,55 @@ function ModeCard({ id, mode, selected, onSelect, tutorialTarget }) {
 
 const WORK_PROFILE_BLOCKED_STATUSES = new Set(['blocked', 'bloqueado', 'suspended', 'suspenso', 'deleted', 'deletado', 'removed', 'removido'])
 
+function pickProfessionFromSources(publicProfile = {}, accountData = {}) {
+  const profile = accountData?.profile || {}
+  const publicProfession = publicProfile?.profissional || {}
+  const profileProfession = profile?.profissional || {}
+  const publicCorre = publicProfile?.corre || {}
+  const profileCorre = profile?.corre || {}
+  const professionId = safePublicText(
+    publicProfile?.professionId ||
+      publicProfile?.profissaoId ||
+      publicProfession?.professionId ||
+      profile?.professionId ||
+      profile?.profissaoId ||
+      profileProfession?.professionId ||
+      publicCorre?.professionId ||
+      profileCorre?.professionId
+  )
+  const profession = findProfessionById(professionId)
+  const professionName = sanitizeCustomProfession(
+    publicProfile?.professionName ||
+      publicProfile?.profissaoNome ||
+      publicProfile?.customProfession ||
+      publicProfession?.professionName ||
+      publicProfile?.profTitulo ||
+      publicCorre?.professionName ||
+      publicProfile?.correTitulo ||
+      profile?.professionName ||
+      profile?.profissaoNome ||
+      profile?.customProfession ||
+      profileProfession?.professionName ||
+      profile?.profTitulo ||
+      profileCorre?.professionName ||
+      profile?.correTitulo ||
+      profession?.name ||
+      ''
+  )
+
+  return {
+    professionId: profession?.id || '',
+    professionName,
+    professionSource: publicProfile?.professionSource || profile?.professionSource || (profession ? 'catalog' : professionName ? 'custom' : ''),
+    customProfession: publicProfile?.customProfession || profile?.customProfession || '',
+  }
+}
+
 function getInitialWorkForm(accountData = {}, authUser = null, publicProfile = {}) {
   const profile = accountData?.profile || {}
+  const profession = pickProfessionFromSources(publicProfile, accountData)
   const categoria =
+    findProfessionById(profession.professionId)?.categoryId ||
     publicProfile?.primaryCategoryId ||
     publicProfile?.categoriaId ||
     publicProfile?.correCategorias?.[0] ||
@@ -179,11 +232,323 @@ function getInitialWorkForm(accountData = {}, authUser = null, publicProfile = {
         ? PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
         : PUBLIC_WORK_PROFILE_TYPES.CORRE,
     categoriaId: safePublicText(categoria),
+    professionId: profession.professionId,
+    professionName: profession.professionName,
+    professionSource: profession.professionSource,
+    customProfession: profession.customProfession,
     cidade: safePublicText(publicProfile?.cidade || accountData?.cidade || profile?.cidade),
     bairro: safePublicText(publicProfile?.bairro || accountData?.bairro || profile?.bairro),
     fotoURL: safePublicText(publicProfile?.fotoURL || accountData?.fotoURL || profile?.fotoURL || authUser?.photoURL),
     consentimento: publicProfile?.profileVisible === true,
   }
+}
+
+function ProfessionPicker({ form, onChange }) {
+  const [query, setQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [customOpen, setCustomOpen] = useState(false)
+  const [customText, setCustomText] = useState('')
+  const [customCategoryId, setCustomCategoryId] = useState('')
+  const [customError, setCustomError] = useState('')
+  const selectedCategory = getCategoryById(form.categoriaId)
+  const selectedProfession = findProfessionById(form.professionId)
+  const selectedName = sanitizeCustomProfession(form.professionName || selectedProfession?.name)
+
+  const popularCategories = useMemo(() => {
+    return POPULAR_PROFESSION_CATEGORY_IDS.map((id) => getCategoryById(id)).filter(Boolean)
+  }, [])
+
+  const suggestions = useMemo(() => searchProfessions(query, { limit: 8 }), [query])
+  const cleanCustomText = sanitizeCustomProfession(customText)
+  const customSuggestion = useMemo(() => suggestProfessionCategory(cleanCustomText), [cleanCustomText])
+  const suggestedCategoryId = customSuggestion?.categoryId || ''
+  const effectiveCustomCategoryId = customCategoryId || suggestedCategoryId || form.categoriaId || ''
+  const effectiveCustomCategory = getCategoryById(effectiveCustomCategoryId)
+  const needsManualCategory = cleanCustomText.length >= 2 && (!customSuggestion || customSuggestion.confidence < 0.6)
+
+  const selectProfession = (profession) => {
+    setQuery('')
+    setActiveIndex(0)
+    setCustomOpen(false)
+    setCustomText('')
+    setCustomCategoryId('')
+    setCustomError('')
+    onChange({
+      categoriaId: profession.categoryId,
+      professionId: profession.id,
+      professionName: profession.name,
+      professionSource: 'catalog',
+      customProfession: '',
+    })
+  }
+
+  const selectCategory = (categoryId) => {
+    setCustomCategoryId(categoryId)
+    onChange({
+      categoriaId: categoryId,
+      professionId: '',
+      professionName: '',
+      professionSource: '',
+      customProfession: '',
+    })
+  }
+
+  const confirmCustom = () => {
+    const name = sanitizeCustomProfession(customText)
+    const categoryId = effectiveCustomCategoryId
+    if (name.length < 2) {
+      setCustomError('Digite uma profissao ou servico.')
+      return
+    }
+    if (!getCategoryById(categoryId)) {
+      setCustomError('Escolha uma categoria principal.')
+      return
+    }
+
+    setCustomError('')
+    setQuery('')
+    onChange({
+      categoriaId: categoryId,
+      professionId: '',
+      professionName: name,
+      professionSource: 'custom',
+      customProfession: name,
+    })
+  }
+
+  const clearSelection = () => {
+    setQuery('')
+    setCustomText('')
+    setCustomCategoryId('')
+    setCustomError('')
+    onChange({
+      categoriaId: '',
+      professionId: '',
+      professionName: '',
+      professionSource: '',
+      customProfession: '',
+    })
+  }
+
+  const handleKeyDown = (event) => {
+    if (!suggestions.length) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveIndex((index) => Math.min(index + 1, suggestions.length - 1))
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveIndex((index) => Math.max(index - 1, 0))
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      selectProfession(suggestions[activeIndex] || suggestions[0])
+    } else if (event.key === 'Escape') {
+      setQuery('')
+    }
+  }
+
+  const getNameParts = (name) => {
+    const text = String(name || '')
+    const normalizedText = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    const normalizedQuery = String(query || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+    const matchIndex = normalizedQuery.length >= 2 ? normalizedText.indexOf(normalizedQuery) : -1
+    if (matchIndex < 0) return [{ text, match: false }]
+    return [
+      { text: text.slice(0, matchIndex), match: false },
+      { text: text.slice(matchIndex, matchIndex + normalizedQuery.length), match: true },
+      { text: text.slice(matchIndex + normalizedQuery.length), match: false },
+    ].filter((part) => part.text)
+  }
+
+  return (
+    <section className="sm:col-span-2 rounded-[24px] border border-blue-100 bg-blue-50/45 p-3 sm:p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-700">O que voce faz?</span>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            Escolha uma area ou busque sua profissao. Ex.: eletricista, designer 3D, manicure.
+          </p>
+        </div>
+        {selectedCategory ? (
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="h-8 rounded-full border border-blue-100 bg-white px-3 text-[11px] font-black text-slate-500"
+          >
+            Limpar
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {popularCategories.map((category) => {
+          const active = form.categoriaId === category.id && !selectedName
+          return (
+            <button
+              key={category.id}
+              type="button"
+              onClick={() => selectCategory(category.id)}
+              className={[
+                'shrink-0 rounded-full border px-3 py-2 text-[11px] font-black transition active:scale-[0.98]',
+                active ? 'border-blue-500 bg-blue-600 text-white shadow-[0_10px_20px_rgba(37,99,235,0.2)]' : 'border-blue-100 bg-white text-slate-700',
+              ].join(' ')}
+            >
+              <span className="mr-1">{category.emoji}</span>
+              {category.label}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="relative mt-3">
+        <label htmlFor="quick-work-profession-search" className="mb-1 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">
+          Busque sua profissão ou serviço
+        </label>
+        <div className="relative">
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-blue-600">⌕</span>
+          <input
+            id="quick-work-profession-search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setActiveIndex(0)
+            }}
+            onKeyDown={handleKeyDown}
+            className="h-12 w-full rounded-2xl border border-blue-100 bg-white px-11 pr-12 text-sm font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-400/15"
+            placeholder="Ex.: eletricista, designer 3D, manicure..."
+            autoComplete="off"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full px-2 py-1 text-xs font-black text-slate-500 hover:bg-slate-100"
+              aria-label="Limpar busca"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+
+        {query.trim().length >= 2 ? (
+          <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.18)]">
+            {suggestions.length ? (
+              suggestions.map((profession, index) => {
+                const category = getCategoryById(profession.categoryId)
+                return (
+                  <button
+                    key={profession.id}
+                    type="button"
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => selectProfession(profession)}
+                    className={[
+                      'flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition',
+                      activeIndex === index ? 'bg-blue-50' : 'hover:bg-slate-50',
+                    ].join(' ')}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-black text-slate-950">
+                        {getNameParts(profession.name).map((part, partIndex) => part.match ? (
+                          <mark key={`${profession.id}_match_${partIndex}`} className="rounded bg-yellow-100 px-0.5 text-slate-950">
+                            {part.text}
+                          </mark>
+                        ) : (
+                          <span key={`${profession.id}_text_${partIndex}`}>{part.text}</span>
+                        ))}
+                      </span>
+                      <span className="block truncate text-xs font-semibold text-slate-500">
+                        {category?.emoji ? `${category.emoji} ` : ''}{category?.label || profession.categoryId}
+                      </span>
+                    </span>
+                    <span className="shrink-0 rounded-full bg-blue-600 px-3 py-1 text-[10px] font-black text-white">Escolher</span>
+                  </button>
+                )
+              })
+            ) : (
+              <div className="px-4 py-3 text-sm font-bold text-slate-500">
+                Nenhuma sugestao encontrada.
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={() => setCustomOpen((open) => !open)}
+          className="text-xs font-black text-blue-700 underline decoration-blue-200 underline-offset-4"
+        >
+          Nao encontrei minha profissao
+        </button>
+
+        {customOpen ? (
+          <div className="mt-3 rounded-[20px] border border-blue-100 bg-white p-3">
+            <label className="block">
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Digite o que voce faz</span>
+              <input
+                value={customText}
+                onChange={(event) => {
+                  setCustomText(event.target.value)
+                  setCustomError('')
+                }}
+                maxLength={60}
+                className="mt-1 h-11 w-full rounded-2xl border border-blue-100 bg-white px-4 text-sm font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-400/15"
+                placeholder="Ex.: modelagem 3D para produtos"
+              />
+            </label>
+
+            {cleanCustomText ? (
+              <div className="mt-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                Nome publico: <b className="text-slate-950">{cleanCustomText}</b>
+              </div>
+            ) : null}
+
+            {effectiveCustomCategory ? (
+              <div className="mt-2 text-xs font-bold text-emerald-700">
+                Categoria sugerida: {effectiveCustomCategory.emoji} {effectiveCustomCategory.label}
+              </div>
+            ) : null}
+
+            {needsManualCategory || !effectiveCustomCategory ? (
+              <label className="mt-3 block">
+                <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Categoria principal</span>
+                <select
+                  value={customCategoryId || form.categoriaId || ''}
+                  onChange={(event) => setCustomCategoryId(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-2xl border border-blue-100 bg-white px-4 text-sm font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-400/15"
+                >
+                  <option value="">Selecione</option>
+                  {CATEGORIES.map((category) => (
+                    <option key={category.id} value={category.id}>{category.label}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            {customError ? <div className="mt-2 text-xs font-black text-rose-600">{customError}</div> : null}
+
+            <button
+              type="button"
+              onClick={confirmCustom}
+              className="mt-3 h-11 w-full rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-[0_12px_26px_rgba(37,99,235,0.22)] active:scale-[0.98]"
+            >
+              Usar esta profissao
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {selectedCategory ? (
+        <div className="mt-3 rounded-[18px] border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+          {selectedName ? (
+            <>Atividade escolhida: <b>{selectedName}</b> · {selectedCategory.emoji} {selectedCategory.label}</>
+          ) : (
+            <>Categoria principal: {selectedCategory.emoji} {selectedCategory.label}</>
+          )}
+        </div>
+      ) : null}
+    </section>
+  )
 }
 
 function QuickWorkProfileSetup({ uid, authUser, accountData, publicProfile, onBack, onSaved }) {
@@ -209,6 +574,11 @@ function QuickWorkProfileSetup({ uid, authUser, accountData, publicProfile, onBa
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  const updateFields = (patch) => {
+    setError('')
+    setForm((prev) => ({ ...prev, ...(patch || {}) }))
+  }
+
   const save = async (event) => {
     event.preventDefault()
     if (!uid || !authUser?.uid) {
@@ -217,7 +587,7 @@ function QuickWorkProfileSetup({ uid, authUser, accountData, publicProfile, onBa
     }
 
     if (!canSave) {
-      setError('Preencha nome, categoria, cidade, bairro e aceite aparecer para clientes.')
+      setError('Preencha nome, categoria/profissao, cidade, bairro e aceite aparecer para clientes.')
       return
     }
 
@@ -248,6 +618,17 @@ function QuickWorkProfileSetup({ uid, authUser, accountData, publicProfile, onBa
         workProfileStatus: 'quick_complete',
         isCorre: payload.isCorre === true,
         isProfissional: payload.isProfissional === true,
+        primaryCategoryId: payload.primaryCategoryId,
+        categoriaId: payload.categoriaId,
+        categoriaNome: payload.categoriaNome,
+        professionId: payload.professionId || null,
+        professionName: payload.professionName || null,
+        professionSource: payload.professionSource || null,
+        customProfession: payload.customProfession || null,
+        correTitulo: payload.correTitulo || null,
+        profTitulo: payload.profTitulo || null,
+        correCategorias: payload.correCategorias || [],
+        profCategorias: payload.profCategorias || [],
         cidade: payload.cidade,
         bairro: payload.bairro,
         atualizadoEm: serverTimestamp(),
@@ -259,6 +640,17 @@ function QuickWorkProfileSetup({ uid, authUser, accountData, publicProfile, onBa
         isProfissional: payload.isProfissional === true,
         correCategorias: payload.correCategorias || [],
         profCategorias: payload.profCategorias || [],
+        primaryCategoryId: payload.primaryCategoryId,
+        categoriaId: payload.categoriaId,
+        categoriaNome: payload.categoriaNome,
+        professionId: payload.professionId || null,
+        professionName: payload.professionName || null,
+        professionSource: payload.professionSource || null,
+        customProfession: payload.customProfession || null,
+        profissaoId: payload.profissaoId || null,
+        profissaoNome: payload.profissaoNome || null,
+        profTitulo: payload.profTitulo || null,
+        correTitulo: payload.correTitulo || null,
         cidade: payload.cidade,
         bairro: payload.bairro,
         atualizadoEm: serverTimestamp(),
@@ -337,19 +729,7 @@ function QuickWorkProfileSetup({ uid, authUser, accountData, publicProfile, onBa
             </select>
           </label>
 
-          <label className="block">
-            <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Categoria principal</span>
-            <select
-              value={form.categoriaId}
-              onChange={(event) => updateField('categoriaId', event.target.value)}
-              className="mt-1 h-12 w-full rounded-2xl border border-blue-100 bg-white px-4 text-sm font-bold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-400/15"
-            >
-              <option value="">Selecione</option>
-              {CATEGORIES.map((category) => (
-                <option key={category.id} value={category.id}>{category.label}</option>
-              ))}
-            </select>
-          </label>
+          <ProfessionPicker form={form} onChange={updateFields} />
 
           <label className="block">
             <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Cidade / regiao</span>

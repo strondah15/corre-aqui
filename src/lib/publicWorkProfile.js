@@ -1,4 +1,5 @@
 import { getCanonicalCategoryId, getCategoryById } from '@/constants/categories'
+import { findProfessionById, sanitizeCustomProfession } from '@/constants/professions'
 
 export const PUBLIC_WORK_PROFILE_TYPES = {
   CORRE: 'corre',
@@ -313,13 +314,18 @@ export function buildQuickPublicWorkProfilePayload({ uid, account = {}, form = {
   const cleanUid = safePublicText(uid || account.uid || account.id)
   const name = safePublicText(form.nome || account.nome || account.displayName || account.profile?.nome)
   const type = form.profileType === PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL ? PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL : PUBLIC_WORK_PROFILE_TYPES.CORRE
-  const categoryId = getCanonicalCategoryId(form.categoriaId || form.primaryCategoryId || '')
+  const catalogProfession = findProfessionById(form.professionId)
+  const professionName = sanitizeCustomProfession(form.professionName || form.customProfession || catalogProfession?.name)
+  const professionId = catalogProfession?.id || ''
+  const professionSource = form.professionSource === 'custom' && professionName ? 'custom' : professionId ? 'catalog' : ''
+  const categoryId = getCanonicalCategoryId(catalogProfession?.categoryId || form.categoriaId || form.primaryCategoryId || '')
   const category = getCategoryById(categoryId)
   const city = safePublicText(form.cidade || form.city || account.cidade || account.profile?.cidade)
   const neighborhood = safePublicText(form.bairro || form.neighborhood || account.bairro || account.profile?.bairro)
   const photoURL = safePublicText(form.fotoURL || account.fotoURL || account.photoURL || account.profile?.fotoURL || account.profile?.photoURL)
   const isCorre = type === PUBLIC_WORK_PROFILE_TYPES.CORRE
   const isProfissional = type === PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
+  const workTitle = professionName || category?.label || (isProfissional ? 'Profissional local' : 'Corre rapido')
 
   return compactPayload(clearPrivatePublicProfileFields({
     uid: cleanUid,
@@ -337,6 +343,15 @@ export function buildQuickPublicWorkProfilePayload({ uid, account = {}, form = {
     primaryCategoryId: categoryId,
     categoriaId: categoryId,
     categoriaNome: category?.label || '',
+    professionId: professionId || null,
+    professionName: professionName || null,
+    professionSource: professionSource || null,
+    profissaoId: professionId || null,
+    profissaoNome: professionName || null,
+    customProfession: professionSource === 'custom' ? professionName : undefined,
+    correProfessionId: isCorre ? professionId : undefined,
+    correTitulo: isCorre ? workTitle : undefined,
+    profTitulo: isProfissional ? workTitle : undefined,
     correCategorias: isCorre ? [categoryId] : [],
     profCategorias: isProfissional ? [categoryId] : [],
     cidade: city,
