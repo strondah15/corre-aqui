@@ -300,14 +300,14 @@ function SummaryCard({ icon, label, value, suffix, tone = 'blue' }) {
       : 'bg-blue-50 text-blue-700'
 
   return (
-    <div className="flex min-h-[88px] items-center gap-3 rounded-[16px] border border-slate-200/80 bg-white px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)] md:min-h-[104px] md:rounded-[18px] md:px-5">
-      <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${toneClasses}`}>
-        <Icon name={icon} className="h-6 w-6" />
+    <div className="flex min-h-[70px] min-w-0 items-center gap-2 rounded-[15px] border border-slate-200/80 bg-white px-2.5 py-2 shadow-[0_8px_22px_rgba(15,23,42,0.04)] md:min-h-[104px] md:gap-3 md:rounded-[18px] md:px-5 md:py-3">
+      <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full md:h-12 md:w-12 ${toneClasses}`}>
+        <Icon name={icon} className="h-[18px] w-[18px] md:h-6 md:w-6" />
       </div>
       <div className="min-w-0">
-        <div className="text-xs font-bold text-slate-500">{label}</div>
-        <div className="mt-1 truncate text-2xl font-black leading-none text-blue-700 md:text-3xl">{value}</div>
-        {suffix ? <div className="mt-1 text-xs font-semibold text-slate-500">{suffix}</div> : null}
+        <div className="truncate text-[10px] font-black uppercase tracking-[0.05em] text-slate-500 md:text-xs md:normal-case md:tracking-normal">{label}</div>
+        <div className="mt-0.5 truncate text-lg font-black leading-none text-blue-700 min-[390px]:text-xl md:mt-1 md:text-3xl">{value}</div>
+        {suffix ? <div className="mt-0.5 truncate text-[9px] font-semibold leading-none text-slate-500 md:mt-1 md:text-xs md:leading-normal">{suffix}</div> : null}
       </div>
     </div>
   )
@@ -421,6 +421,7 @@ export default function AgendaProfissional({
   onAbrirChat,
   onToast,
   showHeader = false,
+  reserveFloatingControls = false,
 } = {}) {
   const [agendamentos, setAgendamentos] = useState([])
   const [loading, setLoading] = useState(true)
@@ -514,6 +515,11 @@ export default function AgendaProfissional({
   }, [agendaItems, filtro, selectedKey])
 
   const listaRender = compacto ? listaFiltrada.slice(0, 4) : listaFiltrada
+  const listaTitulo = filtro === 'hoje'
+    ? 'Serviços do dia'
+    : filtro === 'semana'
+      ? 'Serviços da semana'
+      : 'Todos os serviços'
 
   useEffect(() => {
     const targetId = String(focusRequestId || '').trim()
@@ -626,7 +632,7 @@ export default function AgendaProfissional({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.26, ease: 'easeOut' }}
-      className="mx-auto w-full max-w-6xl overflow-hidden rounded-[28px] border border-slate-200 bg-white p-3 text-slate-950 shadow-[0_24px_80px_rgba(15,23,42,0.10)] md:rounded-[34px] md:p-5"
+      className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white p-2.5 text-slate-950 shadow-[0_20px_64px_rgba(15,23,42,0.09)] md:h-auto md:rounded-[34px] md:p-5 md:shadow-[0_24px_80px_rgba(15,23,42,0.10)]"
     >
       {showHeader ? (
         <Header
@@ -638,10 +644,10 @@ export default function AgendaProfissional({
         />
       ) : null}
 
-      <div className={['px-1 md:px-2', showHeader ? 'pt-5' : 'pt-2'].join(' ')}>
-        <div>
-          <h2 className="text-2xl font-black tracking-tight text-blue-950 md:text-3xl">Minha agenda</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">Veja e gerencie seus serviços agendados.</p>
+      <div className={['flex min-h-0 flex-1 flex-col px-0.5 md:block md:px-2', showHeader ? 'pt-3 md:pt-5' : 'pt-0.5 md:pt-2'].join(' ')}>
+        <div className="shrink-0">
+          <h2 className="text-[22px] font-black tracking-tight text-blue-950 md:text-3xl">Minha agenda</h2>
+          <p className="mt-0.5 text-xs font-semibold leading-snug text-slate-500 md:mt-1 md:text-sm">Veja e gerencie seus serviços agendados.</p>
         </div>
 
         {erro ? (
@@ -650,14 +656,14 @@ export default function AgendaProfissional({
           </div>
         ) : null}
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-3 grid shrink-0 grid-cols-2 gap-2 md:mt-5 md:gap-3 lg:grid-cols-4">
           <SummaryCard icon="calendar" label="Hoje" value={resumo.hoje} suffix={resumo.hoje === 1 ? 'serviço' : 'serviços'} />
           <SummaryCard icon="clock" label="Pendentes" value={resumo.pendentes} suffix={resumo.pendentes === 1 ? 'serviço' : 'serviços'} tone="blue" />
           <SummaryCard icon="check" label="Confirmados" value={resumo.confirmados} suffix={resumo.confirmados === 1 ? 'serviço' : 'serviços'} tone="emerald" />
           <SummaryCard icon="money" label="Valor previsto" value={formatMoney(resumo.valorPrevisto, 'R$ 0,00')} />
         </div>
 
-        <div className="mt-5 flex flex-col gap-3 rounded-[16px] border border-slate-200 bg-white p-2 shadow-[0_10px_28px_rgba(15,23,42,0.04)] md:flex-row md:items-center md:justify-between">
+        <div className="mt-2.5 flex shrink-0 flex-col gap-1.5 rounded-[15px] border border-slate-200 bg-white p-1.5 shadow-[0_8px_22px_rgba(15,23,42,0.04)] md:mt-5 md:flex-row md:items-center md:justify-between md:gap-3 md:rounded-[16px] md:p-2">
           <div className="flex gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {filtros.map((item) => {
               const active = filtro === item.id
@@ -667,75 +673,89 @@ export default function AgendaProfissional({
                   type="button"
                   onClick={() => setFiltro(item.id)}
                   className={[
-                    'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-4 text-xs font-black transition',
+                    'inline-flex h-8 min-w-0 flex-1 shrink-0 items-center justify-center gap-1.5 rounded-[10px] px-2.5 text-[11px] font-black transition md:h-10 md:flex-none md:gap-2 md:rounded-xl md:px-4 md:text-xs',
                     active ? 'bg-blue-700 text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)]' : 'text-slate-600 hover:bg-slate-50 hover:text-blue-700',
                   ].join(' ')}
                 >
-                  <Icon name={item.icon} className="h-4 w-4" />
+                  <Icon name={item.icon} className="h-3.5 w-3.5 md:h-4 md:w-4" />
                   {item.label}
                 </button>
               )
             })}
           </div>
 
-          <div className="flex items-center justify-between gap-2 md:justify-end">
+          <div className="flex items-center justify-between gap-1 border-t border-slate-100 pt-1.5 md:justify-end md:gap-2 md:border-t-0 md:pt-0">
             <button
               type="button"
               onClick={() => setSelectedKey((key) => addDays(key, -1))}
-              className="grid h-10 w-10 place-items-center rounded-xl text-blue-950 transition hover:bg-blue-50 active:scale-[0.97]"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] text-blue-950 transition hover:bg-blue-50 active:scale-[0.97] md:h-10 md:w-10 md:rounded-xl"
               aria-label="Dia anterior"
             >
-              <Icon name="chevron" className="h-5 w-5 rotate-180" />
+              <Icon name="chevron" className="h-4 w-4 rotate-180 md:h-5 md:w-5" />
             </button>
             <button
               type="button"
-              className="inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-blue-950 md:min-w-[260px] md:flex-none"
+              className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-slate-200 bg-white px-2 text-[11px] font-black text-blue-950 md:h-10 md:min-w-[260px] md:flex-none md:gap-2 md:rounded-xl md:px-3 md:text-xs"
             >
-              <Icon name="calendar" className="h-4 w-4 text-blue-700" />
+              <Icon name="calendar" className="h-3.5 w-3.5 text-blue-700 md:h-4 md:w-4" />
               <span className="truncate">{formatDataExtenso(selectedKey)}</span>
             </button>
             <button
               type="button"
               onClick={() => setSelectedKey((key) => addDays(key, 1))}
-              className="grid h-10 w-10 place-items-center rounded-xl text-blue-950 transition hover:bg-blue-50 active:scale-[0.97]"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] text-blue-950 transition hover:bg-blue-50 active:scale-[0.97] md:h-10 md:w-10 md:rounded-xl"
               aria-label="Próximo dia"
             >
-              <Icon name="chevron" className="h-5 w-5" />
+              <Icon name="chevron" className="h-4 w-4 md:h-5 md:w-5" />
             </button>
           </div>
         </div>
 
-        {loading ? (
-          <div className="mt-3 space-y-2">
-            {[0, 1, 2].map((item) => (
-              <div key={item} className="h-28 animate-pulse rounded-[18px] bg-slate-100" />
-            ))}
+        <div className="mt-2 flex min-h-0 flex-1 flex-col md:mt-3 md:block">
+          <div className="flex shrink-0 items-center justify-between gap-3 px-1 pb-1.5 md:pb-2">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 md:text-xs">{listaTitulo}</h3>
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">{listaRender.length}</span>
           </div>
-        ) : listaRender.length === 0 ? (
-          <div className="mt-3 rounded-[18px] border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
-            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-blue-50 text-blue-700">
-              <Icon name="calendar" className="h-6 w-6" />
-            </div>
-            <div className="mt-3 text-base font-black text-blue-950">Nenhum serviço nesta data.</div>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Novos agendamentos aparecem aqui em tempo real.</p>
-          </div>
-        ) : (
-          <div className="mt-3 space-y-2.5">
-            {listaRender.map((item) => (
-              <AgendaItem
-                key={item.id}
-                item={item}
-                uid={uid}
-                salvandoId={salvandoId}
-                onResponder={responder}
-                focused={String(item?.id || item?.privateRequestId || '') === String(focusRequestId || '')}
-              />
-            ))}
-          </div>
-        )}
 
-        <div className="mt-3 rounded-[14px] border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700">
-          <span className="font-black">Dica:</span> Mantenha sua agenda atualizada para não perder oportunidades de serviço.
+          <div
+            className={[
+              'min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-gutter:stable] md:overflow-visible md:pr-0',
+              reserveFloatingControls ? 'pb-[calc(9.25rem+env(safe-area-inset-bottom))] md:pb-0' : 'pb-1 md:pb-0',
+            ].join(' ')}
+          >
+            {loading ? (
+              <div className="space-y-2">
+                {[0, 1, 2].map((item) => (
+                  <div key={item} className="h-24 animate-pulse rounded-[18px] bg-slate-100 md:h-28" />
+                ))}
+              </div>
+            ) : listaRender.length === 0 ? (
+              <div className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center md:py-10">
+                <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-blue-700 md:h-12 md:w-12">
+                  <Icon name="calendar" className="h-5 w-5 md:h-6 md:w-6" />
+                </div>
+                <div className="mt-2 text-sm font-black text-blue-950 md:mt-3 md:text-base">Nenhum serviço nesta data.</div>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 md:mt-1 md:text-sm">Novos agendamentos aparecem aqui em tempo real.</p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {listaRender.map((item) => (
+                  <AgendaItem
+                    key={item.id}
+                    item={item}
+                    uid={uid}
+                    salvandoId={salvandoId}
+                    onResponder={responder}
+                    focused={String(item?.id || item?.privateRequestId || '') === String(focusRequestId || '')}
+                  />
+                ))}
+              </div>
+            )}
+
+            <div className="mt-2 rounded-[12px] border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700 md:mt-3 md:rounded-[14px] md:px-4 md:py-3 md:text-xs">
+              <span className="font-black">Dica:</span> Mantenha sua agenda atualizada para não perder oportunidades de serviço.
+            </div>
+          </div>
         </div>
       </div>
     </motion.section>

@@ -134,8 +134,8 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
   }
 
   return (
-    <main className="min-h-[100dvh] overflow-hidden bg-white text-slate-950">
-      <div className="relative bg-[linear-gradient(135deg,#0b73ff_0%,#16b8d1_48%,#ffdf2e_100%)] px-3 pb-5 pt-3 text-white md:px-6 md:pb-8 md:pt-6">
+    <main className={tipo === 'agenda' ? 'flex h-[100dvh] flex-col overflow-hidden bg-white text-slate-950' : 'min-h-[100dvh] overflow-hidden bg-white text-slate-950'}>
+      <div className="relative shrink-0 bg-[linear-gradient(135deg,#0b73ff_0%,#16b8d1_48%,#ffdf2e_100%)] px-3 pb-5 pt-3 text-white md:px-6 md:pb-8 md:pt-6">
         <div className="pointer-events-none absolute -left-20 -top-24 h-72 w-72 rounded-full bg-blue-500/24 md:h-96 md:w-96" />
         <div className="pointer-events-none absolute -right-16 top-2 h-72 w-56 rotate-12 rounded-[70px] bg-yellow-100/40 md:h-[28rem] md:w-80" />
         <div className="pointer-events-none absolute bottom-4 right-8 h-28 w-48 rotate-12 rounded-[44px] bg-blue-700/22 md:h-48 md:w-72" />
@@ -167,8 +167,8 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
         </header>
       </div>
 
-      <div className="relative -mt-5 rounded-t-[34px] bg-white px-3 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-5 shadow-[0_-18px_60px_rgba(15,23,42,0.10)] md:-mt-7 md:rounded-t-[44px] md:px-6 md:pt-7">
-        <section className="mx-auto w-full max-w-5xl">
+      <div className={['relative -mt-5 rounded-t-[34px] bg-white px-3 pt-5 shadow-[0_-18px_60px_rgba(15,23,42,0.10)] md:-mt-7 md:rounded-t-[44px] md:px-6 md:pt-7', tipo === 'agenda' ? 'flex min-h-0 flex-1 flex-col pb-2' : 'pb-[calc(env(safe-area-inset-bottom)+1.5rem)]'].join(' ')}>
+        <section className={['mx-auto w-full max-w-5xl', tipo === 'agenda' ? 'min-h-0 flex-1' : ''].join(' ')}>
           {tipo === 'inbox' ? (
             <div className="grid gap-3 md:gap-4">
               <CentralNotificacoes

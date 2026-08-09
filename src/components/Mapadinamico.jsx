@@ -3873,11 +3873,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         </div>
       ) : null}
 
-      <div className="relative z-10 w-full max-w-[1280px] mx-auto px-2.5 pt-0 pb-24 md:px-4 md:py-5 md:pb-32 sm:px-5 lg:px-6">
+      <div
+        className={[
+          'relative z-10 mx-auto w-full max-w-[1280px] px-2.5 pt-0 sm:px-5 md:px-4 md:py-5 lg:px-6',
+          modoApp === 'corre' && tab === 'agenda'
+            ? 'flex h-[100dvh] flex-col overflow-hidden pb-0 md:block md:h-auto md:overflow-visible md:pb-32'
+            : 'pb-24 md:pb-32',
+        ].join(' ')}
+      >
         {/* CORRE: Header + Inbox */}
         {modoApp === 'corre' && (
           <>
-            <div className="relative -mx-2.5 mb-0 overflow-hidden bg-[#e8f5fc] text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.14)] backdrop-blur-xl md:mx-0 md:rounded-[34px]">
+            <div className="relative -mx-2.5 mb-0 shrink-0 overflow-hidden bg-[#e8f5fc] text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.14)] backdrop-blur-xl md:mx-0 md:rounded-[34px]">
               <div className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.78]" style={{ backgroundImage: "url('/cliente-home-map-bg-v3.png')" }} />
               <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(218,241,251,.54),rgba(255,255,255,.78)_68%,rgba(239,249,253,.92))]" />
               <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-sky-300/25 blur-2xl md:h-96 md:w-96" />
@@ -4055,7 +4062,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
 
             {tab === 'agenda' && (
-              <div className="mb-4">
+              <div className="min-h-0 flex-1 md:mb-4 md:flex-none">
                 <div className="hidden">
                   <div className="text-xl font-black text-white">📅 Minha agenda</div>
                   <div className="mt-1 text-xs text-slate-400">
@@ -4063,7 +4070,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   </div>
                 </div>
 
-                <div>
+                <div className="h-full min-h-0">
                   <AgendaProfissional
                     uid={meuId}
                     nome={meuNome}
@@ -4074,6 +4081,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     onAbrirNotificacoes={() => setTab('inbox')}
                     onAbrirChat={abrirChatFocado}
                     onToast={showToast}
+                    reserveFloatingControls
                   />
                 </div>
               </div>
@@ -5774,19 +5782,21 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           aria-pressed={correDisponivel}
           title={correDisponivel ? 'Você está online' : 'Você está offline'}
           className={[
-            'fixed right-4 z-[99979] flex flex-col items-center gap-2 transition-all duration-300 active:scale-[0.96] md:right-7',
+            'fixed right-4 z-[99979] flex flex-col items-center transition-all duration-300 active:scale-[0.96] md:right-7',
+            tab === 'agenda' ? 'gap-0' : 'gap-2',
             bottomBarsHidden
               ? 'bottom-[calc(env(safe-area-inset-bottom)+1rem)]'
               : 'bottom-[calc(env(safe-area-inset-bottom)+5.35rem)] md:bottom-28',
           ].join(' ')}
         >
-          <span className="rounded-xl bg-slate-950 px-3 py-1.5 text-center text-[11px] font-black leading-tight text-white shadow-[0_10px_28px_rgba(0,0,0,0.28)] ring-1 ring-white/10">
+          <span className={['rounded-xl bg-slate-950 px-3 py-1.5 text-center text-[11px] font-black leading-tight text-white shadow-[0_10px_28px_rgba(0,0,0,0.28)] ring-1 ring-white/10', tab === 'agenda' ? 'sr-only' : ''].join(' ')}>
             Você<br />
             está {correDisponivel ? 'online' : 'offline'}
           </span>
           <span
             className={[
-              'grid h-14 w-14 place-items-center rounded-full border-2 text-white shadow-[0_14px_28px_rgba(15,23,42,0.28),inset_0_1px_0_rgba(255,255,255,0.35)] transition md:h-[60px] md:w-[60px]',
+              'grid place-items-center rounded-full border-2 text-white shadow-[0_14px_28px_rgba(15,23,42,0.28),inset_0_1px_0_rgba(255,255,255,0.35)] transition',
+              tab === 'agenda' ? 'h-12 w-12 md:h-14 md:w-14' : 'h-14 w-14 md:h-[60px] md:w-[60px]',
               correDisponivel
                 ? 'border-emerald-300/70 bg-gradient-to-br from-emerald-400 via-emerald-600 to-green-700'
                 : 'border-slate-500/70 bg-gradient-to-br from-slate-500 via-slate-700 to-slate-950',
