@@ -6,6 +6,7 @@ import Image from 'next/image'
 export default function SplashScreen({ exiting = false, status = 'Conectando perto de voc\u00ea...' }) {
   return (
     <motion.main
+      data-install-banner-block="splash"
       className="relative grid min-h-[100dvh] place-items-center overflow-hidden bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_100%)] px-5 text-white"
       initial={{ opacity: 1 }}
       animate={{ opacity: 1, scale: exiting ? 0.985 : 1 }}

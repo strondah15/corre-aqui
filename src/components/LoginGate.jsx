@@ -517,7 +517,7 @@ export default function LoginGate({ children }) {
   }
 
   if (aguardandoEntrada) {
-    return <main className="min-h-[100dvh] bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_100%)]" aria-busy="true" />
+    return <main data-install-banner-block="auth-transition" className="min-h-[100dvh] bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_100%)]" aria-busy="true" />
   }
 
   if (!uid) {
