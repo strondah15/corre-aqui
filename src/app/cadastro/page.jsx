@@ -7,6 +7,7 @@ import { get, ref } from '@/lib/firebaseDebug'
 import CadastroPerfilInicial from '@/components/CadastroPerfilInicial'
 import { auth, database } from '@/lib/firebase'
 import { perfilMinimoCompleto } from '@/lib/perfilCadastro'
+import { removerPushTokenDoDispositivo } from '@/lib/pushClient'
 
 function esperar(ms, valor = null) {
   return new Promise((resolve) => {
@@ -57,6 +58,7 @@ export default function CadastroPage() {
   }, [router])
 
   async function sair() {
+    if (uid) await removerPushTokenDoDispositivo(uid).catch(() => {})
     await signOut(auth).catch(() => {})
     try {
       ;[

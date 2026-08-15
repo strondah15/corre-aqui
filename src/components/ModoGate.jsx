@@ -920,6 +920,13 @@ export default function ModoGate() {
     } catch {}
   }, [])
 
+  useEffect(() => {
+    if (stage !== 'app' || selectedMode !== 'corre' || typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent('correaqui:push-context', {
+      detail: { context: 'modo_trabalhar' },
+    }))
+  }, [stage, selectedMode])
+
   const persistPreferredMode = useCallback(async (mode) => {
     if (!uid) return
     try {

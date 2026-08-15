@@ -19,6 +19,22 @@ function text(value, fallback = '', max = 160) {
   return normalized.slice(0, max)
 }
 
+function validFirebaseId(value) {
+  return /^[a-zA-Z0-9_-]{1,128}$/.test(String(value || ''))
+}
+
+function logPushError(label, error) {
+  const safe = {
+    code: String(error?.code || 'unknown').slice(0, 100),
+    name: String(error?.name || 'Error').slice(0, 80),
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    console.error(label, { ...safe, message: String(error?.message || '').slice(0, 240) })
+    return
+  }
+  console.error(label, safe)
+}
+
 function stringData(payload) {
   return Object.fromEntries(
     Object.entries(payload || {})
@@ -34,7 +50,7 @@ function getParticipantIds(pedido) {
 
   return {
     criadorId: String(firstId(criador.id, criador.uid, criador.userId, pedido?.criadorUid, pedido?.clienteId, pedido?.autorUid)).trim(),
-    aceiteId: String(firstId(aceite.id, aceite.uid, aceite.userId, aceite.por, pedido?.profissionalUid, pedido?.destinatarioUid, pedido?.aceitadorUid)).trim(),
+    aceiteId: String(firstId(aceite.id, aceite.uid, aceite.userId, aceite.por, pedido?.profissionalId, pedido?.profissionalUid, pedido?.destinatarioUid, pedido?.aceitadorUid)).trim(),
   }
 }
 
@@ -61,7 +77,7 @@ function pushErrorPayload(error, fallbackReason = 'push_send_failed') {
     ok: false,
     reason,
     code,
-    message,
+    message: process.env.NODE_ENV !== 'production' ? message : '',
   }
 }
 
@@ -112,8 +128,11 @@ export async function POST(request) {
     const toUid = text(body.toUid || body.userId, '', 128)
     const pedidoId = text(body.pedidoId || body.privateRequestId, '', 128)
 
-    if (!toUid) {
+    if (!toUid || !validFirebaseId(toUid)) {
       return NextResponse.json({ ok: false, error: 'missing_target' }, { status: 400 })
+    }
+    if (pedidoId && !validFirebaseId(pedidoId)) {
+      return NextResponse.json({ ok: false, error: 'invalid_pedido' }, { status: 400 })
     }
 
     let adminAuth
@@ -124,7 +143,7 @@ export async function POST(request) {
       db = getFirebaseAdminDatabase()
       messaging = getFirebaseAdminMessaging()
     } catch (error) {
-      console.error('[push/send] Firebase Admin init failed:', error)
+      logPushError('[push/send] Firebase Admin init failed', error)
       return NextResponse.json(pushErrorPayload(error, 'firebase_admin_init_failed'), { status: 500 })
     }
 
@@ -212,16 +231,14 @@ export async function POST(request) {
         },
       })
     } catch (error) {
-      console.error('[push/send] FCM send failed:', error)
+      logPushError('[push/send] FCM send failed', error)
       return NextResponse.json(pushErrorPayload(error), { status: 502 })
     }
 
     await disableInvalidTokens(db, toUid, tokenEntries, result.responses || [])
     const failures = (result.responses || [])
-      .map((response, index) => ({
-        tokenKey: tokenEntries[index]?.key,
+      .map((response) => ({
         code: response?.error?.code,
-        message: response?.error?.message,
       }))
       .filter((failure) => failure.code)
 
@@ -232,7 +249,7 @@ export async function POST(request) {
       failures: failures.slice(0, 5),
     })
   } catch (error) {
-    console.error('[push/send] Unexpected error:', error)
+    logPushError('[push/send] Unexpected error', error)
     return NextResponse.json(pushErrorPayload(error), { status: 500 })
   }
 }

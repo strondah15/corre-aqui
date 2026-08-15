@@ -8,9 +8,14 @@ import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento }
 import { ref, push, onValue, query, limitToLast, update, serverTimestamp, get, set } from '@/lib/firebaseDebug'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
+import { createEventNotificationId } from '@/lib/eventNotifications'
 import { motion, useReducedMotion } from 'framer-motion'
 
 const chatOpenTipSessionKeys = new Set()
+
+function debugChatWarning(...args) {
+  if (process.env.NODE_ENV !== 'production') console.warn(...args)
+}
 
 function getMsgMs(v) {
   if (!v) return 0
@@ -108,15 +113,26 @@ function statusAtendimentoMeta(status) {
 
 const TIMELINE_GUIADA = ['Aceito', 'A caminho', 'Cheguei', 'Confirmar', 'Finalizado']
 
-const SUGESTOES = [
-  { label: 'Estou a caminho', texto: 'Já estou a caminho.', icon: '🚗' },
-  { label: 'Cheguei', texto: 'Cheguei ao local.', icon: '📍' },
-  { label: 'Pode me atender?', texto: 'Pode me atender?', icon: '💬' },
-  { label: 'Enviei foto', texto: 'Enviei uma foto do serviço.', icon: '📷' },
-  { label: 'Preciso de mais tempo', texto: 'Preciso de mais tempo.', icon: '⏱' },
-  { label: 'Combinar valor', texto: 'Podemos combinar o valor?', icon: '💰' },
+const SUGESTOES_CLIENTE = [
+  { label: 'Olá', texto: 'Olá! Tudo bem?', icon: '👋' },
+  { label: 'Pode vir agora?', texto: 'Pode vir agora?', icon: '🕐' },
+  { label: 'Qual o valor?', texto: 'Qual o valor?', icon: '💰' },
+  { label: 'Previsão', texto: 'Pode me passar uma previsão?', icon: '📍' },
+  { label: 'Estou no local', texto: 'Estou no local.', icon: '📍' },
   { label: 'Obrigado', texto: 'Obrigado!', icon: '✨' },
-  { label: 'Serviço concluído', texto: 'O serviço foi concluído.', icon: '✅' },
+  { label: 'Confirmar horário', texto: 'Pode confirmar o horário?', icon: '📅' },
+  { label: 'Mais informações?', texto: 'Precisa de mais alguma informação?', icon: '💬' },
+]
+
+const SUGESTOES_TRABALHADOR = [
+  { label: 'Vi seu pedido', texto: 'Olá! Vi seu pedido.', icon: '👋' },
+  { label: 'Posso atender', texto: 'Posso atender.', icon: '✅' },
+  { label: 'Estou a caminho', texto: 'Estou a caminho.', icon: '🚗' },
+  { label: 'Cheguei', texto: 'Cheguei!', icon: '📍' },
+  { label: 'Mais detalhes', texto: 'Pode me passar mais detalhes?', icon: '💬' },
+  { label: 'Melhor horário', texto: 'Qual o melhor horário?', icon: '📅' },
+  { label: 'Combinar valor', texto: 'Podemos combinar o valor?', icon: '💰' },
+  { label: 'Serviço concluído', texto: 'Serviço concluído.', icon: '✅' },
 ]
 
 function getGuidedTimelineStep(status) {
@@ -563,8 +579,7 @@ export default function ChatMensagens({
 
         const agora = Date.now()
         const payload = {
-          texto:
-            'Este chat é exclusivo deste atendimento.\nCombine por aqui:\n• horário\n• endereço\n• detalhes do serviço\n• valor final, se necessário\nTudo ficará registrado no aplicativo.',
+          texto: 'Este chat é exclusivo deste atendimento. Combine detalhes importantes por aqui.',
           sistema: true,
           evento: 'atendimento_intro',
           criadoEm: agora,
@@ -578,7 +593,7 @@ export default function ChatMensagens({
         const mirrorSnap = await get(mirrorRef).catch(() => null)
         if (!mirrorSnap?.exists?.()) await set(mirrorRef, payload).catch(() => {})
       } catch (error) {
-        console.warn('Não foi possível criar a mensagem inicial do atendimento:', error)
+        debugChatWarning('Não foi possível criar a mensagem inicial do atendimento:', error)
       }
     }
 
@@ -595,6 +610,58 @@ export default function ChatMensagens({
       abertoEm: Date.now(),
     }).catch(() => {})
   }, [pedidoId, meuId])
+
+  useEffect(() => {
+    if (!pedidoId || typeof window === 'undefined') return undefined
+
+    window.dispatchEvent(new CustomEvent('correaqui:active-chat', {
+      detail: { pedidoId, active: true },
+    }))
+    window.dispatchEvent(new CustomEvent('correaqui:push-context', {
+      detail: { context: 'primeiro_atendimento' },
+    }))
+
+    return () => {
+      window.dispatchEvent(new CustomEvent('correaqui:active-chat', {
+        detail: { pedidoId, active: false },
+      }))
+    }
+  }, [pedidoId])
+
+  useEffect(() => {
+    if (!pedidoId || !meuId) return undefined
+    let cancelled = false
+
+    const markMessageNotificationsRead = async () => {
+      const roots = ['notifications', 'notificacoes']
+      const results = await Promise.allSettled(roots.map(async (rootName) => {
+        const rootRef = ref(database, `${rootName}/${meuId}`)
+        const snapshot = await get(rootRef)
+        if (cancelled || !snapshot.exists()) return
+
+        const updates = {}
+        Object.entries(snapshot.val() || {}).forEach(([notificationId, notification]) => {
+          const type = String(notification?.tipo || notification?.type || '').toLowerCase()
+          const sameChat = String(notification?.pedidoId || notification?.conversaId || '') === String(pedidoId)
+          if (sameChat && ['mensagem_chat', 'nova_mensagem'].includes(type) && notification?.lida !== true && notification?.read !== true) {
+            updates[`${notificationId}/lida`] = true
+            updates[`${notificationId}/read`] = true
+            updates[`${notificationId}/lidaEm`] = Date.now()
+          }
+        })
+        if (Object.keys(updates).length) await update(rootRef, updates)
+      }))
+
+      if (results.every((result) => result.status === 'rejected')) {
+        debugChatWarning('[NOTIFICATIONS] não foi possível marcar as mensagens da conversa como lidas')
+      }
+    }
+
+    void markMessageNotificationsRead()
+    return () => {
+      cancelled = true
+    }
+  }, [meuId, pedidoId])
 
   useEffect(() => {
     return () => {
@@ -684,7 +751,7 @@ export default function ChatMensagens({
     if (!pedidoId || !meuId) return
 
     const agora = Date.now()
-    const preview = (textoMsg || previewAnexo(anexo, duracao) || (audio ? `Áudio de ${formatarTempo(duracao)}` : 'Nova mensagem')).slice(0, 140)
+    const preview = (textoMsg || previewAnexo(anexo, duracao) || (audio ? `Áudio de ${formatarTempo(duracao)}` : 'Nova mensagem')).slice(0, 96)
     const payload = {
       tipo: anexo?.tipo || (audio ? 'audio' : 'texto'),
       texto: textoMsg || '',
@@ -699,7 +766,8 @@ export default function ChatMensagens({
       criadoEmServer: serverTimestamp(),
     }
 
-    await push(ref(database, `chats/${pedidoId}`), payload)
+    const messageRef = await push(ref(database, `chats/${pedidoId}`), payload)
+    const messageId = messageRef.key || `message_${agora}`
 
     const baseConversa = {
       pedidoId,
@@ -731,7 +799,15 @@ export default function ChatMensagens({
         unread: true,
       }).catch(() => {})
 
-      await update(ref(database, `notificacoes/${outroId}/notif_${agora}`), {
+      const notificationId = createEventNotificationId({
+        type: 'NOVA_MENSAGEM',
+        sourceId: `${pedidoId}_${messageId}`,
+        toUid: outroId,
+        state: 'enviada',
+      })
+      const notificationPayload = {
+        id: notificationId,
+        eventId: notificationId,
         tipo: 'mensagem_chat',
         pedidoId,
         conversaId: pedidoId,
@@ -740,9 +816,18 @@ export default function ChatMensagens({
         prioridade: 'normal',
         acao: 'abrir_chat',
         lida: false,
+        read: false,
         criadoEm: agora,
+        action: { label: 'Abrir conversa', screen: 'chat', id: pedidoId },
         autor: { id: meuId, nome: nomeMeu },
-      }).catch(() => {})
+      }
+      const mirrorResults = await Promise.allSettled([
+        set(ref(database, `notifications/${outroId}/${notificationId}`), notificationPayload),
+        set(ref(database, `notificacoes/${outroId}/${notificationId}`), notificationPayload),
+      ])
+      if (mirrorResults.every((result) => result.status === 'rejected')) {
+        debugChatWarning('[NOTIFICATIONS] não foi possível registrar a nova mensagem nos espelhos in-app')
+      }
 
       enviarPushParaUsuario(outroId, {
         type: 'nova_mensagem',
@@ -752,7 +837,8 @@ export default function ChatMensagens({
         mensagem: preview,
         prioridade: 'normal',
         action: { label: 'Abrir conversa', screen: 'chat', id: pedidoId },
-        notificationId: `notif_${agora}`,
+        notificationId,
+        eventId: notificationId,
       })
     }
   }
@@ -792,7 +878,7 @@ export default function ChatMensagens({
         setTimeout(() => pararGravacao(), 120)
       }
     } catch (error) {
-      console.warn('Erro ao iniciar gravação:', error)
+      debugChatWarning('Erro ao iniciar gravação:', error)
       onToast?.({ type: 'error', title: 'Microfone indisponível', message: 'Não foi possível acessar o microfone.' })
     }
   }
@@ -828,7 +914,7 @@ export default function ChatMensagens({
         const anexo = await subirArquivoChat(file, 'audio')
         await registrarMensagem({ anexo, duracao: duracaoAtual })
       } catch (error) {
-        console.warn('Erro ao salvar áudio:', error)
+        debugChatWarning('Erro ao salvar áudio:', error)
         onToast?.({
           type: 'error',
           title: 'Falha no audio',
@@ -868,7 +954,7 @@ export default function ChatMensagens({
       setTexto('')
       limparAnexoSelecionado()
     } catch (error) {
-      console.warn('Erro ao enviar mensagem:', error)
+      debugChatWarning('Erro ao enviar mensagem:', error)
       const grande = error?.message === 'arquivo_grande'
       onToast?.({
         type: 'error',
@@ -955,7 +1041,7 @@ export default function ChatMensagens({
 
       onToast?.({ type: 'success', title: 'Aviso enviado', message: `${outroNome} recebeu um alerta para abrir a conversa.` })
     } catch (error) {
-      console.warn('Erro ao chamar atencao:', error)
+      debugChatWarning('Erro ao chamar atencao:', error)
       onToast?.({ type: 'error', title: 'Nao foi possivel avisar', message: 'Tente novamente em instantes.' })
     } finally {
       setChamandoAtencao(false)
@@ -965,11 +1051,23 @@ export default function ChatMensagens({
   async function registrarMensagemSistema(texto, evento) {
     if (!pedidoId || !meuId) return
     const agora = Date.now()
-    const msgId = `msg_${evento || 'sistema'}_${agora}`
+    const eventoId = evento || 'sistema'
+    const eventosUnicos = new Set([
+      'pedido_aceito',
+      'atendimento_intro',
+      'atendimento_iniciado',
+      'atendimento_chegou',
+      'finalizacao_solicitada',
+      'atendimento_finalizado',
+      'agendamento_solicitado',
+      'agendamento_aceito',
+      'agendamento_recusado',
+    ])
+    const msgId = eventosUnicos.has(eventoId) ? `msg_${eventoId}` : `msg_${eventoId}_${agora}`
     const payload = {
       texto,
       sistema: true,
-      evento: evento || 'sistema',
+      evento: eventoId,
       criadoEm: agora,
       hora: agora,
       autorId: 'sistema',
@@ -1083,7 +1181,7 @@ export default function ChatMensagens({
 
       onToast?.({ type: 'success', title: 'Atendimento finalizado', message: 'O cliente foi avisado para avaliar.' })
     } catch (error) {
-      console.warn('Erro ao finalizar atendimento:', error)
+      debugChatWarning('Erro ao finalizar atendimento:', error)
       onToast?.({ type: 'error', title: 'Falha ao finalizar', message: 'Tente novamente em instantes.' })
     } finally {
       setEnviando(false)
@@ -1127,10 +1225,10 @@ export default function ChatMensagens({
           ? 'finalizacao_solicitada'
           : 'atendimento_finalizado'
       const textoEvento = nextStatus === ATENDIMENTO_STATUS.CHEGOU
-        ? `${profissionalNome} informou que chegou ao local.`
+        ? `✓ ${profissionalNome} informou que chegou ao local.`
         : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-          ? `${profissionalNome} solicitou a finalização do atendimento.`
-          : `${clienteNome} confirmou que o atendimento foi concluído.`
+          ? `✓ ${profissionalNome} solicitou a finalização do atendimento.`
+          : '✓ Atendimento finalizado com sucesso.'
       const patch = nextStatus === ATENDIMENTO_STATUS.CHEGOU
         ? { chegouEm: agora, chegouPor: { id: meuId, nome: actorName } }
         : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
@@ -1163,18 +1261,38 @@ export default function ChatMensagens({
       }
 
       if (outroId) {
-        const notificationId = `notif_atendimento_${evento}_${agora}`
+        const notificationId = createEventNotificationId({
+          type: evento,
+          sourceId: pedidoId,
+          toUid: outroId,
+          state: nextStatus,
+        })
+        const notificationTitle = nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? 'Seu profissional chegou'
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? 'Confirme a conclusão'
+            : 'Serviço concluído ✅'
+        const notificationMessage = nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? `${profissionalNome} informou que chegou ao local.`
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? `${profissionalNome} solicitou a finalização do atendimento.`
+            : 'O cliente confirmou a conclusão do atendimento.'
+        const notificationAction = nextStatus === ATENDIMENTO_STATUS.FINALIZADO
+          ? { label: 'Ver histórico', screen: 'ver_historico', id: pedidoId }
+          : { label: 'Abrir atendimento', screen: 'chat', id: pedidoId }
         const notification = {
           id: notificationId,
+          eventId: notificationId,
           tipo: evento,
-          titulo: nextStatus === ATENDIMENTO_STATUS.CHEGOU ? 'Profissional chegou' : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO ? 'Finalização solicitada' : 'Atendimento concluído',
-          mensagem: textoEvento,
+          titulo: notificationTitle,
+          mensagem: notificationMessage,
           pedidoId,
           fromUid: meuId,
           toUid: outroId,
           lida: false,
+          read: false,
           criadoEm: agora,
-          action: { label: 'Abrir atendimento', screen: 'chat', id: pedidoId },
+          action: notificationAction,
           autor: { id: meuId, nome: actorName },
         }
         updates[`notifications/${outroId}/${notificationId}`] = notification
@@ -1183,15 +1301,35 @@ export default function ChatMensagens({
 
       await update(ref(database), updates)
       if (outroId) {
+        const notificationId = createEventNotificationId({
+          type: evento,
+          sourceId: pedidoId,
+          toUid: outroId,
+          state: nextStatus,
+        })
+        const notificationTitle = nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? 'Seu profissional chegou'
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? 'Confirme a conclusão'
+            : 'Serviço concluído ✅'
+        const notificationMessage = nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? `${profissionalNome} informou que chegou ao local.`
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? `${profissionalNome} solicitou a finalização do atendimento.`
+            : 'O cliente confirmou a conclusão do atendimento.'
+        const notificationAction = nextStatus === ATENDIMENTO_STATUS.FINALIZADO
+          ? { label: 'Ver histórico', screen: 'ver_historico', id: pedidoId }
+          : { label: 'Abrir atendimento', screen: 'chat', id: pedidoId }
         enviarPushParaUsuario(outroId, {
           type: evento,
           pedidoId,
           conversaId: pedidoId,
-          titulo: nextStatus === ATENDIMENTO_STATUS.CHEGOU ? 'Profissional chegou' : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO ? 'Finalização solicitada' : 'Atendimento concluído',
-          mensagem: textoEvento,
+          titulo: notificationTitle,
+          mensagem: notificationMessage,
           prioridade: 'alta',
-          action: { label: 'Abrir atendimento', screen: 'chat', id: pedidoId },
+          action: notificationAction,
           notificationId,
+          eventId: notificationId,
         })
       }
       if (nextStatus === ATENDIMENTO_STATUS.CHEGOU) {
@@ -1212,7 +1350,7 @@ export default function ChatMensagens({
       }
       onToast?.({ type: 'success', title: 'Atendimento atualizado', message: textoEvento })
     } catch (error) {
-      console.warn('Erro ao avançar atendimento no chat:', error)
+      debugChatWarning('Erro ao avançar atendimento no chat:', error)
       onToast?.({ type: 'error', title: 'Falha no atendimento', message: error?.message || 'Tente novamente.' })
     } finally {
       setEnviando(false)
@@ -1269,8 +1407,9 @@ export default function ChatMensagens({
   const categoriaSoft = categoriaMeta?.soft || '#fff7cc'
   const pedidoIcon = pedido?.categoriaIcon || pedido?.icone || '⚡'
   const guidedTimelineStep = getGuidedTimelineStep(pedido?.status)
-  const sugestoesVisiveis = SUGESTOES.filter((sugestao) => {
+  const sugestoesVisiveis = (souClienteAtendimento ? SUGESTOES_CLIENTE : SUGESTOES_TRABALHADOR).filter((sugestao) => {
     if (pedidoStatus === ATENDIMENTO_STATUS.CANCELADO) return false
+    if (souClienteAtendimento) return true
     if (sugestao.label === 'Cheguei') return pedidoStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
     if (sugestao.label === 'Serviço concluído') return pedidoStatus === ATENDIMENTO_STATUS.FINALIZADO
     if (sugestao.label === 'Estou a caminho') {

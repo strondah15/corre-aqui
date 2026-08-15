@@ -1,8 +1,14 @@
-const CACHE_NAME = 'corre-aqui-static-v3'
+const CACHE_NAME = 'corre-aqui-static-v4'
 const STATIC_ASSETS = [
   '/',
   '/manifest.webmanifest',
-  '/corre-aqui-icon-192.png',
+  '/favicon.png',
+  '/apple-touch-icon.png',
+  '/icons/corre-aqui-192.png',
+  '/icons/corre-aqui-512.png',
+  '/icons/corre-aqui-maskable-192.png',
+  '/icons/corre-aqui-maskable-512.png',
+  '/icons/corre-aqui-notification-96.png',
 ]
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 const IS_LOCAL_DEV = LOCAL_HOSTS.has(self.location.hostname)
@@ -17,7 +23,21 @@ try {
   importScripts('https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js')
   firebaseMessagingImported = true
 } catch (error) {
-  console.warn('[Corre Aqui SW] Firebase Messaging scripts indisponiveis:', error)
+  if (IS_LOCAL_DEV) console.warn('[Corre Aqui SW] Firebase Messaging scripts indisponiveis:', error)
+}
+
+function pushDebugEnabled(data = {}) {
+  return IS_LOCAL_DEV || data.pushDebug === '1'
+}
+
+function logPushDiagnostic(data = {}, deduplicated = false, context = 'background') {
+  if (!pushDebugEnabled(data)) return
+  console.debug('[PUSH] evento recebido')
+  console.debug('[PUSH] eventId:', String(data.eventId || 'ausente').slice(0, 160))
+  console.debug('[PUSH] tipo:', String(data.type || data.tipo || 'notification').slice(0, 80))
+  console.debug('[PUSH] destino:', notificationTargetUrl(data))
+  console.debug('[PUSH] foreground/background:', context)
+  console.debug('[PUSH] deduplicado:', deduplicated ? 'sim' : 'nao')
 }
 
 function notificationTargetUrl(data = {}) {
@@ -79,7 +99,10 @@ function showCorreNotification(payload = {}) {
   const lastShownAt = recentNotificationTags.get(tag) || 0
   const lastKeyAt = recentNotificationKeys.get(key) || 0
 
-  if (now - lastShownAt < 3000 || now - lastKeyAt < 3000) return Promise.resolve()
+  if (now - lastShownAt < 3000 || now - lastKeyAt < 3000) {
+    logPushDiagnostic(data, true)
+    return Promise.resolve()
+  }
 
   recentNotificationTags.set(tag, now)
   recentNotificationKeys.set(key, now)
@@ -95,12 +118,17 @@ function showCorreNotification(payload = {}) {
     .slice(0, 2)
 
   return self.registration.getNotifications(tag).then((existing) => {
-    if (existing.length) return null
+    if (existing.length) {
+      logPushDiagnostic(data, true)
+      return null
+    }
+
+    logPushDiagnostic(data, false)
 
     return self.registration.showNotification(title, {
     body,
-    icon: data.icon || '/corre-aqui-icon-192.png',
-    badge: data.badge || '/corre-aqui-icon-192.png',
+    icon: data.icon || '/icons/corre-aqui-192.png',
+    badge: data.badge || '/icons/corre-aqui-notification-96.png',
     image: data.image || undefined,
     tag,
     renotify: data.renotify === undefined || asBoolean(data.renotify),
@@ -112,8 +140,6 @@ function showCorreNotification(payload = {}) {
       type: data.type || data.tipo || '',
       pedidoId: data.pedidoId || '',
       conversaId: data.conversaId || '',
-      fromUid: data.fromUid || '',
-      toUid: data.toUid || '',
       eventId: data.eventId || '',
       actionLabel: data.actionLabel || '',
       actionScreen: data.actionScreen || '',
@@ -175,14 +201,9 @@ async function initFirebaseMessaging() {
 
       if (!self.firebase?.apps?.length) self.firebase.initializeApp(config)
 
-      const messaging = self.firebase.messaging()
-      messaging.onBackgroundMessage((payload) => {
-        showCorreNotification(payload)
-      })
-
-      return messaging
+      return self.firebase.messaging()
     } catch (error) {
-      console.warn('[Corre Aqui SW] Firebase Messaging indisponivel:', error)
+      if (IS_LOCAL_DEV) console.warn('[Corre Aqui SW] Firebase Messaging indisponivel:', error)
       return null
     }
   })()
@@ -233,14 +254,31 @@ self.addEventListener('push', (event) => {
   const title = payload?.notification?.title || payload?.data?.title
   const body = payload?.notification?.body || payload?.data?.body || payload?.data?.message
   if (!title && !body) return
-  event.waitUntil(showCorreNotification(payload))
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const hasVisibleClient = clients.some((client) => client.visibilityState === 'visible')
+      if (hasVisibleClient) {
+        logPushDiagnostic(payload?.data || {}, true, 'foreground')
+        return null
+      }
+      return showCorreNotification(payload)
+    }),
+  )
 })
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const notificationData = event.notification?.data || {}
   const selectedAction = (notificationData.actions || []).find((item) => item.action === event.action)
-  const url = notificationTargetUrl({ url: selectedAction?.url || notificationData.url || '/' })
+  const baseUrl = notificationTargetUrl({ url: selectedAction?.url || notificationData.url || '/' })
+  const eventId = String(notificationData.eventId || '')
+  let url = baseUrl
+
+  if (/^[a-zA-Z0-9_-]{1,180}$/.test(eventId)) {
+    const parsed = new URL(baseUrl, self.location.origin)
+    parsed.searchParams.set('notificationEventId', eventId)
+    url = `${parsed.pathname}${parsed.search}${parsed.hash}`
+  }
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {

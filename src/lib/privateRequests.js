@@ -4,7 +4,7 @@ import { get, push, ref, remove, serverTimestamp, set, update } from './firebase
 import { auth } from './firebase'
 import { enviarPushParaUsuario } from './pushSender'
 import { buildPushPayload } from './pushPayload'
-import { createEventNotificationId, EVENT_NOTIFICATION_TYPES } from './eventNotifications'
+import { createEventNotificationId, EVENT_NOTIFICATION_TYPES, formatEventSchedule } from './eventNotifications'
 
 const DEBUG_PRIVATE_REQUESTS = process.env.NODE_ENV !== 'production'
 
@@ -138,6 +138,7 @@ function makeNotification({
   const criadoEm = Date.now()
   return {
     id,
+    eventId: extra.eventId || id,
     tipo,
     titulo,
     mensagem,
@@ -173,6 +174,7 @@ export async function createBilateralNotification(database, options) {
     toUid: payload.toUid,
     action: payload.action,
     notificationId: id,
+    eventId: payload.eventId || id,
     criadoEm: payload.criadoEm,
   })
   const storedPayload = removeUndefined({
@@ -260,31 +262,37 @@ export async function reconcilePrivateRequestInbox({ database, uid, entries = []
             await remove(ref(database, inboxPath))
             removed = true
           } catch (error) {
-            console.error('[AGENDA] limpeza de inbox orfao falhou', {
-              path: inboxPath,
-              requestId,
-              uid: currentUid,
-              error,
-            })
+            if (DEBUG_PRIVATE_REQUESTS) {
+              console.error('[AGENDA] limpeza de inbox orfao falhou', {
+                path: inboxPath,
+                requestId,
+                uid: currentUid,
+                error,
+              })
+            }
           }
         }
 
-        console.warn('[AGENDA] inbox orfao ocultado', {
-          requestId,
-          primaryPath,
-          inboxPath,
-          uid: currentUid,
-          ownsIndex,
-          removed,
-        })
+        if (DEBUG_PRIVATE_REQUESTS) {
+          console.warn('[AGENDA] inbox orfao ocultado', {
+            requestId,
+            primaryPath,
+            inboxPath,
+            uid: currentUid,
+            ownsIndex,
+            removed,
+          })
+        }
         return { item, valid: false, orphan: true, removed, requestId }
       } catch (error) {
-        console.error('[AGENDA] verificacao de inbox falhou', {
-          requestId,
-          primaryPath,
-          uid: currentUid,
-          error,
-        })
+        if (DEBUG_PRIVATE_REQUESTS) {
+          console.error('[AGENDA] verificacao de inbox falhou', {
+            requestId,
+            primaryPath,
+            uid: currentUid,
+            error,
+          })
+        }
         // A transient read failure must not hide a valid request from the agenda.
         return { item, valid: true, orphan: false, removed: false, requestId }
       }
@@ -358,21 +366,21 @@ export async function createPrivateRequest({
   await updateWithTrace(database, payload)
 
   const isAgenda = tipo === 'agendamento'
-  const scheduleEventId = isAgenda
-    ? createEventNotificationId({
-        type: EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO,
-        sourceId: requestId,
-        toUid: profissionalId,
-        state: 'pendente',
-      })
-    : undefined
+  const requestEventType = isAgenda ? EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO : 'PEDIDO_DIRETO_CRIADO'
+  const requestEventId = createEventNotificationId({
+    type: requestEventType,
+    sourceId: requestId,
+    toUid: profissionalId,
+    state: 'pendente',
+  })
+  const scheduleText = formatEventSchedule(request.data, request.hora)
   const notification = await createBilateralNotification(database, {
-    id: scheduleEventId,
+    id: requestEventId,
     tipo: isAgenda ? 'agendamento_criado' : 'pedido_direto_criado',
-    titulo: isAgenda ? 'Nova solicitação de agendamento' : 'Novo pedido direto',
+    titulo: isAgenda ? 'Nova solicitação de agendamento 📅' : 'Você recebeu uma solicitação',
     mensagem: isAgenda
-      ? `${request.clienteNome} solicitou agendamento para ${request.servicoTitulo}`
-      : `${request.clienteNome} solicitou ${request.servicoTitulo}`,
+      ? `${request.clienteNome} quer agendar ${request.servicoTitulo}${scheduleText ? ` para ${scheduleText}` : ''}.`
+      : `${request.clienteNome} solicitou seu serviço.`,
     pedidoId: requestId,
     servicoId: request.servicoId,
     fromUid: clienteId,
@@ -385,7 +393,7 @@ export async function createPrivateRequest({
     extra: {
       ...(isAgenda
         ? {
-            eventId: scheduleEventId,
+            eventId: requestEventId,
             tipoEvento: EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO,
             eventoStatus: 'pendente',
             origem: 'privateRequest',
@@ -423,6 +431,7 @@ export async function createPrivateRequest({
     toUid: profissionalId,
     action: notification?.action,
     notificationId: notification?.id,
+    eventId: notification?.eventId || requestEventId,
     prioridade: 'alta',
   })
 
@@ -469,8 +478,8 @@ export async function notifyPublicRequestAccepted({ database, pedido = {}, profi
   const notification = await createBilateralNotification(database, {
     id: eventId,
     tipo: 'corre_aceito',
-    titulo: 'Seu pedido foi aceito',
-    mensagem: `${profissionalNome} aceitou seu pedido. Vocês já podem conversar.`,
+    titulo: 'Seu pedido foi aceito! 🎉',
+    mensagem: `${profissionalNome} aceitou seu pedido: ${servicoTitulo}.`,
     pedidoId,
     servicoId: getServicoId(pedido) || undefined,
     fromUid: profissionalId,
@@ -512,6 +521,7 @@ export async function notifyPublicRequestAccepted({ database, pedido = {}, profi
     toUid: clienteId,
     action: notification?.action,
     notificationId: eventId,
+    eventId,
     prioridade: 'alta',
   })
 
@@ -549,22 +559,26 @@ export async function respondPrivateRequest({ database, request = {}, profission
           removedFromInbox = true
         }
       } catch (error) {
-        console.error('[AGENDA] nao foi possivel remover inbox orfao', {
-          path: inboxPath,
-          requestId,
-          authUid: currentUid,
-          error,
-        })
+        if (DEBUG_PRIVATE_REQUESTS) {
+          console.error('[AGENDA] nao foi possivel remover inbox orfao', {
+            path: inboxPath,
+            requestId,
+            authUid: currentUid,
+            error,
+          })
+        }
       }
     }
 
-    console.error('[AGENDA] solicitacao principal ausente', {
-      path: requestPath,
-      inboxPath,
-      requestId,
-      authUid: currentUid || null,
-      removedFromInbox,
-    })
+    if (DEBUG_PRIVATE_REQUESTS) {
+      console.error('[AGENDA] solicitacao principal ausente', {
+        path: requestPath,
+        inboxPath,
+        requestId,
+        authUid: currentUid || null,
+        removedFromInbox,
+      })
+    }
     return {
       ok: false,
       stale: true,
@@ -575,6 +589,8 @@ export async function respondPrivateRequest({ database, request = {}, profission
 
   request = { ...request, ...storedRequest, id: requestId }
   const tipo = safeStr(request.tipo || 'pedido_direto')
+  const isAgenda = tipo === 'agendamento'
+  const scheduleText = formatEventSchedule(request.data, request.hora)
   const clienteId = safeStr(request.clienteId)
   const profissionalId = safeStr(request.profissionalId || getUid(profissional))
   if (!database || !requestId || !clienteId || !profissionalId) {
@@ -643,15 +659,28 @@ export async function respondPrivateRequest({ database, request = {}, profission
     }
     updates[`usersChats/${clienteId}/${requestId}`] = true
     updates[`usersChats/${profissionalId}/${requestId}`] = true
-    updates[`chats/${requestId}/msg_${agora}`] = {
-      texto: `${profNome} aceitou o pedido.`,
+    const acceptedSystemId = isAgenda ? 'msg_agendamento_aceito' : 'msg_pedido_aceito'
+    if (isAgenda && scheduleText) {
+      updates[`chats/${requestId}/msg_agendamento_solicitado`] = {
+        texto: `📅 Solicitação de agendamento enviada para ${scheduleText}.`,
+        sistema: true,
+        criadoEm: request.criadoEm || agora,
+        hora: request.criadoEm || agora,
+        autorId: 'sistema',
+        autorNome: 'Sistema',
+      }
+      updates[`mensagens/${requestId}/msg_agendamento_solicitado`] =
+        updates[`chats/${requestId}/msg_agendamento_solicitado`]
+    }
+    updates[`chats/${requestId}/${acceptedSystemId}`] = {
+      texto: isAgenda && scheduleText ? `✓ Agendamento confirmado para ${scheduleText}.` : `✓ ${profNome} aceitou o pedido.`,
       sistema: true,
       criadoEm: agora,
       hora: agora,
       autorId: 'sistema',
       autorNome: 'Sistema',
     }
-    updates[`mensagens/${requestId}/msg_${agora}`] = updates[`chats/${requestId}/msg_${agora}`]
+    updates[`mensagens/${requestId}/${acceptedSystemId}`] = updates[`chats/${requestId}/${acceptedSystemId}`]
   }
 
   const payload = removeUndefined(updates)
@@ -679,7 +708,6 @@ export async function respondPrivateRequest({ database, request = {}, profission
     },
   })
 
-  const isAgenda = tipo === 'agendamento'
   const accepted = finalStatus === 'aceito' || finalStatus === 'agendado'
   if (isAgenda) {
     const sourceEventId = createEventNotificationId({
@@ -703,7 +731,7 @@ export async function respondPrivateRequest({ database, request = {}, profission
       }),
     )
     results.forEach((result) => {
-      if (result.status === 'rejected') {
+      if (result.status === 'rejected' && DEBUG_PRIVATE_REQUESTS) {
         console.warn('[AGENDA] resposta salva, mas o balão original não foi atualizado:', result.reason)
       }
     })
@@ -712,14 +740,17 @@ export async function respondPrivateRequest({ database, request = {}, profission
   const acceptedEventType = isAgenda
     ? EVENT_NOTIFICATION_TYPES.AGENDAMENTO_ACEITO
     : EVENT_NOTIFICATION_TYPES.PEDIDO_ACEITO
-  const responseEventId = accepted
-    ? createEventNotificationId({
-        type: acceptedEventType,
-        sourceId: requestId,
-        toUid: clienteId,
-        state: finalStatus,
-      })
-    : undefined
+  const responseEventType = accepted
+    ? acceptedEventType
+    : isAgenda
+      ? 'AGENDAMENTO_RECUSADO'
+      : 'PEDIDO_DIRETO_RECUSADO'
+  const responseEventId = createEventNotificationId({
+    type: responseEventType,
+    sourceId: requestId,
+    toUid: clienteId,
+    state: finalStatus,
+  })
   const profissionalFotoURL = pickText(
     profissional.fotoURL,
     profissional.photoURL,
@@ -737,24 +768,26 @@ export async function respondPrivateRequest({ database, request = {}, profission
         : 'pedido_direto_recusado',
     titulo: isAgenda
       ? accepted
-        ? 'Agendamento confirmado'
-        : 'Agendamento recusado'
+        ? 'Agendamento confirmado ✅'
+        : 'Atualização do agendamento'
       : accepted
-        ? 'Pedido aceito'
+        ? 'Seu pedido foi aceito! 🎉'
         : 'Pedido recusado',
     mensagem: isAgenda
       ? accepted
-        ? `${profNome} confirmou seu agendamento`
+        ? `Seu agendamento com ${profNome} foi confirmado${scheduleText ? ` para ${scheduleText}` : ''}.`
         : `${profNome} não poderá atender nesse horário`
       : accepted
-        ? `${profNome} aceitou seu pedido`
+        ? `${profNome} aceitou seu pedido: ${title}.`
         : `${profNome} recusou seu pedido`,
     pedidoId: requestId,
     servicoId: servicoId || undefined,
     fromUid: profissionalId,
     toUid: clienteId,
     action: accepted
-      ? { label: 'Conversar agora', screen: 'chat', id: requestId }
+      ? isAgenda
+        ? { label: 'Ver agendamento', screen: 'myOrders', id: requestId }
+        : { label: 'Conversar agora', screen: 'chat', id: requestId }
       : {
           label: isAgenda ? 'Escolher outro horário' : 'Procurar outro profissional',
           screen: 'portfolio',
@@ -805,6 +838,7 @@ export async function respondPrivateRequest({ database, request = {}, profission
     toUid: clienteId,
     action: notification?.action,
     notificationId: notification?.id,
+    eventId: notification?.eventId || responseEventId,
     prioridade: 'alta',
   })
 

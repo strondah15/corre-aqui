@@ -48,11 +48,13 @@ export const metadata = {
   },
   icons: {
     icon: [
-      { url: "/corre-aqui-icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/corre-aqui-icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/favicon.png", sizes: "48x48", type: "image/png" },
+      { url: "/icons/corre-aqui-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/corre-aqui-512.png", sizes: "512x512", type: "image/png" },
     ],
-    shortcut: "/corre-aqui-icon-192.png",
-    apple: "/apple-touch-icon.png",
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
   },
   openGraph: {
     type: "website",
@@ -63,7 +65,7 @@ export const metadata = {
     description: appDescription,
     images: [
       {
-        url: "/corre-aqui-icon-512.png",
+        url: "/icons/corre-aqui-512.png",
         width: 512,
         height: 512,
         alt: "Corre Aqui",
@@ -74,7 +76,7 @@ export const metadata = {
     card: "summary",
     title: "Corre Aqui",
     description: appDescription,
-    images: ["/corre-aqui-icon-512.png"],
+    images: ["/icons/corre-aqui-512.png"],
   },
   robots: {
     index: true,

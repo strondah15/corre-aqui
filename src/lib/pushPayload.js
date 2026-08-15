@@ -1,5 +1,5 @@
-export const PUSH_DEFAULT_ICON = '/corre-aqui-icon-192.png'
-export const PUSH_DEFAULT_BADGE = '/corre-aqui-icon-192.png'
+export const PUSH_DEFAULT_ICON = '/icons/corre-aqui-192.png'
+export const PUSH_DEFAULT_BADGE = '/icons/corre-aqui-notification-96.png'
 
 const ROUTE_BY_SCREEN = {
   agenda: '/corre/agenda',
@@ -11,6 +11,7 @@ const ROUTE_BY_SCREEN = {
   chat: '/chat',
   portfolio: '/cliente',
   ver_historico: '/pedidos',
+  avaliacoes: '/perfil',
   notifications: '/',
 }
 
@@ -24,7 +25,7 @@ const TYPE_ALIASES = {
 }
 
 const SCREEN_BY_TYPE = {
-  pedido_aceito: 'pedido',
+  pedido_aceito: 'chat',
   nova_mensagem: 'chat',
   solicitacao_privada: 'agenda',
   agendamento_solicitado: 'agenda',
@@ -35,7 +36,7 @@ const SCREEN_BY_TYPE = {
   finalizacao_solicitada: 'chat',
   atendimento_finalizado: 'chat',
   pedido_cancelado: 'myorders',
-  avaliacao_recebida: 'myorders',
+  avaliacao_recebida: 'avaliacoes',
   servico_portfolio_solicitado: 'agenda',
   denuncia_atualizada: 'notifications',
   plano_ativado: 'notifications',
@@ -51,11 +52,12 @@ const ACTION_LABELS = {
   chat: 'Abrir conversa',
   portfolio: 'Ver profissionais',
   ver_historico: 'Ver historico',
+  avaliacoes: 'Ver avaliacoes',
   notifications: 'Abrir notificacoes',
 }
 
 const ACTION_LABELS_BY_TYPE = {
-  pedido_aceito: 'Ver pedido',
+  pedido_aceito: 'Abrir conversa',
   nova_mensagem: 'Abrir conversa',
   solicitacao_privada: 'Ver pedido',
   agendamento_solicitado: 'Ver agenda',
@@ -121,6 +123,7 @@ export function resolvePushRoute(input = {}) {
     return `${base}/${encodeURIComponent(id)}`
   }
   if (selectedScreen === 'myorders' || selectedScreen === 'ver_historico') return `${base}?pedidoId=${encodeURIComponent(id)}`
+  if (selectedScreen === 'avaliacoes') return `${base}?tab=profissional&section=avaliacoes&pedidoId=${encodeURIComponent(id)}`
   if (selectedScreen === 'portfolio') return `${base}?screen=portfolio&servicoId=${encodeURIComponent(input.servicoId || id)}`
   return base
 }
@@ -159,7 +162,10 @@ function normalizeActions(input, action, url) {
 export function buildPushPayload(input = {}) {
   const type = normalizeType(input.type || input.tipo)
   const title = clean(input.title || input.titulo, 'Corre Aqui', 80)
-  const body = clean(input.body || input.mensagem || input.message, 'Voce tem uma nova atualizacao.', 220)
+  const requestedBody = clean(input.body || input.mensagem || input.message, 'Voce tem uma nova atualizacao.', 220)
+  const body = type === 'nova_mensagem'
+    ? 'Voce recebeu uma nova mensagem no Corre Aqui.'
+    : requestedBody
   const pedidoId = clean(input.pedidoId || input.privateRequestId, '', 128)
   const conversaId = clean(input.conversaId || pedidoId, '', 128)
   const action = defaultPushAction(input)
@@ -184,8 +190,6 @@ export function buildPushPayload(input = {}) {
     url,
     pedidoId,
     conversaId,
-    fromUid: clean(input.fromUid, '', 128),
-    toUid: clean(input.toUid, '', 128),
     action,
     actions,
     data: {
@@ -193,10 +197,9 @@ export function buildPushPayload(input = {}) {
       type,
       pedidoId,
       conversaId,
-      fromUid: clean(input.fromUid, '', 128),
-      toUid: clean(input.toUid, '', 128),
       timestamp,
       origem: 'push',
+      pushDebug: process.env.NODE_ENV !== 'production' ? '1' : '',
       eventId,
       tag,
       actionLabel: action.label,

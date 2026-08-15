@@ -15,6 +15,16 @@ import {
   isEssentialEventNotification,
 } from '@/lib/eventNotifications'
 
+const DEBUG_EVENT_NOTIFICATIONS = process.env.NODE_ENV !== 'production'
+
+function logEventNotificationError(label, error) {
+  if (DEBUG_EVENT_NOTIFICATIONS) {
+    console.error(label, error)
+    return
+  }
+  console.error(label, { code: error?.code || error?.name || 'unknown' })
+}
+
 function text(...values) {
   return values.map((value) => String(value ?? '').trim()).find(Boolean) || ''
 }
@@ -202,7 +212,7 @@ export default function EventNotificationHost() {
     setDismissed(new Set())
     if (!uid) return undefined
 
-    const onError = (error) => console.error('[EVENT NOTIFICATION] falha ao ouvir notificações:', error)
+    const onError = (error) => logEventNotificationError('[EVENT NOTIFICATION] falha ao ouvir notificações:', error)
     const modernRef = query(ref(database, `notifications/${uid}`), limitToLast(40))
     const legacyRef = query(ref(database, `notificacoes/${uid}`), limitToLast(40))
     const offModern = onValue(modernRef, (snapshot) => {
@@ -248,7 +258,9 @@ export default function EventNotificationHost() {
           setSource({ id: sourceId, ...(pedidoSnapshot.val() || {}) })
         }
       } catch (error) {
-        console.warn('[EVENT NOTIFICATION] detalhes indisponíveis; usando payload persistido:', error)
+        if (DEBUG_EVENT_NOTIFICATIONS) {
+          console.warn('[EVENT NOTIFICATION] detalhes indisponíveis; usando payload persistido:', error)
+        }
       }
     })()
 
@@ -263,9 +275,9 @@ export default function EventNotificationHost() {
     const results = await Promise.allSettled(
       (item._paths || []).map((path) => update(ref(database, path), { lida: true, read: true, vistoEm })),
     )
-    results.forEach((result, index) => {
+    results.forEach((result) => {
       if (result.status === 'rejected') {
-        console.error('[EVENT NOTIFICATION] falha ao marcar como lida:', item._paths?.[index], result.reason)
+        logEventNotificationError('[EVENT NOTIFICATION] falha ao marcar como lida:', result.reason)
       }
     })
   }, [])

@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
+import { removerPushTokenDoDispositivo } from '@/lib/pushClient'
 import PerfilDrawer from './PerfilDrawer'
 
-export default function Perfil() {
+export default function Perfil({ initialTab = 'config', initialProfSection = '' }) {
   const router = useRouter()
   const [uid, setUid] = useState('')
 
@@ -19,6 +20,7 @@ export default function Perfil() {
   }, [])
 
   async function sair() {
+    if (uid) await removerPushTokenDoDispositivo(uid).catch(() => {})
     await signOut(auth).catch(() => {})
     router.replace('/')
   }
@@ -48,7 +50,13 @@ export default function Perfil() {
 
   return (
     <>
-      <PerfilDrawer open uid={uid} onClose={() => router.replace('/')} />
+      <PerfilDrawer
+        open
+        uid={uid}
+        initialTab={initialTab}
+        initialProfSection={initialProfSection}
+        onClose={() => router.replace('/')}
+      />
       <button
         type="button"
         onClick={sair}

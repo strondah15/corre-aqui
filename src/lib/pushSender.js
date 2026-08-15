@@ -41,7 +41,9 @@ export async function enviarPushParaUsuario(toUid, payload = {}) {
 
     return data
   } catch (error) {
-    console.warn('Push real nao foi enviado:', error)
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('Push real nao foi enviado:', error)
+    }
     return { ok: false, skipped: true, reason: error?.message || 'push_send_failed' }
   }
 }

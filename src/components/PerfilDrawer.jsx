@@ -9,6 +9,7 @@ import {
   ativarPushNotifications,
   desativarPushNotifications,
   getPushCapabilities,
+  removerPushTokenDoDispositivo,
   testarPushNotification,
 } from "@/lib/pushNotifications";
 import dynamic from "next/dynamic";
@@ -1656,6 +1657,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     if (!window.confirm("Deseja realmente sair da sua conta?")) return;
 
     try {
+      if (uid) await removerPushTokenDoDispositivo(uid).catch(() => {})
       await signOut(auth);
       [
         "meuId",

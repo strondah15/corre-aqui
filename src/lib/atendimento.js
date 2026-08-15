@@ -72,7 +72,9 @@ function getTransitionPaths(path, atendimentoPatch, topLevelPatch) {
 }
 
 function logTransition(stage, payload) {
-  console.info(`[ATENDIMENTO DEBUG] ${stage}`, payload)
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(`[ATENDIMENTO DEBUG] ${stage}`, payload)
+  }
 }
 
 export async function transitionAtendimento({

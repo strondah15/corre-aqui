@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "start:lan": "next start -H 0.0.0.0",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "pwa:icons": "node scripts/generate-pwa-assets.cjs"
   },
   "dependencies": {
     "firebase": "^11.10.0",

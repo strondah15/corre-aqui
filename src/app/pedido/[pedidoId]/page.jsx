@@ -14,6 +14,7 @@ import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento }
 import { notifyPublicRequestAccepted } from '@/lib/privateRequests'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
+import { createEventNotificationId } from '@/lib/eventNotifications'
 
 const MapinhaModal = dynamic(() => import('@/components/MapinhaModal'), { ssr: false })
 const LIST_STATE_PREFIX = 'correAqui:listState:v2'
@@ -546,16 +547,17 @@ function PedidoDetalhe() {
       })
 
       const mensagemSistema = {
-        texto: `${nome} aceitou o pedido.`,
+        texto: `✓ ${nome} aceitou o pedido.`,
         sistema: true,
+        evento: 'pedido_aceito',
         criadoEm: agora,
         hora: agora,
         autorId: 'sistema',
         autorNome: 'Sistema',
       }
 
-      await set(ref(database, `chats/${conversaId}/msg_${agora}`), mensagemSistema)
-      await set(ref(database, `mensagens/${conversaId}/msg_${agora}`), mensagemSistema)
+      await set(ref(database, `chats/${conversaId}/msg_pedido_aceito`), mensagemSistema)
+      await set(ref(database, `mensagens/${conversaId}/msg_pedido_aceito`), mensagemSistema)
       if (pedido?.criador?.id) await set(ref(database, `usersChats/${pedido.criador.id}/${conversaId}`), true)
       await set(ref(database, `usersChats/${user.uid}/${conversaId}`), true)
       if (pedido?.criador?.id) {
@@ -588,10 +590,15 @@ function PedidoDetalhe() {
       const conversaId = pedido.conversaId || pedido.id
       const profissionalNome = profile?.nome || user?.displayName || pedido?.aceite?.nome || 'Profissional'
       const clienteId = pedido?.criador?.id || ''
-      const notificationId = `notif_atendimento_inicio_${agora}`
-      const systemMessageId = `msg_atendimento_inicio_${agora}`
+      const notificationId = createEventNotificationId({
+        type: 'ATENDIMENTO_INICIADO',
+        sourceId: pedido.id,
+        toUid: clienteId,
+        state: ATENDIMENTO_STATUS.EM_ANDAMENTO,
+      })
+      const systemMessageId = 'msg_atendimento_iniciado'
       const systemMessage = {
-        texto: 'Você iniciou o atendimento.',
+        texto: '✓ Atendimento iniciado.',
         sistema: true,
         evento: 'atendimento_iniciado',
         criadoEm: agora,
@@ -599,8 +606,6 @@ function PedidoDetalhe() {
         autorId: 'sistema',
         autorNome: 'Sistema',
       }
-
-      systemMessage.texto = `${profissionalNome} iniciou o atendimento.`
 
       await transitionAtendimento({
         database,
@@ -634,6 +639,24 @@ function PedidoDetalhe() {
       }
 
       if (clienteId) {
+        const notificationPayload = {
+          id: notificationId,
+          eventId: notificationId,
+          tipo: 'atendimento_iniciado',
+          pedidoId: pedido.id,
+          conversaId,
+          titulo: 'Atendimento iniciado',
+          mensagem: `${profissionalNome} iniciou o atendimento do seu pedido.`,
+          prioridade: 'alta',
+          acao: 'abrir_chat',
+          lida: false,
+          read: false,
+          criadoEm: agora,
+          toUid: clienteId,
+          fromUid: user.uid,
+          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
+          autor: { id: user.uid, nome: profissionalNome },
+        }
         updates[`conversas/${clienteId}/${conversaId}/pedidoId`] = pedido.id
         updates[`conversas/${clienteId}/${conversaId}/titulo`] = pedido.titulo || 'Corre aqui'
         updates[`conversas/${clienteId}/${conversaId}/outroId`] = user.uid
@@ -649,34 +672,8 @@ function PedidoDetalhe() {
         updates[`conversas/${clienteId}/${conversaId}/updatedAt`] = agora
         updates[`conversas/${clienteId}/${conversaId}/lastById`] = user.uid
         updates[`conversas/${clienteId}/${conversaId}/lastByNome`] = profissionalNome
-        updates[`notificacoes/${clienteId}/${notificationId}`] = {
-          tipo: 'atendimento_iniciado',
-          pedidoId: pedido.id,
-          conversaId,
-          titulo: 'Atendimento iniciado',
-          mensagem: `${profissionalNome} iniciou seu atendimento.`,
-          prioridade: 'alta',
-          acao: 'abrir_chat',
-          lida: false,
-          criadoEm: agora,
-          toUid: clienteId,
-          fromUid: user.uid,
-          autor: { id: user.uid, nome: profissionalNome },
-        }
-        updates[`notifications/${clienteId}/${notificationId}`] = {
-          id: notificationId,
-          tipo: 'atendimento_iniciado',
-          titulo: 'Atendimento iniciado',
-          mensagem: `${profissionalNome} iniciou seu atendimento.`,
-          pedidoId: pedido.id,
-          servicoId: pedido?.servicoId || '',
-          fromUid: user.uid,
-          toUid: clienteId,
-          lida: false,
-          criadoEm: agora,
-          action: { label: 'Abrir conversa', screen: 'chat', id: conversaId },
-          autor: { id: user.uid, nome: profissionalNome },
-        }
+        updates[`notificacoes/${clienteId}/${notificationId}`] = notificationPayload
+        updates[`notifications/${clienteId}/${notificationId}`] = notificationPayload
       }
 
       await update(ref(database), updates)
@@ -689,10 +686,11 @@ function PedidoDetalhe() {
           pedidoId: pedido.id,
           conversaId,
           titulo: 'Atendimento iniciado',
-          mensagem: `${profissionalNome} iniciou seu atendimento.`,
+          mensagem: `${profissionalNome} iniciou o atendimento do seu pedido.`,
           prioridade: 'alta',
           action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
-          notificationId: `notif_inicio_${agora}`,
+          notificationId,
+          eventId: notificationId,
         })
       }
 
@@ -752,10 +750,21 @@ function PedidoDetalhe() {
       }
 
       const destinatario = user.uid === profissionalId ? clienteId : profissionalId
+      const notificationId = destinatario && notificationTitle && notificationMessage
+        ? createEventNotificationId({
+            type: evento,
+            sourceId: pedido.id,
+            toUid: destinatario,
+            state: nextStatus,
+          })
+        : ''
+      const notificationAction = nextStatus === ATENDIMENTO_STATUS.FINALIZADO
+        ? { label: 'Ver histórico', screen: 'ver_historico', id: pedido.id }
+        : { label: 'Abrir atendimento', screen: 'chat', id: conversaId }
       if (destinatario && notificationTitle && notificationMessage) {
-        const notificationId = `notif_atendimento_${nextStatus}_${agora}`
         const notification = {
           id: notificationId,
+          eventId: notificationId,
           tipo: evento,
           titulo: notificationTitle,
           mensagem: notificationMessage,
@@ -763,8 +772,9 @@ function PedidoDetalhe() {
           fromUid: user.uid,
           toUid: destinatario,
           lida: false,
+          read: false,
           criadoEm: agora,
-          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
+          action: notificationAction,
           autor: { id: user.uid, nome: user.uid === clienteId ? clienteNome : profissionalNome },
         }
         updates[`notifications/${destinatario}/${notificationId}`] = notification
@@ -781,8 +791,9 @@ function PedidoDetalhe() {
         autorId: 'sistema',
         autorNome: 'Sistema',
       }
-      await set(ref(database, `chats/${conversaId}/msg_${evento}_${agora}`), message)
-      await set(ref(database, `mensagens/${conversaId}/msg_${evento}_${agora}`), message).catch(() => {})
+      const systemMessageId = `msg_${evento}`
+      await set(ref(database, `chats/${conversaId}/${systemMessageId}`), message)
+      await set(ref(database, `mensagens/${conversaId}/${systemMessageId}`), message).catch(() => {})
 
       if (destinatario && notificationTitle && notificationMessage) {
         enviarPushParaUsuario(destinatario, {
@@ -792,8 +803,9 @@ function PedidoDetalhe() {
           titulo: notificationTitle,
           mensagem: notificationMessage,
           prioridade: 'alta',
-          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
-          notificationId: `notif_${evento}_${agora}`,
+          action: notificationAction,
+          notificationId,
+          eventId: notificationId,
         })
       }
       if (nextStatus === ATENDIMENTO_STATUS.CHEGOU) {
@@ -824,9 +836,9 @@ function PedidoDetalhe() {
     nextStatus: ATENDIMENTO_STATUS.CHEGOU,
     atendimentoPatch: { chegouEm: Date.now(), chegouPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
     topLevelPatch: { chegouEm: Date.now(), chegouPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
-    texto: `${pedido?.aceite?.nome || profile?.nome || 'Profissional'} informou que chegou ao local.`,
+    texto: `✓ ${pedido?.aceite?.nome || profile?.nome || 'Profissional'} informou que chegou ao local.`,
     evento: 'atendimento_chegou',
-    notificationTitle: 'Profissional chegou',
+    notificationTitle: 'Seu profissional chegou',
     notificationMessage: `${pedido?.aceite?.nome || profile?.nome || 'Profissional'} informou que chegou ao local.`,
   })
 
@@ -834,19 +846,19 @@ function PedidoDetalhe() {
     nextStatus: ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
     atendimentoPatch: { finalizacaoSolicitadaEm: Date.now(), finalizacaoSolicitadaPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
     topLevelPatch: { finalizacaoSolicitadaEm: Date.now(), finalizacaoSolicitadaPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
-    texto: `${pedido?.aceite?.nome || profile?.nome || 'Profissional'} solicitou a finalização do atendimento.`,
+    texto: `✓ ${pedido?.aceite?.nome || profile?.nome || 'Profissional'} solicitou a finalização do atendimento.`,
     evento: 'finalizacao_solicitada',
-    notificationTitle: 'Finalização solicitada',
-    notificationMessage: 'Confirme a conclusão do atendimento para finalizar o pedido.',
+    notificationTitle: 'Confirme a conclusão',
+    notificationMessage: `${pedido?.aceite?.nome || profile?.nome || 'Profissional'} solicitou a finalização do atendimento.`,
   })
 
   const confirmarConclusao = () => registrarTransicaoAtendimento({
     nextStatus: ATENDIMENTO_STATUS.FINALIZADO,
     atendimentoPatch: { finalizadoEm: Date.now(), finalizadoPor: { id: user?.uid, nome: criadorNome } },
     topLevelPatch: { finalizadoEm: Date.now(), finalizadoPor: { id: user?.uid, nome: criadorNome }, avaliacaoPendente: true },
-    texto: `${criadorNome} confirmou que o atendimento foi concluído.`,
+    texto: '✓ Atendimento finalizado com sucesso.',
     evento: 'atendimento_finalizado',
-    notificationTitle: 'Atendimento concluído',
+    notificationTitle: 'Serviço concluído ✅',
     notificationMessage: 'O cliente confirmou a conclusão do atendimento.',
   })
 

@@ -50,6 +50,10 @@ export function getEventPrimaryHref(notification = {}) {
     return `/corre/agenda?requestId=${id}`
   }
 
+  if (type === EVENT_NOTIFICATION_TYPES.AGENDAMENTO_ACEITO) {
+    return `/pedidos?pedidoId=${id}`
+  }
+
   return `/chat/${id}?voltar=cliente`
 }
 

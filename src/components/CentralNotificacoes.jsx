@@ -209,6 +209,9 @@ function getNotificationDetails(n, relatedPedido, actorProfile) {
 }
 
 function notificationKey(id, notification) {
+  const eventId = pickText(notification?.eventId, notification?.id)
+  if (eventId) return `event:${eventId}`
+
   const type = String(notification?.tipo || '').toLowerCase()
   const pedidoId = pickText(notification?.pedidoId, notification?.privateRequestId, notification?.conversaId)
   const fromUid = pickText(notification?.fromUid, notification?.autor?.id, notification?.autor?.uid)
@@ -244,7 +247,8 @@ function mergeNotificationSources(rawLegacy, rawModern) {
       ...current,
       ...notification,
       id: current.id || id,
-      lida: current.lida === true && notification.lida === true,
+      lida: current.lida === true || current.read === true || notification.lida === true || notification.read === true,
+      read: current.lida === true || current.read === true || notification.lida === true || notification.read === true,
       __sources: [...current.__sources, sourceEntry],
       __legacy: current.__legacy || source === 'legacy',
       __modern: current.__modern || source === 'modern',
@@ -366,46 +370,55 @@ export default function CentralNotificacoes({
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe?.())
   }, [actorIds])
 
-  const naoLidas = useMemo(() => notificacoes.filter((n) => n?.lida !== true).length, [notificacoes])
+  const naoLidas = useMemo(() => notificacoes.filter((n) => n?.lida !== true && n?.read !== true).length, [notificacoes])
   const lidas = notificacoes.length - naoLidas
 
   const filtradas = useMemo(() => {
-    if (filtro === 'nao_lidas') return notificacoes.filter((n) => n?.lida !== true)
-    if (filtro === 'lidas') return notificacoes.filter((n) => n?.lida === true)
+    if (filtro === 'nao_lidas') return notificacoes.filter((n) => n?.lida !== true && n?.read !== true)
+    if (filtro === 'lidas') return notificacoes.filter((n) => n?.lida === true || n?.read === true)
     return notificacoes
   }, [notificacoes, filtro])
 
   const marcarLida = useCallback(
     async (n) => {
-      if (!meuId || !n?.id || n?.lida === true) return
+      if (!meuId || !n?.id || n?.lida === true || n?.read === true) return
       const agora = Date.now()
-      const updates = {}
       const sources = n.__sources?.length ? n.__sources : [{ source: n.__modern ? 'modern' : 'legacy', id: n.id }]
-      sources.forEach(({ source, id }) => {
+      const results = await Promise.allSettled(sources.map(({ source, id }) => {
         const root = source === 'modern' ? 'notifications' : 'notificacoes'
-        updates[`${root}/${meuId}/${id}/lida`] = true
-        updates[`${root}/${meuId}/${id}/lidaEm`] = agora
-      })
-      if (Object.keys(updates).length) await update(ref(database), updates).catch(() => {})
+        return update(ref(database, `${root}/${meuId}/${id}`), {
+          lida: true,
+          read: true,
+          lidaEm: agora,
+          vistoEm: agora,
+        })
+      }))
+      if (process.env.NODE_ENV !== 'production' && results.some((result) => result.status === 'rejected')) {
+        console.warn('[NOTIFICATIONS] um espelho nao foi marcado como lido', { eventId: n.eventId || n.id })
+      }
     },
     [meuId]
   )
 
   const marcarTodas = async () => {
     if (!meuId || naoLidas === 0) return
-    const updates = {}
     const agora = Date.now()
+    const writes = []
     notificacoes.forEach((n) => {
-      if (n?.id && n?.lida !== true) {
+      if (n?.id && n?.lida !== true && n?.read !== true) {
         const sources = n.__sources?.length ? n.__sources : [{ source: n.__modern ? 'modern' : 'legacy', id: n.id }]
         sources.forEach(({ source, id }) => {
           const root = source === 'modern' ? 'notifications' : 'notificacoes'
-          updates[`${root}/${meuId}/${id}/lida`] = true
-          updates[`${root}/${meuId}/${id}/lidaEm`] = agora
+          writes.push(update(ref(database, `${root}/${meuId}/${id}`), {
+            lida: true,
+            read: true,
+            lidaEm: agora,
+            vistoEm: agora,
+          }))
         })
       }
     })
-    await update(ref(database), updates).catch(() => {})
+    await Promise.allSettled(writes)
   }
 
   const abrir = async (n) => {
@@ -429,6 +442,11 @@ export default function CentralNotificacoes({
       tipo === 'chamar_atencao_chat' ||
       tipo === 'atendimento_iniciado' ||
       (tipo === 'pedido_direto_aceito' && actionScreen !== 'myorders')
+
+    if (actionScreen === 'avaliacoes') {
+      onAction?.('professionalReviews', n)
+      return
+    }
 
     if (actionScreen === 'avaliar_pedido' || actionScreen === 'ver_historico') {
       onAction?.('myorders', n)
@@ -539,7 +557,7 @@ export default function CentralNotificacoes({
             {filtradas.map((n, index) => {
               const info = tipoInfo(n?.tipo)
               const tone = TONES[info.tone] || TONES.slate
-              const unread = n?.lida !== true
+              const unread = n?.lida !== true && n?.read !== true
               const pedidoId = n?.pedidoId || n?.privateRequestId || n?.conversaId
               const relatedPedido = (corres || []).find((pedido) => String(pedido?.id || '') === String(pedidoId || ''))
               const details = getNotificationDetails(n, relatedPedido, actorProfiles[getActorId(n, relatedPedido)])

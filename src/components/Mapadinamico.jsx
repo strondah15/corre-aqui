@@ -28,6 +28,7 @@ import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
 import { TUTORIAL_ACTIONS, TUTORIAL_EVENTS } from '@/lib/tutorial/tutorialConfig'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
+import { createEventNotificationId } from '@/lib/eventNotifications'
 import { REQUEST_BOOST_PRODUCT_ID } from '@/lib/commercialProducts'
 import { canAppearInPublicDirectory, mergePublicProfileWithPresence } from '@/lib/publicWorkProfile'
 
@@ -1586,12 +1587,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   useEffect(() => {
     if (!meuId) {
       setNotificacoesNaoLidas(0)
+      navigator.clearAppBadge?.().catch?.(() => {})
       return
     }
     const userAtual = meuUserProfile || {}
     const notificacoesAtivas = userAtual?.profile?.notificacoes !== false
     if (!notificacoesAtivas) {
       setNotificacoesNaoLidas(0)
+      navigator.clearAppBadge?.().catch?.(() => {})
       return
     }
 
@@ -1599,12 +1602,26 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     let rawModern = {}
     const emitLista = () => {
       const merged = new Map()
-      Object.entries(rawLegacy || {}).forEach(([id, n]) => merged.set(id, { id, ...(n || {}) }))
-      Object.entries(rawModern || {}).forEach(([id, n]) => merged.set(id, { ...(merged.get(id) || {}), id, ...(n || {}) }))
+      const add = (id, n) => {
+        if (!n || typeof n !== 'object') return
+        const eventKey = String(
+          n.eventId ||
+          n.id ||
+          `${n.tipo || ''}|${n.pedidoId || n.privateRequestId || n.conversaId || ''}|${n.fromUid || n.autor?.id || ''}|${n.mensagem || n.titulo || ''}`
+        )
+        const current = merged.get(eventKey) || {}
+        const read = current.lida === true || current.read === true || n.lida === true || n.read === true
+        merged.set(eventKey, { ...current, ...n, id: eventKey, eventId: n.eventId || current.eventId || '', lida: read, read })
+      }
+      Object.entries(rawLegacy || {}).forEach(([id, n]) => add(id, n))
+      Object.entries(rawModern || {}).forEach(([id, n]) => add(id, n))
       const lista = Array.from(merged.values())
         .sort((a, b) => Number(b?.criadoEm || 0) - Number(a?.criadoEm || 0))
 
-      setNotificacoesNaoLidas(lista.filter((n) => n?.lida !== true).length)
+      const unreadCount = lista.filter((n) => n?.lida !== true && n?.read !== true).length
+      setNotificacoesNaoLidas(unreadCount)
+      if (unreadCount > 0) navigator.setAppBadge?.(unreadCount).catch?.(() => {})
+      else navigator.clearAppBadge?.().catch?.(() => {})
 
       if (!notificacoesInicializadasRef.current) {
         lista.forEach((n) => notificacoesVistasRef.current.add(n.id))
@@ -1614,7 +1631,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       const nova = lista.find((n) => {
         if (!n?.id || notificacoesVistasRef.current.has(n.id)) return false
-        if (n?.lida === true) return false
+        if (n?.lida === true || n?.read === true) return false
         if (n?.tipo === 'corre_aceito') return false
         if (n?.autor?.id && String(n.autor.id) === String(meuId)) return false
         return true
@@ -2827,12 +2844,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             ? 'finalizacao_solicitada'
             : 'atendimento_finalizado'
       const text = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
-        ? `${profissionalNome} iniciou o atendimento.`
+        ? '✓ Atendimento iniciado.'
         : nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? `${profissionalNome} informou que chegou ao local.`
+          ? `✓ ${profissionalNome} informou que chegou ao local.`
           : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? `${profissionalNome} solicitou a finalização do atendimento.`
-            : `${clienteNome} confirmou que o atendimento foi concluído.`
+            ? `✓ ${profissionalNome} solicitou a finalização do atendimento.`
+            : '✓ Atendimento finalizado com sucesso.'
       const actorName = isClient ? clienteNome : profissionalNome
 
       const patch = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
@@ -2868,19 +2885,45 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       }
 
       const destinatario = isWorker ? p?.criador?.id : p?.aceite?.id
+      const notificationId = destinatario
+        ? createEventNotificationId({
+            type: event,
+            sourceId: p.id,
+            toUid: destinatario,
+            state: nextStatus,
+          })
+        : ''
+      const notificationTitle = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+        ? 'Atendimento iniciado'
+        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? 'Seu profissional chegou'
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? 'Confirme a conclusão'
+            : 'Serviço concluído ✅'
+      const notificationMessage = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+        ? `${profissionalNome} iniciou o atendimento do seu pedido.`
+        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? `${profissionalNome} informou que chegou ao local.`
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? `${profissionalNome} solicitou a finalização do atendimento.`
+            : 'O cliente confirmou a conclusão do atendimento.'
+      const notificationAction = nextStatus === ATENDIMENTO_STATUS.FINALIZADO
+        ? { label: 'Ver histórico', screen: 'ver_historico', id: p.id }
+        : { label: 'Abrir atendimento', screen: 'chat', id: conversaId }
       if (destinatario) {
-        const notificationId = `notif_atendimento_${event}_${agora}`
         const notification = {
           id: notificationId,
+          eventId: notificationId,
           tipo: event,
-          titulo: nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO ? 'Atendimento iniciado' : nextStatus === ATENDIMENTO_STATUS.CHEGOU ? 'Profissional chegou' : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO ? 'Finalização solicitada' : 'Atendimento concluído',
-          mensagem: text,
+          titulo: notificationTitle,
+          mensagem: notificationMessage,
           pedidoId: p.id,
           fromUid: meuId,
           toUid: destinatario,
           lida: false,
+          read: false,
           criadoEm: agora,
-          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
+          action: notificationAction,
           autor: { id: meuId, nome: actorName },
         }
         updates[`notifications/${destinatario}/${notificationId}`] = notification
@@ -2889,8 +2932,21 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
       await update(ref(database), updates)
       const message = { texto: text, sistema: true, evento: event, criadoEm: agora, hora: agora, autorId: 'sistema', autorNome: 'Sistema' }
-      await set(ref(database, `chats/${conversaId}/msg_${event}_${agora}`), message)
-      await set(ref(database, `mensagens/${conversaId}/msg_${event}_${agora}`), message).catch(() => {})
+      await set(ref(database, `chats/${conversaId}/msg_${event}`), message)
+      await set(ref(database, `mensagens/${conversaId}/msg_${event}`), message).catch(() => {})
+      if (destinatario) {
+        enviarPushParaUsuario(destinatario, {
+          type: event,
+          pedidoId: p.id,
+          conversaId,
+          titulo: notificationTitle,
+          mensagem: notificationMessage,
+          prioridade: 'alta',
+          action: notificationAction,
+          notificationId,
+          eventId: notificationId,
+        })
+      }
       if (nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO) {
         showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.atendimentoIniciado, {
           id: CONTEXTUAL_TIP_IDS.atendimentoIniciado,
@@ -2967,6 +3023,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       }
 
       const concluidoAgora = Date.now()
+      const conversaId = p?.conversaId || p.id
+      const completionEventId = aceitadorId
+        ? createEventNotificationId({
+            type: 'atendimento_finalizado',
+            sourceId: p.id,
+            toUid: aceitadorId,
+            state: ATENDIMENTO_STATUS.FINALIZADO,
+          })
+        : ''
 
       await transitionAtendimento({
         database,
@@ -2995,32 +3060,58 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       })
 
       if (aceitadorId && aceitadorId !== meuId) {
-        await update(ref(database, `notificacoes/${aceitadorId}/notif_concluido_${concluidoAgora}`), {
+        const notification = {
+          id: completionEventId,
+          eventId: completionEventId,
           tipo: 'servico_concluido',
           pedidoId: p.id,
-          conversaId: p?.conversaId || p.id,
-          titulo: 'Serviço confirmado',
-          mensagem: `${meuNome || 'Cliente'} confirmou a conclusão: ${p.titulo || 'Corre aqui'}`,
+          conversaId,
+          titulo: 'Serviço concluído ✅',
+          mensagem: 'O cliente confirmou a conclusão do atendimento.',
           prioridade: 'media',
-          acao: 'abrir_chat',
           lida: false,
+          read: false,
           criadoEm: concluidoAgora,
+          fromUid: meuId,
+          toUid: aceitadorId,
+          action: { label: 'Ver histórico', screen: 'ver_historico', id: p.id },
           autor: { id: meuId, nome: meuNome || 'Cliente' },
-        }).catch((notifyError) => {
-          console.warn('Serviço concluído, mas a notificação não foi enviada:', notifyError)
+        }
+        await Promise.allSettled([
+          set(ref(database, `notifications/${aceitadorId}/${completionEventId}`), notification),
+          set(ref(database, `notificacoes/${aceitadorId}/${completionEventId}`), notification),
+        ]).then((results) => {
+          const notifyError = results.find((result) => result.status === 'rejected')
+          if (!notifyError) return
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('Serviço concluído, mas a notificação não foi enviada:', notifyError)
+          }
         })
 
         enviarPushParaUsuario(aceitadorId, {
           type: 'atendimento_finalizado',
           pedidoId: p.id,
-          conversaId: p?.conversaId || p.id,
-          titulo: 'Servico confirmado',
-          mensagem: `${meuNome || 'Cliente'} confirmou a conclusao: ${p.titulo || 'Corre aqui'}`,
+          conversaId,
+          titulo: 'Serviço concluído ✅',
+          mensagem: 'O cliente confirmou a conclusão do atendimento.',
           prioridade: 'media',
-          action: { label: 'Ver atendimento', screen: 'chat', id: p.id },
-          notificationId: `notif_concluido_${concluidoAgora}`,
+          action: { label: 'Ver histórico', screen: 'ver_historico', id: p.id },
+          notificationId: completionEventId,
+          eventId: completionEventId,
         })
       }
+
+      const completionMessage = {
+        texto: '✓ Atendimento finalizado com sucesso.',
+        sistema: true,
+        evento: 'atendimento_finalizado',
+        criadoEm: concluidoAgora,
+        hora: concluidoAgora,
+        autorId: 'sistema',
+        autorNome: 'Sistema',
+      }
+      await set(ref(database, `chats/${conversaId}/msg_atendimento_finalizado`), completionMessage).catch(() => {})
+      await set(ref(database, `mensagens/${conversaId}/msg_atendimento_finalizado`), completionMessage).catch(() => {})
 
       if (meuId && aceitadorId && aceitadorId === meuId && p?.criador?.id !== meuId) {
         await contabilizarAtendimentoFinalizado({ database, pedido: p, uid: meuId })
@@ -3097,30 +3188,50 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       })
 
       if (avaliadoId && avaliadoId !== meuId) {
-        await update(ref(database, `notificacoes/${avaliadoId}/notif_avaliacao_${agora}`), {
+        const notificationId = createEventNotificationId({
+          type: 'avaliacao_recebida',
+          sourceId: p.id,
+          toUid: avaliadoId,
+          state: 'recebida',
+        })
+        const notification = {
+          id: notificationId,
+          eventId: notificationId,
           tipo: 'avaliacao_recebida',
           pedidoId: p.id,
           conversaId: p?.conversaId || p.id,
-          titulo: 'Você recebeu uma avaliação',
-          mensagem: `Nota ${nota.toFixed(1)} em ${p.titulo || 'Corre aqui'}.`,
+          titulo: 'Você recebeu uma avaliação ⭐',
+          mensagem: 'Veja como foi seu atendimento.',
           prioridade: 'media',
-          acao: 'ver_historico',
           lida: false,
+          read: false,
           criadoEm: agora,
+          fromUid: meuId,
+          toUid: avaliadoId,
+          action: { label: 'Ver avaliações', screen: 'avaliacoes', id: p.id },
           autor: { id: meuId, nome: meuNome || 'Cliente' },
-        }).catch((notifyError) => {
-          console.warn('Avaliação salva, mas a notificação não foi enviada:', notifyError)
+        }
+        await Promise.allSettled([
+          set(ref(database, `notifications/${avaliadoId}/${notificationId}`), notification),
+          set(ref(database, `notificacoes/${avaliadoId}/${notificationId}`), notification),
+        ]).then((results) => {
+          const notifyError = results.find((result) => result.status === 'rejected')
+          if (!notifyError) return
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('Avaliação salva, mas a notificação não foi enviada:', notifyError)
+          }
         })
 
         enviarPushParaUsuario(avaliadoId, {
           type: 'avaliacao_recebida',
           pedidoId: p.id,
           conversaId: p?.conversaId || p.id,
-          titulo: 'Você recebeu uma avaliação',
-          mensagem: `Nota ${nota.toFixed(1)} em ${p.titulo || 'Corre aqui'}.`,
+          titulo: 'Você recebeu uma avaliação ⭐',
+          mensagem: 'Veja como foi seu atendimento.',
           prioridade: 'media',
-          action: { label: 'Ver historico', screen: 'myOrders', id: p.id },
-          notificationId: `notif_avaliacao_${agora}`,
+          action: { label: 'Ver avaliações', screen: 'avaliacoes', id: p.id },
+          notificationId,
+          eventId: notificationId,
         })
       }
 
@@ -3459,6 +3570,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       setModoApp('cliente')
       setChatPedido(null)
       setClientePainelBaixo('meusPedidos')
+      return
+    }
+
+    if (destino === 'professionalreviews') {
+      setModoApp('corre')
+      setChatPedido(null)
+      setClientePainelBaixo('')
+      setTab('corre')
+      setPerfilInitialTab('profissional')
+      setPerfilInitialProfSection('avaliacoes')
+      setOpenProfileMenu(false)
+      setOpenPerfil(true)
       return
     }
 
