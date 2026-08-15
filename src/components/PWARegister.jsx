@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth, database } from '@/lib/firebase'
 import { get, ref, update } from '@/lib/firebaseDebug'
+import InstallAppBanner from '@/components/InstallAppBanner'
 import {
   ativarPushNotifications,
   getPushCapabilities,
@@ -93,6 +94,7 @@ export default function PWARegister() {
   const [pushPrompt, setPushPrompt] = useState(null)
   const [ativandoPush, setAtivandoPush] = useState(false)
   const [pushPromptError, setPushPromptError] = useState('')
+  const [installAppReady, setInstallAppReady] = useState(false)
   const toastTimer = useRef(null)
   const lastPush = useRef({ key: '', at: 0 })
   const currentUid = useRef('')
@@ -134,6 +136,7 @@ export default function PWARegister() {
       }
 
       currentUid.current = nextUid
+      setInstallAppReady(Boolean(nextUid))
       if (!user?.uid) {
         setPushPrompt(null)
         return
@@ -273,6 +276,8 @@ export default function PWARegister() {
 
   return (
     <>
+      <InstallAppBanner appReady={installAppReady} />
+
       {foregroundToast ? (
         <aside className="fixed inset-x-3 top-3 z-[100] mx-auto max-w-md rounded-[22px] border border-emerald-200 bg-white p-3 text-slate-950 shadow-[0_18px_50px_rgba(15,23,42,0.2)] sm:inset-x-auto sm:right-5 sm:top-5 sm:w-[390px]">
       <div className="flex items-start gap-3">

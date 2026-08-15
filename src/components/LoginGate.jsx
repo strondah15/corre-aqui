@@ -262,12 +262,11 @@ export default function LoginGate({ children }) {
       return undefined
     }
 
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
-    const timer = window.setTimeout(() => {
+    const frame = window.requestAnimationFrame(() => {
       setSplashMinDone(true)
-    }, reduceMotion ? 1450 : 2400)
+    })
 
-    return () => window.clearTimeout(timer)
+    return () => window.cancelAnimationFrame(frame)
   }, [pularVinheta])
 
   useEffect(() => {

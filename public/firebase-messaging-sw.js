@@ -1,4 +1,4 @@
-const CACHE_NAME = 'corre-aqui-static-v4'
+const CACHE_NAME = 'corre-aqui-static-v5'
 const STATIC_ASSETS = [
   '/',
   '/manifest.webmanifest',

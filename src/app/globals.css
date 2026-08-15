@@ -8,7 +8,7 @@
 :root {
   --background: #0b73ff;
   --foreground: #e5e7eb;
-  --app-shell-bg: #eef7fc;
+  --app-shell-bg: #eaf7ff;
   --bottom-bar-height: 66px;
   --bottom-bar-offset: 0.45rem;
   --bottom-bar-safe-space: calc(var(--bottom-bar-height) + env(safe-area-inset-bottom) + var(--bottom-bar-offset) + 1rem);
@@ -99,6 +99,40 @@ body::after {
   pointer-events: none;
   z-index: 0;
   background: radial-gradient(circle at 50% 35%, rgba(0,0,0,0) 0%, rgba(2,6,23,0.26) 72%, rgba(2,6,23,0.58) 100%);
+}
+
+/* Sugestão compacta da PWA: acima da navegação e dos controles flutuantes. */
+.install-app-banner {
+  bottom: calc(var(--bottom-bar-safe-space) + 5.75rem);
+  animation: install-banner-enter 220ms ease-out both;
+}
+
+.install-app-banner.install-app-banner--closing {
+  animation: install-banner-exit 150ms ease-in both;
+}
+
+@keyframes install-banner-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes install-banner-exit {
+  to {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .install-app-banner {
+    animation: none;
+  }
 }
 
 /* garante que wrappers reais do app fiquem acima do fundo sem sobrescrever utilitários de tela */

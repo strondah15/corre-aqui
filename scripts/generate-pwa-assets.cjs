@@ -5,10 +5,12 @@ const sharp = require("sharp");
 const ROOT = path.resolve(__dirname, "..");
 const PUBLIC_DIR = path.join(ROOT, "public");
 const ICONS_DIR = path.join(PUBLIC_DIR, "icons");
-const BRAND_SOURCE = path.join(PUBLIC_DIR, "corre-logo-composite.png");
 const MARK_SOURCE = path.join(PUBLIC_DIR, "corre-logo-mark.png");
 const FAVICON_OUT = path.join(ROOT, "src", "app", "favicon.ico");
 const ICON_SIZES = [48, 72, 96, 128, 144, 152, 180, 192, 256, 384, 512];
+const REGULAR_SYMBOL_SCALE = 0.8;
+const MASKABLE_SYMBOL_SCALE = 0.74;
+const APPLE_TOUCH_SYMBOL_SCALE = 0.8;
 
 function brandBackground(size) {
   return Buffer.from(`
@@ -71,8 +73,8 @@ async function fullBleedIcon(size, symbolScale, mark) {
     .toBuffer();
 }
 
-async function regularIcon(size) {
-  return sharp(BRAND_SOURCE).resize(size, size).png().toBuffer();
+async function regularIcon(size, mark) {
+  return fullBleedIcon(size, REGULAR_SYMBOL_SCALE, mark);
 }
 
 function buildIco(images) {
@@ -107,15 +109,15 @@ async function main() {
 
   await Promise.all(
     ICON_SIZES.map(async (size) => {
-      const buffer = await regularIcon(size);
+      const buffer = await regularIcon(size, mark);
       await fs.promises.writeFile(path.join(ICONS_DIR, `corre-aqui-${size}.png`), buffer);
     }),
   );
 
   const [maskable192, maskable512, appleTouch, faviconPng] = await Promise.all([
-    fullBleedIcon(192, 0.7, mark),
-    fullBleedIcon(512, 0.7, mark),
-    fullBleedIcon(180, 0.74, mark),
+    fullBleedIcon(192, MASKABLE_SYMBOL_SCALE, mark),
+    fullBleedIcon(512, MASKABLE_SYMBOL_SCALE, mark),
+    fullBleedIcon(180, APPLE_TOUCH_SYMBOL_SCALE, mark),
     fullBleedIcon(48, 0.78, mark),
   ]);
 
@@ -127,8 +129,8 @@ async function main() {
     sharp(notificationBadgeSvg()).png().toFile(path.join(ICONS_DIR, "corre-aqui-notification-96.png")),
   ]);
 
-  const legacy192 = await regularIcon(192);
-  const legacy512 = await regularIcon(512);
+  const legacy192 = await regularIcon(192, mark);
+  const legacy512 = await regularIcon(512, mark);
   await Promise.all([
     fs.promises.writeFile(path.join(PUBLIC_DIR, "corre-aqui-icon-192.png"), legacy192),
     fs.promises.writeFile(path.join(PUBLIC_DIR, "corre-aqui-icon-512.png"), legacy512),
@@ -140,7 +142,7 @@ async function main() {
   }
   await fs.promises.writeFile(FAVICON_OUT, buildIco(icoImages));
 
-  console.log(`Generated ${ICON_SIZES.length} regular icons, 2 maskable icons, Apple touch icon, favicon and notification badge.`);
+  console.log(`Generated ${ICON_SIZES.length} regular icons (${REGULAR_SYMBOL_SCALE * 100}% symbol), 2 maskable icons (${MASKABLE_SYMBOL_SCALE * 100}% safe-zone symbol), Apple touch icon (${APPLE_TOUCH_SYMBOL_SCALE * 100}% symbol), favicon and notification badge.`);
 }
 
 main().catch((error) => {
