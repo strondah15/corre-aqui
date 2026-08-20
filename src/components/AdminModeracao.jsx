@@ -55,7 +55,7 @@ function isAdminUser(adminFlag) {
   return adminFlag === true
 }
 
-function normalizeRegistros(problemas, denuncias, pedidos, users) {
+function normalizeRegistros(problemas, denuncias, pedidos, publicProfiles) {
   const map = new Map()
 
   problemas.forEach((item) => {
@@ -84,9 +84,9 @@ function normalizeRegistros(problemas, denuncias, pedidos, users) {
     .map((item) => {
       const pedido = pedidos[item.pedidoId] || null
       const autorId = item?.autor?.id || ''
-      const autorUser = autorId ? users[autorId] : null
-      const clienteUser = item?.clienteId ? users[item.clienteId] : null
-      const aceitadorUser = item?.aceitadorId ? users[item.aceitadorId] : null
+      const autorUser = autorId ? publicProfiles[autorId] : null
+      const clienteUser = item?.clienteId ? publicProfiles[item.clienteId] : null
+      const aceitadorUser = item?.aceitadorId ? publicProfiles[item.aceitadorId] : null
 
       return {
         ...item,
@@ -123,7 +123,7 @@ export default function AdminModeracao() {
   const [problemas, setProblemas] = useState([])
   const [denuncias, setDenuncias] = useState([])
   const [pedidos, setPedidos] = useState({})
-  const [users, setUsers] = useState({})
+  const [publicProfiles, setPublicProfiles] = useState({})
   const [statusFiltro, setStatusFiltro] = useState('pendentes')
   const [tipoFiltro, setTipoFiltro] = useState('todos')
   const [busca, setBusca] = useState('')
@@ -177,21 +177,21 @@ export default function AdminModeracao() {
     const offPedidos = onValue(query(ref(database, 'pedidos'), limitToLast(500)), (snap) => {
       setPedidos(snap.val() || {})
     })
-    const offUsers = onValue(ref(database, 'users'), (snap) => {
-      setUsers(snap.val() || {})
+    const offPublicProfiles = onValue(ref(database, 'publicProfiles'), (snap) => {
+      setPublicProfiles(snap.val() || {})
     })
 
     return () => {
       offProblemas()
       offDenuncias()
       offPedidos()
-      offUsers()
+      offPublicProfiles()
     }
   }, [isAdmin])
 
   const registros = useMemo(
-    () => normalizeRegistros(problemas, denuncias, pedidos, users),
-    [problemas, denuncias, pedidos, users]
+    () => normalizeRegistros(problemas, denuncias, pedidos, publicProfiles),
+    [problemas, denuncias, pedidos, publicProfiles]
   )
 
   const filtrados = useMemo(() => {
@@ -281,6 +281,24 @@ export default function AdminModeracao() {
           atualizadoEm: agora,
         }
         updates[`pedidos/${selecionado.pedidoId}/atualizadoEm`] = agora
+      }
+
+      const criadoEm = Number(selecionado.criadoEm)
+      if (Number.isFinite(criadoEm) && criadoEm > 0) {
+        const destinatariosIndice = new Set([selecionado?.autor?.id])
+        if (!selecionado.denuncia) {
+          destinatariosIndice.add(selecionado.clienteId)
+          destinatariosIndice.add(selecionado.aceitadorId)
+        }
+
+        for (const uid of destinatariosIndice) {
+          if (!uid) continue
+          updates[`registrosSegurancaPorUsuario/${uid}/${selecionado.id}`] = {
+            registroId: selecionado.id,
+            status: novoStatus,
+            criadoEm,
+          }
+        }
       }
 
       await update(ref(database), updates)

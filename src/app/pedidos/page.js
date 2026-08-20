@@ -8,6 +8,7 @@ import { auth, database } from '@/lib/firebase'
 import { startPresence } from '@/lib/presence'
 import { ATENDIMENTO_STATUS, transitionAtendimento } from '@/lib/atendimento'
 import { notifyPublicRequestAccepted } from '@/lib/privateRequests'
+import { normalizePublicRequest } from '@/lib/publicRequests'
 
 export default function ListaPedidos() {
   const router = useRouter()
@@ -44,10 +45,10 @@ export default function ListaPedidos() {
       return
     }
 
-    const pedidosRef = ref(database, 'pedidos')
+    const pedidosRef = ref(database, 'publicRequests')
     const off = onValue(pedidosRef, (snapshot) => {
       const data = snapshot.val() || {}
-      const lista = Object.entries(data).map(([id, pedido]) => ({ id, ...pedido }))
+      const lista = Object.entries(data).map(([id, pedido]) => normalizePublicRequest(id, pedido))
       setPedidos(lista)
     })
 

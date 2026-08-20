@@ -22,8 +22,8 @@ import {
   PUBLIC_WORK_PROFILE_TYPES,
   buildQuickPublicWorkProfilePayload,
   canAppearInPublicDirectory,
-  clearPrivatePublicProfileFields,
   normalizeProfileStatus,
+  projectPublicProfileForWrite,
   safePublicText,
 } from '@/lib/publicWorkProfile'
 
@@ -604,12 +604,16 @@ function QuickWorkProfileSetup({ uid, authUser, accountData, publicProfile, onBa
       await runTransaction(ref(database, `publicProfiles/${uid}`), (current) => {
         const currentStatus = normalizeProfileStatus(current || {})
         if (WORK_PROFILE_BLOCKED_STATUSES.has(currentStatus)) return current
-        return clearPrivatePublicProfileFields({
-          ...(current || {}),
-          ...payload,
-          createdAt: current?.createdAt || payload.createdAt || now,
-          updatedAt: now,
-          atualizadoEm: now,
+        return projectPublicProfileForWrite({
+          current,
+          payload: {
+            ...payload,
+            uid,
+            id: uid,
+            createdAt: current?.createdAt || payload.createdAt || now,
+            updatedAt: now,
+            atualizadoEm: now,
+          },
         })
       })
 

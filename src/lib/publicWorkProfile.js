@@ -1,5 +1,6 @@
 import { getCanonicalCategoryId, getCategoryById } from '@/constants/categories'
 import { findProfessionById, sanitizeCustomProfession } from '@/constants/professions'
+import { getPublicAvailabilityLocation } from '@/lib/publicAvailability'
 
 export const PUBLIC_WORK_PROFILE_TYPES = {
   CORRE: 'corre',
@@ -34,8 +35,20 @@ const PUBLIC_PROFILE_PRIVATE_FIELDS = [
   'email',
   'telefone',
   'phone',
+  'celular',
+  'whatsapp',
+  'contato',
   'endereco',
   'address',
+  'local',
+  'location',
+  'localizacao',
+  'geo',
+  'coordenadas',
+  'lat',
+  'lng',
+  'latitude',
+  'longitude',
   'dataNascimento',
   'cpf',
   'cpfDigits',
@@ -46,15 +59,44 @@ const PUBLIC_PROFILE_PRIVATE_FIELDS = [
   'documentoVerificacao',
   'admin',
   'role',
+  'claims',
+  'moderacao',
+  'suspenso',
+  'banido',
+  'accountSuspended',
+  'contaSuspensa',
+  'suspended',
+  'token',
+  'pushToken',
   'pushTokens',
+  'fcm',
+  'fcmToken',
   'reputation',
+  'reputacao',
   'trust',
+  'trustStats',
   'rating',
+  'ratingAvg',
+  'ratingCount',
   'reviewCount',
+  'avaliacoesCount',
   'avaliacaoMedia',
+  'notaMedia',
+  'nota',
+  'estrelas',
+  'stars',
   'totalAvaliacoes',
+  'quantidadeAvaliacoes',
+  'avaliacoes',
+  'reviews',
+  'avaliacao',
   'servicosConcluidos',
   'completedServices',
+  'entregas',
+  'servicosCorre',
+  'servicosProf',
+  'profile',
+  'perfil',
   'xp',
   'moedas',
   'patente',
@@ -69,8 +111,127 @@ const PUBLIC_PROFILE_PRIVATE_FIELDS = [
   'assinatura',
 ]
 
+// These values may be written by a trusted backend on older profiles. A client
+// profile refresh preserves them exactly; Rules reject client creates, changes,
+// and deletes, so they can never become client-controlled data.
+export const SERVER_MANAGED_REPUTATION_FIELDS = new Set([
+  'reputation',
+  'reputacao',
+  'trust',
+  'trustStats',
+  'rating',
+  'ratingAvg',
+  'ratingCount',
+  'reviewCount',
+  'avaliacoesCount',
+  'avaliacaoMedia',
+  'notaMedia',
+  'nota',
+  'estrelas',
+  'stars',
+  'totalAvaliacoes',
+  'quantidadeAvaliacoes',
+  'avaliacoes',
+  'reviews',
+  'avaliacao',
+  'servicosConcluidos',
+  'completedServices',
+  'entregas',
+  'servicosCorre',
+  'servicosProf',
+  'profile',
+  'perfil',
+])
+
+const SERVER_MANAGED_PUBLIC_FIELDS = new Set([
+  ...SERVER_MANAGED_REPUTATION_FIELDS,
+  'xp',
+  'moedas',
+  'patente',
+  'patenteCorre',
+  'patenteProf',
+  'verificado',
+  'verified',
+  'perfilVerificado',
+  'destaque',
+  'featured',
+  'plano',
+  'assinatura',
+])
+
+// This is the public projection contract emitted by the only client writers.
+// It deliberately excludes private, administrative, precise-location, and
+// server-derived fields. Keep this in sync with database.rules.json.
+export const PUBLIC_PROFILE_CLIENT_FIELDS = new Set([
+  'uid',
+  'id',
+  'nome',
+  'displayName',
+  'fotoURL',
+  'photoURL',
+  'avatar',
+  'avatarEmoji',
+  'bio',
+  'cidade',
+  'city',
+  'bairro',
+  'neighborhood',
+  'regiao',
+  'regionKeys',
+  'visibility',
+  'profileVisible',
+  'visivel',
+  'profileVisibilityExplicit',
+  'showOnlineStatus',
+  'allowPublicContact',
+  'profileStatus',
+  'profileType',
+  'workProfileType',
+  'isCorre',
+  'isProfissional',
+  'primaryCategoryId',
+  'categoriaId',
+  'categoriaNome',
+  'professionId',
+  'professionName',
+  'professionSource',
+  'profissaoId',
+  'profissaoNome',
+  'customProfession',
+  'correProfessionId',
+  'correTitulo',
+  'profTitulo',
+  'correCategorias',
+  'profCategorias',
+  'correResumo',
+  'correRegiao',
+  'correTransporte',
+  'profResumo',
+  'profCidadeAtende',
+  'profPrecoBase',
+  'profWhats',
+  'profExperiencia',
+  'corre',
+  'profissional',
+  'portfolio',
+  'createdAt',
+  'updatedAt',
+  'atualizadoEm',
+  'statusProfissional',
+  'ocupadoAte',
+  'agendaAberta',
+  'publicProfileVersion',
+  'onboardingStatus',
+  'workProfileCreated',
+])
+
 export function safePublicText(value, fallback = '') {
   return String(value ?? fallback).trim()
+}
+
+export function safePublicImageUrl(value, fallback = '') {
+  const url = safePublicText(value, fallback)
+  return url.length <= 2048 && /^https?:\/\/[^\s]+$/i.test(url) ? url : ''
 }
 
 function compactPayload(value) {
@@ -100,12 +261,51 @@ function normalizeFlag(value, fallback = false) {
 
 export function clearPrivatePublicProfileFields(payload = {}) {
   return PUBLIC_PROFILE_PRIVATE_FIELDS.reduce(
-    (acc, field) => ({
-      ...acc,
-      [field]: null,
-    }),
+    (acc, field) => {
+      if (SERVER_MANAGED_PUBLIC_FIELDS.has(field)) {
+        return acc
+      }
+
+      return {
+        ...acc,
+        [field]: null,
+      }
+    },
     { ...payload }
   )
+}
+
+/**
+ * Produces the complete client-owned public projection for a transaction.
+ * Raw `current` is never spread back into the result: doing so would preserve
+ * arbitrary legacy fields after the Rules schema is closed. The only data
+ * copied from `current` outside the public contract is explicitly server-only
+ * data, which must remain byte-for-byte untouched by the client.
+ */
+export function projectPublicProfileForWrite({ current = {}, payload = {} } = {}) {
+  const previous = current && typeof current === 'object' ? current : {}
+  const nextPayload = payload && typeof payload === 'object' ? payload : {}
+  const projected = {}
+
+  for (const field of SERVER_MANAGED_PUBLIC_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(previous, field)) {
+      projected[field] = previous[field]
+    }
+  }
+
+  for (const field of PUBLIC_PROFILE_CLIENT_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(previous, field)) {
+      projected[field] = previous[field]
+    }
+  }
+
+  for (const field of PUBLIC_PROFILE_CLIENT_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(nextPayload, field)) {
+      projected[field] = nextPayload[field]
+    }
+  }
+
+  return clearPrivatePublicProfileFields(projected)
 }
 
 export function normalizeProfileStatus(profile = {}) {
@@ -292,6 +492,7 @@ export function mergePublicProfileWithPresence(publicProfile = {}, presence = {}
   if (!canAppearInPublicDirectory(publicProfile, presence)) return null
 
   const online = isPubliclyAvailableWorker(publicProfile, presence, now)
+  const publicLocation = getPublicAvailabilityLocation(presence)
   const merged = {
     ...publicProfile,
     uid,
@@ -300,9 +501,7 @@ export function mergePublicProfileWithPresence(publicProfile = {}, presence = {}
     disponivel: online,
     lastSeen: presence?.lastSeen ?? publicProfile.lastSeen ?? null,
     updatedAt: publicProfile.updatedAt ?? presence?.updatedAt ?? null,
-    local: presence?.local || publicProfile.local || null,
-    latitude: presence?.latitude ?? publicProfile.latitude,
-    longitude: presence?.longitude ?? publicProfile.longitude,
+    local: publicLocation,
     modoAtual: presence?.modoAtual || publicProfile.modoAtual || '',
     publicProfileReady: true,
   }
@@ -322,7 +521,7 @@ export function buildQuickPublicWorkProfilePayload({ uid, account = {}, form = {
   const category = getCategoryById(categoryId)
   const city = safePublicText(form.cidade || form.city || account.cidade || account.profile?.cidade)
   const neighborhood = safePublicText(form.bairro || form.neighborhood || account.bairro || account.profile?.bairro)
-  const photoURL = safePublicText(form.fotoURL || account.fotoURL || account.photoURL || account.profile?.fotoURL || account.profile?.photoURL)
+  const photoURL = safePublicImageUrl(form.fotoURL || account.fotoURL || account.photoURL || account.profile?.fotoURL || account.profile?.photoURL)
   const isCorre = type === PUBLIC_WORK_PROFILE_TYPES.CORRE
   const isProfissional = type === PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
   const workTitle = professionName || category?.label || (isProfissional ? 'Profissional local' : 'Corre rapido')

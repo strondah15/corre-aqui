@@ -15,6 +15,8 @@ import { notifyPublicRequestAccepted } from '@/lib/privateRequests'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
 import { createEventNotificationId } from '@/lib/eventNotifications'
+import { normalizePublicRequest } from '@/lib/publicRequests'
+import { registrarMensagemSistemaConfiavel } from '@/lib/trustedSystemChat'
 
 const MapinhaModal = dynamic(() => import('@/components/MapinhaModal'), { ssr: false })
 const LIST_STATE_PREFIX = 'correAqui:listState:v2'
@@ -348,12 +350,23 @@ function PedidoDetalhe() {
   useEffect(() => {
     if (!pedidoId) return undefined
     setLoading(true)
-    const off = onValue(ref(database, `pedidos/${pedidoId}`), (snap) => {
-      setPedido(snap.exists() ? { id: pedidoId, ...(snap.val() || {}) } : null)
+    const offPublic = onValue(ref(database, `publicRequests/${pedidoId}`), (snap) => {
+      setPedido((current) => current?._private ? current : (snap.exists() ? normalizePublicRequest(pedidoId, snap.val()) : null))
       setLoading(false)
     })
-    return () => off()
-  }, [pedidoId])
+    let offPrivate = () => {}
+    if (user?.uid) {
+      offPrivate = onValue(
+        ref(database, `pedidos/${pedidoId}`),
+        (snap) => {
+          if (snap.exists()) setPedido({ id: pedidoId, ...(snap.val() || {}), _private: true })
+          setLoading(false)
+        },
+        () => {},
+      )
+    }
+    return () => { offPublic(); offPrivate() }
+  }, [pedidoId, user?.uid])
 
   useEffect(() => {
     if (!user?.uid) {
@@ -374,7 +387,7 @@ function PedidoDetalhe() {
     }
 
     const off = onValue(
-      ref(database, `users/${creatorId}`),
+      ref(database, `publicProfiles/${creatorId}`),
       (snap) => setCreatorProfile(snap.val() || null),
       () => setCreatorProfile(null),
     )
@@ -389,7 +402,7 @@ function PedidoDetalhe() {
     }
 
     const off = onValue(
-      ref(database, `presence/${creatorId}`),
+      ref(database, `publicAvailability/${creatorId}`),
       (snap) => setCreatorPresence(snap.val() || null),
       () => setCreatorPresence(null),
     )
@@ -423,7 +436,7 @@ function PedidoDetalhe() {
   const criadorNome = pedido?.criador?.nome || creatorProfile?.nome || creatorProfile?.displayName || 'Usuário Corre Aqui'
   const criadorFoto = pedido?.criador?.fotoURL || pedido?.criador?.photoURL || creatorProfile?.fotoURL || creatorProfile?.photoURL || creatorPresence?.fotoURL || creatorPresence?.photoURL || ''
   const criadorOnline = isOnlineRecente(creatorPresence)
-  const telefone = getTelefone(creatorProfile, pedido?.criador)
+  const telefone = participanteDoPedido ? getTelefone(creatorProfile, pedido?.criador) : ''
   const telefoneLink = phoneHref(telefone)
   const tituloPedido = pedido?.titulo || pedido?.texto || 'Pedido sem título'
   const descricaoPedido = pedido?.descricao || pedido?.texto || 'Converse no chat para combinar os detalhes desse serviço.'
@@ -479,7 +492,7 @@ function PedidoDetalhe() {
         aceitoEm: agora,
       }
 
-      await transitionAtendimento({
+      const acceptedPedido = await transitionAtendimento({
         database,
         pedidoId: pedido.id,
         actorUid: user.uid,
@@ -496,6 +509,7 @@ function PedidoDetalhe() {
           atualizadoEmServer: serverTimestamp(),
         },
       })
+      setPedido({ id: pedido.id, ...acceptedPedido, _private: true })
 
       await update(ref(database, `users/${user.uid}`), {
         statusProfissional: 'em_servico',
@@ -518,11 +532,11 @@ function PedidoDetalhe() {
           valor: pedido?.valor || null,
           tipoNotificacao: 'corre_aceito',
           lastText: `${nome} aceitou seu corre.`,
-          lastAt: agora,
+          lastAt: serverTimestamp(),
           lastById: user.uid,
           lastByNome: nome,
           mensagemPreview: `${nome} aceitou seu corre.`,
-          updatedAt: agora,
+          updatedAt: serverTimestamp(),
         })
 
       }
@@ -539,25 +553,14 @@ function PedidoDetalhe() {
         categoriaNome: categoria,
         valor: pedido?.valor || null,
         lastText: 'Você aceitou esse corre.',
-        lastAt: agora,
+        lastAt: serverTimestamp(),
         lastById: user.uid,
         lastByNome: nome,
         mensagemPreview: 'Você aceitou esse corre.',
-        updatedAt: agora,
+        updatedAt: serverTimestamp(),
       })
 
-      const mensagemSistema = {
-        texto: `✓ ${nome} aceitou o pedido.`,
-        sistema: true,
-        evento: 'pedido_aceito',
-        criadoEm: agora,
-        hora: agora,
-        autorId: 'sistema',
-        autorNome: 'Sistema',
-      }
-
-      await set(ref(database, `chats/${conversaId}/msg_pedido_aceito`), mensagemSistema)
-      await set(ref(database, `mensagens/${conversaId}/msg_pedido_aceito`), mensagemSistema)
+      await registrarMensagemSistemaConfiavel({ pedidoId: pedido.id, eventType: 'pedido_aceito' })
       if (pedido?.criador?.id) await set(ref(database, `usersChats/${pedido.criador.id}/${conversaId}`), true)
       await set(ref(database, `usersChats/${user.uid}/${conversaId}`), true)
       if (pedido?.criador?.id) {
@@ -596,18 +599,7 @@ function PedidoDetalhe() {
         toUid: clienteId,
         state: ATENDIMENTO_STATUS.EM_ANDAMENTO,
       })
-      const systemMessageId = 'msg_atendimento_iniciado'
-      const systemMessage = {
-        texto: '✓ Atendimento iniciado.',
-        sistema: true,
-        evento: 'atendimento_iniciado',
-        criadoEm: agora,
-        hora: agora,
-        autorId: 'sistema',
-        autorNome: 'Sistema',
-      }
-
-      await transitionAtendimento({
+      const transitionedPedido = await transitionAtendimento({
         database,
         pedidoId: pedido.id,
         actorUid: user.uid,
@@ -622,14 +614,15 @@ function PedidoDetalhe() {
           atualizadoEmServer: serverTimestamp(),
         },
       })
+      setPedido({ id: pedido.id, ...transitionedPedido, _private: true })
 
       const updates = {
         [`conversas/${user.uid}/${conversaId}/pedidoId`]: pedido.id,
         [`conversas/${user.uid}/${conversaId}/titulo`]: pedido.titulo || 'Corre aqui',
         [`conversas/${user.uid}/${conversaId}/lastText`]: 'Você iniciou o atendimento.',
         [`conversas/${user.uid}/${conversaId}/mensagemPreview`]: 'Você iniciou o atendimento.',
-        [`conversas/${user.uid}/${conversaId}/lastAt`]: agora,
-        [`conversas/${user.uid}/${conversaId}/updatedAt`]: agora,
+        [`conversas/${user.uid}/${conversaId}/lastAt`]: serverTimestamp(),
+        [`conversas/${user.uid}/${conversaId}/updatedAt`]: serverTimestamp(),
         [`conversas/${user.uid}/${conversaId}/lastById`]: user.uid,
         [`conversas/${user.uid}/${conversaId}/lastByNome`]: profissionalNome,
         [`conversas/${user.uid}/${conversaId}/status`]: 'ativa',
@@ -668,8 +661,8 @@ function PedidoDetalhe() {
         updates[`conversas/${clienteId}/${conversaId}/categoriaNome`] = categoria
         updates[`conversas/${clienteId}/${conversaId}/lastText`] = `${profissionalNome} iniciou seu atendimento.`
         updates[`conversas/${clienteId}/${conversaId}/mensagemPreview`] = `${profissionalNome} iniciou seu atendimento.`
-        updates[`conversas/${clienteId}/${conversaId}/lastAt`] = agora
-        updates[`conversas/${clienteId}/${conversaId}/updatedAt`] = agora
+        updates[`conversas/${clienteId}/${conversaId}/lastAt`] = serverTimestamp()
+        updates[`conversas/${clienteId}/${conversaId}/updatedAt`] = serverTimestamp()
         updates[`conversas/${clienteId}/${conversaId}/lastById`] = user.uid
         updates[`conversas/${clienteId}/${conversaId}/lastByNome`] = profissionalNome
         updates[`notificacoes/${clienteId}/${notificationId}`] = notificationPayload
@@ -677,8 +670,7 @@ function PedidoDetalhe() {
       }
 
       await update(ref(database), updates)
-      await set(ref(database, `chats/${conversaId}/${systemMessageId}`), systemMessage)
-      await set(ref(database, `mensagens/${conversaId}/${systemMessageId}`), systemMessage)
+      await registrarMensagemSistemaConfiavel({ pedidoId: pedido.id, eventType: 'atendimento_iniciado' })
 
       if (clienteId) {
         enviarPushParaUsuario(clienteId, {
@@ -741,8 +733,8 @@ function PedidoDetalhe() {
         updates[`conversas/${uid}/${conversaId}/pedidoStatus`] = nextStatus
         updates[`conversas/${uid}/${conversaId}/lastText`] = texto
         updates[`conversas/${uid}/${conversaId}/mensagemPreview`] = texto
-        updates[`conversas/${uid}/${conversaId}/lastAt`] = agora
-        updates[`conversas/${uid}/${conversaId}/updatedAt`] = agora
+        updates[`conversas/${uid}/${conversaId}/lastAt`] = serverTimestamp()
+        updates[`conversas/${uid}/${conversaId}/updatedAt`] = serverTimestamp()
         updates[`conversas/${uid}/${conversaId}/lastById`] = user.uid
         updates[`conversas/${uid}/${conversaId}/lastByNome`] = user.uid === clienteId ? clienteNome : profissionalNome
         updates[`conversas/${uid}/${conversaId}/status`] = nextStatus === ATENDIMENTO_STATUS.FINALIZADO ? 'arquivavel' : 'ativa'
@@ -782,18 +774,7 @@ function PedidoDetalhe() {
       }
 
       await update(ref(database), updates)
-      const message = {
-        texto,
-        sistema: true,
-        evento,
-        criadoEm: agora,
-        hora: agora,
-        autorId: 'sistema',
-        autorNome: 'Sistema',
-      }
-      const systemMessageId = `msg_${evento}`
-      await set(ref(database, `chats/${conversaId}/${systemMessageId}`), message)
-      await set(ref(database, `mensagens/${conversaId}/${systemMessageId}`), message).catch(() => {})
+      await registrarMensagemSistemaConfiavel({ pedidoId: pedido.id, eventType: evento })
 
       if (destinatario && notificationTitle && notificationMessage) {
         enviarPushParaUsuario(destinatario, {

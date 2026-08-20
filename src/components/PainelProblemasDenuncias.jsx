@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { database } from '@/lib/firebase'
-import { limitToLast, onValue, query, ref } from '@/lib/firebaseDebug'
+import { subscribeSecurityRecords } from '@/lib/securityRecords'
 
 function getMs(v) {
   if (!v) return 0
@@ -57,63 +57,19 @@ export default function PainelProblemasDenuncias({
   onAbrirPedido,
 }) {
   const [problemasRaw, setProblemasRaw] = useState([])
-  const [denunciasRaw, setDenunciasRaw] = useState([])
   const [filtro, setFiltro] = useState('todos')
 
   useEffect(() => {
-    const pRef = query(ref(database, 'problemasServico'), limitToLast(120))
-    const off = onValue(pRef, (snap) => {
-      const raw = snap.val() || {}
-      setProblemasRaw(Object.entries(raw).map(([id, p]) => ({ id, ...(p || {}) })))
+    return subscribeSecurityRecords({
+      database,
+      uid: meuId,
+      onChange: setProblemasRaw,
+      onError: () => setProblemasRaw([]),
     })
-    return () => off()
-  }, [])
-
-  useEffect(() => {
-    const dRef = query(ref(database, 'denuncias'), limitToLast(120))
-    const off = onValue(dRef, (snap) => {
-      const raw = snap.val() || {}
-      setDenunciasRaw(Object.entries(raw).map(([id, p]) => ({ id, ...(p || {}) })))
-    })
-    return () => off()
-  }, [])
-
-  const meusPedidosComProblema = useMemo(() => {
-    return (corres || [])
-      .filter((p) => {
-        if (!p?.problemaServico) return false
-        return p?.criador?.id === meuId || p?.aceite?.id === meuId
-      })
-      .map((p) =>
-        normalizeProblema(
-          {
-            ...p.problemaServico,
-            id: `pedido_${p.id}`,
-            pedidoId: p.id,
-            clienteId: p?.criador?.id || null,
-            aceitadorId: p?.aceite?.id || null,
-            pedidoTitulo: p?.titulo || 'Corre aqui',
-          },
-          'pedido'
-        )
-      )
-  }, [corres, meuId])
+  }, [meuId])
 
   const registros = useMemo(() => {
-    const userMatch = (p) => {
-      if (!meuId) return false
-      return (
-        p?.autor?.id === meuId ||
-        p?.clienteId === meuId ||
-        p?.aceitadorId === meuId
-      )
-    }
-
-    const all = [
-      ...problemasRaw.filter(userMatch).map((p) => normalizeProblema(p, 'problema')),
-      ...denunciasRaw.filter(userMatch).map((p) => normalizeProblema(p, 'denuncia')),
-      ...meusPedidosComProblema,
-    ].filter(Boolean)
+    const all = problemasRaw.map((p) => normalizeProblema(p, 'problema')).filter(Boolean)
 
     const byId = new Map()
     all.forEach((p) => {
@@ -122,15 +78,15 @@ export default function PainelProblemasDenuncias({
     })
 
     return Array.from(byId.values()).sort((a, b) => getMs(b.criadoEm) - getMs(a.criadoEm))
-  }, [problemasRaw, denunciasRaw, meusPedidosComProblema, meuId])
+  }, [problemasRaw])
 
   const filtrados = useMemo(() => {
-    if (filtro === 'denuncias') return registros.filter((p) => p.denuncia || p.origem === 'denuncia')
+    if (filtro === 'denuncias') return registros.filter((p) => p.denuncia)
     if (filtro === 'abertos') return registros.filter((p) => String(p.status || 'aberto').toLowerCase() === 'aberto')
     return registros
   }, [registros, filtro])
 
-  const totalDenuncias = registros.filter((p) => p.denuncia || p.origem === 'denuncia').length
+  const totalDenuncias = registros.filter((p) => p.denuncia).length
   const totalAbertos = registros.filter((p) => String(p.status || 'aberto').toLowerCase() === 'aberto').length
 
   return (
@@ -191,7 +147,7 @@ export default function PainelProblemasDenuncias({
           <div className="space-y-2">
             {filtrados.map((p, index) => {
               const pedido = pedidoDoProblema(p, corres)
-              const denuncia = p.denuncia || p.origem === 'denuncia'
+              const denuncia = p.denuncia
               return (
                 <motion.article
                   key={`${p.origem}-${p.id}`}

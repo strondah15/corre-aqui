@@ -1,8 +1,9 @@
 // src/lib/mapapedidos.js
 // Serviço único para criar e normalizar pedidos (Realtime Database + UI otimista)
 
-import { ref, push, set, serverTimestamp } from './firebaseDebug'
+import { ref, push, update, serverTimestamp } from './firebaseDebug'
 import { database } from '@/lib/firebase' // se não usar alias, troque para: import { database } from './firebase'
+import { synchronizePublicRequest } from '@/lib/pedidoProjectionClient'
 
 // Converte para número seguro
 export const toNum = (v) => {
@@ -89,7 +90,8 @@ export async function criarPedido({ draft = {}, mapRef, meuId, meuNome }) {
 
   try {
     // 4) grava no Firebase
-    await set(novoRef, payload)
+    await update(ref(database, `pedidos/${payload.id}`), payload)
+    await synchronizePublicRequest(payload.id)
 
     // 5) confirma otimista (opcional)
     if (typeof window !== 'undefined' && window?.dispatchEvent) {

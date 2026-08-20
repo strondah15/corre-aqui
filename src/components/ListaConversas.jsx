@@ -1,25 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ref, onValue, update, query, limitToLast } from '@/lib/firebaseDebug'
+import { ref, onValue, update } from '@/lib/firebaseDebug'
 import { motion } from 'framer-motion'
 import { database } from '@/lib/firebase'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus } from '@/lib/atendimento'
-
-function getMs(v) {
-  if (!v) return 0
-  if (typeof v === 'number') return v
-  if (typeof v === 'string') {
-    const parsed = Date.parse(v)
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-  if (typeof v === 'object' && typeof v.seconds === 'number') return v.seconds * 1000
-  return 0
-}
+import { conversationTimestampMs, normalizeAndSortConversations } from '@/lib/conversations'
 
 function timeShort(ts) {
-  const ms = getMs(ts)
+  const ms = conversationTimestampMs(ts)
   if (!ms) return ''
 
   const d = new Date(ms)
@@ -38,22 +28,6 @@ const clamp = (n, min, max) => Math.max(min, Math.min(max, n))
 const toInt = (v, fallback) => {
   const n = Number(v)
   return Number.isFinite(n) ? Math.trunc(n) : fallback
-}
-
-function getValorPedido(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
-  const normalized = String(value || '')
-    .replace(/[^\d,.-]/g, '')
-    .replace(/\./g, '')
-    .replace(',', '.')
-  const n = Number(normalized)
-  return Number.isFinite(n) ? n : 0
-}
-
-function formatMoney(value) {
-  const n = getValorPedido(value)
-  if (!n) return ''
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 function getStatusConversa(c) {
@@ -83,16 +57,9 @@ function statusMeta(c) {
   return { label: 'Ativa', tone: 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200', dot: 'bg-emerald-400', active: true }
 }
 
-function iconPorConversa(c) {
-  const text = `${c?.categoriaNome || ''} ${c?.titulo || ''}`.toLowerCase()
-  if (text.includes('hidrául') || text.includes('encanam') || text.includes('torneira')) return '🚰'
-  if (text.includes('móvel') || text.includes('montagem')) return '🛋️'
-  if (text.includes('limpeza')) return '🧹'
-  if (text.includes('pintura')) return '🖌️'
-  if (text.includes('ar condicionado')) return '❄️'
-  if (text.includes('ventil')) return '🪭'
-  if (text.includes('alvenaria') || text.includes('parede')) return '🧱'
-  return '⚡'
+function safeAvatarUrl(value) {
+  const url = String(value || '').trim()
+  return /^https?:\/\/[^\s]+$/i.test(url) && url.length <= 2048 ? url : ''
 }
 
 export default function ListaConversas({
@@ -112,17 +79,12 @@ export default function ListaConversas({
     }
 
     const lim = clamp(toInt(limit, 60), 20, 200)
-    const cRef = query(ref(database, `conversas/${meuId}`), limitToLast(lim))
+    // RTDB cannot order by a coalesced timestamp. Read the user's private index,
+    // deduplicate legacy mirrors, then apply the limit after the canonical sort.
+    const cRef = ref(database, `conversas/${meuId}`)
 
     const off = onValue(cRef, (snap) => {
-      const raw = snap.val() || {}
-      const list = Object.entries(raw).map(([pedidoId, c]) => ({
-        pedidoId,
-        ...(c || {}),
-      }))
-
-      list.sort((a, b) => getMs(b.lastAt || b.updatedAt) - getMs(a.lastAt || a.updatedAt))
-      setConversas(list)
+      setConversas(normalizeAndSortConversations(snap.val() || {}, lim))
     })
 
     return () => off()
@@ -280,14 +242,14 @@ export default function ListaConversas({
         ) : (
           <div className="space-y-2">
             {conversasFiltradas.map((c, index) => {
-              const hora = timeShort(c.lastAt || c.updatedAt)
+              const hora = timeShort(c._timestampMs)
               const titulo = c.titulo || 'Atendimento'
               const preview = String(c.preview || '').trim()
               const pessoa = c.pessoa || 'Participante'
               const enviadaPorMim = c.lastById && meuId && String(c.lastById) === String(meuId)
               const meta = c._statusMeta || statusMeta(c)
-              const valor = formatMoney(c?.valor)
-              const icon = iconPorConversa(c)
+              const avatarUrl = safeAvatarUrl(c?.outroFotoURL || c?.outroPhotoURL || c?.outroFoto || c?.photoURL)
+              const inicial = pessoa.slice(0, 1).toUpperCase() || 'C'
 
               return (
                 <motion.button
@@ -303,16 +265,22 @@ export default function ListaConversas({
                     onAbrirChat?.(c.pedidoId)
                   }}
                   className={[
-                    'w-full rounded-[18px] border px-2.5 py-2.5 text-left transition-all duration-200 md:rounded-[22px] md:px-3 md:py-3',
+                    'w-full rounded-[17px] border px-2.5 py-2.5 text-left transition-all duration-200 md:rounded-[20px] md:px-3 md:py-3',
                     c.unread
                       ? 'border-emerald-400/35 bg-emerald-500/10 shadow-[0_14px_42px_rgba(34,197,94,0.12)]'
                       : 'border-white/10 bg-white/[0.045] hover:bg-white/[0.07]',
                   ].join(' ')}
                 >
-                  <div className="flex items-start justify-between gap-2.5 md:gap-3">
-                    <div className="flex min-w-0 items-start gap-2.5 md:gap-3">
-                      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-xl shadow-[0_14px_30px_rgba(37,99,235,0.24)] md:h-14 md:w-14 md:text-2xl">
-                        {icon}
+                  <div className="flex items-center justify-between gap-2.5 md:gap-3">
+                    <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
+                      <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-gradient-to-br from-blue-600 to-emerald-500 text-sm font-black text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)] md:h-12 md:w-12 md:text-base">
+                        {avatarUrl ? (
+                          <span
+                            className="h-full w-full bg-cover bg-center"
+                            style={{ backgroundImage: `url(${JSON.stringify(avatarUrl)})` }}
+                            aria-hidden="true"
+                          />
+                        ) : inicial}
                       </div>
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-2">
@@ -323,8 +291,18 @@ export default function ListaConversas({
                             </span>
                           ) : null}
                         </div>
-                        <div className="mt-0.5 line-clamp-1 text-[11px] font-bold text-slate-400 md:text-xs">
+                        <div className="mt-0.5 truncate text-[11px] font-bold text-slate-400 md:text-xs">
                           {titulo}
+                        </div>
+                        <div className="mt-1 truncate text-xs font-semibold leading-snug text-slate-300 md:text-sm">
+                          {preview ? (
+                            <>
+                              {enviadaPorMim ? <span className="text-slate-500">Você: </span> : null}
+                              {preview}
+                            </>
+                          ) : (
+                            <span className="text-slate-500">Sem mensagens ainda</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -338,22 +316,6 @@ export default function ListaConversas({
                     </div>
                   </div>
 
-                  <div className="mt-2 line-clamp-2 pl-[58px] text-xs font-semibold leading-snug text-slate-300 md:pl-[68px] md:text-sm md:leading-relaxed">
-                    {preview ? (
-                      <>
-                        {enviadaPorMim ? <span className="text-slate-500">Você: </span> : null}
-                        {preview}
-                      </>
-                    ) : (
-                      <span className="text-slate-500">Sem mensagens ainda</span>
-                    )}
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-[58px] text-[10px] font-bold text-slate-500 md:pl-[68px] md:text-[11px]">
-                    {valor ? <span className="rounded-full bg-white/[0.06] px-2 py-1 text-slate-300">{valor}</span> : null}
-                    {c?.categoriaNome ? <span className="rounded-full bg-white/[0.06] px-2 py-1">{c.categoriaNome}</span> : null}
-                    <span className="rounded-full bg-white/[0.06] px-2 py-1">Chat do pedido</span>
-                  </div>
                 </motion.button>
               )
             })}

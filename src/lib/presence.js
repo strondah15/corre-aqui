@@ -2,7 +2,6 @@
 import { onDisconnect, onValue, ref, update } from './firebaseDebug';
 
 const HEARTBEAT_MS = 15_000;
-const LOCATION_REFRESH_MS = 60_000;
 export const ONLINE_TTL_MS = 60_000;
 export const USER_ONLINE_PREFERENCE_KEY = "correAqui.userOnlinePreference.v1";
 const DEBUG_PREFIX = "[PRESENCE]";
@@ -39,10 +38,6 @@ function cleanText(value, fallback = "") {
   return String(value || fallback).trim();
 }
 
-function isFotoValor(value) {
-  return /^(https?:\/\/|data:image\/|blob:|\/)/i.test(String(value || "").trim());
-}
-
 function getModoAtual() {
   if (!isBrowser()) return "";
 
@@ -72,52 +67,13 @@ export function setUserOnlinePreference(value) {
   } catch {}
 }
 
-function getMyLocation() {
-  return new Promise((resolve) => {
-    if (!isBrowser() || !navigator.geolocation) {
-      debugPresence("localizacao negada/indisponivel", { motivo: "geolocation indisponivel" });
-      return resolve(null);
-    }
-
-    try {
-      navigator.permissions?.query?.({ name: "geolocation" }).then((permission) => {
-        debugPresence("localizacao permissao", { state: permission?.state || "desconhecido" });
-      }).catch(() => {});
-    } catch {}
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = Number(pos?.coords?.latitude);
-        const lng = Number(pos?.coords?.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-          debugPresence("localizacao negada/indisponivel", { motivo: "coordenada invalida" });
-          return resolve(null);
-        }
-        debugPresence("localizacao permitida", { lat, lng });
-        resolve({ lat, lng });
-      },
-      (error) => {
-        debugPresence("localizacao negada", {
-          code: error?.code || null,
-          message: error?.message || "sem detalhe",
-        });
-        resolve(null);
-      },
-      { enableHighAccuracy: true, maximumAge: 30_000, timeout: 10_000 },
-    );
-  });
-}
-
 function buildIdentityPatch(user, extras = {}) {
-  const nome = cleanText(extras.nome || user?.displayName, user?.isAnonymous ? "Visitante" : "Usuario");
-  const fotoURL = cleanText(extras.fotoURL || user?.photoURL);
   const modoAtual = cleanText(extras.modoAtual || getModoAtual());
   const now = Date.now();
 
   const patch = {
     uid: user.uid,
     id: user.uid,
-    nome,
     online: true,
     disponivel: true,
     lastSeen: now,
@@ -125,9 +81,6 @@ function buildIdentityPatch(user, extras = {}) {
   };
 
   if (modoAtual) patch.modoAtual = modoAtual;
-  if (user.email) patch.email = user.email;
-  if (isFotoValor(fotoURL)) patch.fotoURL = fotoURL;
-
   return patch;
 }
 
@@ -154,6 +107,9 @@ export function startPresence(database, user, extras = {}) {
         disponivel: false,
         lastSeen: Date.now(),
         updatedAt: Date.now(),
+        local: null,
+        latitude: null,
+        longitude: null,
       });
       return;
     }
@@ -171,6 +127,9 @@ export function startPresence(database, user, extras = {}) {
         disponivel: true,
         lastSeen: now,
         updatedAt: now,
+        local: null,
+        latitude: null,
+        longitude: null,
       });
       debugPresence("salvou online com sucesso", uid);
     } catch (error) {
@@ -179,35 +138,15 @@ export function startPresence(database, user, extras = {}) {
     }
   };
 
-  const saveLocation = async () => {
-    if (!getUserOnlinePreference()) return null;
-
-    const local = await getMyLocation();
-    if (cancelled || !local) return null;
-
-    try {
-      const now = Date.now();
-      await updatePresencePath(database, uid, {
-        local,
-        latitude: local.lat,
-        longitude: local.lng,
-        updatedAt: now,
-      });
-      debugPresence("local salvo", local);
-    } catch (error) {
-      errorPresence("erro ao salvar presença", error);
-      throw error;
-    }
-
-    return local;
-  };
-
   const saveOffline = () => {
     const now = Date.now();
     updatePresencePath(database, uid, {
       online: false,
       lastSeen: now,
       updatedAt: now,
+      local: null,
+      latitude: null,
+      longitude: null,
     }).catch((error) => {
       errorPresence("erro ao salvar presença", error);
     });
@@ -224,12 +163,14 @@ export function startPresence(database, user, extras = {}) {
         online: false,
         lastSeen: now,
         updatedAt: now,
+        local: null,
+        latitude: null,
+        longitude: null,
       });
     } catch {}
 
     try {
       await saveOnline();
-      await saveLocation();
     } catch (error) {
       errorPresence("erro ao salvar presença", error);
     }
@@ -241,24 +182,17 @@ export function startPresence(database, user, extras = {}) {
     });
   }, HEARTBEAT_MS);
 
-  const locationTimer = window.setInterval(() => {
-    saveLocation().catch(() => {});
-  }, LOCATION_REFRESH_MS);
-
   const onExit = () => saveOffline();
   window.addEventListener("pagehide", onExit);
   window.addEventListener("beforeunload", onExit);
 
-  saveOnline()
-    .then(() => saveLocation())
-    .catch((error) => {
+  saveOnline().catch((error) => {
       errorPresence("erro ao salvar presença", error);
     });
 
   return () => {
     cancelled = true;
     window.clearInterval(heartbeat);
-    window.clearInterval(locationTimer);
     window.removeEventListener("pagehide", onExit);
     window.removeEventListener("beforeunload", onExit);
     unsubscribeConnected();

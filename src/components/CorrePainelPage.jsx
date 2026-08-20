@@ -6,6 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
 import { reconcilePrivateRequestInbox } from '@/lib/privateRequests'
+import { normalizePublicRequest } from '@/lib/publicRequests'
 import AgendaProfissional from '@/components/AgendaProfissional'
 import CentralNotificacoes from '@/components/CentralNotificacoes'
 import ListaConversas from '@/components/ListaConversas'
@@ -60,9 +61,9 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
       return undefined
     }
 
-    const off = onValue(ref(database, 'pedidos'), (snap) => {
+    const off = onValue(ref(database, 'publicRequests'), (snap) => {
       const raw = snap.val() || {}
-      const lista = Object.entries(raw).map(([id, pedido]) => ({ id, ...(pedido || {}) }))
+      const lista = Object.entries(raw).map(([id, pedido]) => normalizePublicRequest(id, pedido))
       setPedidos(ordenarPedidos(lista))
     })
 

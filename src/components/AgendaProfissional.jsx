@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { onValue, ref, serverTimestamp, update } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
 import { respondPrivateRequest } from '@/lib/privateRequests'
+import { respondLegacyAgendamento, subscribeParticipantAgendamentos } from '@/lib/agendamentos'
 
 function getMs(value) {
   if (!value) return 0
@@ -440,18 +440,20 @@ export default function AgendaProfissional({
     }
 
     setLoading(true)
-    const off = onValue(ref(database, 'agendamentos'), (snap) => {
-      const raw = snap.val() || {}
-      const lista = Object.entries(raw)
-        .map(([id, value]) => ({ id, ...(value || {}) }))
-        .filter((item) => item.profissionalId === uid || item.clienteId === uid)
+    const off = subscribeParticipantAgendamentos({
+      database,
+      uid,
+      onChange: (items) => {
+        const lista = items
         .sort((a, b) => getAgendaMs(a) - getAgendaMs(b))
 
       setAgendamentos(lista)
       setLoading(false)
-    }, () => {
-      setAgendamentos([])
-      setLoading(false)
+      },
+      onError: () => {
+        setAgendamentos([])
+        setLoading(false)
+      },
     })
 
     return () => off()
@@ -594,11 +596,6 @@ export default function AgendaProfissional({
       }
 
       const agendamentoPath = `agendamentos/${id}`
-      const agendamentoPayload = {
-        status,
-        respondidoEm: Date.now(),
-        atualizadoEm: serverTimestamp(),
-      }
       console.info('[AGENDA] responder agendamento', {
         authUid: auth.currentUser?.uid || uid || null,
         id,
@@ -607,9 +604,9 @@ export default function AgendaProfissional({
         caminho: agendamentoPath,
         statusAtual: item?.status || 'pendente',
         proximoStatus: status,
-        payload: agendamentoPayload,
+        payload: { status },
       })
-      await update(ref(database, agendamentoPath), agendamentoPayload)
+      await respondLegacyAgendamento({ database, agendamento: item, actorUid: uid, status })
       if (status === 'aceito') {
         const destino = { ...item, id }
         if (typeof onAbrirPedido === 'function') onAbrirPedido(destino)

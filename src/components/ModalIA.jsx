@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ref, push, set, serverTimestamp } from '@/lib/firebaseDebug'
+import { ref, push, update, serverTimestamp } from '@/lib/firebaseDebug'
 import { database } from '@/lib/firebase'
 import { CATEGORIES, getCategoryById } from '@/constants/categories'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
+import { synchronizePublicRequest } from '@/lib/pedidoProjectionClient'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 
 const DRAFT_KEY = 'correAqui:novoPedido:draft:v1'
@@ -318,7 +319,8 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
       }))
     } catch {}
 
-    await set(novo, payload)
+    await update(ref(database, `pedidos/${payload.id}`), payload)
+    await synchronizePublicRequest(payload.id)
 
     showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoCriado, {
       id: CONTEXTUAL_TIP_IDS.pedidoCriado,

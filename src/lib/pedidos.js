@@ -1,6 +1,7 @@
 // src/lib/pedidos.js
-import { ref, push, set, serverTimestamp } from './firebaseDebug'
+import { ref, push, update, serverTimestamp } from './firebaseDebug'
 import { database } from './firebase' // ajuste se seu firebase estiver em outro caminho
+import { synchronizePublicRequest } from './pedidoProjectionClient'
 
 export const toNum = (v) => {
   const n = Number(v)
@@ -82,7 +83,8 @@ export async function criarPedido({ draft = {}, mapRef, meuId, meuNome }) {
 
   try {
     // 4) grava no Firebase
-    await set(novoRef, payload)
+    await update(ref(database, `pedidos/${payload.id}`), payload)
+    await synchronizePublicRequest(payload.id)
 
     // 5) confirma (opcional)
     try {

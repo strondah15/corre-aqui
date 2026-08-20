@@ -280,7 +280,10 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
     const ocupadoAte = user.ocupadoAte || profile.ocupadoAte || prof.ocupadoAte || null
     const emServico = statusProfissional === 'em_servico' || (!!ocupadoAte && Date.now() < Number(ocupadoAte))
 
-    const whatsapp = pickText(prof?.whatsapp, user.profWhats, profile.whatsapp, user.whatsapp)
+    const allowPublicContact = (user.allowPublicContact ?? profile.allowPublicContact ?? prof.allowPublicContact) === true
+    const whatsapp = allowPublicContact
+      ? pickText(prof?.whatsapp, user.profWhats, profile.whatsapp, user.whatsapp)
+      : ''
     const whatsappLimpo = normalizeWhatsapp(whatsapp)
 
     const professionProf = getProfessionDisplayName(user, { mode: 'profissional', fallback: '' })
@@ -401,6 +404,7 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       agendaAberta,
       ocupadoAte,
       emServico,
+      allowPublicContact,
       whatsappLimpo,
       profTitulo,
       profPreco,

@@ -1,10 +1,11 @@
 'use client'
 
-import { get, push, ref, remove, serverTimestamp, set, update } from './firebaseDebug'
+import { get, push, ref, remove, serverTimestamp, update } from './firebaseDebug'
 import { auth } from './firebase'
 import { enviarPushParaUsuario } from './pushSender'
 import { buildPushPayload } from './pushPayload'
 import { createEventNotificationId, EVENT_NOTIFICATION_TYPES, formatEventSchedule } from './eventNotifications'
+import { registrarMensagemSistemaConfiavel } from './trustedSystemChat'
 
 const DEBUG_PRIVATE_REQUESTS = process.env.NODE_ENV !== 'production'
 
@@ -62,44 +63,30 @@ function getNome(entity = {}, fallback = 'Corre Aqui') {
 async function updateWithTrace(database, updates, { context = {} } = {}) {
   debugPrivateRequests('Updates:', updates)
 
-  for (const [path, payload] of Object.entries(updates || {})) {
-    const target = ref(database, path)
-    const operation = payload && typeof payload === 'object' && !Array.isArray(payload) ? 'update' : 'set'
-    debugPrivateRequests('Atualizando:', path)
-    debugPrivateRequests('Operação:', operation)
-    debugPrivateRequests('Payload:', payload)
-    try {
-      if (operation === 'update') {
-        await update(target, payload)
-      } else {
-        await set(target, payload)
-      }
-    } catch (error) {
-      if (DEBUG_PRIVATE_REQUESTS) {
-        console.error('[AGENDA] caminho negado:', path)
-        console.error('[AGENDA] operação:', context?.operation)
-        console.error('[AGENDA] UID autenticado:', context?.uid)
-        console.error('[AGENDA] código:', error?.code)
-        console.error('[AGENDA] mensagem:', error?.message)
-        console.error('[AGENDA] payload:', payload)
-        console.error('[AGENDA] contexto completo:', context)
-        console.error('[AGENDA] caminho negado', {
-          ...context,
-          caminho: path,
-          code: error?.code || null,
-          message: error?.message || String(error),
-          error,
-        })
-      } else {
-        console.error('[AGENDA] operacao recusada', {
-          raiz: String(path || '').split('/').filter(Boolean)[0] || 'desconhecida',
-          operation: context?.operation || operation,
-          code: error?.code || null,
-          message: error?.message || String(error),
-        })
-      }
-      throw error
+  const payload = updates || {}
+  const paths = Object.keys(payload)
+  paths.forEach((path) => debugPrivateRequests('Atualizando atomicamente:', path))
+
+  try {
+    await update(ref(database), payload)
+  } catch (error) {
+    if (DEBUG_PRIVATE_REQUESTS) {
+      console.error('[AGENDA] atualização atômica negada:', paths)
+      console.error('[AGENDA] operação:', context?.operation)
+      console.error('[AGENDA] UID autenticado:', context?.uid)
+      console.error('[AGENDA] código:', error?.code)
+      console.error('[AGENDA] mensagem:', error?.message)
+      console.error('[AGENDA] payload:', payload)
+      console.error('[AGENDA] contexto completo:', context)
+    } else {
+      console.error('[AGENDA] operacao recusada', {
+        raiz: String(paths[0] || '').split('/').filter(Boolean)[0] || 'desconhecida',
+        operation: context?.operation || 'update',
+        code: error?.code || null,
+        message: error?.message || String(error),
+      })
     }
+    throw error
   }
 }
 
@@ -353,8 +340,8 @@ export async function createPrivateRequest({
   }
   const summary = requestSummary(request)
 
-  await set(requestRef, request)
   const payload = removeUndefined({
+    [`privateRequests/${requestId}`]: request,
     [`privateRequestInbox/${clienteId}/${requestId}`]: summary,
     [`privateRequestInbox/${profissionalId}/${requestId}`]: summary,
   })
@@ -363,9 +350,20 @@ export async function createPrivateRequest({
     servicoId: request?.servicoId,
     payload,
   })
-  await updateWithTrace(database, payload)
+  await updateWithTrace(database, payload, {
+    context: {
+      operation: 'createPrivateRequest',
+      uid: auth.currentUser?.uid || null,
+      requestId,
+      criadorUid: clienteId,
+      destinatarioUid: profissionalId,
+    },
+  })
 
   const isAgenda = tipo === 'agendamento'
+  if (isAgenda) {
+    await registrarMensagemSistemaConfiavel({ pedidoId: requestId, eventType: 'agendamento_solicitado' })
+  }
   const requestEventType = isAgenda ? EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO : 'PEDIDO_DIRETO_CRIADO'
   const requestEventId = createEventNotificationId({
     type: requestEventType,
@@ -639,8 +637,8 @@ export async function respondPrivateRequest({ database, request = {}, profission
       titulo: title,
       lastText: `${profNome} aceitou sua solicitação.`,
       mensagemPreview: `${profNome} aceitou sua solicitação.`,
-      lastAt: agora,
-      updatedAt: agora,
+      lastAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
       lastById: profissionalId,
       lastByNome: profNome,
       status: 'ativa',
@@ -659,28 +657,6 @@ export async function respondPrivateRequest({ database, request = {}, profission
     }
     updates[`usersChats/${clienteId}/${requestId}`] = true
     updates[`usersChats/${profissionalId}/${requestId}`] = true
-    const acceptedSystemId = isAgenda ? 'msg_agendamento_aceito' : 'msg_pedido_aceito'
-    if (isAgenda && scheduleText) {
-      updates[`chats/${requestId}/msg_agendamento_solicitado`] = {
-        texto: `📅 Solicitação de agendamento enviada para ${scheduleText}.`,
-        sistema: true,
-        criadoEm: request.criadoEm || agora,
-        hora: request.criadoEm || agora,
-        autorId: 'sistema',
-        autorNome: 'Sistema',
-      }
-      updates[`mensagens/${requestId}/msg_agendamento_solicitado`] =
-        updates[`chats/${requestId}/msg_agendamento_solicitado`]
-    }
-    updates[`chats/${requestId}/${acceptedSystemId}`] = {
-      texto: isAgenda && scheduleText ? `✓ Agendamento confirmado para ${scheduleText}.` : `✓ ${profNome} aceitou o pedido.`,
-      sistema: true,
-      criadoEm: agora,
-      hora: agora,
-      autorId: 'sistema',
-      autorNome: 'Sistema',
-    }
-    updates[`mensagens/${requestId}/${acceptedSystemId}`] = updates[`chats/${requestId}/${acceptedSystemId}`]
   }
 
   const payload = removeUndefined(updates)
@@ -707,6 +683,14 @@ export async function respondPrivateRequest({ database, request = {}, profission
       proximoStatus: finalStatus,
     },
   })
+
+  if (finalStatus === 'aceito') {
+    await registrarMensagemSistemaConfiavel({ pedidoId: requestId, eventType: 'pedido_aceito' })
+  } else if (finalStatus === 'agendado') {
+    await registrarMensagemSistemaConfiavel({ pedidoId: requestId, eventType: 'agendamento_aceito' })
+  } else if (isAgenda && finalStatus === 'recusado') {
+    await registrarMensagemSistemaConfiavel({ pedidoId: requestId, eventType: 'agendamento_recusado' })
+  }
 
   const accepted = finalStatus === 'aceito' || finalStatus === 'agendado'
   if (isAgenda) {

@@ -2,6 +2,7 @@
 
 import { ref, runTransaction } from './firebaseDebug'
 import { auth } from './firebase'
+import { claimPedidoAuthority, synchronizePublicRequest } from './pedidoProjectionClient'
 
 export const ATENDIMENTO_STATUS = Object.freeze({
   ABERTO: 'aberto',
@@ -98,6 +99,18 @@ export async function transitionAtendimento({
     atendimento: atendimentoPatch,
   }
 
+  if (!database || !id || !actor) throw new Error('Atendimento inválido.')
+  if (!canTransitionAtendimento(expected, next)) throw new Error('Essa etapa do atendimento não está disponível.')
+
+  if (next === ATENDIMENTO_STATUS.ACEITO) {
+    if (auth.currentUser?.uid !== actor) throw new Error('Sessão inválida para aceitar este pedido.')
+    const accepted = await claimPedidoAuthority({
+      pedidoId: id,
+      local: topLevelPatch?.aceite?.local || null,
+    })
+    return accepted.pedido
+  }
+
   logTransition('before-transaction', {
     pedidoId: id,
     authUid,
@@ -110,9 +123,6 @@ export async function transitionAtendimento({
     caminhoCompleto: `/${path}`,
     caminhosAtualizados: getTransitionPaths(path, atendimentoPatch, topLevelPatch),
   })
-
-  if (!database || !id || !actor) throw new Error('Atendimento inválido.')
-  if (!canTransitionAtendimento(expected, next)) throw new Error('Essa etapa do atendimento não está disponível.')
 
   const result = await runTransaction(ref(database, path), (current) => {
     logTransition('transaction-read', {
@@ -220,6 +230,8 @@ export async function transitionAtendimento({
     statusSalvo: result.snapshot.val()?.status || null,
     payloadCompletoSalvo: result.snapshot.val(),
   })
+
+  await synchronizePublicRequest(id)
 
   return result.snapshot.val()
 }

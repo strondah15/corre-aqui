@@ -2,8 +2,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ref, onValue, update } from '@/lib/firebaseDebug'
 import { database } from '@/lib/firebase'
+import { respondLegacyAgendamento, subscribeParticipantAgendamentos } from '@/lib/agendamentos'
 
 function toMillis(value) {
   if (typeof value === 'number') return value
@@ -19,14 +19,17 @@ export default function AgendaPanel({ uid }) {
   useEffect(() => {
     if (!uid) return
 
-    const off = onValue(ref(database, 'agendamentos'), (snap) => {
-      const raw = snap.val() || {}
-      const arr = Object.entries(raw)
-        .map(([id, v]) => ({ id, ...(v || {}) }))
+    const off = subscribeParticipantAgendamentos({
+      database,
+      uid,
+      onChange: (items) => {
+        const arr = items
         .filter((a) => a.profissionalId === uid)
         .sort((a, b) => toMillis(b.criadoEm || b.createdAt) - toMillis(a.criadoEm || a.createdAt))
 
       setLista(arr)
+      },
+      onError: () => setLista([]),
     })
 
     return () => off()
@@ -39,9 +42,12 @@ export default function AgendaPanel({ uid }) {
   }, [lista, aba])
 
   const responder = async (id, status) => {
-    await update(ref(database, `agendamentos/${id}`), {
+    const item = lista.find((entry) => entry.id === id)
+    await respondLegacyAgendamento({
+      database,
+      agendamento: item,
+      actorUid: uid,
       status,
-      atualizadoEm: Date.now(),
     })
   }
 

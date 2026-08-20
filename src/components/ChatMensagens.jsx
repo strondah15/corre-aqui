@@ -9,7 +9,11 @@ import { ref, push, onValue, query, limitToLast, update, serverTimestamp, get, s
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
 import { createEventNotificationId } from '@/lib/eventNotifications'
+import { registrarMensagemSistemaConfiavel } from '@/lib/trustedSystemChat'
 import { motion, useReducedMotion } from 'framer-motion'
+import AvaliacaoAtendimentoModal from '@/components/AvaliacaoAtendimentoModal'
+import { getAuthorizedPhoneHref, getPrimaryAttendanceAction } from '@/lib/serviceExperience'
+import { saveCanonicalServiceRating } from '@/lib/serviceRatings'
 
 const chatOpenTipSessionKeys = new Set()
 
@@ -147,7 +151,20 @@ function getGuidedTimelineStep(status) {
 
 const LIMITE_TEXTO = 700
 const LIMITE_FALLBACK_DATABASE_BYTES = 900 * 1024
-const ACCEPT_ANEXOS = 'image/*,.pdf,.doc,.docx,.txt,.zip'
+const MIME_ANEXOS_CHAT = new Set(['image/jpeg', 'image/png', 'image/webp', 'audio/webm', 'audio/mp4'])
+const ACCEPT_ANEXOS = 'image/jpeg,image/png,image/webp,audio/webm,audio/mp4'
+
+function normalizarMimeAnexoChat(value) {
+  const mime = String(value || '').split(';')[0].trim().toLowerCase()
+  return MIME_ANEXOS_CHAT.has(mime) ? mime : ''
+}
+
+function isUrlAnexoChatSeguro(url, tipo) {
+  const match = String(url || '').match(/^data:([^;,]+)(?:;[^,]*)?;base64,[A-Za-z0-9+/=]+$/)
+  const mime = normalizarMimeAnexoChat(match?.[1])
+  if (!mime) return false
+  return (tipo === 'imagem' && mime.startsWith('image/')) || (tipo === 'audio' && mime.startsWith('audio/'))
+}
 
 function compactSystemChip(msg) {
   const texto = String(msg?.texto || 'Atualizacao do pedido').trim()
@@ -294,14 +311,6 @@ function IconMapPin(props) {
   )
 }
 
-function IconDollar(props) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
-      <path d="M12 3v18M16.5 7.5c-.8-1-2.3-1.6-4.1-1.6-2.2 0-3.9 1.1-3.9 2.8 0 1.9 1.9 2.5 4.1 3 2.1.5 4 1.1 4 3.1 0 1.8-1.7 3-4.2 3-2 0-3.8-.7-4.8-1.9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 function IconShield(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
@@ -370,9 +379,8 @@ function limparNomeArquivo(nome) {
 }
 
 function tipoAnexoPorArquivo(file, fallback = 'arquivo') {
-  const mime = String(file?.type || '').toLowerCase()
+  const mime = normalizarMimeAnexoChat(file?.type)
   if (mime.startsWith('image/')) return 'imagem'
-  if (mime.startsWith('video/')) return 'video'
   if (mime.startsWith('audio/')) return 'audio'
   return fallback
 }
@@ -396,11 +404,11 @@ function fileToDataUrl(file) {
 
 function MensagemAnexo({ anexo, audioLegacy, duracao }) {
   const item = anexo || (audioLegacy ? { tipo: 'audio', url: audioLegacy, mime: 'audio/webm', nome: 'Áudio' } : null)
-  if (!item?.url) return null
+  if (!item?.url || !isUrlAnexoChatSeguro(item.url, item.tipo)) return null
 
   if (item.tipo === 'imagem') {
     return (
-      <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 block overflow-hidden rounded-2xl bg-black/20">
+      <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-2 block overflow-hidden rounded-2xl bg-black/20">
         <div
           className="aspect-[4/3] w-full bg-slate-900 bg-cover bg-center"
           style={{ backgroundImage: `url(${JSON.stringify(item.url)})` }}
@@ -410,19 +418,6 @@ function MensagemAnexo({ anexo, audioLegacy, duracao }) {
           {item.nome || 'Imagem'} {item.tamanho ? `· ${formatarTamanho(item.tamanho)}` : ''}
         </div>
       </a>
-    )
-  }
-
-  if (item.tipo === 'video') {
-    return (
-      <div className="mt-2 overflow-hidden rounded-2xl bg-black/20">
-        <video controls playsInline className="max-h-72 w-full bg-black">
-          <source src={item.url} type={item.mime || 'video/mp4'} />
-        </video>
-        <div className="px-3 py-2 text-[11px] font-bold text-white/75">
-          {item.nome || 'Vídeo'} {item.tamanho ? `· ${formatarTamanho(item.tamanho)}` : ''}
-        </div>
-      </div>
     )
   }
 
@@ -437,22 +432,7 @@ function MensagemAnexo({ anexo, audioLegacy, duracao }) {
     )
   }
 
-  return (
-    <a
-      href={item.url}
-      target="_blank"
-      rel="noreferrer"
-      className="mt-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-left transition hover:bg-black/30"
-    >
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10 text-xl">📎</span>
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-black text-white">{item.nome || 'Arquivo'}</span>
-        <span className="block text-[11px] font-bold text-white/60">
-          {item.tamanho ? formatarTamanho(item.tamanho) : 'Abrir arquivo'}
-        </span>
-      </span>
-    </a>
-  )
+  return null
 }
 
 export default function ChatMensagens({
@@ -479,6 +459,13 @@ export default function ChatMensagens({
   const [pedido, setPedido] = useState(null)
   const [detalhesPedidoAberto, setDetalhesPedidoAberto] = useState(Boolean(initialDetailsOpen))
   const [avisoAtendimentoVisivel, setAvisoAtendimentoVisivel] = useState(true)
+  const [confirmacaoFinalizacaoAberta, setConfirmacaoFinalizacaoAberta] = useState(false)
+  const [conclusaoAnimando, setConclusaoAnimando] = useState(false)
+  const [avaliacaoAberta, setAvaliacaoAberta] = useState(false)
+  const [avaliacaoNota, setAvaliacaoNota] = useState(5)
+  const [avaliacaoComentario, setAvaliacaoComentario] = useState('')
+  const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false)
+  const [agradecimentoAvaliacao, setAgradecimentoAvaliacao] = useState(false)
 
   const mediaRef = useRef(null)
   const mediaStreamRef = useRef(null)
@@ -490,6 +477,8 @@ export default function ChatMensagens({
   const shouldStickToBottomRef = useRef(true)
   const cameraInputRef = useRef(null)
   const arquivoInputRef = useRef(null)
+  const conclusaoTimerRef = useRef(null)
+  const agradecimentoTimerRef = useRef(null)
 
   const outroId = outroUser?.id || null
   const outroNome = safeName(outroUser?.nome)
@@ -572,28 +561,9 @@ export default function ChatMensagens({
 
     const criarMensagemInicial = async () => {
       try {
-        const msgId = 'msg_atendimento_intro'
-        const msgRef = ref(database, `chats/${pedidoId}/${msgId}`)
-        const snap = await get(msgRef)
-        if (cancelado || snap.exists()) return
-
-        const agora = Date.now()
-        const payload = {
-          texto: 'Este chat é exclusivo deste atendimento. Combine detalhes importantes por aqui.',
-          sistema: true,
-          evento: 'atendimento_intro',
-          criadoEm: agora,
-          hora: agora,
-          autorId: 'sistema',
-          autorNome: 'Sistema',
-        }
-
-        await set(msgRef, payload)
-        const mirrorRef = ref(database, `mensagens/${pedidoId}/${msgId}`)
-        const mirrorSnap = await get(mirrorRef).catch(() => null)
-        if (!mirrorSnap?.exists?.()) await set(mirrorRef, payload).catch(() => {})
+        await registrarMensagemSistemaConfiavel({ pedidoId, eventType: 'atendimento_intro' })
       } catch (error) {
-        debugChatWarning('Não foi possível criar a mensagem inicial do atendimento:', error)
+        if (!cancelado) debugChatWarning('Não foi possível criar a mensagem inicial do atendimento:', error)
       }
     }
 
@@ -666,6 +636,8 @@ export default function ChatMensagens({
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
+      if (conclusaoTimerRef.current) clearTimeout(conclusaoTimerRef.current)
+      if (agradecimentoTimerRef.current) clearTimeout(agradecimentoTimerRef.current)
       try {
         mediaStreamRef.current?.getTracks?.().forEach((track) => track.stop())
       } catch {}
@@ -712,15 +684,26 @@ export default function ChatMensagens({
       return
     }
 
-    const tipo = tipoForcado || tipoAnexoPorArquivo(file)
-    const previewUrl = tipo === 'imagem' || tipo === 'video' ? URL.createObjectURL(file) : ''
+    const mime = normalizarMimeAnexoChat(file.type)
+    const tipoDetectado = tipoAnexoPorArquivo(file)
+    const tipo = tipoForcado || tipoDetectado
+    if (!mime || (tipo !== 'imagem' && tipo !== 'audio') || tipo !== tipoDetectado) {
+      onToast?.({
+        type: 'error',
+        title: 'Tipo de arquivo não aceito',
+        message: 'Envie somente imagem JPG, PNG, WEBP ou áudio WEBM/MP4.',
+      })
+      return
+    }
+
+    const previewUrl = tipo === 'imagem' ? URL.createObjectURL(file) : ''
     limparAnexoSelecionado()
     setAnexoSelecionado({
       file,
       tipo,
       previewUrl,
       nome: file.name || (tipo === 'imagem' ? 'foto.jpg' : 'arquivo'),
-      mime: file.type || 'application/octet-stream',
+      mime,
       tamanho: file.size || 0,
     })
   }
@@ -731,39 +714,44 @@ export default function ChatMensagens({
       throw new Error('arquivo_grande')
     }
 
-    const tipo = tipoForcado || tipoAnexoPorArquivo(file)
+    const mime = normalizarMimeAnexoChat(file.type)
+    const tipoDetectado = tipoAnexoPorArquivo(file)
+    const tipo = tipoForcado || tipoDetectado
+    if (!mime || (tipo !== 'imagem' && tipo !== 'audio') || tipo !== tipoDetectado) {
+      throw new Error('tipo_arquivo_invalido')
+    }
     const agora = Date.now()
     const nomeSeguro = limparNomeArquivo(file.name || `${tipo}-${agora}`)
     const url = await fileToDataUrl(file)
+    if (!isUrlAnexoChatSeguro(url, tipo)) throw new Error('url_anexo_invalida')
 
     return {
       tipo,
       url,
-      nome: file.name || nomeSeguro,
-      mime: file.type || 'application/octet-stream',
+      nome: nomeSeguro,
+      mime,
       tamanho: file.size || 0,
-      path: '',
       storage: 'database_mvp',
     }
   }
 
-  async function registrarMensagem({ texto: textoMsg = '', audio = null, anexo = null, duracao = 0 }) {
+  async function registrarMensagem({ texto: textoMsg = '', anexo = null, duracao = 0, skipNotification = false }) {
     if (!pedidoId || !meuId) return
 
     const agora = Date.now()
-    const preview = (textoMsg || previewAnexo(anexo, duracao) || (audio ? `Áudio de ${formatarTempo(duracao)}` : 'Nova mensagem')).slice(0, 96)
+    const textoSeguro = String(textoMsg || '').slice(0, LIMITE_TEXTO)
+    const preview = (textoSeguro || previewAnexo(anexo, duracao) || 'Nova mensagem').slice(0, 96)
     const payload = {
-      tipo: anexo?.tipo || (audio ? 'audio' : 'texto'),
-      texto: textoMsg || '',
-      anexo: anexo || null,
-      audio: audio || (anexo?.tipo === 'audio' ? anexo.url : null),
-      duracao: audio || anexo?.tipo === 'audio' ? duracao : null,
+      tipo: anexo?.tipo || 'texto',
+      texto: textoSeguro,
       autor: nomeMeu,
       autorNome: nomeMeu,
       userId: meuId,
       hora: agora,
       criadoEm: agora,
       criadoEmServer: serverTimestamp(),
+      ...(anexo ? { anexo } : {}),
+      ...(anexo?.tipo === 'audio' ? { duracao: Math.min(Math.max(Number(duracao || 0), 0), 900) } : {}),
     }
 
     const messageRef = await push(ref(database, `chats/${pedidoId}`), payload)
@@ -774,8 +762,8 @@ export default function ChatMensagens({
       titulo: pedidoTitulo || 'Corre aqui',
       lastText: preview,
       mensagemPreview: preview,
-      lastAt: agora,
-      updatedAt: agora,
+      lastAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
       lastById: meuId,
       lastByNome: nomeMeu,
       status: 'ativa',
@@ -798,6 +786,8 @@ export default function ChatMensagens({
         outroNome: nomeMeu,
         unread: true,
       }).catch(() => {})
+
+      if (skipNotification) return
 
       const notificationId = createEventNotificationId({
         type: 'NOVA_MENSAGEM',
@@ -901,7 +891,7 @@ export default function ChatMensagens({
     mediaRef.current.onstop = async () => {
       try {
         setAnexando(true)
-        const mime = mediaRef.current?.mimeType || 'audio/webm'
+        const mime = normalizarMimeAnexoChat(mediaRef.current?.mimeType) || 'audio/webm'
         const blob = new Blob(chunksRef.current, { type: mime })
 
         if (!blob.size) {
@@ -988,14 +978,14 @@ export default function ChatMensagens({
         [`conversas/${outroId}/${pedidoId}/unread`]: true,
         [`conversas/${outroId}/${pedidoId}/lastText`]: systemMessage,
         [`conversas/${outroId}/${pedidoId}/mensagemPreview`]: systemMessage,
-        [`conversas/${outroId}/${pedidoId}/lastAt`]: agora,
-        [`conversas/${outroId}/${pedidoId}/updatedAt`]: agora,
+        [`conversas/${outroId}/${pedidoId}/lastAt`]: serverTimestamp(),
+        [`conversas/${outroId}/${pedidoId}/updatedAt`]: serverTimestamp(),
         [`conversas/${outroId}/${pedidoId}/status`]: 'ativa',
         [`conversas/${meuId}/${pedidoId}/pedidoId`]: pedidoId,
         [`conversas/${meuId}/${pedidoId}/lastText`]: systemMessage,
         [`conversas/${meuId}/${pedidoId}/mensagemPreview`]: systemMessage,
-        [`conversas/${meuId}/${pedidoId}/lastAt`]: agora,
-        [`conversas/${meuId}/${pedidoId}/updatedAt`]: agora,
+        [`conversas/${meuId}/${pedidoId}/lastAt`]: serverTimestamp(),
+        [`conversas/${meuId}/${pedidoId}/updatedAt`]: serverTimestamp(),
         [`notificacoes/${outroId}/${notificationId}`]: {
           tipo: 'chamar_atencao_chat',
           pedidoId,
@@ -1026,7 +1016,7 @@ export default function ChatMensagens({
         },
       })
 
-      await registrarMensagemSistema(systemMessage, 'chamar_atencao')
+      await registrarMensagem({ texto: systemMessage, skipNotification: true })
 
       enviarPushParaUsuario(outroId, {
         type: 'chamar_atencao_chat',
@@ -1048,169 +1038,31 @@ export default function ChatMensagens({
     }
   }
 
-  async function registrarMensagemSistema(texto, evento) {
-    if (!pedidoId || !meuId) return
-    const agora = Date.now()
-    const eventoId = evento || 'sistema'
-    const eventosUnicos = new Set([
-      'pedido_aceito',
-      'atendimento_intro',
-      'atendimento_iniciado',
-      'atendimento_chegou',
-      'finalizacao_solicitada',
-      'atendimento_finalizado',
-      'agendamento_solicitado',
-      'agendamento_aceito',
-      'agendamento_recusado',
-    ])
-    const msgId = eventosUnicos.has(eventoId) ? `msg_${eventoId}` : `msg_${eventoId}_${agora}`
-    const payload = {
-      texto,
-      sistema: true,
-      evento: eventoId,
-      criadoEm: agora,
-      hora: agora,
-      autorId: 'sistema',
-      autorNome: 'Sistema',
-    }
-
-    await set(ref(database, `chats/${pedidoId}/${msgId}`), payload)
-    await set(ref(database, `mensagens/${pedidoId}/${msgId}`), payload).catch(() => {})
-  }
-
-  async function legacyFinalizarAtendimento() {
-    if (!pedidoId || !meuId || enviando || anexando) return
-    if (!pedido) {
-      onToast?.({
-        type: 'info',
-        title: 'Atendimento em preparo',
-        message: 'A finalização automática está disponível para pedidos públicos.',
-      })
-      return
-    }
-
-    const souProfissional = String(pedido?.aceite?.id || '') === String(meuId || '')
-    if (pedido && !souProfissional) {
-      onToast?.({
-        type: 'info',
-        title: 'Ação do profissional',
-        message: 'Quem aceitou o pedido deve finalizar o atendimento.',
-      })
-      return
-    }
-
-    const confirmar = typeof window === 'undefined' || window.confirm('Deseja finalizar este atendimento?')
-    if (!confirmar) return
-
-    try {
-      setEnviando(true)
-      const agora = Date.now()
-      await update(ref(database, `pedidos/${pedidoId}`), {
-        status: 'concluido',
-        concluidoEm: agora,
-        concluidoPor: { id: meuId, nome: nomeMeu },
-        avaliacaoPendente: true,
-        atualizadoEm: agora,
-        atualizadoEmServer: serverTimestamp(),
-      })
-
-      await registrarMensagemSistema('Atendimento finalizado.', 'atendimento_finalizado')
-
-      if (outroId) {
-        const notificationId = `notif_atendimento_finalizado_${agora}`
-        const mensagem = 'Avalie o atendimento recebido.'
-        await update(ref(database), {
-          [`conversas/${meuId}/${pedidoId}/pedidoId`]: pedidoId,
-          [`conversas/${meuId}/${pedidoId}/lastText`]: 'Atendimento finalizado.',
-          [`conversas/${meuId}/${pedidoId}/mensagemPreview`]: 'Atendimento finalizado.',
-          [`conversas/${meuId}/${pedidoId}/lastAt`]: agora,
-          [`conversas/${meuId}/${pedidoId}/updatedAt`]: agora,
-          [`conversas/${meuId}/${pedidoId}/status`]: 'arquivavel',
-          [`conversas/${meuId}/${pedidoId}/pedidoStatus`]: 'concluido',
-          [`conversas/${outroId}/${pedidoId}/pedidoId`]: pedidoId,
-          [`conversas/${outroId}/${pedidoId}/outroId`]: meuId,
-          [`conversas/${outroId}/${pedidoId}/outroNome`]: nomeMeu,
-          [`conversas/${outroId}/${pedidoId}/unread`]: true,
-          [`conversas/${outroId}/${pedidoId}/lastText`]: mensagem,
-          [`conversas/${outroId}/${pedidoId}/mensagemPreview`]: mensagem,
-          [`conversas/${outroId}/${pedidoId}/lastAt`]: agora,
-          [`conversas/${outroId}/${pedidoId}/updatedAt`]: agora,
-          [`conversas/${outroId}/${pedidoId}/status`]: 'ativa',
-          [`conversas/${outroId}/${pedidoId}/pedidoStatus`]: 'concluido',
-          [`notificacoes/${outroId}/${notificationId}`]: {
-            tipo: 'atendimento_finalizado',
-            pedidoId,
-            conversaId: pedidoId,
-            titulo: 'Atendimento finalizado',
-            mensagem,
-            prioridade: 'alta',
-            acao: 'avaliar_pedido',
-            lida: false,
-            criadoEm: agora,
-            toUid: outroId,
-            fromUid: meuId,
-            autor: { id: meuId, nome: nomeMeu },
-          },
-          [`notifications/${outroId}/${notificationId}`]: {
-            id: notificationId,
-            tipo: 'atendimento_finalizado',
-            titulo: 'Atendimento finalizado',
-            mensagem,
-            pedidoId,
-            servicoId: pedido?.servicoId || '',
-            fromUid: meuId,
-            toUid: outroId,
-            lida: false,
-            criadoEm: agora,
-            action: { label: 'Avaliar atendimento', screen: 'myOrders', id: pedidoId },
-            autor: { id: meuId, nome: nomeMeu },
-          },
-        })
-
-        enviarPushParaUsuario(outroId, {
-          type: 'atendimento_finalizado',
-          pedidoId,
-          conversaId: pedidoId,
-          titulo: 'Atendimento finalizado',
-          mensagem,
-          prioridade: 'alta',
-          action: { label: 'Avaliar atendimento', screen: 'myOrders', id: pedidoId },
-          notificationId: `notif_finalizado_${agora}`,
-        })
-      }
-
-      onToast?.({ type: 'success', title: 'Atendimento finalizado', message: 'O cliente foi avisado para avaliar.' })
-    } catch (error) {
-      debugChatWarning('Erro ao finalizar atendimento:', error)
-      onToast?.({ type: 'error', title: 'Falha ao finalizar', message: 'Tente novamente em instantes.' })
-    } finally {
-      setEnviando(false)
-    }
-  }
-
-  async function finalizarAtendimento() {
-    if (!pedido) return legacyFinalizarAtendimento()
+  async function finalizarAtendimento({ confirmado = false } = {}) {
+    if (!pedido) return
     if (!pedidoId || !meuId || enviando || anexando) return
 
     const status = normalizeAtendimentoStatus(pedido.status)
     const souCliente = String(pedido?.criador?.id || '') === String(meuId)
     const souTrabalhador = String(pedido?.aceite?.id || '') === String(meuId)
-    const nextStatus = souTrabalhador && status === ATENDIMENTO_STATUS.EM_ANDAMENTO
-      ? ATENDIMENTO_STATUS.CHEGOU
-      : souTrabalhador && status === ATENDIMENTO_STATUS.CHEGOU
-        ? ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-        : souCliente && status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-          ? ATENDIMENTO_STATUS.FINALIZADO
-          : ''
+    const nextStatus = souTrabalhador && status === ATENDIMENTO_STATUS.ACEITO
+      ? ATENDIMENTO_STATUS.EM_ANDAMENTO
+      : souTrabalhador && status === ATENDIMENTO_STATUS.EM_ANDAMENTO
+        ? ATENDIMENTO_STATUS.CHEGOU
+        : souTrabalhador && status === ATENDIMENTO_STATUS.CHEGOU
+          ? ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+          : souCliente && status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? ATENDIMENTO_STATUS.FINALIZADO
+            : ''
 
     if (!nextStatus) {
       onToast?.({ type: 'info', title: 'Etapa indisponível', message: 'A próxima etapa precisa ser confirmada pelo participante correto.' })
       return
     }
 
-    if (nextStatus === ATENDIMENTO_STATUS.FINALIZADO) {
-      const confirmar = typeof window === 'undefined' || window.confirm('Deseja confirmar a conclusão deste atendimento?')
-      if (!confirmar) return
+    if (nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO && !confirmado) {
+      setConfirmacaoFinalizacaoAberta(true)
+      return
     }
 
     try {
@@ -1219,21 +1071,27 @@ export default function ChatMensagens({
       const profissionalNome = pedido?.aceite?.nome || 'Profissional'
       const clienteNome = pedido?.criador?.nome || 'Cliente'
       const actorName = souCliente ? clienteNome : profissionalNome
-      const evento = nextStatus === ATENDIMENTO_STATUS.CHEGOU
-        ? 'atendimento_chegou'
-        : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-          ? 'finalizacao_solicitada'
-          : 'atendimento_finalizado'
-      const textoEvento = nextStatus === ATENDIMENTO_STATUS.CHEGOU
-        ? `✓ ${profissionalNome} informou que chegou ao local.`
-        : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-          ? `✓ ${profissionalNome} solicitou a finalização do atendimento.`
-          : '✓ Atendimento finalizado com sucesso.'
-      const patch = nextStatus === ATENDIMENTO_STATUS.CHEGOU
-        ? { chegouEm: agora, chegouPor: { id: meuId, nome: actorName } }
-        : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-          ? { finalizacaoSolicitadaEm: agora, finalizacaoSolicitadaPor: { id: meuId, nome: actorName } }
-          : { finalizadoEm: agora, finalizadoPor: { id: meuId, nome: actorName } }
+      const evento = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+        ? 'atendimento_iniciado'
+        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? 'atendimento_chegou'
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? 'finalizacao_solicitada'
+            : 'atendimento_finalizado'
+      const textoEvento = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+        ? `✓ ${profissionalNome} iniciou o atendimento.`
+        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? `✓ ${profissionalNome} informou que chegou ao local.`
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? `✓ ${profissionalNome} solicitou a finalização do atendimento.`
+            : '✓ Atendimento finalizado com sucesso.'
+      const patch = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+        ? { iniciadoEm: agora, iniciadoPor: { id: meuId, nome: actorName } }
+        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+          ? { chegouEm: agora, chegouPor: { id: meuId, nome: actorName } }
+          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+            ? { finalizacaoSolicitadaEm: agora, finalizacaoSolicitadaPor: { id: meuId, nome: actorName } }
+            : { finalizadoEm: agora, finalizadoPor: { id: meuId, nome: actorName } }
 
       await transitionAtendimento({
         database,
@@ -1245,15 +1103,15 @@ export default function ChatMensagens({
         topLevelPatch: { ...patch, ...(nextStatus === ATENDIMENTO_STATUS.FINALIZADO ? { avaliacaoPendente: true } : {}) },
       })
 
-      await registrarMensagemSistema(textoEvento, evento)
+      await registrarMensagemSistemaConfiavel({ pedidoId, eventType: evento })
       const updates = {}
       for (const uid of [meuId, outroId]) {
         if (!uid) continue
         updates[`conversas/${uid}/${pedidoId}/pedidoStatus`] = nextStatus
         updates[`conversas/${uid}/${pedidoId}/lastText`] = textoEvento
         updates[`conversas/${uid}/${pedidoId}/mensagemPreview`] = textoEvento
-        updates[`conversas/${uid}/${pedidoId}/lastAt`] = agora
-        updates[`conversas/${uid}/${pedidoId}/updatedAt`] = agora
+        updates[`conversas/${uid}/${pedidoId}/lastAt`] = serverTimestamp()
+        updates[`conversas/${uid}/${pedidoId}/updatedAt`] = serverTimestamp()
         updates[`conversas/${uid}/${pedidoId}/lastById`] = meuId
         updates[`conversas/${uid}/${pedidoId}/lastByNome`] = actorName
         updates[`conversas/${uid}/${pedidoId}/unread`] = uid !== meuId
@@ -1267,16 +1125,20 @@ export default function ChatMensagens({
           toUid: outroId,
           state: nextStatus,
         })
-        const notificationTitle = nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? 'Seu profissional chegou'
-          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? 'Confirme a conclusão'
-            : 'Serviço concluído ✅'
-        const notificationMessage = nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? `${profissionalNome} informou que chegou ao local.`
-          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? `${profissionalNome} solicitou a finalização do atendimento.`
-            : 'O cliente confirmou a conclusão do atendimento.'
+        const notificationTitle = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+          ? 'Atendimento iniciado'
+          : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+            ? 'Seu profissional chegou'
+            : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+              ? 'Confirme a conclusão'
+              : 'Serviço concluído ✅'
+        const notificationMessage = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+          ? `${profissionalNome} iniciou seu atendimento.`
+          : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+            ? `${profissionalNome} informou que chegou ao local.`
+            : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+              ? `${profissionalNome} solicitou a finalização do atendimento.`
+              : 'O cliente confirmou a conclusão do atendimento.'
         const notificationAction = nextStatus === ATENDIMENTO_STATUS.FINALIZADO
           ? { label: 'Ver histórico', screen: 'ver_historico', id: pedidoId }
           : { label: 'Abrir atendimento', screen: 'chat', id: pedidoId }
@@ -1307,16 +1169,20 @@ export default function ChatMensagens({
           toUid: outroId,
           state: nextStatus,
         })
-        const notificationTitle = nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? 'Seu profissional chegou'
-          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? 'Confirme a conclusão'
-            : 'Serviço concluído ✅'
-        const notificationMessage = nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? `${profissionalNome} informou que chegou ao local.`
-          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? `${profissionalNome} solicitou a finalização do atendimento.`
-            : 'O cliente confirmou a conclusão do atendimento.'
+        const notificationTitle = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+          ? 'Atendimento iniciado'
+          : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+            ? 'Seu profissional chegou'
+            : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+              ? 'Confirme a conclusão'
+              : 'Serviço concluído ✅'
+        const notificationMessage = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
+          ? `${profissionalNome} iniciou seu atendimento.`
+          : nextStatus === ATENDIMENTO_STATUS.CHEGOU
+            ? `${profissionalNome} informou que chegou ao local.`
+            : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+              ? `${profissionalNome} solicitou a finalização do atendimento.`
+              : 'O cliente confirmou a conclusão do atendimento.'
         const notificationAction = nextStatus === ATENDIMENTO_STATUS.FINALIZADO
           ? { label: 'Ver histórico', screen: 'ver_historico', id: pedidoId }
           : { label: 'Abrir atendimento', screen: 'chat', id: pedidoId }
@@ -1347,6 +1213,12 @@ export default function ChatMensagens({
           id: CONTEXTUAL_TIP_IDS.conclusaoConfirmada,
           evaluationActive: true,
         })
+        setConclusaoAnimando(true)
+        if (conclusaoTimerRef.current) clearTimeout(conclusaoTimerRef.current)
+        conclusaoTimerRef.current = setTimeout(() => {
+          setConclusaoAnimando(false)
+          setAvaliacaoAberta(true)
+        }, reduzirMovimento ? 0 : 900)
       }
       onToast?.({ type: 'success', title: 'Atendimento atualizado', message: textoEvento })
     } catch (error) {
@@ -1354,6 +1226,95 @@ export default function ChatMensagens({
       onToast?.({ type: 'error', title: 'Falha no atendimento', message: error?.message || 'Tente novamente.' })
     } finally {
       setEnviando(false)
+    }
+  }
+
+  async function informarAindaNaoConcluido() {
+    if (enviando || anexando || gravando) return
+    try {
+      setEnviando(true)
+      await registrarMensagem({
+        texto: 'O serviço ainda não foi concluído. Vamos alinhar o que falta por aqui.',
+      })
+      onToast?.({
+        type: 'info',
+        title: 'Conclusão ainda pendente',
+        message: 'O profissional foi avisado. O atendimento continua aguardando sua confirmação.',
+      })
+    } catch (error) {
+      debugChatWarning('Erro ao informar conclusão pendente:', error)
+      onToast?.({ type: 'error', title: 'Não foi possível avisar', message: 'Tente novamente.' })
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  async function salvarAvaliacaoNoChat() {
+    if (!pedido?.id || salvandoAvaliacao || pedido?.avaliacao) return
+    const criadorId = String(pedido?.criador?.id || '')
+    const avaliadoId = String(pedido?.aceite?.id || '')
+    if (!meuId || criadorId !== String(meuId) || !avaliadoId) return
+
+    try {
+      setSalvandoAvaliacao(true)
+      const payload = await saveCanonicalServiceRating({
+        database,
+        pedido,
+        clienteId: meuId,
+        clienteNome: nomeMeu,
+        nota: avaliacaoNota,
+        comentario: avaliacaoComentario,
+      })
+
+      const notificationId = createEventNotificationId({
+        type: 'avaliacao_recebida',
+        sourceId: pedido.id,
+        toUid: avaliadoId,
+        state: 'recebida',
+      })
+      const notification = {
+        id: notificationId,
+        eventId: notificationId,
+        tipo: 'avaliacao_recebida',
+        pedidoId: pedido.id,
+        conversaId: pedido?.conversaId || pedido.id,
+        titulo: 'Você recebeu uma avaliação ⭐',
+        mensagem: 'Veja como foi seu atendimento.',
+        prioridade: 'media',
+        lida: false,
+        read: false,
+        criadoEm: payload.criadoEm,
+        fromUid: meuId,
+        toUid: avaliadoId,
+        action: { label: 'Ver avaliações', screen: 'avaliacoes', id: pedido.id },
+        autor: { id: meuId, nome: nomeMeu },
+      }
+      await Promise.allSettled([
+        set(ref(database, `notifications/${avaliadoId}/${notificationId}`), notification),
+        set(ref(database, `notificacoes/${avaliadoId}/${notificationId}`), notification),
+      ])
+      enviarPushParaUsuario(avaliadoId, {
+        type: 'avaliacao_recebida',
+        pedidoId: pedido.id,
+        conversaId: pedido?.conversaId || pedido.id,
+        titulo: notification.titulo,
+        mensagem: notification.mensagem,
+        prioridade: 'media',
+        action: notification.action,
+        notificationId,
+        eventId: notificationId,
+      })
+
+      setAvaliacaoAberta(false)
+      setAvaliacaoComentario('')
+      setAgradecimentoAvaliacao(true)
+      if (agradecimentoTimerRef.current) clearTimeout(agradecimentoTimerRef.current)
+      agradecimentoTimerRef.current = setTimeout(() => setAgradecimentoAvaliacao(false), 2400)
+    } catch (error) {
+      debugChatWarning('Erro ao avaliar pelo chat:', error)
+      onToast?.({ type: 'error', title: 'Falha ao avaliar', message: error?.message || 'Tente novamente.' })
+    } finally {
+      setSalvandoAvaliacao(false)
     }
   }
 
@@ -1375,6 +1336,12 @@ export default function ChatMensagens({
     setFechado(false)
     setDetalhesPedidoAberto(false)
     setAvisoAtendimentoVisivel(true)
+    setConfirmacaoFinalizacaoAberta(false)
+    setConclusaoAnimando(false)
+    setAvaliacaoAberta(false)
+    setAvaliacaoNota(5)
+    setAvaliacaoComentario('')
+    setAgradecimentoAvaliacao(false)
   }, [pedidoId])
 
   if (fechado) return null
@@ -1392,13 +1359,28 @@ export default function ChatMensagens({
   const pedidoStatus = normalizeAtendimentoStatus(pedido?.status)
   const souClienteAtendimento = String(pedido?.criador?.id || '') === String(meuId || '')
   const souTrabalhadorAtendimento = String(pedido?.aceite?.id || '') === String(meuId || '')
-  const podeAvancarAtendimento = (
-    (souTrabalhadorAtendimento && [ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU].includes(pedidoStatus))
-    || (souClienteAtendimento && pedidoStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO)
-  )
+  const acaoAtendimento = getPrimaryAttendanceAction({
+    status: pedidoStatus,
+    isClient: souClienteAtendimento,
+    isWorker: souTrabalhadorAtendimento,
+    hasRating: Boolean(pedido?.avaliacao),
+  })
+  const telefoneHref = getAuthorizedPhoneHref({
+    publicProfile: outroUser?.publicProfile,
+    pedidoStatus: pedido?.status || outroUser?.requestStatus,
+    isParticipant: souClienteAtendimento || souTrabalhadorAtendimento || outroUser?.privateRequestParticipant === true,
+  })
+  const mostrarPainelAtendimento = Boolean(pedido && (
+    acaoAtendimento
+    || pedidoStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+    || pedidoStatus === ATENDIMENTO_STATUS.FINALIZADO
+    || pedidoStatus === ATENDIMENTO_STATUS.CANCELADO
+  ))
   const pedidoTituloChat = pedido?.titulo || pedido?.servicoTitulo || pedidoTitulo || 'Atendimento Corre Aqui'
   const pedidoValorChat = formatarValorPedido(pedido?.valor)
   const pedidoDataChat = formatarDataPedido(pedido?.atendimentoIniciadoEm || pedido?.aceitoEm || pedido?.criadoEm || pedido?.createdAt)
+  const pedidoFinalizadoEm = pedido?.finalizadoEm || pedido?.atendimento?.finalizadoEm || pedido?.concluidoEm
+  const pedidoFinalizadoLabel = getMsgMs(pedidoFinalizadoEm) ? formatarDataPedido(pedidoFinalizadoEm) : ''
   const categoriaMeta = getCategoryById(
     pedido?.categoriaId || pedido?.categoria || pedido?.category || pedido?.categoriaNome || pedido?.categoriaLabel
   )
@@ -1427,12 +1409,6 @@ export default function ChatMensagens({
     ? 'fixed inset-y-0 left-1/2 z-[100000] flex h-[100svh] min-h-0 w-full max-w-[900px] -translate-x-1/2 flex-col overflow-hidden border-x border-white/[0.06] bg-[#030b15] text-white shadow-[0_0_90px_rgba(0,0,0,0.42)] supports-[height:100dvh]:h-[100dvh]'
     : 'relative z-[9999] flex h-[min(92dvh,820px)] max-h-[calc(100dvh-0.75rem)] w-full max-w-[440px] flex-col overflow-hidden rounded-[24px] border border-emerald-400/15 bg-[#030b15] text-white shadow-[0_30px_100px_rgba(0,0,0,0.6)] sm:max-w-[560px] sm:rounded-[28px]'
   const nomeServicoCurto = pedidoTituloChat.length > 46 ? `${pedidoTituloChat.slice(0, 46).trim()}...` : pedidoTituloChat
-  const acaoAtendimentoCurta = pedidoStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
-    ? 'Cheguei'
-    : pedidoStatus === ATENDIMENTO_STATUS.CHEGOU
-      ? 'Finalizar'
-      : 'Confirmar'
-
   return (
     <div className={containerClass} data-tutorial="chat">
       <div className="shrink-0 border-b border-white/[0.06] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_38%),linear-gradient(180deg,#071625,#030b15)] px-3 pb-2 pt-[max(0.4rem,env(safe-area-inset-top))] sm:px-5 sm:pb-3 sm:pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -1490,13 +1466,16 @@ export default function ChatMensagens({
             >
               {modoPagina ? '←' : '×'}
             </button>
-            <button
-              type="button"
-              className="grid h-9 w-9 place-items-center rounded-full border border-emerald-400/25 bg-emerald-500/[0.08] text-emerald-300 transition hover:bg-emerald-500/15 active:scale-95 sm:h-11 sm:w-11"
-              aria-label="Ligar"
-            >
-              <IconPhone className="h-4 w-4 sm:h-5 sm:w-5" />
-            </button>
+            {telefoneHref ? (
+              <a
+                href={telefoneHref}
+                className="grid h-9 w-9 place-items-center rounded-full border border-emerald-400/25 bg-emerald-500/[0.08] text-emerald-300 transition hover:bg-emerald-500/15 active:scale-95 sm:h-11 sm:w-11"
+                aria-label={`Ligar para ${outroNome}`}
+                title="Abrir telefone"
+              >
+                <IconPhone className="h-4 w-4 sm:h-5 sm:w-5" />
+              </a>
+            ) : null}
             <button
               type="button"
               className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.09] active:scale-95 sm:h-11 sm:w-11"
@@ -1786,67 +1765,118 @@ export default function ChatMensagens({
           onChange={(e) => selecionarArquivo(e)}
         />
 
-        <div className="mb-1.5 flex touch-pan-x gap-1.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-2 sm:gap-2">
-          <button
-            type="button"
-            onClick={() => enviar('Minha localização está disponível no pedido.')}
-            disabled={enviando || anexando || gravando}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-emerald-500/15 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-10 sm:px-3 sm:text-[11px]"
+        {mostrarPainelAtendimento ? (
+          <div
+            className="mb-2 rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.07] p-2.5 sm:p-3"
+            data-tutorial="confirmacao-final"
           >
-            <IconMapPin className="h-4 w-4 text-emerald-400" />
-            Local
-          </button>
-          <button
-            type="button"
-            onClick={chamarAtencao}
-            disabled={!outroId || enviando || anexando || gravando || chamandoAtencao}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-orange-400/25 bg-orange-500/10 px-2.5 text-[10px] font-black text-white transition hover:bg-orange-500/15 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-10 sm:px-3 sm:text-[11px]"
-          >
-            <IconBell className="h-4 w-4 text-orange-300" />
-            {chamandoAtencao ? 'Enviando' : 'Chamar'}
-          </button>
-          <button
-            type="button"
-            onClick={() => cameraInputRef.current?.click()}
-            disabled={!pedidoId || enviando || anexando || gravando}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-blue-400/25 bg-blue-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-blue-500/15 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-10 sm:px-3 sm:text-[11px]"
-          >
-            <IconCamera className="h-4 w-4 text-blue-400" />
-            Foto
-          </button>
-          <button
-            type="button"
-            onClick={gravando ? solicitarParadaGravacao : iniciarGravacao}
-            disabled={!pedidoId || enviando || anexando}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-purple-400/25 bg-purple-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-purple-500/15 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 sm:h-10 sm:px-3 sm:text-[11px]"
-          >
-            <IconMic className="h-4 w-4 text-purple-400" />
-            {gravando ? 'Parar áudio' : 'Áudio'}
-          </button>
-          <button
-            type="button"
-            onClick={() => onToast?.({ type: 'info', title: 'Valor', message: 'Alteracao de valor sera registrada com confirmacao do cliente.' })}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-yellow-400/25 bg-yellow-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-yellow-500/15 active:scale-[0.97] sm:h-10 sm:px-3 sm:text-[11px]"
-          >
-            <IconDollar className="h-4 w-4 text-yellow-400" />
-            Valor
-          </button>
-          <button
-            type="button"
-            onClick={finalizarAtendimento}
-            disabled={!pedidoId || !podeAvancarAtendimento || enviando || anexando || gravando}
-            className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-black transition active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 sm:h-10 sm:px-3 sm:text-[11px] ${
-              podeAvancarAtendimento
-                ? 'border-emerald-300/35 bg-emerald-500/20 text-white shadow-[0_8px_18px_rgba(34,197,94,0.14)] hover:bg-emerald-400/25'
-                : 'border-white/10 bg-white/[0.04] text-slate-500'
-            }`}
-          >
-            <IconCheck className="h-4 w-4 text-emerald-300" />
-            {acaoAtendimentoCurta}
-          </button>
-        </div>
+            <div className="flex items-start gap-2.5">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-500/18 text-emerald-300">
+                <IconCheck className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-black text-white sm:text-sm">
+                  {pedidoStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+                    ? souClienteAtendimento ? 'O serviço foi finalizado?' : 'Aguardando confirmação do cliente'
+                    : pedidoStatus === ATENDIMENTO_STATUS.FINALIZADO
+                      ? 'Atendimento concluído'
+                      : pedidoStatus === ATENDIMENTO_STATUS.CANCELADO
+                        ? 'Atendimento cancelado'
+                        : acaoAtendimento?.label}
+                </div>
+                <p className="mt-0.5 text-[10px] font-semibold leading-snug text-slate-400 sm:text-xs">
+                  {pedidoStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
+                    ? souClienteAtendimento
+                      ? 'Confirme somente se tudo combinado foi entregue.'
+                      : 'O cliente recebeu o pedido e decidirá quando o serviço estiver realmente concluído.'
+                    : pedidoStatus === ATENDIMENTO_STATUS.FINALIZADO
+                      ? pedido?.avaliacao
+                        ? `${pedidoFinalizadoLabel ? `Concluído em ${pedidoFinalizadoLabel}. ` : ''}Avaliação enviada. Esta conversa permanece disponível no histórico.`
+                        : `${pedidoFinalizadoLabel ? `Concluído em ${pedidoFinalizadoLabel}. ` : ''}A conversa permanece disponível no histórico, sem novas ações operacionais.`
+                      : pedidoStatus === ATENDIMENTO_STATUS.CANCELADO
+                        ? 'Esta conversa permanece apenas como histórico do atendimento.'
+                        : 'Avance somente quando esta etapa tiver acontecido de verdade.'}
+                </p>
+              </div>
+            </div>
 
-        {!gravando ? (
+            {acaoAtendimento?.clientDecision ? (
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={informarAindaNaoConcluido}
+                  disabled={enviando || anexando || gravando}
+                  className="min-h-10 rounded-xl border border-white/10 bg-white/[0.06] px-2 text-xs font-black text-slate-200 hover:bg-white/10 disabled:opacity-50"
+                >
+                  Ainda não
+                </button>
+                <button
+                  type="button"
+                  onClick={() => finalizarAtendimento()}
+                  disabled={enviando || anexando || gravando}
+                  className="min-h-10 rounded-xl bg-emerald-500 px-2 text-xs font-black text-white shadow-[0_8px_20px_rgba(34,197,94,0.20)] hover:bg-emerald-400 disabled:opacity-50"
+                >
+                  Confirmar conclusão
+                </button>
+              </div>
+            ) : acaoAtendimento ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (acaoAtendimento.id === 'rate') {
+                    setAvaliacaoNota(5)
+                    setAvaliacaoComentario('')
+                    setAvaliacaoAberta(true)
+                    return
+                  }
+                  if (acaoAtendimento.confirm) {
+                    setConfirmacaoFinalizacaoAberta(true)
+                    return
+                  }
+                  finalizarAtendimento()
+                }}
+                disabled={enviando || anexando || gravando || salvandoAvaliacao}
+                className="mt-2.5 min-h-10 w-full rounded-xl bg-emerald-500 px-3 text-xs font-black text-white shadow-[0_8px_20px_rgba(34,197,94,0.20)] hover:bg-emerald-400 disabled:opacity-50 sm:text-sm"
+              >
+                {acaoAtendimento.label}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {!pedido ? (
+          <div className="mb-1.5 flex touch-pan-x gap-1.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-2 sm:gap-2">
+            <button
+              type="button"
+              onClick={chamarAtencao}
+              disabled={!outroId || enviando || anexando || gravando || chamandoAtencao}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-orange-400/25 bg-orange-500/10 px-2.5 text-[10px] font-black text-white transition hover:bg-orange-500/15 active:scale-[0.97] disabled:opacity-50"
+            >
+              <IconBell className="h-4 w-4 text-orange-300" />
+              {chamandoAtencao ? 'Enviando' : 'Chamar'}
+            </button>
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={!pedidoId || enviando || anexando || gravando}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-blue-400/25 bg-blue-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-blue-500/15 disabled:opacity-50"
+            >
+              <IconCamera className="h-4 w-4 text-blue-400" />
+              Foto
+            </button>
+            <button
+              type="button"
+              onClick={gravando ? solicitarParadaGravacao : iniciarGravacao}
+              disabled={!pedidoId || enviando || anexando}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-purple-400/25 bg-purple-500/[0.08] px-2.5 text-[10px] font-black text-white transition hover:bg-purple-500/15 disabled:opacity-50"
+            >
+              <IconMic className="h-4 w-4 text-purple-400" />
+              {gravando ? 'Parar áudio' : 'Áudio'}
+            </button>
+          </div>
+        ) : null}
+
+        {!pedido && !gravando ? (
           <div className="relative mb-1.5 sm:mb-2">
             <div className="flex touch-pan-x snap-x gap-1.5 overflow-x-auto overscroll-x-contain pr-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {sugestoesVisiveis.map((sugestao) => (
@@ -1997,6 +2027,96 @@ export default function ChatMensagens({
           </button>
         </div>
       </div>
+
+      {confirmacaoFinalizacaoAberta ? (
+        <div className="fixed inset-0 z-[100001] flex items-center justify-center bg-slate-950/82 p-4 backdrop-blur-sm">
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirmar-finalizacao-titulo"
+            initial={reduzirMovimento ? false : { opacity: 0, y: 14, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={reduzirMovimento ? { duration: 0 } : { duration: 0.2 }}
+            className="w-full max-w-sm rounded-[22px] border border-emerald-300/20 bg-[#07111f] p-4 text-white shadow-[0_28px_90px_rgba(0,0,0,0.62)]"
+          >
+            <div className="grid h-11 w-11 place-items-center rounded-full bg-emerald-500/15 text-emerald-300">
+              <IconCheck className="h-6 w-6" />
+            </div>
+            <h2 id="confirmar-finalizacao-titulo" className="mt-3 text-lg font-black">
+              O serviço foi concluído?
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-300">
+              Ao continuar, o cliente receberá o pedido para confirmar se tudo combinado foi entregue.
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmacaoFinalizacaoAberta(false)}
+                disabled={enviando}
+                className="min-h-11 rounded-xl border border-white/10 bg-white/[0.06] text-sm font-black text-slate-200 hover:bg-white/10 disabled:opacity-50"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmacaoFinalizacaoAberta(false)
+                  finalizarAtendimento({ confirmado: true })
+                }}
+                disabled={enviando}
+                className="min-h-11 rounded-xl bg-emerald-500 px-2 text-sm font-black text-white hover:bg-emerald-400 disabled:opacity-50"
+              >
+                Pedir confirmação
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
+
+      {conclusaoAnimando ? (
+        <div className="pointer-events-none fixed inset-0 z-[100003] grid place-items-center bg-[#03101b]/88 p-4 backdrop-blur-sm">
+          <motion.div
+            initial={reduzirMovimento ? false : { opacity: 0, scale: 0.78 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={reduzirMovimento ? { duration: 0 } : { duration: 0.28, ease: 'easeOut' }}
+            className="text-center"
+          >
+            <motion.div
+              initial={reduzirMovimento ? false : { rotate: -12, scale: 0.7 }}
+              animate={{ rotate: 0, scale: 1 }}
+              transition={reduzirMovimento ? { duration: 0 } : { duration: 0.42, type: 'spring', bounce: 0.3 }}
+              className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-emerald-500 text-white shadow-[0_0_55px_rgba(52,211,153,0.42)]"
+            >
+              <IconCheck className="h-11 w-11" />
+            </motion.div>
+            <div className="mt-4 text-xl font-black text-white">Serviço concluído</div>
+            <div className="mt-1 text-sm font-semibold text-emerald-200">Confirmação registrada com segurança.</div>
+          </motion.div>
+        </div>
+      ) : null}
+
+      <AvaliacaoAtendimentoModal
+        pedido={avaliacaoAberta && pedido && !pedido?.avaliacao ? { ...pedido, status: ATENDIMENTO_STATUS.FINALIZADO } : null}
+        nota={avaliacaoNota}
+        comentario={avaliacaoComentario}
+        salvando={salvandoAvaliacao}
+        onNotaChange={setAvaliacaoNota}
+        onComentarioChange={setAvaliacaoComentario}
+        onEnviar={salvarAvaliacaoNoChat}
+        onAgoraNao={() => setAvaliacaoAberta(false)}
+      />
+
+      {agradecimentoAvaliacao ? (
+        <motion.div
+          initial={reduzirMovimento ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[100004] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl border border-amber-300/25 bg-slate-950 px-4 py-3 text-center shadow-[0_20px_65px_rgba(0,0,0,0.52)]"
+          role="status"
+        >
+          <div className="font-black text-amber-300">Obrigado pela avaliação!</div>
+          <div className="mt-0.5 text-xs font-semibold text-slate-300">Ela já faz parte do histórico deste atendimento.</div>
+        </motion.div>
+      ) : null}
     </div>
   )
 }

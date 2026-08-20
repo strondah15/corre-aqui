@@ -9,6 +9,15 @@
     "start": "next start",
     "start:lan": "next start -H 0.0.0.0",
     "lint": "eslint .",
+    "test:rules:c1": "node scripts/test-c1-rules.mjs",
+    "test:security:c2": "node scripts/test-c2-presence-rules.mjs",
+    "test:rules:c2": "node scripts/test-c2-presence-rules.mjs",
+    "test:rules:c3": "node scripts/test-c3-pedidos-rules.mjs",
+    "test:rules:h01": "node scripts/test-c3-h01-public-request-forgery.mjs",
+    "test:rules:c4": "node scripts/test-c4-agendamentos-rules.mjs",
+    "test:rules:c5": "node scripts/test-c5-reputation-rules.mjs",
+    "test:rules:c6": "node scripts/test-c6-chat-rules.mjs",
+    "test:experience": "node scripts/test-attendance-experience.mjs",
     "pwa:icons": "node scripts/generate-pwa-assets.cjs"
   },
   "dependencies": {
@@ -16,16 +25,21 @@
     "firebase-admin": "^13.10.0",
     "framer-motion": "^12.38.0",
     "leaflet": "^1.9.4",
-    "next": "^16.2.6",
+    "next": "^16.3.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-leaflet": "^5.0.0"
+  },
+  "overrides": {
+    "form-data": "2.5.6",
+    "protobufjs": "7.6.5",
+    "websocket-driver": "0.7.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
-    "eslint-config-next": "^16.2.6",
+    "eslint-config-next": "^16.3.1",
     "tailwindcss": "^4"
   }
 }

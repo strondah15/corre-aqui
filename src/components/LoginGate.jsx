@@ -141,13 +141,14 @@ async function salvarUsuarioBasico(user) {
     const presencePayload = {
       uid: user.uid,
       id: user.uid,
-      nome: nomeAuth || atual.nome || 'Usuario',
-      fotoURL: fotoFallback || '',
       online: onlinePreference,
       disponivel: onlinePreference,
       lastSeen: agoraPresence,
       updatedAt: agoraPresence,
       modoAtual: modoAtual || undefined,
+      local: null,
+      latitude: null,
+      longitude: null,
     }
     const presencePatch = Object.fromEntries(
       Object.entries(presencePayload).filter(([, value]) => value !== undefined)

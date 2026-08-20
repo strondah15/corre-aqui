@@ -16,20 +16,20 @@ export default function UsuariosOnline() {
   const [publicProfilesObj, setPublicProfilesObj] = useState({})
 
   useEffect(() => {
-    const usersRef = ref(database, 'presence')
-    debugPresence('lendo presence', { path: 'presence', origem: 'UsuariosOnline' })
+    const usersRef = ref(database, 'publicAvailability')
+    debugPresence('lendo disponibilidade publica', { path: 'publicAvailability', origem: 'UsuariosOnline' })
     const off = onValue(
       usersRef,
       (snap) => {
         const raw = snap.val() || {}
-        debugPresence('total bruto de children em /presence', {
+        debugPresence('total bruto de children em /publicAvailability', {
           total: Object.keys(raw).length,
           origem: 'UsuariosOnline',
         })
         setUsersObj(raw)
       },
       (error) => {
-        console.warn('[PRESENCE] erro lendo presence', error)
+        console.warn('[PRESENCE] erro lendo publicAvailability', error)
       }
     )
 

@@ -54,6 +54,7 @@ function ChatPageContent() {
   const [conversa, setConversa] = useState(null)
   const [userNode, setUserNode] = useState(null)
   const [outroPresence, setOutroPresence] = useState(null)
+  const [outroPublicProfile, setOutroPublicProfile] = useState(null)
   const [nomeCache, setNomeCache] = useState('')
   const [toast, setToast] = useState(null)
 
@@ -189,29 +190,43 @@ function ChatPageContent() {
   useEffect(() => {
     if (!outroUserBase?.id) {
       setOutroPresence(null)
+      setOutroPublicProfile(null)
       return undefined
     }
 
-    const off = onValue(
-      ref(database, `presence/${outroUserBase.id}`),
+    const offPresence = onValue(
+      ref(database, `publicAvailability/${outroUserBase.id}`),
       (snap) => setOutroPresence(snap.val() || null),
       () => setOutroPresence(null),
     )
+    const offPublicProfile = onValue(
+      ref(database, `publicProfiles/${outroUserBase.id}`),
+      (snap) => setOutroPublicProfile(snap.val() || null),
+      () => setOutroPublicProfile(null),
+    )
 
-    return () => off()
+    return () => {
+      offPresence()
+      offPublicProfile()
+    }
   }, [outroUserBase?.id])
 
-  const outroUser = useMemo(() => {
-    const presence = outroPresence || {}
-    return {
-      ...outroUserBase,
-      fotoURL: outroUserBase?.fotoURL || presence?.fotoURL || presence?.photoURL || '',
-      photoURL: outroUserBase?.photoURL || presence?.photoURL || presence?.fotoURL || '',
-      online: isOnlineRecente(presence),
-      lastSeen: getOnlineTimestamp(presence),
-      presence,
-    }
-  }, [outroPresence, outroUserBase])
+  const presence = outroPresence || {}
+  const outroUser = {
+    ...outroUserBase,
+    fotoURL: outroUserBase?.fotoURL || presence?.fotoURL || presence?.photoURL || '',
+    photoURL: outroUserBase?.photoURL || presence?.photoURL || presence?.fotoURL || '',
+    online: isOnlineRecente(presence),
+    lastSeen: getOnlineTimestamp(presence),
+    presence,
+    publicProfile: outroPublicProfile,
+    requestStatus: privateRequest?.status || '',
+    privateRequestParticipant: Boolean(
+      authUser?.uid
+      && privateRequest
+      && [privateRequest?.clienteId, privateRequest?.profissionalId].some((uid) => String(uid || '') === String(authUser.uid)),
+    ),
+  }
 
   return (
     <main className="fixed inset-0 z-[100000] h-[100svh] overflow-hidden bg-[#050b12] text-white supports-[height:100dvh]:h-[100dvh]">

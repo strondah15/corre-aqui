@@ -18,7 +18,8 @@ import ProfessionalReputationSummary from "./ProfessionalReputationSummary";
 import { CATEGORIES, getCategoryById } from "@/constants/categories";
 import { normalizeAtendimentoStatus, ATENDIMENTO_STATUS } from "@/lib/atendimento";
 import { openAssistantHelpCenter, startClientTutorial, startWorkerTutorial } from "@/components/tutorial/TutorialProvider";
-import { clearPrivatePublicProfileFields, normalizeProfileStatus } from "@/lib/publicWorkProfile";
+import { normalizeProfileStatus, projectPublicProfileForWrite, safePublicImageUrl } from "@/lib/publicWorkProfile";
+import { normalizePublicRequest } from "@/lib/publicRequests";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
   ssr: false,
@@ -811,6 +812,24 @@ function isFotoValor(v) {
   return /^(https?:\/\/|data:image\/|blob:|\/)/i.test(s);
 }
 
+function normalizePublicWhatsapp(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15 ? digits : "";
+}
+
+function normalizePublicPortfolioFotos(data = {}) {
+  const raw = [
+    ...(Array.isArray(data.fotos) ? data.fotos : []),
+    data.fotoURL,
+  ];
+
+  return Array.from(new Set(raw.map((foto) => safePublicImageUrl(foto)).filter(Boolean))).slice(0, 5);
+}
+
+function isPublicPortfolioId(value) {
+  return /^[A-Za-z0-9_-]{1,120}$/.test(String(value || "").trim());
+}
+
 function pickFoto(...vals) {
   return vals.map((v) => String(v || "").trim()).find(isFotoValor) || "";
 }
@@ -990,45 +1009,69 @@ function portfolioListToMap(items = []) {
   }, {});
 }
 
+function toPublicPortfolioService(item = {}) {
+  const normalized = toPortfolioFirebaseItem(item);
+  const id = String(normalized.id || "").trim();
+  const nome = String(normalized.nome || "").trim();
+  const fotos = normalizePublicPortfolioFotos(normalized);
+
+  if (!isPublicPortfolioId(id) || !nome) return null;
+
+  return {
+    id,
+    nome,
+    titulo: nome,
+    descricao: String(normalized.descricao || "").trim(),
+    categoriaId: String(normalized.categoriaId || "").trim(),
+    categoriaNome: String(normalized.categoriaNome || "").trim(),
+    categoria: String(normalized.categoria || "").trim(),
+    preco: String(normalized.preco || "").trim(),
+    faixaPreco: String(normalized.faixaPreco || "").trim(),
+    valor: String(normalized.valor || "").trim(),
+    tempoMedio: String(normalized.tempoMedio || "").trim(),
+    fotos,
+    fotoURL: fotos[0] || "",
+    regiao: String(normalized.regiao || "").trim(),
+    atendeDomicilio: normalized.atendeDomicilio !== false,
+    urgente: normalized.urgente === true,
+    ativo: normalized.ativo !== false,
+    createdAt: normalized.createdAt || Date.now(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
+function portfolioListToPublicProfileMap(items = []) {
+  return normalizePortfolio(items).reduce((acc, item) => {
+    const service = toPublicPortfolioService(item);
+    if (service?.ativo === true) acc[service.id] = service;
+    return acc;
+  }, {});
+}
+
 function portfolioListToPublicMap(items = [], profile = {}, uid = "", fotoPrincipal = "") {
   const nome = String(profile.nome || "").trim();
   const cidade = String(profile.cidade || profile.profRegiao || profile.correRegiao || "").trim();
   const isCorre = !!profile.isCorre;
   const isProfissional = !!profile.isProfissional;
+  const fotoProfissional = safePublicImageUrl(fotoPrincipal);
 
   return normalizePortfolio(items).reduce((acc, item) => {
-    const normalized = toPortfolioFirebaseItem(item);
-    if (!normalized.id || normalized.ativo === false || !normalized.nome) return acc;
+    const service = toPublicPortfolioService(item);
+    if (!service || service.ativo !== true) return acc;
 
-    acc[normalized.id] = {
-      id: normalized.id,
-      nome: normalized.nome,
-      titulo: normalized.titulo,
-      descricao: normalized.descricao,
-      categoriaId: normalized.categoriaId,
-      categoriaNome: normalized.categoriaNome,
-      categoria: normalized.categoria,
-      preco: normalized.preco,
-      faixaPreco: normalized.faixaPreco,
-      valor: normalized.valor,
-      tempoMedio: normalized.tempoMedio,
-      fotos: normalized.fotos,
-      fotoURL: normalized.fotoURL,
-      regiao: normalized.regiao || cidade,
-      atendeDomicilio: normalized.atendeDomicilio,
-      urgente: normalized.urgente,
+    acc[service.id] = {
+      ...service,
+      regiao: service.regiao || cidade,
       ativo: true,
       profissionalId: uid,
       uid,
       profissionalNome: nome,
       providerName: nome,
-      profissionalFotoURL: fotoPrincipal || "",
-      providerFotoURL: fotoPrincipal || "",
+      profissionalFotoURL: fotoProfissional,
+      providerFotoURL: fotoProfissional,
       cidade,
       isCorre,
       isProfissional,
-      createdAt: normalized.createdAt || Date.now(),
-      updatedAt: serverTimestamp(),
     };
 
     return acc;
@@ -1057,7 +1100,11 @@ function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", priv
     ocupadoAte: profile.ocupadoAte || "",
     agendaAberta: profile.agendaAberta !== false,
   };
-  const publicWhatsapp = privacySettings.allowPublicContact === true ? profissional.whatsapp : "";
+  const publicWhatsapp = privacySettings.allowPublicContact === true ? normalizePublicWhatsapp(profissional.whatsapp) : "";
+  const publicPhoto = safePublicImageUrl(fotoPrincipal);
+  const publicProfissional = { ...profissional };
+  delete publicProfissional.whatsapp;
+  if (publicWhatsapp) publicProfissional.whatsapp = publicWhatsapp;
   const correCategorias = Array.isArray(profile.correCategorias) ? profile.correCategorias : [];
   const profCategorias = Array.isArray(profile.profCategorias) ? profile.profCategorias : [];
   const primaryCategoryId =
@@ -1072,10 +1119,10 @@ function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", priv
     uid,
     id: uid,
     nome: String(profile.nome || "").trim(),
-    fotoURL: fotoPrincipal || null,
-    photoURL: fotoPrincipal || null,
-    avatar: fotoPrincipal || profile.avatarEmoji || "",
-    avatarEmoji: profile.avatarEmoji || "",
+    fotoURL: publicPhoto || null,
+    photoURL: publicPhoto || null,
+    avatar: publicPhoto || String(profile.avatarEmoji || "").trim().slice(0, 32),
+    avatarEmoji: String(profile.avatarEmoji || "").trim().slice(0, 32),
     cidade: profile.cidade || "",
     bio: profile.bio || "",
     visivel: profile.visivel !== false,
@@ -1098,16 +1145,14 @@ function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", priv
     profResumo: profissional.descricao || profissional.titulo,
     profCidadeAtende: profissional.regiao,
     profPrecoBase: profissional.preco,
-    profWhats: publicWhatsapp,
+    profWhats: publicWhatsapp || null,
     profExperiencia: profissional.experiencia,
     corre,
-    profissional: {
-      ...profissional,
-      whatsapp: publicWhatsapp,
-    },
-    portfolio: portfolioListToMap(profPortfolio),
+    profissional: publicProfissional,
+    portfolio: portfolioListToPublicProfileMap(profPortfolio),
     createdAt: profile.createdAt || profile.criadoEm || null,
     statusProfissional: profile.statusProfissional || "disponivel",
+    ocupadoAte: profissional.ocupadoAte,
     agendaAberta: profile.agendaAberta !== false,
     updatedAt: serverTimestamp(),
     atualizadoEm: serverTimestamp(),
@@ -1406,13 +1451,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   useEffect(() => {
     if (!open || !uid) return;
 
-    const pedidosRef = ref(database, "pedidos");
+    const pedidosRef = ref(database, "publicRequests");
     return onValue(pedidosRef, (snap) => {
       const data = snap.val() || {};
-      const pedidos = Object.entries(data).map(([id, value]) => ({
-        id,
-        ...(value && typeof value === "object" ? value : {}),
-      }));
+      const pedidos = Object.entries(data).map(([id, value]) => normalizePublicRequest(id, value));
       let total = 0;
       let comoCorre = 0;
       let comoCliente = 0;
@@ -2108,14 +2150,16 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           const currentStatus = normalizeProfileStatus(current || {});
           if (blockedPublicProfileStatuses.has(currentStatus)) return current;
 
-          return clearPrivatePublicProfileFields({
-            ...(current || {}),
-            ...publicProfilePayload,
-            uid,
-            id: uid,
-            createdAt: current?.createdAt || publicProfilePayload.createdAt || serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            atualizadoEm: serverTimestamp(),
+          return projectPublicProfileForWrite({
+            current,
+            payload: {
+              ...publicProfilePayload,
+              uid,
+              id: uid,
+              createdAt: current?.createdAt || publicProfilePayload.createdAt || serverTimestamp(),
+              updatedAt: serverTimestamp(),
+              atualizadoEm: serverTimestamp(),
+            },
           });
         });
       }

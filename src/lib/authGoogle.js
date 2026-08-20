@@ -81,13 +81,14 @@ async function salvarPerfilGoogle(user) {
       update(ref(database, `presence/${user.uid}`), {
         uid: user.uid,
         id: user.uid,
-        nome: user.displayName || "Usuario",
-        fotoURL: user.photoURL || "",
         modoAtual: "",
         online: onlinePreference,
         disponivel: onlinePreference,
         lastSeen: agoraPresence,
         updatedAt: agoraPresence,
+        local: null,
+        latitude: null,
+        longitude: null,
       }),
       esperar(1800),
     ]);

@@ -357,7 +357,7 @@ export default function CentralNotificacoes({
 
     const unsubscribers = actorIds.map((uid) =>
       onValue(
-        ref(database, `users/${uid}`),
+        ref(database, `publicProfiles/${uid}`),
         (snapshot) => {
           const profile = snapshot.val()
           if (!profile) return
