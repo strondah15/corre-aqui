@@ -1,22 +1,23 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
-import { onValue, ref, serverTimestamp, set, update } from '@/lib/firebaseDebug'
+import { get, onValue, ref, serverTimestamp, update } from '@/lib/firebaseDebug'
 import LoginGate from '@/components/LoginGate'
 import { getCategoryById } from '@/constants/categories'
 import { auth, database } from '@/lib/firebase'
 import { isOnlineRecente } from '@/lib/presence'
-import { enviarPushParaUsuario } from '@/lib/pushSender'
-import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
+import { ATENDIMENTO_STATUS, normalizeServiceAttendanceStatus, transitionAtendimento } from '@/lib/atendimento'
 import { notifyPublicRequestAccepted } from '@/lib/privateRequests'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
-import { createEventNotificationId } from '@/lib/eventNotifications'
 import { normalizePublicRequest } from '@/lib/publicRequests'
+import { createClaimUiCheck } from '@/lib/publicRequestClaimUi'
 import { registrarMensagemSistemaConfiavel } from '@/lib/trustedSystemChat'
+import { getAuthorizedPhoneHref } from '@/lib/serviceExperience'
+import { createChatHref, getChatReturnHref, normalizeChatOrigin, prefetchChatRoute } from '@/lib/chatNavigation'
 
 const MapinhaModal = dynamic(() => import('@/components/MapinhaModal'), { ssr: false })
 const LIST_STATE_PREFIX = 'correAqui:listState:v2'
@@ -97,26 +98,6 @@ function getInitials(name) {
     .map((part) => part[0])
     .join('')
     .toUpperCase() || 'CA'
-}
-
-function getTelefone(profile, criador) {
-  return (
-    profile?.telefone ||
-    profile?.phone ||
-    profile?.whatsapp ||
-    profile?.profWhats ||
-    criador?.telefone ||
-    criador?.phone ||
-    criador?.whatsapp ||
-    ''
-  )
-}
-
-function phoneHref(value) {
-  const digits = String(value || '').replace(/\D/g, '')
-  if (!digits) return ''
-  const withCountry = digits.startsWith('55') ? digits : `55${digits}`
-  return `tel:+${withCountry}`
 }
 
 function StatusPill({ status, label }) {
@@ -328,19 +309,39 @@ function PedidoDetalhe() {
   const params = useParams()
   const searchParams = useSearchParams()
   const pedidoId = String(params?.pedidoId || '')
-  const voltar = searchParams.get('voltar') || 'corre'
+  const voltar = normalizeChatOrigin(searchParams.get('voltar'), 'corre')
+  const acceptLockRef = useRef('')
+  const navigationLockRef = useRef('')
+  const chatPrefetchesRef = useRef(new Set())
 
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [creatorProfile, setCreatorProfile] = useState(null)
   const [creatorPresence, setCreatorPresence] = useState(null)
-  const [pedido, setPedido] = useState(null)
+  const [publicPedido, setPublicPedido] = useState(null)
+  const [privatePedido, setPrivatePedido] = useState(null)
+  const [privateAccessGranted, setPrivateAccessGranted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [aceitando, setAceitando] = useState(false)
-  const [iniciando, setIniciando] = useState(false)
-  const [transicionando, setTransicionando] = useState(false)
   const [erro, setErro] = useState('')
   const [mapOpen, setMapOpen] = useState(false)
+
+  const navigateOnce = useCallback((href, { replace = false } = {}) => {
+    if (!href || navigationLockRef.current) return false
+    navigationLockRef.current = href
+    if (replace) router.replace(href, { scroll: false })
+    else router.push(href)
+    window.setTimeout(() => {
+      if (navigationLockRef.current === href) navigationLockRef.current = ''
+    }, 1200)
+    return true
+  }, [router])
+
+  useEffect(() => {
+    acceptLockRef.current = ''
+    navigationLockRef.current = ''
+    chatPrefetchesRef.current.clear()
+  }, [pedidoId, user?.uid])
 
   useEffect(() => {
     const off = onAuthStateChanged(auth, (authUser) => setUser(authUser || null))
@@ -351,22 +352,37 @@ function PedidoDetalhe() {
     if (!pedidoId) return undefined
     setLoading(true)
     const offPublic = onValue(ref(database, `publicRequests/${pedidoId}`), (snap) => {
-      setPedido((current) => current?._private ? current : (snap.exists() ? normalizePublicRequest(pedidoId, snap.val()) : null))
+      setPublicPedido(snap.exists() ? normalizePublicRequest(pedidoId, snap.val()) : null)
       setLoading(false)
     })
-    let offPrivate = () => {}
-    if (user?.uid) {
-      offPrivate = onValue(
-        ref(database, `pedidos/${pedidoId}`),
-        (snap) => {
-          if (snap.exists()) setPedido({ id: pedidoId, ...(snap.val() || {}), _private: true })
-          setLoading(false)
-        },
-        () => {},
-      )
-    }
-    return () => { offPublic(); offPrivate() }
+    return () => offPublic()
+  }, [pedidoId])
+
+  useEffect(() => {
+    setPrivatePedido(null)
+    setPrivateAccessGranted(false)
   }, [pedidoId, user?.uid])
+
+  const publicCreatorId = String(publicPedido?.criador?.id || '')
+  const publicAcceptedId = String(publicPedido?.aceite?.id || '')
+  const canReadPrivatePedido = !!user?.uid && (
+    privateAccessGranted ||
+    publicCreatorId === String(user.uid) ||
+    publicAcceptedId === String(user.uid)
+  )
+
+  useEffect(() => {
+    if (!pedidoId || !canReadPrivatePedido) return undefined
+
+    const offPrivate = onValue(
+      ref(database, `pedidos/${pedidoId}`),
+      (snap) => setPrivatePedido(snap.exists() ? { id: pedidoId, ...(snap.val() || {}), _private: true } : null),
+      (error) => setErro(error?.message || 'Não foi possível carregar os dados privados deste pedido.'),
+    )
+    return () => offPrivate()
+  }, [canReadPrivatePedido, pedidoId])
+
+  const pedido = privatePedido || publicPedido
 
   useEffect(() => {
     if (!user?.uid) {
@@ -409,21 +425,29 @@ function PedidoDetalhe() {
     return () => off()
   }, [pedido?.criador?.id])
 
-  const status = normalizeAtendimentoStatus(pedido?.status)
+  const status = normalizeServiceAttendanceStatus({
+    status: pedido?.status,
+    kind: 'pedido',
+    type: pedido?.tipo,
+    record: pedido,
+  })
   const souCriador = !!user?.uid && String(pedido?.criador?.id || '') === String(user.uid)
   const souAceitador = !!user?.uid && String(pedido?.aceite?.id || '') === String(user.uid)
   const podeAceitar = !!user?.uid && pedido && status === ATENDIMENTO_STATUS.ABERTO && !pedido?.aceite?.id && !souCriador
-  const podeIniciarAtendimento = souAceitador && status === ATENDIMENTO_STATUS.ACEITO
-  const podeMarcarChegada = souAceitador && status === ATENDIMENTO_STATUS.EM_ANDAMENTO
-  const podeSolicitarFinalizacao = souAceitador && status === ATENDIMENTO_STATUS.CHEGOU
-  const podeConfirmarConclusao = souCriador && status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
   const participanteDoPedido = souCriador || souAceitador
   const podeAbrirChat = participanteDoPedido && [
+    ATENDIMENTO_STATUS.ACEITO,
     ATENDIMENTO_STATUS.EM_ANDAMENTO,
+    ATENDIMENTO_STATUS.A_CAMINHO,
     ATENDIMENTO_STATUS.CHEGOU,
     ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
     ATENDIMENTO_STATUS.FINALIZADO,
+    ATENDIMENTO_STATUS.CANCELADO,
   ].includes(status)
+  const preloadChat = useCallback(() => {
+    if (!podeAbrirChat) return ''
+    return prefetchChatRoute(router, chatPrefetchesRef.current, pedidoId, voltar)
+  }, [pedidoId, podeAbrirChat, router, voltar])
   const criadoEm = pedido?.criadoEm || pedido?.createdAt || pedido?.atualizadoEm
   const localOk = pedido?.local?.lat != null && pedido?.local?.lng != null
 
@@ -436,14 +460,17 @@ function PedidoDetalhe() {
   const criadorNome = pedido?.criador?.nome || creatorProfile?.nome || creatorProfile?.displayName || 'Usuário Corre Aqui'
   const criadorFoto = pedido?.criador?.fotoURL || pedido?.criador?.photoURL || creatorProfile?.fotoURL || creatorProfile?.photoURL || creatorPresence?.fotoURL || creatorPresence?.photoURL || ''
   const criadorOnline = isOnlineRecente(creatorPresence)
-  const telefone = participanteDoPedido ? getTelefone(creatorProfile, pedido?.criador) : ''
-  const telefoneLink = phoneHref(telefone)
+  const telefoneLink = getAuthorizedPhoneHref({
+    publicProfile: creatorProfile,
+    pedidoStatus: pedido?.status,
+    isParticipant: participanteDoPedido,
+  })
   const tituloPedido = pedido?.titulo || pedido?.texto || 'Pedido sem título'
   const descricaoPedido = pedido?.descricao || pedido?.texto || 'Converse no chat para combinar os detalhes desse serviço.'
 
   const statusLabel = useMemo(() => {
-    if (status === ATENDIMENTO_STATUS.ACEITO) return 'Aceito'
-    if (status === ATENDIMENTO_STATUS.EM_ANDAMENTO) return 'Em andamento'
+    if (status === ATENDIMENTO_STATUS.ACEITO || status === ATENDIMENTO_STATUS.EM_ANDAMENTO) return 'Combinando'
+    if (status === ATENDIMENTO_STATUS.A_CAMINHO) return 'A caminho'
     if (status === ATENDIMENTO_STATUS.CHEGOU) return 'Chegou ao local'
     if (status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) return 'Confirmação pendente'
     if (status === ATENDIMENTO_STATUS.FINALIZADO) return 'Finalizado'
@@ -452,35 +479,57 @@ function PedidoDetalhe() {
   }, [status])
 
   const voltarParaLista = () => {
-    const fallback = voltar === 'cliente' ? '/cliente' : '/corre'
-    const stateKey = `${LIST_STATE_PREFIX}:${voltar === 'cliente' ? 'cliente' : 'corre'}`
+    if (navigationLockRef.current) return
+    const fallback = getChatReturnHref(voltar)
+    const listMode = voltar === 'cliente' || voltar === 'corre' ? voltar : ''
+    const stateKey = listMode ? `${LIST_STATE_PREFIX}:${listMode}` : ''
 
     try {
-      if (sessionStorage.getItem(stateKey)) {
+      if (stateKey && sessionStorage.getItem(stateKey)) {
         if (process.env.NODE_ENV !== 'production') console.time('back-list')
         sessionStorage.setItem(LIST_RETURN_FLAG, stateKey)
-        router.replace(fallback, { scroll: false })
+        navigateOnce(fallback, { replace: true })
         return
       }
     } catch {}
 
     try {
-      sessionStorage.setItem(LIST_RETURN_FLAG, stateKey)
+      if (stateKey) sessionStorage.setItem(LIST_RETURN_FLAG, stateKey)
     } catch {}
-    router.replace(fallback, { scroll: false })
+    navigateOnce(fallback, { replace: true })
   }
 
   const abrirChat = () => {
-    if (!pedidoId) return
-    router.push(`/chat/${encodeURIComponent(pedidoId)}?voltar=${voltar}`)
+    if (!pedidoId || navigationLockRef.current) return
+    navigateOnce(createChatHref(pedidoId, voltar), { replace: true })
   }
 
   const aceitarPedido = async () => {
-    if (!podeAceitar || aceitando) return
+    const actionKey = String(pedidoId || '')
+    if (!podeAceitar || aceitando || acceptLockRef.current || navigationLockRef.current) return
+    acceptLockRef.current = actionKey
+    let navigatingToChat = false
     setErro('')
     setAceitando(true)
 
     try {
+      const publicSnapshot = await get(ref(database, `publicRequests/${pedidoId}`))
+      const publicCurrent = publicSnapshot.exists() ? publicSnapshot.val() : null
+      const claimUiCheck = createClaimUiCheck({
+        pedidoId,
+        cardPresent: !!publicPedido,
+        publicExistsNow: publicSnapshot.exists(),
+        publicStatus: publicCurrent?.status,
+      })
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[CLAIM_UI_CHECK]', JSON.stringify(claimUiCheck))
+      }
+      if (!claimUiCheck.publicExistsNow) {
+        setPublicPedido(null)
+        setErro('Este pedido não está mais disponível.')
+        return
+      }
+
       const agora = Date.now()
       const local = await getMyLocation()
       const nome = profile?.nome || user.displayName || 'Corre'
@@ -509,7 +558,8 @@ function PedidoDetalhe() {
           atualizadoEmServer: serverTimestamp(),
         },
       })
-      setPedido({ id: pedido.id, ...acceptedPedido, _private: true })
+      setPrivateAccessGranted(true)
+      setPrivatePedido({ id: pedido.id, ...acceptedPedido, _private: true })
 
       await update(ref(database, `users/${user.uid}`), {
         statusProfissional: 'em_servico',
@@ -518,51 +568,12 @@ function PedidoDetalhe() {
         atualizadoEm: serverTimestamp(),
       }).catch(() => {})
 
-      if (pedido?.criador?.id) {
-        await update(ref(database, `conversas/${pedido.criador.id}/${conversaId}`), {
-          pedidoId: pedido.id,
-          titulo: pedido.titulo || 'Corre aqui',
-          outroId: user.uid,
-          outroNome: nome,
-          unread: true,
-          status: 'ativa',
-          pedidoStatus: ATENDIMENTO_STATUS.ACEITO,
-          categoriaId: pedido?.categoriaId || pedido?.categoria || '',
-          categoriaNome: categoria,
-          valor: pedido?.valor || null,
-          tipoNotificacao: 'corre_aceito',
-          lastText: `${nome} aceitou seu corre.`,
-          lastAt: serverTimestamp(),
-          lastById: user.uid,
-          lastByNome: nome,
-          mensagemPreview: `${nome} aceitou seu corre.`,
-          updatedAt: serverTimestamp(),
-        })
-
-      }
-
-      await update(ref(database, `conversas/${user.uid}/${conversaId}`), {
+      // A rota autenticada cria a mensagem e materializa os dois índices canônicos.
+      await registrarMensagemSistemaConfiavel({
         pedidoId: pedido.id,
-        titulo: pedido.titulo || 'Corre aqui',
-        outroId: pedido?.criador?.id || null,
-        outroNome: pedido?.criador?.nome || 'Cliente',
-        unread: false,
-        status: 'ativa',
-        pedidoStatus: ATENDIMENTO_STATUS.ACEITO,
-        categoriaId: pedido?.categoriaId || pedido?.categoria || '',
-        categoriaNome: categoria,
-        valor: pedido?.valor || null,
-        lastText: 'Você aceitou esse corre.',
-        lastAt: serverTimestamp(),
-        lastById: user.uid,
-        lastByNome: nome,
-        mensagemPreview: 'Você aceitou esse corre.',
-        updatedAt: serverTimestamp(),
+        eventType: 'pedido_aceito',
+        contextKind: 'pedido',
       })
-
-      await registrarMensagemSistemaConfiavel({ pedidoId: pedido.id, eventType: 'pedido_aceito' })
-      if (pedido?.criador?.id) await set(ref(database, `usersChats/${pedido.criador.id}/${conversaId}`), true)
-      await set(ref(database, `usersChats/${user.uid}/${conversaId}`), true)
       if (pedido?.criador?.id) {
         await notifyPublicRequestAccepted({
           database,
@@ -575,273 +586,17 @@ function PedidoDetalhe() {
         id: CONTEXTUAL_TIP_IDS.pedidoAceito,
         target: 'aceitar-pedido',
       })
+      navigatingToChat = navigateOnce(createChatHref(pedido.id, voltar), { replace: true })
     } catch (error) {
       console.error('Erro ao aceitar pedido:', error)
       setErro(error?.message || 'Não foi possível aceitar agora.')
     } finally {
-      setAceitando(false)
+      if (!navigatingToChat) {
+        if (acceptLockRef.current === actionKey) acceptLockRef.current = ''
+        setAceitando(false)
+      }
     }
   }
-
-  const iniciarAtendimento = async () => {
-    if (!podeIniciarAtendimento || iniciando) return
-    setErro('')
-    setIniciando(true)
-
-    try {
-      const agora = Date.now()
-      const conversaId = pedido.conversaId || pedido.id
-      const profissionalNome = profile?.nome || user?.displayName || pedido?.aceite?.nome || 'Profissional'
-      const clienteId = pedido?.criador?.id || ''
-      const notificationId = createEventNotificationId({
-        type: 'ATENDIMENTO_INICIADO',
-        sourceId: pedido.id,
-        toUid: clienteId,
-        state: ATENDIMENTO_STATUS.EM_ANDAMENTO,
-      })
-      const transitionedPedido = await transitionAtendimento({
-        database,
-        pedidoId: pedido.id,
-        actorUid: user.uid,
-        expectedStatus: ATENDIMENTO_STATUS.ACEITO,
-        nextStatus: ATENDIMENTO_STATUS.EM_ANDAMENTO,
-        atendimentoPatch: {
-          iniciadoEm: agora,
-          iniciadoPor: { id: user.uid, nome: profissionalNome },
-        },
-        topLevelPatch: {
-          atendimentoIniciadoEm: agora,
-          atualizadoEmServer: serverTimestamp(),
-        },
-      })
-      setPedido({ id: pedido.id, ...transitionedPedido, _private: true })
-
-      const updates = {
-        [`conversas/${user.uid}/${conversaId}/pedidoId`]: pedido.id,
-        [`conversas/${user.uid}/${conversaId}/titulo`]: pedido.titulo || 'Corre aqui',
-        [`conversas/${user.uid}/${conversaId}/lastText`]: 'Você iniciou o atendimento.',
-        [`conversas/${user.uid}/${conversaId}/mensagemPreview`]: 'Você iniciou o atendimento.',
-        [`conversas/${user.uid}/${conversaId}/lastAt`]: serverTimestamp(),
-        [`conversas/${user.uid}/${conversaId}/updatedAt`]: serverTimestamp(),
-        [`conversas/${user.uid}/${conversaId}/lastById`]: user.uid,
-        [`conversas/${user.uid}/${conversaId}/lastByNome`]: profissionalNome,
-        [`conversas/${user.uid}/${conversaId}/status`]: 'ativa',
-        [`conversas/${user.uid}/${conversaId}/pedidoStatus`]: ATENDIMENTO_STATUS.EM_ANDAMENTO,
-        [`conversas/${user.uid}/${conversaId}/valor`]: pedido?.valor || null,
-        [`conversas/${user.uid}/${conversaId}/categoriaNome`]: categoria,
-      }
-
-      if (clienteId) {
-        const notificationPayload = {
-          id: notificationId,
-          eventId: notificationId,
-          tipo: 'atendimento_iniciado',
-          pedidoId: pedido.id,
-          conversaId,
-          titulo: 'Atendimento iniciado',
-          mensagem: `${profissionalNome} iniciou o atendimento do seu pedido.`,
-          prioridade: 'alta',
-          acao: 'abrir_chat',
-          lida: false,
-          read: false,
-          criadoEm: agora,
-          toUid: clienteId,
-          fromUid: user.uid,
-          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
-          autor: { id: user.uid, nome: profissionalNome },
-        }
-        updates[`conversas/${clienteId}/${conversaId}/pedidoId`] = pedido.id
-        updates[`conversas/${clienteId}/${conversaId}/titulo`] = pedido.titulo || 'Corre aqui'
-        updates[`conversas/${clienteId}/${conversaId}/outroId`] = user.uid
-        updates[`conversas/${clienteId}/${conversaId}/outroNome`] = profissionalNome
-        updates[`conversas/${clienteId}/${conversaId}/unread`] = true
-        updates[`conversas/${clienteId}/${conversaId}/status`] = 'ativa'
-        updates[`conversas/${clienteId}/${conversaId}/pedidoStatus`] = ATENDIMENTO_STATUS.EM_ANDAMENTO
-        updates[`conversas/${clienteId}/${conversaId}/valor`] = pedido?.valor || null
-        updates[`conversas/${clienteId}/${conversaId}/categoriaNome`] = categoria
-        updates[`conversas/${clienteId}/${conversaId}/lastText`] = `${profissionalNome} iniciou seu atendimento.`
-        updates[`conversas/${clienteId}/${conversaId}/mensagemPreview`] = `${profissionalNome} iniciou seu atendimento.`
-        updates[`conversas/${clienteId}/${conversaId}/lastAt`] = serverTimestamp()
-        updates[`conversas/${clienteId}/${conversaId}/updatedAt`] = serverTimestamp()
-        updates[`conversas/${clienteId}/${conversaId}/lastById`] = user.uid
-        updates[`conversas/${clienteId}/${conversaId}/lastByNome`] = profissionalNome
-        updates[`notificacoes/${clienteId}/${notificationId}`] = notificationPayload
-        updates[`notifications/${clienteId}/${notificationId}`] = notificationPayload
-      }
-
-      await update(ref(database), updates)
-      await registrarMensagemSistemaConfiavel({ pedidoId: pedido.id, eventType: 'atendimento_iniciado' })
-
-      if (clienteId) {
-        enviarPushParaUsuario(clienteId, {
-          type: 'atendimento_iniciado',
-          pedidoId: pedido.id,
-          conversaId,
-          titulo: 'Atendimento iniciado',
-          mensagem: `${profissionalNome} iniciou o atendimento do seu pedido.`,
-          prioridade: 'alta',
-          action: { label: 'Abrir atendimento', screen: 'chat', id: conversaId },
-          notificationId,
-          eventId: notificationId,
-        })
-      }
-
-      showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.atendimentoIniciado, {
-        id: CONTEXTUAL_TIP_IDS.atendimentoIniciado,
-        target: 'progresso',
-      })
-
-      router.replace(`/chat/${encodeURIComponent(conversaId)}?voltar=${voltar}`)
-    } catch (error) {
-      console.error('Erro ao iniciar atendimento:', error)
-      setErro(error?.message || 'Não foi possível iniciar o atendimento agora.')
-    } finally {
-      setIniciando(false)
-    }
-  }
-
-  const registrarTransicaoAtendimento = async ({ nextStatus, atendimentoPatch, topLevelPatch, texto, evento, notificationTitle, notificationMessage }) => {
-    if (!user?.uid || !pedido?.id || transicionando) return
-    setErro('')
-    setTransicionando(true)
-
-    try {
-      const agora = Date.now()
-      const conversaId = pedido.conversaId || pedido.id
-      const clienteId = pedido?.criador?.id || ''
-      const profissionalId = pedido?.aceite?.id || ''
-      const profissionalNome = pedido?.aceite?.nome || profile?.nome || user?.displayName || 'Profissional'
-      const clienteNome = pedido?.criador?.nome || criadorNome || 'Cliente'
-
-      await transitionAtendimento({
-        database,
-        pedidoId: pedido.id,
-        actorUid: user.uid,
-        expectedStatus: status,
-        nextStatus,
-        atendimentoPatch,
-        topLevelPatch: {
-          ...topLevelPatch,
-          atualizadoEmServer: serverTimestamp(),
-        },
-      })
-
-      const updates = {}
-      for (const uid of [clienteId, profissionalId]) {
-        if (!uid) continue
-        updates[`conversas/${uid}/${conversaId}/pedidoId`] = pedido.id
-        updates[`conversas/${uid}/${conversaId}/pedidoStatus`] = nextStatus
-        updates[`conversas/${uid}/${conversaId}/lastText`] = texto
-        updates[`conversas/${uid}/${conversaId}/mensagemPreview`] = texto
-        updates[`conversas/${uid}/${conversaId}/lastAt`] = serverTimestamp()
-        updates[`conversas/${uid}/${conversaId}/updatedAt`] = serverTimestamp()
-        updates[`conversas/${uid}/${conversaId}/lastById`] = user.uid
-        updates[`conversas/${uid}/${conversaId}/lastByNome`] = user.uid === clienteId ? clienteNome : profissionalNome
-        updates[`conversas/${uid}/${conversaId}/status`] = nextStatus === ATENDIMENTO_STATUS.FINALIZADO ? 'arquivavel' : 'ativa'
-        updates[`conversas/${uid}/${conversaId}/unread`] = uid !== user.uid
-      }
-
-      const destinatario = user.uid === profissionalId ? clienteId : profissionalId
-      const notificationId = destinatario && notificationTitle && notificationMessage
-        ? createEventNotificationId({
-            type: evento,
-            sourceId: pedido.id,
-            toUid: destinatario,
-            state: nextStatus,
-          })
-        : ''
-      const notificationAction = nextStatus === ATENDIMENTO_STATUS.FINALIZADO
-        ? { label: 'Ver histórico', screen: 'ver_historico', id: pedido.id }
-        : { label: 'Abrir atendimento', screen: 'chat', id: conversaId }
-      if (destinatario && notificationTitle && notificationMessage) {
-        const notification = {
-          id: notificationId,
-          eventId: notificationId,
-          tipo: evento,
-          titulo: notificationTitle,
-          mensagem: notificationMessage,
-          pedidoId: pedido.id,
-          fromUid: user.uid,
-          toUid: destinatario,
-          lida: false,
-          read: false,
-          criadoEm: agora,
-          action: notificationAction,
-          autor: { id: user.uid, nome: user.uid === clienteId ? clienteNome : profissionalNome },
-        }
-        updates[`notifications/${destinatario}/${notificationId}`] = notification
-        updates[`notificacoes/${destinatario}/${notificationId}`] = notification
-      }
-
-      await update(ref(database), updates)
-      await registrarMensagemSistemaConfiavel({ pedidoId: pedido.id, eventType: evento })
-
-      if (destinatario && notificationTitle && notificationMessage) {
-        enviarPushParaUsuario(destinatario, {
-          type: evento,
-          pedidoId: pedido.id,
-          conversaId,
-          titulo: notificationTitle,
-          mensagem: notificationMessage,
-          prioridade: 'alta',
-          action: notificationAction,
-          notificationId,
-          eventId: notificationId,
-        })
-      }
-      if (nextStatus === ATENDIMENTO_STATUS.CHEGOU) {
-        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.cheguei, {
-          id: CONTEXTUAL_TIP_IDS.cheguei,
-          target: 'progresso',
-        })
-      } else if (nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) {
-        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.solicitarConclusao, {
-          id: CONTEXTUAL_TIP_IDS.solicitarConclusao,
-          target: 'confirmacao-final',
-        })
-      } else if (nextStatus === ATENDIMENTO_STATUS.FINALIZADO) {
-        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.conclusaoConfirmada, {
-          id: CONTEXTUAL_TIP_IDS.conclusaoConfirmada,
-          evaluationActive: true,
-        })
-      }
-    } catch (error) {
-      console.error('Erro ao avançar atendimento:', error)
-      setErro(error?.message || 'Não foi possível avançar o atendimento.')
-    } finally {
-      setTransicionando(false)
-    }
-  }
-
-  const marcarChegada = () => registrarTransicaoAtendimento({
-    nextStatus: ATENDIMENTO_STATUS.CHEGOU,
-    atendimentoPatch: { chegouEm: Date.now(), chegouPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
-    topLevelPatch: { chegouEm: Date.now(), chegouPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
-    texto: `✓ ${pedido?.aceite?.nome || profile?.nome || 'Profissional'} informou que chegou ao local.`,
-    evento: 'atendimento_chegou',
-    notificationTitle: 'Seu profissional chegou',
-    notificationMessage: `${pedido?.aceite?.nome || profile?.nome || 'Profissional'} informou que chegou ao local.`,
-  })
-
-  const solicitarFinalizacao = () => registrarTransicaoAtendimento({
-    nextStatus: ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
-    atendimentoPatch: { finalizacaoSolicitadaEm: Date.now(), finalizacaoSolicitadaPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
-    topLevelPatch: { finalizacaoSolicitadaEm: Date.now(), finalizacaoSolicitadaPor: { id: user?.uid, nome: profile?.nome || user?.displayName || 'Profissional' } },
-    texto: `✓ ${pedido?.aceite?.nome || profile?.nome || 'Profissional'} solicitou a finalização do atendimento.`,
-    evento: 'finalizacao_solicitada',
-    notificationTitle: 'Confirme a conclusão',
-    notificationMessage: `${pedido?.aceite?.nome || profile?.nome || 'Profissional'} solicitou a finalização do atendimento.`,
-  })
-
-  const confirmarConclusao = () => registrarTransicaoAtendimento({
-    nextStatus: ATENDIMENTO_STATUS.FINALIZADO,
-    atendimentoPatch: { finalizadoEm: Date.now(), finalizadoPor: { id: user?.uid, nome: criadorNome } },
-    topLevelPatch: { finalizadoEm: Date.now(), finalizadoPor: { id: user?.uid, nome: criadorNome }, avaliacaoPendente: true },
-    texto: '✓ Atendimento finalizado com sucesso.',
-    evento: 'atendimento_finalizado',
-    notificationTitle: 'Serviço concluído ✅',
-    notificationMessage: 'O cliente confirmou a conclusão do atendimento.',
-  })
 
   if (loading) {
     return (
@@ -870,38 +625,14 @@ function PedidoDetalhe() {
     ? aceitando
       ? 'Aceitando pedido...'
       : 'Aceitar pedido'
-    : podeIniciarAtendimento
-      ? iniciando
-        ? 'Iniciando...'
-        : 'Iniciar atendimento'
-    : podeMarcarChegada
-      ? transicionando
-        ? 'Atualizando...'
-        : 'Cheguei ao local'
-    : podeSolicitarFinalizacao
-      ? transicionando
-        ? 'Solicitando...'
-        : 'Solicitar finalização'
-    : podeConfirmarConclusao
-      ? transicionando
-        ? 'Confirmando...'
-        : 'Confirmar conclusão'
     : podeAbrirChat
       ? 'Abrir conversa'
       : 'Voltar para lista'
   const primaryAction = podeAceitar
     ? aceitarPedido
-    : podeIniciarAtendimento
-      ? iniciarAtendimento
-      : podeMarcarChegada
-        ? marcarChegada
-        : podeSolicitarFinalizacao
-          ? solicitarFinalizacao
-          : podeConfirmarConclusao
-            ? confirmarConclusao
-            : podeAbrirChat
-              ? abrirChat
-              : voltarParaLista
+    : podeAbrirChat
+      ? abrirChat
+      : voltarParaLista
 
   return (
     <main className="min-h-[100dvh] overflow-x-hidden bg-[#050b14] px-1.5 pb-[calc(env(safe-area-inset-bottom)+6.5rem)] pt-1.5 text-white md:px-5 md:py-5">
@@ -973,7 +704,7 @@ function PedidoDetalhe() {
                 <div>
                   <div className="text-sm font-black text-white md:text-xl">Pedido seguro</div>
                   <div className="mt-0.5 text-xs font-semibold leading-snug text-slate-400 md:mt-1 md:text-lg">
-                    Use o chat para combinar os detalhes antes de aceitar.
+                    Depois do aceite, use o chat para combinar todos os detalhes antes do deslocamento.
                   </div>
                 </div>
               </div>
@@ -1010,7 +741,10 @@ function PedidoDetalhe() {
 
                   <button
                     type="button"
-                    onClick={podeAbrirChat ? abrirChat : () => setErro('Inicie o atendimento para abrir o chat.')}
+                    onClick={podeAbrirChat ? abrirChat : () => setErro('Aceite o pedido para abrir o chat.')}
+                    onPointerEnter={podeAbrirChat ? preloadChat : undefined}
+                    onPointerDown={podeAbrirChat ? preloadChat : undefined}
+                    onFocus={podeAbrirChat ? preloadChat : undefined}
                     disabled={!podeAbrirChat}
                     className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-white/10 bg-white/[0.06] text-blue-200 shadow-[0_12px_26px_rgba(0,0,0,0.18)] transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 md:h-16 md:w-16 md:rounded-[20px]"
                     aria-label="Abrir chat"
@@ -1018,14 +752,15 @@ function PedidoDetalhe() {
                     <IconChat className="h-5 w-5 md:h-8 md:w-8" />
                   </button>
 
-                  <a
-                    href={telefoneLink || undefined}
-                    aria-disabled={!telefoneLink}
-                    className={`grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-white/10 bg-white/[0.06] shadow-[0_12px_26px_rgba(0,0,0,0.18)] transition active:scale-[0.98] md:h-16 md:w-16 md:rounded-[20px] ${telefoneLink ? 'text-blue-200' : 'pointer-events-none text-slate-600'}`}
-                    aria-label="Ligar para o cliente"
-                  >
-                    <IconPhone className="h-5 w-5 md:h-8 md:w-8" />
-                  </a>
+                  {telefoneLink ? (
+                    <a
+                      href={telefoneLink}
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-yellow-300/50 bg-blue-950 text-yellow-300 shadow-[0_12px_26px_rgba(0,0,0,0.18)] transition hover:bg-blue-900 active:scale-[0.98] md:h-16 md:w-16 md:rounded-[20px]"
+                      aria-label="Ligar para o cliente"
+                    >
+                      <IconPhone className="h-5 w-5 md:h-8 md:w-8" />
+                    </a>
+                  ) : null}
                 </div>
               </div>
             </aside>
@@ -1033,7 +768,7 @@ function PedidoDetalhe() {
         </div>
 
         <div className="mt-4 hidden grid-cols-2 gap-2 rounded-[20px] border border-white/10 bg-[#0f1b2d] p-2 shadow-[0_14px_36px_rgba(0,0,0,0.20)] md:mt-5 md:grid md:gap-0 md:rounded-[24px] md:p-4 xl:grid-cols-4 xl:divide-x xl:divide-white/10">
-          <FeatureCard icon={<IconShield className="h-8 w-8" />} title="Comunique-se" text="Converse no chat antes de aceitar" />
+          <FeatureCard icon={<IconShield className="h-8 w-8" />} title="Comunique-se" text="Converse no chat após o aceite" />
           <FeatureCard icon={<IconRoute className="h-8 w-8" />} title="Rota rápida" text="Veja a melhor rota até o local" />
           <FeatureCard icon={<IconDollar className="h-8 w-8" />} title="Pagamento seguro" text="Combine tudo antes de concluir" />
           <FeatureCard icon={<IconStar className="h-8 w-8" />} title="Avaliação" text="Ambos avaliam após concluir o pedido" />
@@ -1054,30 +789,31 @@ function PedidoDetalhe() {
             <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-red-500/10 text-red-100 lg:h-16 lg:w-16">
               <IconX className="h-4 w-4 lg:h-8 lg:w-8" />
             </span>
-            <span className="truncate">{podeAceitar || podeIniciarAtendimento ? 'Cancelar' : 'Voltar'}</span>
+            <span className="truncate">{podeAceitar ? 'Cancelar' : 'Voltar'}</span>
           </button>
 
           <button
             type="button"
             onClick={primaryAction}
-            disabled={aceitando || iniciando || transicionando}
-            data-tutorial={podeConfirmarConclusao ? 'confirmacao-final' : podeAceitar ? 'aceitar-pedido' : 'progresso'}
+            onPointerEnter={podeAbrirChat ? preloadChat : undefined}
+            onPointerDown={podeAbrirChat ? preloadChat : undefined}
+            onFocus={podeAbrirChat ? preloadChat : undefined}
+            disabled={aceitando}
+            data-tutorial={podeAceitar ? 'aceitar-pedido' : 'progresso'}
             className={`flex min-w-0 min-h-[48px] flex-row items-center justify-center gap-1.5 rounded-[15px] px-2.5 text-white transition active:scale-[0.99] disabled:opacity-65 lg:min-h-[86px] lg:flex-col lg:gap-0 lg:rounded-[24px] lg:px-6 ${
-              (podeIniciarAtendimento || podeMarcarChegada || podeSolicitarFinalizacao || podeConfirmarConclusao)
+              podeAbrirChat
                 ? 'bg-emerald-500 shadow-[0_14px_34px_rgba(34,197,94,0.28)] lg:shadow-[0_18px_42px_rgba(34,197,94,0.32)]'
                 : 'bg-blue-600 shadow-[0_14px_34px_rgba(37,99,235,0.26)] lg:shadow-[0_18px_42px_rgba(37,99,235,0.3)]'
             }`}
           >
-            <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white lg:mb-2 lg:h-11 lg:w-11 ${(podeIniciarAtendimento || podeMarcarChegada || podeSolicitarFinalizacao || podeConfirmarConclusao) ? 'text-emerald-600' : 'text-blue-600'}`}>
+            <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white lg:mb-2 lg:h-11 lg:w-11 ${podeAbrirChat ? 'text-emerald-600' : 'text-blue-600'}`}>
               <IconCheck className="h-4 w-4 lg:h-7 lg:w-7" />
             </span>
             <span className="min-w-0 text-center text-xs font-black leading-tight md:text-base lg:text-3xl lg:leading-none">{primaryLabel}</span>
             <span className="mt-2 hidden text-lg font-semibold text-blue-100 lg:block">
               {podeAceitar
                 ? 'Depois você confere os detalhes antes de iniciar'
-                : podeIniciarAtendimento
-                  ? 'Registra o início e abre a central do atendimento'
-                  : 'Acompanhe os detalhes pelo chat'}
+                : 'Acompanhe e avance as etapas pelo chat'}
             </span>
           </button>
         </div>

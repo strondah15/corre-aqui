@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CATEGORIES, categoryMatches, getCategoryById } from '@/constants/categories'
 import { getProfessionDisplayName, getProfessionSearchText, normalizeProfessionSearchText } from '@/constants/professions'
 import ListaProfissionais from './ListaProfissionais'
+import { ListPanelSkeleton } from './LoadingSkeletons'
 import { buildProfessionalReputation } from '@/lib/professionalReputation'
 import { canAppearInPublicDirectory } from '@/lib/publicWorkProfile'
 
@@ -719,14 +720,25 @@ const PortfolioServiceCard = memo(function PortfolioServiceCard({ service, onAbr
     <article className="w-[210px] shrink-0 overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-[0_16px_36px_rgba(15,23,42,0.12)] md:w-[260px]">
       <button type="button" onClick={handleAbrir} className="block w-full text-left">
         <div
-          className="relative h-28 bg-gradient-to-br from-blue-50 via-cyan-50 to-yellow-50 bg-cover bg-center md:h-36"
-          style={service?.fotoURL ? { backgroundImage: `url(${JSON.stringify(service.fotoURL)})` } : undefined}
+          className="relative h-28 overflow-hidden bg-gradient-to-br from-blue-50 via-cyan-50 to-yellow-50 md:h-36"
         >
-          {!service?.fotoURL ? (
+          {service?.fotoURL ? (
+            // URLs públicas podem vir de Firebase, Cloudinary ou data URL; preserve o loader nativo.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={service.fotoURL}
+              alt=""
+              width="520"
+              height="288"
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : (
             <div className="grid h-full place-items-center text-4xl">
               {categoria?.emoji || '⚡'}
             </div>
-          ) : null}
+          )}
           <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-slate-950/58 to-transparent" />
           {service?.urgente ? (
             <span className="absolute left-2 top-2 rounded-full bg-[#ffd91a] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-blue-950 shadow-sm">
@@ -760,11 +772,11 @@ const PortfolioServiceCard = memo(function PortfolioServiceCard({ service, onAbr
           </div>
 
           <div className="mt-3 flex items-center gap-2">
-            <div
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-950 bg-cover bg-center text-[10px] font-black text-white"
-              style={service?.providerFoto ? { backgroundImage: `url(${JSON.stringify(service.providerFoto)})` } : undefined}
-            >
-              {service?.providerFoto ? <span className="sr-only">{service.providerName}</span> : service?.providerName?.slice(0, 2).toUpperCase()}
+            <div className="relative grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-slate-950 text-[10px] font-black text-white">
+              {service?.providerFoto ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={service.providerFoto} alt="" width="32" height="32" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
+              ) : service?.providerName?.slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0">
               <div className="truncate text-xs font-black text-slate-800">{service?.providerName}</div>
@@ -805,10 +817,6 @@ const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPer
     : (isSpecificProfessionLabel(professionTitle) ? professionTitle : safeStr(item?.profResumo) || 'Serviço profissional')
   const regiao = safeStr(item?.correRegiao || item?.profCidadeAtende || item?.regiao) || 'Perto de você'
   const preco = safeStr(item?.profPrecoBase || item?.correPreco || item?.precoBase) || 'A combinar'
-  const avatarStyle = useMemo(
-    () => (item?.fotoURL ? { backgroundImage: `url("${item.fotoURL}")` } : undefined),
-    [item]
-  )
   const temPortfolio = useMemo(() => providerHasPortfolio(item), [item])
   const handleAbrir = useCallback(() => onAbrirPerfil?.(item), [item, onAbrirPerfil])
   const handleAgendar = useCallback(() => onAgendar?.(item), [item, onAgendar])
@@ -822,10 +830,15 @@ const ProviderMiniCard = memo(function ProviderMiniCard({ item, modo, onAbrirPer
       >
         <div className="relative grid h-28 place-items-center bg-gradient-to-br from-amber-50 via-cyan-50 to-emerald-50 md:h-36">
           {item?.fotoURL ? (
-            <div
-              aria-label={nome}
-              className="h-16 w-16 rounded-[24px] bg-cover bg-center ring-4 ring-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] md:h-20 md:w-20 md:rounded-[28px]"
-              style={avatarStyle}
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.fotoURL}
+              alt=""
+              width="80"
+              height="80"
+              loading="lazy"
+              decoding="async"
+              className="h-16 w-16 rounded-[24px] object-cover ring-4 ring-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] md:h-20 md:w-20 md:rounded-[28px]"
             />
           ) : (
             <div className="grid h-16 w-16 place-items-center rounded-[24px] bg-slate-950 text-lg font-black text-white ring-4 ring-white shadow-[0_10px_24px_rgba(15,23,42,0.16)] md:h-20 md:w-20 md:rounded-[28px] md:text-xl">
@@ -888,8 +901,14 @@ export default function ClienteHome({
   onIrAoVivo,
   onAbrirNotificacoes,
   onlineUsers = [],
+  onlineLoading = false,
+  onlineError = '',
   registeredUsers = [],
+  profilesLoading = false,
+  profilesError = '',
   publicPortfolio = {},
+  portfolioLoading = false,
+  portfolioError = '',
   onAbrirPerfil,
   onAgendar,
   onBackToMode,
@@ -1072,6 +1091,7 @@ export default function ClienteHome({
     if (typeof window === 'undefined') return undefined
 
     let ticking = false
+    let frame = 0
     const updateFloatingSearch = () => {
       const y = window.scrollY || document.documentElement.scrollTop || 0
       const isMobile = window.innerWidth < 768
@@ -1086,7 +1106,8 @@ export default function ClienteHome({
     const onScrollOrResize = () => {
       if (ticking) return
       ticking = true
-      window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
         updateFloatingSearch()
         ticking = false
       })
@@ -1095,6 +1116,7 @@ export default function ClienteHome({
     window.addEventListener('scroll', onScrollOrResize, { passive: true })
     window.addEventListener('resize', onScrollOrResize)
     return () => {
+      if (frame) window.cancelAnimationFrame(frame)
       window.removeEventListener('scroll', onScrollOrResize)
       window.removeEventListener('resize', onScrollOrResize)
     }
@@ -1268,7 +1290,7 @@ export default function ClienteHome({
           >
             <StatCardArt type="corre" />
             <div className="relative text-[10px] font-black uppercase tracking-[0.1em] text-amber-600 md:text-xs">Corres</div>
-            <div className="relative mt-1.5 text-[28px] font-black leading-none text-blue-950 md:text-4xl">{providerCounts.corre}</div>
+            <div className="relative mt-1.5 text-[28px] font-black leading-none text-blue-950 md:text-4xl">{profilesLoading ? '…' : providerCounts.corre}</div>
             <div className="relative mt-0.5 text-xs font-bold text-blue-950 md:text-sm">cadastrados</div>
           </button>
           <button
@@ -1281,7 +1303,7 @@ export default function ClienteHome({
           >
             <StatCardArt type="profissional" />
             <div className="relative text-[10px] font-black uppercase tracking-[0.1em] text-blue-600 md:text-xs">Profissionais</div>
-            <div className="relative mt-1.5 text-[28px] font-black leading-none text-blue-950 md:text-4xl">{providerCounts.profissional}</div>
+            <div className="relative mt-1.5 text-[28px] font-black leading-none text-blue-950 md:text-4xl">{profilesLoading ? '…' : providerCounts.profissional}</div>
             <div className="relative mt-0.5 text-xs font-bold text-blue-950 md:text-sm">com ficha</div>
           </button>
         </div>
@@ -1301,38 +1323,56 @@ export default function ClienteHome({
             </button>
           </div>
 
-          <div className="mt-3 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
-            {onlinePreviewProviders.map((item) => (
-              <ProviderMiniCard
-                key={item.uid}
-                item={item}
-                modo={item.isCorre && (!item.isProfissional || modo === 'corre') ? 'corre' : 'profissional'}
-                onAbrirPerfil={onAbrirPerfil}
-                onAgendar={onAgendar}
-              />
-            ))}
-            {!onlineList.length ? (
-              <div className="w-full rounded-[22px] bg-slate-50 p-4 text-sm font-bold text-slate-500">
-                Ningu&eacute;m online agora. Veja os perfis cadastrados abaixo.
-              </div>
-            ) : null}
-          </div>
+          {onlineError ? (
+            <div role="alert" className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+              {onlineError}
+            </div>
+          ) : null}
+
+          {onlineLoading && !onlineList.length ? (
+            <ListPanelSkeleton label="Carregando profissionais online" rows={2} showHeader={false} className="mt-3" />
+          ) : (
+            <div className="mt-3 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
+              {onlinePreviewProviders.map((item) => (
+                <ProviderMiniCard
+                  key={item.uid}
+                  item={item}
+                  modo={item.isCorre && (!item.isProfissional || modo === 'corre') ? 'corre' : 'profissional'}
+                  onAbrirPerfil={onAbrirPerfil}
+                  onAgendar={onAgendar}
+                />
+              ))}
+              {!onlineList.length ? (
+                <div className="w-full rounded-[22px] bg-slate-50 p-4 text-sm font-bold text-slate-500">
+                  Ningu&eacute;m online agora. Veja os perfis cadastrados abaixo.
+                </div>
+              ) : null}
+            </div>
+          )}
         </section>
 
-        {portfolioServices.length ? (
-          <section data-tutorial="portfolio" className="mt-7 md:mt-10">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Serviços do portfólio</h2>
-                <p className="mt-1 text-sm font-semibold text-slate-400">
-                  Trabalhos com fotos, preço e descrição cadastrados pelos perfis.
-                </p>
-              </div>
-              <span className="shrink-0 rounded-full bg-[#ffd91a] px-3 py-1.5 text-[11px] font-black text-blue-950">
-                {portfolioServices.length}
-              </span>
+        <section data-tutorial="portfolio" className="mt-7 md:mt-10">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-black leading-none text-slate-950 md:text-4xl">Serviços do portfólio</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-400">
+                Trabalhos com fotos, preço e descrição cadastrados pelos perfis.
+              </p>
             </div>
+            <span className="shrink-0 rounded-full bg-[#ffd91a] px-3 py-1.5 text-[11px] font-black text-blue-950">
+              {portfolioLoading ? '…' : portfolioServices.length}
+            </span>
+          </div>
 
+          {portfolioError ? (
+            <div role="alert" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+              {portfolioError}
+            </div>
+          ) : null}
+
+          {portfolioLoading && !portfolioServices.length ? (
+            <ListPanelSkeleton label="Carregando portfólios" rows={2} showHeader={false} className="mt-4" />
+          ) : portfolioServices.length ? (
             <div className="mt-4 flex gap-3 overflow-x-auto pb-2 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 [&::-webkit-scrollbar]:hidden">
               {portfolioServices.map((service) => (
                 <PortfolioServiceCard
@@ -1343,8 +1383,12 @@ export default function ClienteHome({
                 />
               ))}
             </div>
-          </section>
-        ) : null}
+          ) : !portfolioError ? (
+            <div className="mt-4 rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm font-bold text-slate-500">
+              Os serviços com portfólio aparecerão aqui.
+            </div>
+          ) : null}
+        </section>
 
         <section id="profissionais-corres" data-tutorial="profissionais" className="mt-6 scroll-mt-24 md:mt-10">
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -1376,19 +1420,29 @@ export default function ClienteHome({
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-[24px] bg-slate-950 p-1.5 md:rounded-[30px] md:p-2">
-            <ListaProfissionais
-              mode={modo}
-              categoriaId={catId}
-              search={busca}
-              limit={200}
-              itemsSource={providers}
-              onAbrirPerfil={onAbrirPerfil}
-              onAgendar={onAgendar}
-              showHeader={false}
-              compact
-            />
-          </div>
+          {profilesError ? (
+            <div role="alert" className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+              {profilesError}
+            </div>
+          ) : null}
+
+          {profilesLoading && !providers.length ? (
+            <ListPanelSkeleton label="Carregando profissionais" dark rows={4} showHeader={false} />
+          ) : (
+            <div className="overflow-hidden rounded-[24px] bg-slate-950 p-1.5 md:rounded-[30px] md:p-2">
+              <ListaProfissionais
+                mode={modo}
+                categoriaId={catId}
+                search={busca}
+                limit={200}
+                itemsSource={providers}
+                onAbrirPerfil={onAbrirPerfil}
+                onAgendar={onAgendar}
+                showHeader={false}
+                compact
+              />
+            </div>
+          )}
         </section>
       </div>
     </div>

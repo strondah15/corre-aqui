@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
-import { removerPushTokenDoDispositivo } from '@/lib/pushClient'
 import PerfilDrawer from './PerfilDrawer'
 
 export default function Perfil({ initialTab = 'config', initialProfSection = '' }) {
@@ -18,12 +17,6 @@ export default function Perfil({ initialTab = 'config', initialProfSection = '' 
 
     return () => off()
   }, [])
-
-  async function sair() {
-    if (uid) await removerPushTokenDoDispositivo(uid).catch(() => {})
-    await signOut(auth).catch(() => {})
-    router.replace('/')
-  }
 
   if (!uid) {
     return (
@@ -57,13 +50,6 @@ export default function Perfil({ initialTab = 'config', initialProfSection = '' 
         initialProfSection={initialProfSection}
         onClose={() => router.replace('/')}
       />
-      <button
-        type="button"
-        onClick={sair}
-        className="fixed bottom-4 left-4 z-[100001] rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm font-black text-white backdrop-blur-xl transition hover:bg-white/[0.12]"
-      >
-        Sair da conta
-      </button>
     </>
   )
 }

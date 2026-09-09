@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { database } from '@/lib/firebase'
 import { limitToLast, onValue, query, ref, update } from '@/lib/firebaseDebug'
+import { ListPanelSkeleton } from '@/components/LoadingSkeletons'
 
 function getMs(v) {
   if (!v) return 0
@@ -311,30 +312,71 @@ export default function CentralNotificacoes({
   const [notificacoes, setNotificacoes] = useState([])
   const [filtro, setFiltro] = useState('todas')
   const [actorProfiles, setActorProfiles] = useState({})
+  const [sourceStatus, setSourceStatus] = useState({ uid: '', legacy: 'loading', modern: 'loading' })
+  const currentSourceStatus = sourceStatus.uid === String(meuId || '')
+    ? sourceStatus
+    : { uid: String(meuId || ''), legacy: 'loading', modern: 'loading' }
+  const notificationsLoading = notificacoes.length === 0
+    && (currentSourceStatus.legacy === 'loading' || currentSourceStatus.modern === 'loading')
+  const sourceErrorCount = [currentSourceStatus.legacy, currentSourceStatus.modern]
+    .filter((status) => status === 'error').length
 
   useEffect(() => {
+    const effectUid = String(meuId || '')
     if (!meuId) {
       setNotificacoes([])
+      setActorProfiles({})
+      setSourceStatus({ uid: '', legacy: 'ready', modern: 'ready' })
       return undefined
     }
 
+    let active = true
     let rawLegacy = {}
     let rawModern = {}
+    setNotificacoes([])
+    setActorProfiles({})
+    setSourceStatus({ uid: effectUid, legacy: 'loading', modern: 'loading' })
     const emitLista = () => {
+      if (!active) return
       setNotificacoes(mergeNotificationSources(rawLegacy, rawModern))
+    }
+    const markSource = (source, status) => {
+      if (!active) return
+      setSourceStatus((current) => (
+        current.uid === effectUid ? { ...current, [source]: status } : current
+      ))
     }
 
     const nLimit = Math.max(20, Number(limit || 80))
-    const offLegacy = onValue(query(ref(database, `notificacoes/${meuId}`), limitToLast(nLimit)), (snap) => {
-      rawLegacy = snap.val() || {}
-      emitLista()
-    })
-    const offModern = onValue(query(ref(database, `notifications/${meuId}`), limitToLast(nLimit)), (snap) => {
-      rawModern = snap.val() || {}
-      emitLista()
-    })
+    const offLegacy = onValue(
+      query(ref(database, `notificacoes/${meuId}`), limitToLast(nLimit)),
+      (snap) => {
+        rawLegacy = snap.val() || {}
+        emitLista()
+        markSource('legacy', 'ready')
+      },
+      () => {
+        rawLegacy = {}
+        emitLista()
+        markSource('legacy', 'error')
+      }
+    )
+    const offModern = onValue(
+      query(ref(database, `notifications/${meuId}`), limitToLast(nLimit)),
+      (snap) => {
+        rawModern = snap.val() || {}
+        emitLista()
+        markSource('modern', 'ready')
+      },
+      () => {
+        rawModern = {}
+        emitLista()
+        markSource('modern', 'error')
+      }
+    )
 
     return () => {
+      active = false
       offLegacy()
       offModern()
     }
@@ -546,11 +588,23 @@ export default function CentralNotificacoes({
       </div>
 
       <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto bg-slate-50 p-3 md:max-h-[calc(100dvh-14rem)] md:p-4">
-        {filtradas.length === 0 ? (
+        {sourceErrorCount ? (
+          <div role="alert" className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+            {sourceErrorCount === 2
+              ? 'Não foi possível carregar as notificações agora.'
+              : 'Parte das notificações não pôde ser carregada agora.'}
+          </div>
+        ) : null}
+
+        {notificationsLoading ? (
+          <ListPanelSkeleton label="Carregando notificações" rows={4} showHeader={false} />
+        ) : filtradas.length === 0 ? (
           <div className="rounded-[22px] border border-dashed border-slate-300 bg-white p-8 text-center">
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-3xl border border-emerald-200 bg-emerald-50 text-2xl text-emerald-600">✓</div>
-            <div className="mt-4 text-lg font-black text-slate-950">Tudo em dia</div>
-            <p className="mt-1 text-sm leading-relaxed text-slate-600">Quando algo importante acontecer, aparece aqui.</p>
+            <div className="mt-4 text-lg font-black text-slate-950">{sourceErrorCount ? 'Sem novas notificações disponíveis' : 'Tudo em dia'}</div>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">
+              {sourceErrorCount ? 'Você pode tentar novamente daqui a pouco.' : 'Quando algo importante acontecer, aparece aqui.'}
+            </p>
           </div>
         ) : (
           <div className="space-y-3">

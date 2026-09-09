@@ -1,16 +1,106 @@
 'use client'
 
-import { get, push, ref, remove, serverTimestamp, update } from './firebaseDebug'
+import { get, ref, remove, update } from './firebaseDebug'
 import { auth } from './firebase'
 import { enviarPushParaUsuario } from './pushSender'
 import { buildPushPayload } from './pushPayload'
 import { createEventNotificationId, EVENT_NOTIFICATION_TYPES, formatEventSchedule } from './eventNotifications'
 import { registrarMensagemSistemaConfiavel } from './trustedSystemChat'
+import { announceSubscriptionRequired } from './subscriptionClient'
 
 const DEBUG_PRIVATE_REQUESTS = process.env.NODE_ENV !== 'production'
+const PRIVATE_REQUEST_USER_ERROR = 'Não foi possível enviar a solicitação. Tente novamente.'
 
 function debugPrivateRequests(...args) {
   if (DEBUG_PRIVATE_REQUESTS) console.log(...args)
+}
+
+function createAgendaInternalError(code, message) {
+  const error = new Error(message)
+  error.code = code
+  return error
+}
+
+function createPrivateRequestUserError(cause) {
+  const error = new Error(PRIVATE_REQUEST_USER_ERROR)
+  error.code = cause?.code || 'agenda/create-failed'
+  return error
+}
+
+function requireAgendaSession(expectedUid) {
+  if (!expectedUid || auth.currentUser?.uid !== expectedUid) {
+    throw createAgendaInternalError('agenda/session-changed', 'A sessão mudou durante esta ação. Tente novamente.')
+  }
+}
+
+async function ensurePrivateRequestConversation(requestId, expectedUid) {
+  requireAgendaSession(expectedUid)
+  const currentUser = auth.currentUser
+  if (!currentUser?.uid) throw createAgendaInternalError('agenda/auth-required', 'Sessão indisponível para preparar a conversa.')
+
+  const idToken = await currentUser.getIdToken()
+  requireAgendaSession(expectedUid)
+  const response = await fetch('/api/private-requests/conversation', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ requestId }),
+  })
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok || result?.conversationReady !== true || safeStr(result?.conversationId) !== requestId) {
+    throw createAgendaInternalError(
+      safeStr(result?.error) || 'agenda/conversation-not-ready',
+      'A solicitação foi aceita, mas a conversa ainda não ficou disponível.',
+    )
+  }
+  return result
+}
+
+async function confirmPrivateRequestResponse(requestId, decision, expectedUid) {
+  requireAgendaSession(expectedUid)
+  const currentUser = auth.currentUser
+  if (!currentUser?.uid || typeof currentUser.getIdToken !== 'function') {
+    throw createAgendaInternalError('agenda/auth-required', 'Sessão indisponível para responder à solicitação.')
+  }
+
+  const idToken = await currentUser.getIdToken()
+  requireAgendaSession(expectedUid)
+  const response = await fetch('/api/private-requests/respond', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ requestId, decision }),
+  })
+  const result = await response.json().catch(() => ({}))
+  requireAgendaSession(expectedUid)
+
+  const responseReason = safeStr(result?.reason || result?.error)
+  if (response.status === 402 || responseReason === 'professional_subscription_required') {
+    announceSubscriptionRequired({ kind: 'professional', reason: responseReason })
+  }
+  if (!response.ok && ['request_missing', 'already_responded', 'invalid_current_status'].includes(responseReason)) {
+    return {
+      ok: false,
+      stale: true,
+      reason: responseReason,
+      status: safeStr(result?.currentStatus),
+    }
+  }
+
+  if (!response.ok
+    || result?.responseConfirmed !== true
+    || safeStr(result?.requestId) !== requestId) {
+    throw createAgendaInternalError(
+      responseReason || 'agenda/response-not-confirmed',
+      'Não foi possível responder à solicitação. Tente novamente.',
+    )
+  }
+
+  return result
 }
 
 function safeStr(value) {
@@ -60,27 +150,54 @@ function getNome(entity = {}, fallback = 'Corre Aqui') {
   return pickText(entity.nome, entity.displayName, entity.profile?.nome, entity.profissionalNome, entity.clienteNome, fallback)
 }
 
-async function updateWithTrace(database, updates, { context = {} } = {}) {
-  debugPrivateRequests('Updates:', updates)
-
+function agendaWriteMetadata(updates, context = {}, error = null) {
   const payload = updates || {}
   const paths = Object.keys(payload)
-  paths.forEach((path) => debugPrivateRequests('Atualizando atomicamente:', path))
+  const fieldNamesByPath = Object.fromEntries(
+    paths.map((path) => {
+      const value = payload[path]
+      let fieldNames = []
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        fieldNames = Object.keys(value).sort()
+      } else {
+        const requestFieldPrefix = context.requestId
+          ? `privateRequests/${context.requestId}/`
+          : ''
+        if (requestFieldPrefix && path.startsWith(requestFieldPrefix)) {
+          fieldNames = [path.slice(requestFieldPrefix.length).split('/')[0]].filter(Boolean)
+        }
+      }
+      return [path, fieldNames]
+    }),
+  )
+
+  return {
+    operation: context.operation || 'update',
+    authUid: auth.currentUser?.uid || context.authUid || context.uid || null,
+    requestId: context.requestId || null,
+    paths,
+    fieldNamesByPath,
+    status: context.status || null,
+    tipo: context.tipo || null,
+    error: {
+      code: error?.code || null,
+      message: error?.message || null,
+    },
+  }
+}
+
+async function updateWithTrace(database, updates, { context = {} } = {}) {
+  const payload = updates || {}
 
   try {
     await update(ref(database), payload)
+    debugPrivateRequests('[AGENDA_WRITE]', agendaWriteMetadata(payload, context))
   } catch (error) {
     if (DEBUG_PRIVATE_REQUESTS) {
-      console.error('[AGENDA] atualização atômica negada:', paths)
-      console.error('[AGENDA] operação:', context?.operation)
-      console.error('[AGENDA] UID autenticado:', context?.uid)
-      console.error('[AGENDA] código:', error?.code)
-      console.error('[AGENDA] mensagem:', error?.message)
-      console.error('[AGENDA] payload:', payload)
-      console.error('[AGENDA] contexto completo:', context)
+      console.error('[AGENDA_WRITE]', agendaWriteMetadata(payload, context, error))
     } else {
       console.error('[AGENDA] operacao recusada', {
-        raiz: String(paths[0] || '').split('/').filter(Boolean)[0] || 'desconhecida',
+        raiz: String(Object.keys(payload)[0] || '').split('/').filter(Boolean)[0] || 'desconhecida',
         operation: context?.operation || 'update',
         code: error?.code || null,
         message: error?.message || String(error),
@@ -303,66 +420,77 @@ export async function createPrivateRequest({
 }) {
   const clienteId = getUid(cliente)
   const profissionalId = getUid(profissional)
+  const authUid = safeStr(auth.currentUser?.uid)
   if (!database || !clienteId || !profissionalId) {
     throw new Error('Dados insuficientes para criar a solicitação.')
+  }
+  if (!authUid || authUid !== clienteId) {
+    throw new Error('A sessão autenticada não corresponde ao cliente da solicitação.')
   }
   if (clienteId === profissionalId) {
     throw new Error('Você não pode solicitar um serviço para o próprio perfil.')
   }
 
   const service = normalizeService(servico, profissional)
-  const requestRef = push(ref(database, 'privateRequests'))
-  const requestId = requestRef.key
-  const agora = Date.now()
-  const request = {
-    id: requestId,
-    tipo,
-    status: 'pendente',
-    privado: true,
-    publico: false,
-    clienteId,
-    clienteNome: getNome(cliente, 'Cliente'),
-    clienteFotoURL: pickText(cliente.fotoURL, cliente.photoURL, cliente.avatarURL),
-    profissionalId,
-    profissionalNome: getNome(profissional, 'Profissional'),
-    profissionalFotoURL: pickText(profissional.fotoURL, profissional.photoURL, profissional.avatarURL),
-    servicoId: service.id,
-    servicoTitulo: service.titulo,
-    servicoSnapshot: service,
-    descricao: pickText(agendamento.descricao, servico.descricao, service.descricao),
-    valor: pickText(agendamento.valor, service.valor),
-    data: safeStr(agendamento.data),
-    hora: safeStr(agendamento.hora),
-    duracao: safeStr(agendamento.duracao),
-    criadoEm: agora,
-    atualizadoEm: agora,
-    atualizadoEmServer: serverTimestamp(),
+  const currentUser = auth.currentUser
+  let result = null
+  try {
+    const idToken = await currentUser.getIdToken()
+    requireAgendaSession(authUid)
+    const response = await fetch('/api/private-requests/create', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        profissionalId,
+        tipo,
+        servico: service,
+        agendamento: {
+          data: safeStr(agendamento.data),
+          hora: safeStr(agendamento.hora),
+          duracao: safeStr(agendamento.duracao),
+          descricao: pickText(agendamento.descricao, servico.descricao, service.descricao),
+          valor: pickText(agendamento.valor, service.valor),
+        },
+      }),
+    })
+    result = await response.json().catch(() => ({}))
+    requireAgendaSession(authUid)
+    const reason = safeStr(result?.reason || result?.error)
+    if (response.status === 402 || reason === 'client_direct_subscription_required') {
+      announceSubscriptionRequired({ kind: 'client', reason: 'client_direct_subscription_required' })
+    }
+    if (!response.ok || result?.ok !== true || !result?.request?.id) {
+      const error = new Error(result?.message || PRIVATE_REQUEST_USER_ERROR)
+      error.code = reason || 'agenda/create-failed'
+      throw error
+    }
+  } catch (error) {
+    throw createPrivateRequestUserError(error)
   }
-  const summary = requestSummary(request)
 
-  const payload = removeUndefined({
-    [`privateRequests/${requestId}`]: request,
-    [`privateRequestInbox/${clienteId}/${requestId}`]: summary,
-    [`privateRequestInbox/${profissionalId}/${requestId}`]: summary,
-  })
-  debugPrivateRequests('[AGENDA] privateRequestInbox update', {
-    id: requestId,
-    servicoId: request?.servicoId,
-    payload,
-  })
-  await updateWithTrace(database, payload, {
-    context: {
-      operation: 'createPrivateRequest',
-      uid: auth.currentUser?.uid || null,
-      requestId,
-      criadorUid: clienteId,
-      destinatarioUid: profissionalId,
-    },
-  })
-
-  const isAgenda = tipo === 'agendamento'
+  const request = result.request
+  const requestId = request.id
+  const isAgenda = request.tipo === 'agendamento'
   if (isAgenda) {
-    await registrarMensagemSistemaConfiavel({ pedidoId: requestId, eventType: 'agendamento_solicitado' })
+    try {
+      await registrarMensagemSistemaConfiavel({
+        pedidoId: requestId,
+        eventType: 'agendamento_solicitado',
+        contextKind: 'privateRequest',
+      })
+    } catch (error) {
+      if (DEBUG_PRIVATE_REQUESTS) {
+        console.warn('[AGENDA_SIDE_EFFECT]', {
+          operation: 'system_message',
+          requestId,
+          authUid: auth.currentUser?.uid || null,
+          error: { code: error?.code || null },
+        })
+      }
+    }
   }
   const requestEventType = isAgenda ? EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO : 'PEDIDO_DIRETO_CRIADO'
   const requestEventId = createEventNotificationId({
@@ -372,66 +500,78 @@ export async function createPrivateRequest({
     state: 'pendente',
   })
   const scheduleText = formatEventSchedule(request.data, request.hora)
-  const notification = await createBilateralNotification(database, {
-    id: requestEventId,
-    tipo: isAgenda ? 'agendamento_criado' : 'pedido_direto_criado',
-    titulo: isAgenda ? 'Nova solicitação de agendamento 📅' : 'Você recebeu uma solicitação',
-    mensagem: isAgenda
-      ? `${request.clienteNome} quer agendar ${request.servicoTitulo}${scheduleText ? ` para ${scheduleText}` : ''}.`
-      : `${request.clienteNome} solicitou seu serviço.`,
-    pedidoId: requestId,
-    servicoId: request.servicoId,
-    fromUid: clienteId,
-    toUid: profissionalId,
-    action: {
-      label: isAgenda ? 'Ver solicitação' : 'Ver pedido',
-      screen: isAgenda ? 'agenda' : 'privateRequestDetails',
-      id: requestId,
-    },
-    extra: {
-      ...(isAgenda
-        ? {
-            eventId: requestEventId,
-            tipoEvento: EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO,
-            eventoStatus: 'pendente',
-            origem: 'privateRequest',
-            criadorUid: clienteId,
-            destinatarioUid: profissionalId,
-            solicitacaoId: requestId,
-            agendamentoId: requestId,
-            atorNome: request.clienteNome,
-            atorFotoURL: request.clienteFotoURL || undefined,
-            clienteNome: request.clienteNome,
-            clienteFotoURL: request.clienteFotoURL || undefined,
-            servicoTitulo: request.servicoTitulo,
-            dataAgendamento: request.data || undefined,
-            horaAgendamento: request.hora || undefined,
-            duracao: request.duracao || undefined,
-            localResumo: request.servicoSnapshot?.regiao || undefined,
-            observacao: request.descricao || undefined,
-            statusAtual: request.status,
-          }
-        : {}),
-      privateRequestId: requestId,
-      fromNome: request.clienteNome,
-      autor: { id: clienteId, nome: request.clienteNome, fotoURL: request.clienteFotoURL || undefined },
-    },
-  })
+  try {
+    requireAgendaSession(authUid)
+    const notification = await createBilateralNotification(database, {
+      id: requestEventId,
+      tipo: isAgenda ? 'agendamento_criado' : 'pedido_direto_criado',
+      titulo: isAgenda ? 'Nova solicitação de agendamento 📅' : 'Você recebeu uma solicitação',
+      mensagem: isAgenda
+        ? `${request.clienteNome} quer agendar ${request.servicoTitulo}${scheduleText ? ` para ${scheduleText}` : ''}.`
+        : `${request.clienteNome} solicitou seu serviço.`,
+      pedidoId: requestId,
+      servicoId: request.servicoId,
+      fromUid: clienteId,
+      toUid: profissionalId,
+      action: {
+        label: isAgenda ? 'Ver solicitação' : 'Ver pedido',
+        screen: isAgenda ? 'agenda' : 'privateRequestDetails',
+        id: requestId,
+      },
+      extra: {
+        ...(isAgenda
+          ? {
+              eventId: requestEventId,
+              tipoEvento: EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO,
+              eventoStatus: 'pendente',
+              origem: 'privateRequest',
+              criadorUid: clienteId,
+              destinatarioUid: profissionalId,
+              solicitacaoId: requestId,
+              agendamentoId: requestId,
+              atorNome: request.clienteNome,
+              atorFotoURL: request.clienteFotoURL || undefined,
+              clienteNome: request.clienteNome,
+              clienteFotoURL: request.clienteFotoURL || undefined,
+              servicoTitulo: request.servicoTitulo,
+              dataAgendamento: request.data || undefined,
+              horaAgendamento: request.hora || undefined,
+              duracao: request.duracao || undefined,
+              localResumo: request.servicoSnapshot?.regiao || undefined,
+              observacao: request.descricao || undefined,
+              statusAtual: request.status,
+            }
+          : {}),
+        privateRequestId: requestId,
+        fromNome: request.clienteNome,
+        autor: { id: clienteId, nome: request.clienteNome, fotoURL: request.clienteFotoURL || undefined },
+      },
+    })
 
-  void enviarPushParaUsuario(profissionalId, {
-    type: notification?.tipo,
-    title: notification?.titulo,
-    body: notification?.mensagem,
-    pedidoId: requestId,
-    privateRequestId: requestId,
-    servicoId: request.servicoId,
-    fromUid: clienteId,
-    toUid: profissionalId,
-    action: notification?.action,
-    notificationId: notification?.id,
-    eventId: notification?.eventId || requestEventId,
-    prioridade: 'alta',
-  })
+    void enviarPushParaUsuario(profissionalId, {
+      type: notification?.tipo,
+      title: notification?.titulo,
+      body: notification?.mensagem,
+      pedidoId: requestId,
+      privateRequestId: requestId,
+      servicoId: request.servicoId,
+      fromUid: clienteId,
+      toUid: profissionalId,
+      action: notification?.action,
+      notificationId: notification?.id,
+      eventId: notification?.eventId || requestEventId,
+      prioridade: 'alta',
+    })
+  } catch (error) {
+    logAgendaNotificationFailure({
+      operation: 'create',
+      path: `notifications/${profissionalId}/${requestEventId}`,
+      recipientUid: profissionalId,
+      eventType: requestEventType,
+      existingNotification: null,
+      error,
+    })
+  }
 
   return request
 }
@@ -530,14 +670,262 @@ function acceptedStatus(tipo) {
   return tipo === 'agendamento' ? 'agendado' : 'aceito'
 }
 
+function logAgendaNotificationFailure({ operation, path, recipientUid, eventType, existingNotification, error }) {
+  if (!DEBUG_PRIVATE_REQUESTS) return
+  console.warn('[AGENDA_NOTIFICATION]', {
+    operation,
+    path,
+    authUid: auth.currentUser?.uid || null,
+    recipientUid: recipientUid || null,
+    eventType: eventType || null,
+    existingNotification: existingNotification ?? null,
+    error: {
+      code: error?.code || null,
+    },
+  })
+}
+
+async function updateAgendaSourceNotifications({ database, requestId, profissionalId, finalStatus, accepted, agora }) {
+  const eventType = EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO
+  const sourceEventId = createEventNotificationId({
+    type: eventType,
+    sourceId: requestId,
+    toUid: profissionalId,
+    state: 'pendente',
+  })
+
+  await Promise.all(
+    ['notifications', 'notificacoes'].map(async (rootName) => {
+      const path = `${rootName}/${profissionalId}/${sourceEventId}`
+      const notificationRef = ref(database, path)
+      let existingNotification = false
+
+      try {
+        const snapshot = await get(notificationRef)
+        existingNotification = snapshot.exists()
+      } catch (error) {
+        logAgendaNotificationFailure({
+          operation: 'get',
+          path,
+          recipientUid: profissionalId,
+          eventType,
+          existingNotification: null,
+          error,
+        })
+        return
+      }
+
+      if (!existingNotification) return
+
+      try {
+        await update(notificationRef, {
+          lida: true,
+          read: true,
+          eventoStatus: accepted ? 'confirmado' : 'recusado',
+          statusAtual: finalStatus,
+          respondidoEm: agora,
+        })
+      } catch (error) {
+        logAgendaNotificationFailure({
+          operation: 'update',
+          path,
+          recipientUid: profissionalId,
+          eventType,
+          existingNotification,
+          error,
+        })
+      }
+    }),
+  )
+}
+
+async function deliverPrivateRequestResponseNotification({
+  database,
+  request,
+  requestId,
+  isAgenda,
+  accepted,
+  finalStatus,
+  clienteId,
+  profissionalId,
+  profissional,
+  profNome,
+  scheduleText,
+  title,
+  servicoId,
+  agora,
+}) {
+  const acceptedEventType = isAgenda
+    ? EVENT_NOTIFICATION_TYPES.AGENDAMENTO_ACEITO
+    : EVENT_NOTIFICATION_TYPES.PEDIDO_ACEITO
+  const responseEventType = accepted
+    ? acceptedEventType
+    : isAgenda
+      ? 'AGENDAMENTO_RECUSADO'
+      : 'PEDIDO_DIRETO_RECUSADO'
+  const responseEventId = createEventNotificationId({
+    type: responseEventType,
+    sourceId: requestId,
+    toUid: clienteId,
+    state: finalStatus,
+  })
+  const notificationPaths = [
+    `notifications/${clienteId}/${responseEventId}`,
+    `notificacoes/${clienteId}/${responseEventId}`,
+  ]
+  const profissionalFotoURL = pickText(
+    profissional.fotoURL,
+    profissional.photoURL,
+    profissional.avatarURL,
+    request.profissionalFotoURL,
+  )
+
+  let notification
+  try {
+    notification = await createBilateralNotification(database, {
+      id: responseEventId,
+      tipo: isAgenda
+        ? accepted
+          ? 'agendamento_aceito'
+          : 'agendamento_recusado'
+        : accepted
+          ? 'pedido_direto_aceito'
+          : 'pedido_direto_recusado',
+      titulo: isAgenda
+        ? accepted
+          ? 'Agendamento confirmado ✅'
+          : 'Atualização do agendamento'
+        : accepted
+          ? 'Seu pedido foi aceito! 🎉'
+          : 'Pedido recusado',
+      mensagem: isAgenda
+        ? accepted
+          ? `Seu agendamento com ${profNome} foi confirmado${scheduleText ? ` para ${scheduleText}` : ''}.`
+          : `${profNome} não poderá atender nesse horário`
+        : accepted
+          ? `${profNome} aceitou seu pedido: ${title}.`
+          : `${profNome} recusou seu pedido`,
+      pedidoId: requestId,
+      servicoId: servicoId || undefined,
+      fromUid: profissionalId,
+      toUid: clienteId,
+      action: accepted
+        ? { label: 'Abrir conversa', screen: 'chat', id: requestId }
+        : {
+            label: isAgenda ? 'Escolher outro horário' : 'Procurar outro profissional',
+            screen: 'portfolio',
+            id: servicoId || requestId,
+          },
+      extra: {
+        ...(accepted
+          ? {
+              eventId: responseEventId,
+              tipoEvento: acceptedEventType,
+              eventoStatus: finalStatus,
+              origem: 'privateRequest',
+              criadorUid: clienteId,
+              destinatarioUid: clienteId,
+              solicitacaoId: requestId,
+              agendamentoId: isAgenda ? requestId : undefined,
+              atorNome: profNome,
+              atorFotoURL: profissionalFotoURL || undefined,
+              profissionalNome: profNome,
+              profissionalFotoURL: profissionalFotoURL || undefined,
+              tipoAtuacao: pickText(profissional.tipoAtuacao, profissional.role, 'Corre/Profissional'),
+              avaliacao: Number(profissional.avaliacaoMedia || profissional.nota || 0) || undefined,
+              servicoTitulo: title,
+              dataAgendamento: request.data || undefined,
+              horaAgendamento: request.hora || undefined,
+              localResumo: request.servicoSnapshot?.regiao || undefined,
+              observacao: request.descricao || undefined,
+              aceitoEm: agora,
+              statusAtual: finalStatus,
+              proximoPasso: `Converse com ${profNome} para confirmar endereço, valor e detalhes do atendimento.`,
+            }
+          : {}),
+        privateRequestId: requestId,
+        conversaId: requestId,
+        fromNome: profNome,
+        autor: { id: profissionalId, nome: profNome, fotoURL: profissionalFotoURL || undefined },
+      },
+    })
+  } catch (error) {
+    notificationPaths.forEach((path) => {
+      logAgendaNotificationFailure({
+        operation: 'create',
+        path,
+        recipientUid: clienteId,
+        eventType: responseEventType,
+        existingNotification: null,
+        error,
+      })
+    })
+    return
+  }
+
+  void enviarPushParaUsuario(clienteId, {
+    type: notification?.tipo,
+    title: notification?.titulo,
+    body: notification?.mensagem,
+    pedidoId: requestId,
+    privateRequestId: requestId,
+    servicoId,
+    fromUid: profissionalId,
+    toUid: clienteId,
+    action: notification?.action,
+    notificationId: notification?.id,
+    eventId: notification?.eventId || responseEventId,
+    prioridade: 'alta',
+  })
+}
+
+function schedulePrivateRequestResponseSideEffects(options) {
+  const systemEventType = options.finalStatus === 'aceito'
+    ? 'pedido_aceito'
+    : options.finalStatus === 'agendado'
+      ? 'agendamento_aceito'
+      : options.isAgenda
+        ? 'agendamento_recusado'
+        : null
+  const tasks = []
+
+  if (systemEventType) {
+    tasks.push(registrarMensagemSistemaConfiavel({
+      pedidoId: options.requestId,
+      eventType: systemEventType,
+      contextKind: 'privateRequest',
+    }))
+  }
+  if (options.isAgenda) {
+    tasks.push(updateAgendaSourceNotifications(options))
+  }
+  tasks.push(deliverPrivateRequestResponseNotification(options))
+
+  void Promise.allSettled(tasks).then((results) => {
+    if (!DEBUG_PRIVATE_REQUESTS) return
+    results.forEach((result, index) => {
+      if (result.status !== 'rejected') return
+      console.warn('[AGENDA_SIDE_EFFECT]', {
+        operation: index === 0 && systemEventType ? 'system_message' : 'background_effect',
+        requestId: options.requestId,
+        authUid: auth.currentUser?.uid || null,
+        error: { code: result.reason?.code || null },
+      })
+    })
+  })
+}
+
 export async function respondPrivateRequest({ database, request = {}, profissional = {}, status }) {
   const requestId = safeStr(request.id || request.privateRequestId)
+  const actionUid = safeStr(auth.currentUser?.uid)
   if (!database || !requestId) {
     throw new Error('Solicitacao invalida.')
   }
+  requireAgendaSession(actionUid)
 
   const requestPath = `privateRequests/${requestId}`
   const storedSnapshot = await get(ref(database, requestPath))
+  requireAgendaSession(actionUid)
   const storedRequest = storedSnapshot.val()
   if (!storedRequest || typeof storedRequest !== 'object') {
     const currentUid = auth.currentUser?.uid || ''
@@ -594,10 +982,45 @@ export async function respondPrivateRequest({ database, request = {}, profission
   if (!database || !requestId || !clienteId || !profissionalId) {
     throw new Error('Solicitação inválida.')
   }
+  if (actionUid !== profissionalId) {
+    throw createAgendaInternalError('agenda/not-authorized', 'Somente o profissional vinculado pode responder.')
+  }
 
-  const profNome = getNome(profissional, request.profissionalNome || 'Profissional')
-  const finalStatus = status === 'aceito' ? acceptedStatus(tipo) : 'recusado'
-  const agora = Date.now()
+  const requestedStatus = status === 'aceito' ? acceptedStatus(tipo) : 'recusado'
+  const storedStatus = safeStr(storedRequest.status)
+  if (storedStatus !== 'pendente' && storedStatus !== requestedStatus) {
+    throw new Error('Esta solicitação já foi respondida com outro status.')
+  }
+
+  let authoritativeResponse = null
+  if (storedStatus === 'pendente') {
+    authoritativeResponse = await confirmPrivateRequestResponse(
+      requestId,
+      requestedStatus === 'recusado' ? 'reject' : 'accept',
+      actionUid,
+    )
+  }
+
+  if (authoritativeResponse?.stale) {
+    return {
+      ...request,
+      ok: false,
+      stale: true,
+      status: authoritativeResponse.status || storedStatus,
+      reason: authoritativeResponse.reason,
+    }
+  }
+
+  const finalStatus = safeStr(authoritativeResponse?.status || storedStatus)
+  if (finalStatus !== requestedStatus) {
+    throw createAgendaInternalError('agenda/response-status-mismatch', 'A resposta da solicitação não foi confirmada.')
+  }
+
+  const agora = Number(authoritativeResponse?.respondidoEm || storedRequest.respondidoEm) || Date.now()
+  const profNome = pickText(
+    authoritativeResponse?.profissionalNome,
+    getNome(profissional, request.profissionalNome || 'Profissional'),
+  )
   const servicoId = getServicoId(request)
   const title = safeStr(request.servicoTitulo || request.titulo || 'Serviço solicitado')
   const updatedRequest = {
@@ -615,216 +1038,48 @@ export async function respondPrivateRequest({ database, request = {}, profission
     respondidoEm: agora,
   }
   const updatedSummary = requestSummary(updatedRequest)
-  const updates = {
-    [`privateRequests/${requestId}`]: removeUndefined({
-      status: finalStatus,
-      respondidoEm: agora,
-      atualizadoEm: agora,
-      atualizadoEmServer: serverTimestamp(),
-      respondidoPor: {
-        id: profissionalId,
-        nome: profNome,
-      },
-    }),
+
+  const inboxPayload = removeUndefined({
     [`privateRequestInbox/${clienteId}/${requestId}`]: updatedSummary,
     [`privateRequestInbox/${profissionalId}/${requestId}`]: updatedSummary,
-  }
-
-  if (finalStatus === 'aceito' || finalStatus === 'agendado') {
-    const conversaBase = {
-      pedidoId: requestId,
-      privateRequestId: requestId,
-      titulo: title,
-      lastText: `${profNome} aceitou sua solicitação.`,
-      mensagemPreview: `${profNome} aceitou sua solicitação.`,
-      lastAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      lastById: profissionalId,
-      lastByNome: profNome,
-      status: 'ativa',
-    }
-    updates[`conversas/${clienteId}/${requestId}`] = {
-      ...conversaBase,
-      outroId: profissionalId,
-      outroNome: profNome,
-      unread: true,
-    }
-    updates[`conversas/${profissionalId}/${requestId}`] = {
-      ...conversaBase,
-      outroId: clienteId,
-      outroNome: request.clienteNome || 'Cliente',
-      unread: false,
-    }
-    updates[`usersChats/${clienteId}/${requestId}`] = true
-    updates[`usersChats/${profissionalId}/${requestId}`] = true
-  }
-
-  const payload = removeUndefined(updates)
-  debugPrivateRequests('[AGENDA] privateRequestInbox update', {
-    authUid: auth.currentUser?.uid || null,
-    id: requestId,
-    criadorUid: clienteId,
-    destinatarioUid: profissionalId,
-    statusAtual: request?.status || 'pendente',
-    proximoStatus: finalStatus,
-    caminhos: Object.keys(payload),
-    servicoId,
-    payload,
   })
-  await updateWithTrace(database, payload, {
+  requireAgendaSession(actionUid)
+  await updateWithTrace(database, inboxPayload, {
     context: {
-      operation: 'respondPrivateRequest',
-      uid: auth.currentUser?.uid || null,
+      operation: 'respondPrivateRequest:indexes',
       authUid: auth.currentUser?.uid || null,
       requestId,
-      criadorUid: clienteId,
-      destinatarioUid: profissionalId,
-      statusAtual: request?.status || 'pendente',
-      proximoStatus: finalStatus,
+      status: finalStatus,
+      tipo,
     },
   })
-
-  if (finalStatus === 'aceito') {
-    await registrarMensagemSistemaConfiavel({ pedidoId: requestId, eventType: 'pedido_aceito' })
-  } else if (finalStatus === 'agendado') {
-    await registrarMensagemSistemaConfiavel({ pedidoId: requestId, eventType: 'agendamento_aceito' })
-  } else if (isAgenda && finalStatus === 'recusado') {
-    await registrarMensagemSistemaConfiavel({ pedidoId: requestId, eventType: 'agendamento_recusado' })
-  }
+  requireAgendaSession(actionUid)
 
   const accepted = finalStatus === 'aceito' || finalStatus === 'agendado'
-  if (isAgenda) {
-    const sourceEventId = createEventNotificationId({
-      type: EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO,
-      sourceId: requestId,
-      toUid: profissionalId,
-      state: 'pendente',
-    })
-    const results = await Promise.allSettled(
-      ['notifications', 'notificacoes'].map(async (rootName) => {
-        const notificationRef = ref(database, `${rootName}/${profissionalId}/${sourceEventId}`)
-        const snapshot = await get(notificationRef)
-        if (!snapshot.exists()) return
-        await update(notificationRef, {
-          lida: true,
-          read: true,
-          eventoStatus: accepted ? 'confirmado' : 'recusado',
-          statusAtual: finalStatus,
-          respondidoEm: agora,
-        })
-      }),
-    )
-    results.forEach((result) => {
-      if (result.status === 'rejected' && DEBUG_PRIVATE_REQUESTS) {
-        console.warn('[AGENDA] resposta salva, mas o balão original não foi atualizado:', result.reason)
-      }
-    })
-  }
-
-  const acceptedEventType = isAgenda
-    ? EVENT_NOTIFICATION_TYPES.AGENDAMENTO_ACEITO
-    : EVENT_NOTIFICATION_TYPES.PEDIDO_ACEITO
-  const responseEventType = accepted
-    ? acceptedEventType
-    : isAgenda
-      ? 'AGENDAMENTO_RECUSADO'
-      : 'PEDIDO_DIRETO_RECUSADO'
-  const responseEventId = createEventNotificationId({
-    type: responseEventType,
-    sourceId: requestId,
-    toUid: clienteId,
-    state: finalStatus,
-  })
-  const profissionalFotoURL = pickText(
-    profissional.fotoURL,
-    profissional.photoURL,
-    profissional.avatarURL,
-    request.profissionalFotoURL,
-  )
-  const notification = await createBilateralNotification(database, {
-    id: responseEventId,
-    tipo: isAgenda
-      ? accepted
-        ? 'agendamento_aceito'
-        : 'agendamento_recusado'
-      : accepted
-        ? 'pedido_direto_aceito'
-        : 'pedido_direto_recusado',
-    titulo: isAgenda
-      ? accepted
-        ? 'Agendamento confirmado ✅'
-        : 'Atualização do agendamento'
-      : accepted
-        ? 'Seu pedido foi aceito! 🎉'
-        : 'Pedido recusado',
-    mensagem: isAgenda
-      ? accepted
-        ? `Seu agendamento com ${profNome} foi confirmado${scheduleText ? ` para ${scheduleText}` : ''}.`
-        : `${profNome} não poderá atender nesse horário`
-      : accepted
-        ? `${profNome} aceitou seu pedido: ${title}.`
-        : `${profNome} recusou seu pedido`,
-    pedidoId: requestId,
-    servicoId: servicoId || undefined,
-    fromUid: profissionalId,
-    toUid: clienteId,
-    action: accepted
-      ? isAgenda
-        ? { label: 'Ver agendamento', screen: 'myOrders', id: requestId }
-        : { label: 'Conversar agora', screen: 'chat', id: requestId }
-      : {
-          label: isAgenda ? 'Escolher outro horário' : 'Procurar outro profissional',
-          screen: 'portfolio',
-          id: servicoId || requestId,
-        },
-    extra: {
-      ...(accepted
-        ? {
-            eventId: responseEventId,
-            tipoEvento: acceptedEventType,
-            eventoStatus: finalStatus,
-            origem: 'privateRequest',
-            criadorUid: clienteId,
-            destinatarioUid: clienteId,
-            solicitacaoId: requestId,
-            agendamentoId: isAgenda ? requestId : undefined,
-            atorNome: profNome,
-            atorFotoURL: profissionalFotoURL || undefined,
-            profissionalNome: profNome,
-            profissionalFotoURL: profissionalFotoURL || undefined,
-            tipoAtuacao: pickText(profissional.tipoAtuacao, profissional.role, 'Corre/Profissional'),
-            avaliacao: Number(profissional.avaliacaoMedia || profissional.nota || 0) || undefined,
-            servicoTitulo: title,
-            dataAgendamento: request.data || undefined,
-            horaAgendamento: request.hora || undefined,
-            localResumo: request.servicoSnapshot?.regiao || undefined,
-            observacao: request.descricao || undefined,
-            aceitoEm: agora,
-            statusAtual: finalStatus,
-            proximoPasso: `Converse com ${profNome} para confirmar endereço, valor e detalhes do atendimento.`,
-          }
-        : {}),
-      privateRequestId: requestId,
-      conversaId: requestId,
-      fromNome: profNome,
-      autor: { id: profissionalId, nome: profNome, fotoURL: profissionalFotoURL || undefined },
-    },
-  })
-
-  void enviarPushParaUsuario(clienteId, {
-    type: notification?.tipo,
-    title: notification?.titulo,
-    body: notification?.mensagem,
-    pedidoId: requestId,
-    privateRequestId: requestId,
+  const conversation = accepted ? await ensurePrivateRequestConversation(requestId, actionUid) : null
+  requireAgendaSession(actionUid)
+  schedulePrivateRequestResponseSideEffects({
+    database,
+    request,
+    requestId,
+    isAgenda,
+    accepted,
+    finalStatus,
+    clienteId,
+    profissionalId,
+    profissional,
+    profNome,
+    scheduleText,
+    title,
     servicoId,
-    fromUid: profissionalId,
-    toUid: clienteId,
-    action: notification?.action,
-    notificationId: notification?.id,
-    eventId: notification?.eventId || responseEventId,
-    prioridade: 'alta',
+    agora,
   })
 
-  return { ...request, status: finalStatus, respondidoEm: agora }
+  return {
+    ...request,
+    status: finalStatus,
+    respondidoEm: agora,
+    conversationId: accepted ? requestId : null,
+    conversationReady: accepted ? conversation?.conversationReady === true : false,
+  }
 }

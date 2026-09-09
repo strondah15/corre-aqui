@@ -97,3 +97,54 @@ export function normalizeAndSortConversations(raw = {}, limit = 60) {
   const safeLimit = Math.max(1, Math.trunc(Number(limit) || 60))
   return sorted.slice(0, safeLimit)
 }
+
+export function createConversationSessionSnapshot(uid, raw = {}, limit = 60) {
+  const ownerUid = String(uid || '').trim()
+  return {
+    uid: ownerUid,
+    items: ownerUid ? normalizeAndSortConversations(raw, limit) : [],
+  }
+}
+
+export function selectConversationSessionItems(snapshot = {}, uid = '') {
+  const ownerUid = String(uid || '').trim()
+  if (!ownerUid || String(snapshot?.uid || '') !== ownerUid) return []
+  return Array.isArray(snapshot?.items) ? snapshot.items : []
+}
+
+export function getIndexedPublicPedidoIds(raw = {}) {
+  const conversations = normalizeAndSortConversations(raw, Number.MAX_SAFE_INTEGER)
+
+  return conversations
+    .filter((conversation) => conversation?.privateRequest !== true && !conversation?.privateRequestId)
+    .map((conversation) => String(conversation?.pedidoId || '').trim())
+    .filter(Boolean)
+}
+
+export function getIndexedPublicPedidoRevisionKey(raw = {}) {
+  return normalizeAndSortConversations(raw, Number.MAX_SAFE_INTEGER)
+    .filter((conversation) => conversation?.privateRequest !== true && !conversation?.privateRequestId)
+    .map((conversation) => {
+      const pedidoId = String(conversation?.pedidoId || '').trim()
+      const status = String(
+        conversation?.pedidoStatus
+        || conversation?.statusPedido
+        || conversation?.atendimentoStatus
+        || conversation?.status
+        || ''
+      ).trim()
+      return `${pedidoId}:${status}`
+    })
+    .filter((entry) => !entry.startsWith(':'))
+    .sort()
+    .join('|')
+}
+
+export function isPedidoParticipant(pedido, uid) {
+  const participantId = String(uid || '').trim()
+  if (!participantId || !pedido || typeof pedido !== 'object') return false
+
+  const creatorId = String(pedido?.criador?.id || pedido?.criadorUid || pedido?.clienteId || '').trim()
+  const workerId = String(pedido?.aceite?.id || pedido?.aceitadorId || pedido?.profissionalId || '').trim()
+  return creatorId === participantId || workerId === participantId
+}

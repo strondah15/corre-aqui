@@ -6,13 +6,19 @@ import {
 } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_CURRENCY,
-  COMMERCIAL_PRICE_CENTS,
   PROFESSIONAL_FEATURED_PLAN_ID,
   REQUEST_BOOST_PRODUCT_ID,
   getCommercialProduct,
 } from '@/lib/commercialProducts'
+import {
+  ANNUAL_PLAN_MONTHS,
+  CLIENT_ANNUAL_PRODUCT_ID,
+  PROFESSIONAL_ANNUAL_PRODUCT_ID,
+  addCalendarMonths,
+} from '@/lib/subscriptions'
 
 export const COMMERCIAL_SOURCE = 'mercado_pago'
+const PAYMENT_EVENT_LEASE_MS = 5 * 60 * 1000
 
 export const safeText = (value) => String(value || '').trim()
 
@@ -527,12 +533,84 @@ async function activateRequestBoost({ database, attempt, payment }) {
   return { activated: true, expiresAt }
 }
 
+async function activateAnnualSubscription({ database, attempt, payment }) {
+  const kind = attempt.productId === CLIENT_ANNUAL_PRODUCT_ID ? 'client' : 'professional'
+  const subscriptionRef = database.ref(`users/${attempt.userId}/subscriptions/${kind}`)
+  const now = Date.now()
+  const paymentId = safeText(payment?.id)
+  let duplicatePayment = false
+  let expiresAt = addCalendarMonths(now, ANNUAL_PLAN_MONTHS)
+  const result = await subscriptionRef.transaction((current) => {
+    const plan = current && typeof current === 'object' ? current : {}
+    const currentExpiresAt = asTimestamp(plan.expiresAt)
+    if (paymentId && safeText(plan.paymentId) === paymentId) {
+      duplicatePayment = true
+      expiresAt = currentExpiresAt || expiresAt
+      return plan
+    }
+    const base = String(plan.status || '').toLowerCase() === 'active' && currentExpiresAt > now
+      ? currentExpiresAt
+      : now
+    expiresAt = addCalendarMonths(base, ANNUAL_PLAN_MONTHS)
+    return cleanFirebasePayload({
+      ...plan,
+      status: 'active',
+      plan: 'annual',
+      startedAt: now,
+      expiresAt,
+      updatedAt: now,
+      source: COMMERCIAL_SOURCE,
+      paymentReference: attempt.externalReference,
+      paymentId,
+    })
+  })
+
+  if (!result.committed) return { activated: false, reason: 'subscription_transaction_failed' }
+  await writeCommercialAudit(database, {
+    eventId: `${duplicatePayment ? 'annual_subscription_duplicate_ignored' : 'annual_subscription_activated'}_${attempt.id}`,
+    type: duplicatePayment ? 'annual_subscription_duplicate_ignored' : 'annual_subscription_activated',
+    userId: attempt.userId,
+    productId: attempt.productId,
+    paymentReference: attempt.externalReference,
+    statusAfter: 'active',
+  })
+  return { activated: true, expiresAt, subscriptionKind: kind, duplicate: duplicatePayment }
+}
+
 async function endCommercialEntitlement({ database, attempt, payment, status }) {
   const now = Date.now()
   const paymentId = safeText(payment?.id)
   const statusAfter = status === 'charged_back' ? 'chargeback' : 'refunded'
   const auditType = status === 'charged_back' ? 'chargeback_received' : 'refund_received'
   const product = getCommercialProduct(attempt.productId)
+
+  if (attempt.productId === CLIENT_ANNUAL_PRODUCT_ID || attempt.productId === PROFESSIONAL_ANNUAL_PRODUCT_ID) {
+    const kind = attempt.productId === CLIENT_ANNUAL_PRODUCT_ID ? 'client' : 'professional'
+    const subscriptionRef = database.ref(`users/${attempt.userId}/subscriptions/${kind}`)
+    const snapshot = await subscriptionRef.get()
+    const current = snapshot.val() || {}
+    const ownsCurrentSubscription =
+      safeText(current.paymentReference) === attempt.externalReference ||
+      safeText(current.paymentId) === paymentId
+    if (ownsCurrentSubscription) {
+      await subscriptionRef.update(cleanFirebasePayload({
+        status: 'expired',
+        endedAt: now,
+        endedReason: statusAfter,
+        updatedAt: now,
+      }))
+    }
+    await writeCommercialAudit(database, {
+      eventId: `${auditType}_${attempt.id}`,
+      type: auditType,
+      userId: attempt.userId,
+      productId: product?.id || attempt.productId,
+      paymentReference: attempt.externalReference,
+      statusBefore: current.status || null,
+      statusAfter: ownsCurrentSubscription ? 'expired' : current.status || statusAfter,
+    })
+    return { activated: false, ended: ownsCurrentSubscription, reason: statusAfter }
+  }
 
   if (attempt.productId === PROFESSIONAL_FEATURED_PLAN_ID) {
     const entitlementRef = database.ref(`featuredProfessionalEntitlements/${attempt.userId}`)
@@ -613,21 +691,29 @@ export async function processApprovedCommercialPayment({ database, payment }) {
   if (!parsed) return { ok: false, reason: 'invalid_external_reference' }
 
   const lockRef = database.ref(`processedPaymentEvents/${referenceKey(`${paymentId}:${status || 'unknown'}`)}`)
-  let duplicate = false
+  const processingToken = crypto.randomUUID()
+  const lockNow = Date.now()
   const transaction = await lockRef.transaction((current) => {
-    if (current) {
-      duplicate = true
-      return current
+    if (current && typeof current === 'object') {
+      const lockStatus = safeText(current.status).toLowerCase()
+      const lockUpdatedAt = asTimestamp(current.updatedAt || current.createdAt)
+      const retryable = lockStatus === 'failed'
+        || (lockStatus === 'processing' && lockUpdatedAt <= lockNow - PAYMENT_EVENT_LEASE_MS)
+      if (!retryable) return undefined
     }
     return {
+      ...(current && typeof current === 'object' ? current : {}),
       paymentId,
       externalReference,
       paymentStatus: status || null,
       status: 'processing',
-      createdAt: Date.now(),
+      processingToken,
+      retryCount: Number(current?.retryCount || 0) + (current ? 1 : 0),
+      createdAt: Number(current?.createdAt || 0) || lockNow,
+      updatedAt: lockNow,
     }
   })
-  if (!transaction.committed || duplicate) {
+  if (!transaction.committed || transaction.snapshot.val()?.processingToken !== processingToken) {
     await writeCommercialAudit(database, {
       eventId: `webhook_ignored_duplicate_${referenceKey(`${paymentId}:${status || 'unknown'}`)}`,
       type: 'webhook_ignored_duplicate',
@@ -637,18 +723,19 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     return { ok: true, duplicate: true, reason: 'webhook_ignored_duplicate' }
   }
 
-  const attemptSnapshot = await database.ref(`commercialCheckoutAttempts/${parsed.attemptId}`).get()
-  const attempt = attemptSnapshot.val()
-  if (!attempt || attempt.externalReference !== externalReference) {
-    await lockRef.update({ status: 'ignored', reason: 'attempt_not_found', updatedAt: Date.now() })
-    return { ok: false, reason: 'attempt_not_found' }
-  }
+  try {
+    const attemptSnapshot = await database.ref(`commercialCheckoutAttempts/${parsed.attemptId}`).get()
+    const attempt = attemptSnapshot.val()
+    if (!attempt || attempt.externalReference !== externalReference) {
+      await lockRef.update({ status: 'ignored', reason: 'attempt_not_found', updatedAt: Date.now() })
+      return { ok: false, reason: 'attempt_not_found' }
+    }
 
   const product = getCommercialProduct(attempt.productId)
   const amountInCents = Math.round(Number(payment?.transaction_amount || 0) * 100)
   const currency = safeText(payment?.currency_id || payment?.currency)
 
-  if (!product || product.amountInCents !== COMMERCIAL_PRICE_CENTS || product.currency !== COMMERCIAL_CURRENCY) {
+  if (!product || product.currency !== COMMERCIAL_CURRENCY) {
     await lockRef.update({ status: 'ignored', reason: 'invalid_product', updatedAt: Date.now() })
     return { ok: false, reason: 'invalid_product' }
   }
@@ -681,9 +768,11 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     return { ok: true, activated: false, reason: 'payment_not_approved' }
   }
 
-  const activation = product.id === PROFESSIONAL_FEATURED_PLAN_ID
-    ? await activateProfessionalEntitlement({ database, attempt, payment })
-    : await activateRequestBoost({ database, attempt, payment })
+  const activation = product.id === CLIENT_ANNUAL_PRODUCT_ID || product.id === PROFESSIONAL_ANNUAL_PRODUCT_ID
+    ? await activateAnnualSubscription({ database, attempt, payment })
+    : product.id === PROFESSIONAL_FEATURED_PLAN_ID
+      ? await activateProfessionalEntitlement({ database, attempt, payment })
+      : await activateRequestBoost({ database, attempt, payment })
 
   await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update(cleanFirebasePayload({
     status: activation.activated ? 'entitlement_activated' : 'entitlement_blocked',
@@ -697,5 +786,14 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     updatedAt: Date.now(),
   }))
 
-  return { ok: true, ...activation }
+    return { ok: true, ...activation }
+  } catch (error) {
+    await lockRef.update({
+      status: 'failed',
+      reason: 'processing_error',
+      errorCode: safeText(error?.code || error?.message || 'unknown').slice(0, 160),
+      updatedAt: Date.now(),
+    }).catch(() => {})
+    throw error
+  }
 }

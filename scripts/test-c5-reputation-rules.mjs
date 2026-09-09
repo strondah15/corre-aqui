@@ -61,11 +61,14 @@ for (const field of [
   )
 }
 
-const [panel, map, moderation, publicProfile] = await Promise.all([
+const [panel, map, moderation, publicProfile, chat, ratings, privateRatingRoute] = await Promise.all([
   source('../src/components/PainelProblemasDenuncias.jsx'),
   source('../src/components/Mapadinamico.jsx'),
   source('../src/components/AdminModeracao.jsx'),
   source('../src/lib/publicWorkProfile.js'),
+  source('../src/components/ChatMensagens.jsx'),
+  source('../src/lib/serviceRatings.js'),
+  source('../src/app/api/private-requests/rating/route.js'),
 ])
 assert.match(panel, /subscribeSecurityRecords/)
 assert.doesNotMatch(panel, /ref\(database, ['"]problemasServico['"]\)/, 'painel comum não enumera problemas')
@@ -74,6 +77,19 @@ assert.match(map, /registrosSegurancaPorUsuario/)
 assert.match(map, /\!denuncia/)
 assert.match(moderation, /registrosSegurancaPorUsuario/)
 assert.match(publicProfile, /SERVER_MANAGED_REPUTATION_FIELDS/)
+assert.doesNotMatch(chat, /avaliacoes\/\$\{pedidoId\}/, 'chat não abre listener em avaliação canônica inexistente')
+assert.match(chat, /pedido\?\.avaliacao \|\| serviceRecord\?\.avaliacao/, 'chat lê o espelho privado do atendimento')
+assert.match(ratings, /avaliacoes\/\$\{payload\.pedidoId\}/, 'gravação canônica permanece no multipath C5')
+assert.match(ratings, /pedidos\/\$\{payload\.pedidoId\}\/avaliacao/, 'espelho privado permanece atômico com a avaliação canônica')
+assert.match(ratings, /savePrivateRequestServiceRating[\s\S]*Authorization: `Bearer \$\{idToken\}`/, 'avaliação de agenda usa endpoint autenticado')
+assert.match(privateRatingRoute, /verifyIdToken/, 'servidor valida a identidade Firebase')
+assert.match(privateRatingRoute, /privateResponseAuthorized !== true/, 'agenda sem aceite autoritativo falha fechado')
+assert.match(privateRatingRoute, /actorUid !== clienteId/, 'somente o cliente do agendamento avalia')
+assert.match(privateRatingRoute, /status, 40\)\.toLowerCase\(\) !== 'finalizado'/, 'avaliação só existe após conclusão real')
+assert.match(privateRatingRoute, /ratingRef\.transaction\(\(current\) => \(current \? undefined : rating\)\)/, 'avaliação existente não é regravada')
+assert.match(privateRatingRoute, /!transaction\.committed[\s\S]*private_request_rating_already_exists/, 'segunda avaliação falha explicitamente')
+assert.match(privateRatingRoute, /nota < 1 \|\| nota > 5/, 'nota privada preserva escala inteira de 1 a 5')
+assert.doesNotMatch(privateRatingRoute, /body\?\.(?:clienteId|profissionalId|clienteNome|profissionalNome|avaliado)/, 'cliente não escolhe identidade da avaliação')
 
 const order = { creator: 'A', accepted: 'B', status: 'finalizado' }
 const canCreateReview = ({ actor, target, previous = null, score = 5, pedido = order }) => (
@@ -83,6 +99,9 @@ const canCreateReview = ({ actor, target, previous = null, score = 5, pedido = o
   actor !== target &&
   pedido.status === 'finalizado' &&
   Number.isInteger(score) && score >= 1 && score <= 5
+)
+const canReadReview = ({ actor, review, admin = false }) => (
+  admin || actor === review.client || actor === review.rated
 )
 const canCreateProblem = ({ actor, pedido = order }) => (
   [pedido.creator, pedido.accepted].includes(actor) && actor !== ''
@@ -110,6 +129,11 @@ assert.equal(canModerate({ admin: false }), false, 'usuário comum não modera')
 assert.equal(canModerate({ admin: true }), true, 'admin real modera')
 
 assert.equal(canCreateReview({ actor: 'A', target: 'B' }), true, 'A avalia B após finalização')
+const reviewAB = { client: 'A', rated: 'B' }
+assert.equal(canReadReview({ actor: 'A', review: reviewAB }), true, 'A lê a avaliação que criou')
+assert.equal(canReadReview({ actor: 'B', review: reviewAB }), true, 'B lê a avaliação recebida')
+assert.equal(canReadReview({ actor: 'C', review: reviewAB }), false, 'C não lê a avaliação de A/B')
+assert.equal(canReadReview({ actor: 'ADMIN', review: reviewAB, admin: true }), true, 'admin lê a avaliação para moderação')
 assert.equal(canCreateReview({ actor: 'A', target: 'C' }), false, 'A não avalia C com pedido A/B')
 assert.equal(canCreateReview({ actor: 'C', target: 'B' }), false, 'C não avalia B com pedido A/B')
 assert.equal(canCreateReview({ actor: 'A', target: 'A' }), false, 'A não se autoavalia')

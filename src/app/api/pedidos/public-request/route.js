@@ -74,7 +74,6 @@ export async function POST(request) {
       ['publicRequests/' + pedidoId]: projection,
       ['pedidos/' + pedidoId + '/publicacao']: stamp,
     })
-
     return NextResponse.json({ ok: true, pedidoId, status: projection.status })
   } catch (error) {
     return jsonError(error?.message || 'Não foi possível publicar este pedido.', error?.status || 500)
@@ -89,11 +88,22 @@ export async function DELETE(request) {
       return jsonError('Você não pode remover esta publicação.', 403)
     }
 
+    const removedPaths = [`publicRequests/${pedidoId}`, `pedidos/${pedidoId}`]
     await database.ref().update({
       ['publicRequests/' + pedidoId]: null,
-      ['pedidos/' + pedidoId + '/publicacao']: null,
+      ['pedidos/' + pedidoId]: null,
     })
-    return NextResponse.json({ ok: true, pedidoId })
+    const [publicAfter, privateAfter] = await Promise.all([
+      database.ref('publicRequests/' + pedidoId).get(),
+      database.ref('pedidos/' + pedidoId).get(),
+    ])
+    return NextResponse.json({
+      ok: true,
+      pedidoId,
+      removedPaths,
+      publicRemoved: !publicAfter.exists(),
+      privateRemoved: !privateAfter.exists(),
+    })
   } catch (error) {
     return jsonError(error?.message || 'Não foi possível remover esta publicação.', error?.status || 500)
   }

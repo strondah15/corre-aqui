@@ -1,10 +1,15 @@
 // src/lib/presence.js
 import { onDisconnect, onValue, ref, update } from './firebaseDebug';
+import { getAuth } from 'firebase/auth';
+import { PUBLIC_AVAILABILITY_TTL_MS } from './publicAvailability';
+import { subscribeSessionEnding } from './sessionLogout';
 
 const HEARTBEAT_MS = 15_000;
-export const ONLINE_TTL_MS = 60_000;
+export const ONLINE_TTL_MS = PUBLIC_AVAILABILITY_TTL_MS;
 export const USER_ONLINE_PREFERENCE_KEY = "correAqui.userOnlinePreference.v1";
 const DEBUG_PREFIX = "[PRESENCE]";
+const endingPresenceUids = new Set();
+const pendingPresenceWritesByUid = new Map();
 export const DEBUG_PRESENCE_ENABLED =
   process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_DEBUG_PRESENCE === "true";
 
@@ -30,8 +35,51 @@ function compactPatch(patch = {}) {
   return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
 }
 
-async function updatePresencePath(database, uid, patch = {}) {
-  await update(ref(database, `presence/${uid}`), compactPatch(patch));
+function trackPresenceWrite(uid, operation) {
+  const targetUid = String(uid || '').trim();
+  if (!pendingPresenceWritesByUid.has(targetUid)) pendingPresenceWritesByUid.set(targetUid, new Set());
+  const writes = pendingPresenceWritesByUid.get(targetUid);
+  const tracked = Promise.resolve(operation);
+  writes.add(tracked);
+  tracked.then(
+    () => {
+      writes.delete(tracked);
+      if (!writes.size) pendingPresenceWritesByUid.delete(targetUid);
+    },
+    () => {
+      writes.delete(tracked);
+      if (!writes.size) pendingPresenceWritesByUid.delete(targetUid);
+    },
+  );
+  return tracked;
+}
+
+async function waitForPresenceWrites(uid) {
+  const targetUid = String(uid || '').trim();
+  let writes = pendingPresenceWritesByUid.get(targetUid);
+  while (writes?.size) {
+    await Promise.allSettled(Array.from(writes));
+    writes = pendingPresenceWritesByUid.get(targetUid);
+  }
+}
+
+export async function updateOwnPresence(database, uid, patch = {}) {
+  const targetUid = String(uid || '').trim();
+  const authenticatedUid = String(getAuth(database.app).currentUser?.uid || '').trim();
+  if (!targetUid || authenticatedUid !== targetUid || endingPresenceUids.has(targetUid)) {
+    debugPresence('escrita de presença ignorada sem sessão autenticada correspondente', {
+      targetUid: targetUid || null,
+      authenticated: !!authenticatedUid,
+      sessionEnding: endingPresenceUids.has(targetUid),
+    });
+    return false;
+  }
+
+  await trackPresenceWrite(
+    targetUid,
+    update(ref(database, `presence/${targetUid}`), compactPatch(patch)),
+  );
+  return true;
 }
 
 function cleanText(value, fallback = "") {
@@ -88,8 +136,26 @@ export function startPresence(database, user, extras = {}) {
   if (!database || !user?.uid || !isBrowser()) return () => {};
 
   const uid = user.uid;
+  endingPresenceUids.delete(uid);
   const connectedRef = ref(database, ".info/connected");
   let cancelled = false;
+  let presenceDisconnectOperation = null;
+  const pendingWrites = new Set();
+
+  const trackWrite = (operation) => {
+    const tracked = Promise.resolve(operation);
+    pendingWrites.add(tracked);
+    tracked.then(
+      () => pendingWrites.delete(tracked),
+      () => pendingWrites.delete(tracked),
+    );
+    return tracked;
+  };
+
+  const writePresence = (patch, { allowWhenStopped = false } = {}) => {
+    if (cancelled && !allowWhenStopped) return Promise.resolve(false);
+    return trackWrite(updateOwnPresence(database, uid, patch));
+  };
 
   debugPresence("uid atual", uid);
   debugPresence("usando caminho correto", `presence/${uid}`);
@@ -100,7 +166,7 @@ export function startPresence(database, user, extras = {}) {
 
     if (!getUserOnlinePreference()) {
       debugPresence("preferencia offline ativa; mantendo presence offline", uid);
-      await updatePresencePath(database, uid, {
+      await writePresence({
         ...buildIdentityPatch(user, extras),
         ...extraPatch,
         online: false,
@@ -120,7 +186,7 @@ export function startPresence(database, user, extras = {}) {
 
     try {
       const now = Date.now();
-      await updatePresencePath(database, uid, {
+      await writePresence({
         ...buildIdentityPatch(user, extras),
         ...extraPatch,
         online: true,
@@ -140,14 +206,14 @@ export function startPresence(database, user, extras = {}) {
 
   const saveOffline = () => {
     const now = Date.now();
-    updatePresencePath(database, uid, {
+    return writePresence({
       online: false,
       lastSeen: now,
       updatedAt: now,
       local: null,
       latitude: null,
       longitude: null,
-    }).catch((error) => {
+    }, { allowWhenStopped: true }).catch((error) => {
       errorPresence("erro ao salvar presença", error);
     });
   };
@@ -159,14 +225,15 @@ export function startPresence(database, user, extras = {}) {
 
     try {
       const now = Date.now();
-      await onDisconnect(ref(database, `presence/${uid}`)).update({
+      presenceDisconnectOperation = onDisconnect(ref(database, `presence/${uid}`));
+      await trackWrite(presenceDisconnectOperation.update({
         online: false,
         lastSeen: now,
         updatedAt: now,
         local: null,
         latitude: null,
         longitude: null,
-      });
+      }));
     } catch {}
 
     try {
@@ -190,13 +257,35 @@ export function startPresence(database, user, extras = {}) {
       errorPresence("erro ao salvar presença", error);
     });
 
-  return () => {
+  let stopped = false;
+  let stopPromise = null;
+  const stopPresenceRuntime = ({ saveOfflineState = true } = {}) => {
+    if (stopped) return stopPromise || Promise.resolve();
+    stopped = true;
     cancelled = true;
     window.clearInterval(heartbeat);
     window.removeEventListener("pagehide", onExit);
     window.removeEventListener("beforeunload", onExit);
     unsubscribeConnected();
-    saveOffline();
+    const disconnectCleanup = presenceDisconnectOperation?.cancel?.().catch(() => {});
+    const offlineCleanup = saveOfflineState ? saveOffline() : Promise.resolve();
+    const writesInFlight = Array.from(pendingWrites);
+    stopPromise = Promise.allSettled([
+      ...writesInFlight,
+      disconnectCleanup,
+      offlineCleanup,
+      waitForPresenceWrites(uid),
+    ]).then(() => undefined);
+    return stopPromise;
+  };
+  const unsubscribeSessionEnding = subscribeSessionEnding(uid, () => {
+    endingPresenceUids.add(uid);
+    return stopPresenceRuntime({ saveOfflineState: false });
+  });
+
+  return () => {
+    unsubscribeSessionEnding();
+    stopPresenceRuntime();
   };
 }
 

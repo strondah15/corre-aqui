@@ -1,6 +1,7 @@
 import { getCanonicalCategoryId, getCategoryById } from '@/constants/categories'
+import { resolveLegacyAccountState } from '@/lib/legacyAccountState'
 import { findProfessionById, sanitizeCustomProfession } from '@/constants/professions'
-import { getPublicAvailabilityLocation } from '@/lib/publicAvailability'
+import { getPublicAvailabilityLocation, PUBLIC_AVAILABILITY_TTL_MS } from '@/lib/publicAvailability'
 
 export const PUBLIC_WORK_PROFILE_TYPES = {
   CORRE: 'corre',
@@ -229,6 +230,18 @@ export function safePublicText(value, fallback = '') {
   return String(value ?? fallback).trim()
 }
 
+export const LEGACY_PUBLIC_WORK_ROLE_ALIASES = Object.freeze([
+  'profileType',
+  'workProfileType',
+  'tipoPerfilPublico',
+  'tipoTrabalho',
+  'tipoConta',
+  'tipoContaInicial',
+  'isProf',
+  'corre.ativo',
+  'profissional.ativo',
+])
+
 export function safePublicImageUrl(value, fallback = '') {
   const url = safePublicText(value, fallback)
   return url.length <= 2048 && /^https?:\/\/[^\s]+$/i.test(url) ? url : ''
@@ -320,33 +333,7 @@ export function normalizeProfileStatus(profile = {}) {
 }
 
 export function normalizeWorkProfileType(profile = {}, fallback = {}) {
-  const raw = safePublicText(
-    profile.profileType ||
-      profile.workProfileType ||
-      profile.tipoPerfilPublico ||
-      profile.tipoTrabalho ||
-      profile.tipoConta ||
-      fallback.profileType ||
-      fallback.tipoTrabalho ||
-      fallback.tipoConta
-  ).toLowerCase()
-
-  if (raw.includes('ambos')) return 'both'
-  if (raw.includes('prof')) return PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
-  if (raw.includes('corre') || raw.includes('worker') || raw.includes('trabalh')) return PUBLIC_WORK_PROFILE_TYPES.CORRE
-
-  const isCorre = normalizeFlag(profile.isCorre ?? fallback.isCorre ?? profile.corre?.ativo ?? fallback.corre?.ativo)
-  const isProfissional = normalizeFlag(
-    profile.isProfissional ??
-      fallback.isProfissional ??
-      profile.profissional?.ativo ??
-      fallback.profissional?.ativo
-  )
-
-  if (isCorre && isProfissional) return 'both'
-  if (isProfissional) return PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
-  if (isCorre) return PUBLIC_WORK_PROFILE_TYPES.CORRE
-  return ''
+  return resolveLegacyAccountState({ sources: [profile, fallback] }).workProfileType
 }
 
 function normalizeCategoryList(...values) {
@@ -378,6 +365,10 @@ export function getPublicCategoryIds(profile = {}, fallback = {}) {
     fallback.categoriaId,
     fallback.profCategorias,
     fallback.correCategorias,
+    fallback.profissional?.categoriaId,
+    fallback.profissional?.profCategorias,
+    fallback.corre?.categoriaId,
+    fallback.corre?.categorias,
     profile.profissional?.categoriaId,
     profile.profissional?.profCategorias,
     profile.corre?.categoriaId,
@@ -403,7 +394,9 @@ export function getPublicRegion(profile = {}, fallback = {}) {
       profile.corre?.regiao ||
       fallback.city ||
       fallback.cidade ||
-      fallback.regiao
+      fallback.regiao ||
+      fallback.profissional?.regiao ||
+      fallback.corre?.regiao
   )
 
   const neighborhood = safePublicText(
@@ -474,6 +467,155 @@ export function canAppearInPublicDirectory(profile = {}, fallback = {}) {
   return isPublicWorkProfileReady(profile, fallback).ready
 }
 
+function mergeOwnerWorkProfile(ownerProfile = {}) {
+  const owner = ownerProfile && typeof ownerProfile === 'object' ? ownerProfile : {}
+  const nested = owner.profile && typeof owner.profile === 'object' ? owner.profile : {}
+  return {
+    ...nested,
+    ...owner,
+    privacy: { ...(nested.privacy || {}), ...(owner.privacy || {}) },
+    corre: { ...(nested.corre || {}), ...(owner.corre || {}) },
+    profissional: { ...(nested.profissional || {}), ...(owner.profissional || {}) },
+  }
+}
+
+function firstBoolean(...values) {
+  return values.find((value) => typeof value === 'boolean')
+}
+
+export function getOwnPublicAvailabilityProfileNormalization(
+  profile = {},
+  { now = Date.now(), ownerProfile = {}, uid: targetUid = '' } = {}
+) {
+  const publicProfile = profile && typeof profile === 'object' ? profile : {}
+  const ownerFallback = mergeOwnerWorkProfile(ownerProfile)
+  const ownerPrivacy = ownerFallback.privacy || {}
+  const uid = safePublicText(publicProfile.uid || publicProfile.id || targetUid || ownerFallback.uid || ownerFallback.id)
+  if (!uid) return { required: false, reason: 'missing_uid', patch: null }
+
+  const status = normalizeProfileStatus(publicProfile)
+  if (BLOCKED_STATUSES.has(status)) return { required: false, reason: 'blocked_status', patch: null }
+
+  const effectiveProfileVisible = firstBoolean(
+    publicProfile.profileVisible,
+    ownerFallback.profileVisible,
+    ownerPrivacy.profileVisible
+  )
+  const effectiveVisible = firstBoolean(publicProfile.visivel, ownerFallback.visivel)
+  const effectiveShowOnline = firstBoolean(
+    publicProfile.showOnlineStatus,
+    ownerFallback.showOnlineStatus,
+    ownerPrivacy.showOnlineStatus
+  )
+  if (effectiveProfileVisible === false) return { required: false, reason: 'profile_visible_false', patch: null }
+  if (effectiveVisible === false) return { required: false, reason: 'visivel_false', patch: null }
+  if (effectiveShowOnline === false) return { required: false, reason: 'show_online_status_false', patch: null }
+  if (PAUSED_STATUSES.has(status)) return { required: false, reason: 'paused_status', patch: null }
+
+  const legacyType = normalizeWorkProfileType(publicProfile, ownerFallback)
+  const explicitCorre = firstBoolean(publicProfile.isCorre, ownerFallback.isCorre)
+  const explicitProfessional = firstBoolean(publicProfile.isProfissional, ownerFallback.isProfissional, ownerFallback.isProf)
+  let wantsCorre = legacyType === PUBLIC_WORK_PROFILE_TYPES.CORRE || legacyType === 'both' || explicitCorre === true
+  let wantsProfessional = legacyType === PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL || legacyType === 'both' || explicitProfessional === true
+  if (explicitCorre === false) wantsCorre = false
+  if (explicitProfessional === false) wantsProfessional = false
+  if (!wantsCorre && !wantsProfessional) {
+    return {
+      required: false,
+      reason: legacyType ? 'canonical_work_role_disabled' : 'missing_work_type',
+      patch: null,
+    }
+  }
+
+  const canonicalType = wantsCorre && wantsProfessional
+    ? 'both'
+    : wantsProfessional
+      ? PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
+      : PUBLIC_WORK_PROFILE_TYPES.CORRE
+  const candidate = {
+    ...publicProfile,
+    uid,
+    id: uid,
+    profileType: canonicalType,
+    workProfileType: canonicalType,
+    isCorre: wantsCorre,
+    isProfissional: wantsProfessional,
+    profileVisible: effectiveProfileVisible !== false,
+    visivel: effectiveVisible !== false,
+    showOnlineStatus: effectiveShowOnline !== false,
+  }
+  const readiness = isPublicWorkProfileReady(candidate, ownerFallback)
+  if (!readiness.ready) return { required: false, reason: readiness.reason, patch: null }
+
+  const safeNow = Number.isFinite(Number(now)) ? Number(now) : Date.now()
+  const patch = {}
+
+  if (publicProfile.uid !== uid) patch.uid = uid
+  if (publicProfile.id !== uid) patch.id = uid
+  if (publicProfile.profileType !== canonicalType) patch.profileType = canonicalType
+  if (publicProfile.workProfileType !== canonicalType) patch.workProfileType = canonicalType
+  if (typeof publicProfile.isCorre !== 'boolean') patch.isCorre = wantsCorre
+  if (typeof publicProfile.isProfissional !== 'boolean') patch.isProfissional = wantsProfessional
+  if (typeof publicProfile.profileVisible !== 'boolean') patch.profileVisible = true
+  if (typeof publicProfile.visivel !== 'boolean') patch.visivel = true
+  if (typeof publicProfile.showOnlineStatus !== 'boolean') patch.showOnlineStatus = true
+  const publicName = readiness.name.slice(0, 120)
+  const publicCity = readiness.region.city.slice(0, 120)
+  const publicNeighborhood = readiness.region.neighborhood.slice(0, 120)
+  if (!safePublicText(publicProfile.nome)) patch.nome = publicName
+  if (!safePublicText(publicProfile.displayName)) patch.displayName = publicName
+
+  const primaryCategoryId = readiness.categories[0]
+  if (!safePublicText(publicProfile.primaryCategoryId)) patch.primaryCategoryId = primaryCategoryId
+  if (!safePublicText(publicProfile.categoriaId)) patch.categoriaId = primaryCategoryId
+  if (wantsCorre && !normalizeCategoryList(publicProfile.correCategorias).length) {
+    patch.correCategorias = readiness.categories
+  }
+  if (wantsProfessional && !normalizeCategoryList(publicProfile.profCategorias).length) {
+    patch.profCategorias = readiness.categories
+  }
+
+  if (!safePublicText(publicProfile.cidade)) patch.cidade = publicCity
+  if (!safePublicText(publicProfile.city)) patch.city = publicCity
+  if (!safePublicText(publicProfile.bairro) && publicNeighborhood) {
+    patch.bairro = publicNeighborhood
+  }
+  if (!safePublicText(publicProfile.neighborhood) && publicNeighborhood) {
+    patch.neighborhood = publicNeighborhood
+  }
+  if (!safePublicText(publicProfile.regiao)) {
+    patch.regiao = (publicNeighborhood ? `${publicNeighborhood}, ${publicCity}` : publicCity).slice(0, 160)
+  }
+  if (!Array.isArray(publicProfile.regionKeys) || !publicProfile.regionKeys.length) {
+    patch.regionKeys = readiness.region.regionKeys
+  }
+  if (!safePublicText(publicProfile.profileStatus)) patch.profileStatus = 'active'
+  if (!safePublicText(publicProfile.visibility)) patch.visibility = 'public'
+  if (typeof publicProfile.createdAt !== 'number' || !Number.isFinite(publicProfile.createdAt)) {
+    patch.createdAt = safeNow
+  }
+  if (typeof publicProfile.updatedAt !== 'number' || !Number.isFinite(publicProfile.updatedAt)) {
+    patch.updatedAt = safeNow
+  }
+  if (typeof publicProfile.atualizadoEm !== 'number' || !Number.isFinite(publicProfile.atualizadoEm)) {
+    patch.atualizadoEm = safeNow
+  }
+
+  if (!Object.keys(patch).length) {
+    return { required: false, reason: 'canonical_profile_ready', patch: null }
+  }
+
+  return {
+    required: true,
+    reason: 'legacy_profile_normalization_required',
+    patch: {
+      ...patch,
+      updatedAt: safeNow,
+      atualizadoEm: safeNow,
+    },
+  }
+}
+
 export function isPubliclyAvailableWorker(profile = {}, presence = {}, now = Date.now()) {
   if (!canAppearInPublicDirectory(profile, presence)) return false
   const lastSeen = Number(presence?.lastSeen || presence?.updatedAt || 0)
@@ -482,7 +624,7 @@ export function isPubliclyAvailableWorker(profile = {}, presence = {}, now = Dat
     presence?.disponivel !== false &&
     presence?.showOnlineStatus !== false &&
     Number.isFinite(lastSeen) &&
-    now - lastSeen <= 60_000
+    now - lastSeen <= PUBLIC_AVAILABILITY_TTL_MS
   )
 }
 
@@ -562,6 +704,7 @@ export function buildQuickPublicWorkProfilePayload({ uid, account = {}, form = {
     visibility: 'public',
     profileVisible: true,
     visivel: true,
+    showOnlineStatus: true,
     profileStatus: 'active',
     publicProfileVersion: 1,
     onboardingStatus: 'quick_complete',
