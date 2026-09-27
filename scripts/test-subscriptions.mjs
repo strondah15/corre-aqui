@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { verifyMercadoPagoHmacSignature } from '../src/lib/mercadoPagoWebhookSignature.js'
 import {
   addCalendarMonths,
   canCreateClientDirectRequest,
@@ -11,6 +13,71 @@ import {
 } from '../src/lib/subscriptions.js'
 
 const now = Date.UTC(2026, 7, 30, 12)
+
+const webhookSecret = 'test-only-webhook-secret'
+const webhookRequestId = 'request-test-123'
+const webhookTimestamp = '1704908010'
+function signedWebhookHeaders(dataId, signatureOverride = '') {
+  const manifest = `id:${dataId};request-id:${webhookRequestId};ts:${webhookTimestamp};`
+  const signature = signatureOverride || crypto.createHmac('sha256', webhookSecret).update(manifest).digest('hex')
+  return new Headers({
+    'x-request-id': webhookRequestId,
+    'x-signature': `ts=${webhookTimestamp},v1=${signature}`,
+  })
+}
+
+const validWebhookDataId = '123456789'
+const validWebhookSignature = verifyMercadoPagoHmacSignature({
+  secret: webhookSecret,
+  dataId: validWebhookDataId,
+  headers: signedWebhookHeaders(validWebhookDataId),
+})
+assert.equal(validWebhookSignature.ok, true, 'data.id autoritativo da query valida a assinatura')
+assert.equal(validWebhookSignature.paymentId, validWebhookDataId)
+
+const mismatchedBodyRequest = new Request(`https://preview.example/api/mercado-pago/webhook?data.id=${validWebhookDataId}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ data: { id: 'body-id-forjado' } }),
+})
+const mismatchedBody = await mismatchedBodyRequest.clone().json()
+const authoritativeQueryDataId = new URL(mismatchedBodyRequest.url).searchParams.get('data.id')
+const mismatchedBodySignature = verifyMercadoPagoHmacSignature({
+  secret: webhookSecret,
+  dataId: authoritativeQueryDataId,
+  headers: signedWebhookHeaders(authoritativeQueryDataId),
+})
+assert.notEqual(mismatchedBody.data.id, authoritativeQueryDataId)
+assert.equal(mismatchedBodySignature.ok, true, 'ID divergente do body nao substitui o data.id assinado da query')
+assert.equal(mismatchedBodySignature.paymentId, authoritativeQueryDataId)
+
+assert.deepEqual(
+  verifyMercadoPagoHmacSignature({
+    secret: webhookSecret,
+    dataId: '',
+    headers: signedWebhookHeaders(validWebhookDataId),
+  }),
+  { ok: false, reason: 'missing_signature_data_id' },
+  'query data.id ausente falha fechado',
+)
+assert.equal(
+  verifyMercadoPagoHmacSignature({
+    secret: webhookSecret,
+    dataId: validWebhookDataId,
+    headers: signedWebhookHeaders(validWebhookDataId, '0'.repeat(64)),
+  }).reason,
+  'signature_mismatch',
+  'assinatura incorreta e rejeitada',
+)
+assert.equal(
+  verifyMercadoPagoHmacSignature({
+    secret: webhookSecret,
+    dataId: validWebhookDataId,
+    headers: new Headers(),
+  }).reason,
+  'missing_signature_headers',
+  'headers obrigatorios ausentes sao rejeitados',
+)
 
 const pendingA = {
   uid: 'user-a',
@@ -91,6 +158,8 @@ assert.match(checkoutRouteSource, /invalid_plan/, 'produto invalido e rejeitado'
 assert.doesNotMatch(checkoutRouteSource, /body\?\.(?:uid|userId|amount|amountInCents|price|preco)/, 'checkout nao confia em UID ou preco do body')
 assert.match(commercialSource, /unit_price: product\.amountInCents \/ 100/, 'preco da Preference vem do catalogo backend')
 assert.match(webhookRouteSource, /verifyMercadoPagoSignature/, 'webhook valida assinatura')
+assert.match(webhookRouteSource, /request\.nextUrl\.searchParams\.get\('data\.id'\)/, 'webhook le o data.id autoritativo da query')
+assert.match(webhookRouteSource, /dataId:\s*signatureDataId/, 'webhook passa explicitamente o data.id da query para validacao')
 assert.match(webhookRouteSource, /api\.mercadopago\.com\/v1\/payments/, 'webhook consulta o pagamento no Mercado Pago')
 assert.ok(
   commercialSource.indexOf("if (status !== 'approved')") < commercialSource.indexOf('const activation = product.id'),

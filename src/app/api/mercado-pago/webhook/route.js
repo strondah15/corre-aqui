@@ -52,6 +52,7 @@ export async function POST(request) {
   }
 
   const paymentId = safeText(body?.data?.id || body?.id || body?.resource)
+  const signatureDataId = safeText(request.nextUrl.searchParams.get('data.id'))
 
   await writeCommercialAudit(database, {
     eventId: `webhook_received_${paymentId || Date.now()}`,
@@ -68,7 +69,11 @@ export async function POST(request) {
     }, { status: 202, headers: responseHeaders })
   }
 
-  const signature = verifyMercadoPagoSignature({ rawBody, body, headers: request.headers })
+  const signature = verifyMercadoPagoSignature({
+    rawBody,
+    dataId: signatureDataId,
+    headers: request.headers,
+  })
   if (!signature.ok) {
     await writeCommercialAudit(database, {
       eventId: `webhook_invalid_signature_${paymentId || Date.now()}`,

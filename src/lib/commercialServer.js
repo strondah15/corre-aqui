@@ -16,6 +16,7 @@ import {
   PROFESSIONAL_ANNUAL_PRODUCT_ID,
   addCalendarMonths,
 } from '@/lib/subscriptions'
+import { verifyMercadoPagoHmacSignature } from '@/lib/mercadoPagoWebhookSignature'
 
 export const COMMERCIAL_SOURCE = 'mercado_pago'
 const PAYMENT_EVENT_LEASE_MS = 5 * 60 * 1000
@@ -380,37 +381,17 @@ export async function maybeCreateMercadoPagoPreference({ product, attempt, payer
   }
 }
 
-export function verifyMercadoPagoSignature({ rawBody, body, headers }) {
-  const secret = safeText(process.env.MERCADO_PAGO_WEBHOOK_SECRET)
-  if (!secret) return { ok: false, reason: 'missing_webhook_secret' }
+export function verifyMercadoPagoSignature({ rawBody, dataId, headers }) {
+  const verification = verifyMercadoPagoHmacSignature({
+    secret: process.env.MERCADO_PAGO_WEBHOOK_SECRET,
+    dataId,
+    headers,
+  })
+  if (!verification.ok) return verification
 
-  const signatureHeader = safeText(headers.get('x-signature'))
-  const requestId = safeText(headers.get('x-request-id'))
-  if (!signatureHeader || !requestId) return { ok: false, reason: 'missing_signature_headers' }
-
-  const parts = Object.fromEntries(
-    signatureHeader.split(',').map((part) => {
-      const [key, ...rest] = part.trim().split('=')
-      return [key, rest.join('=')]
-    })
-  )
-  const ts = safeText(parts.ts)
-  const received = safeText(parts.v1)
-  const dataId = safeText(body?.data?.id || body?.id || body?.resource)
-  if (!ts || !received || !dataId) return { ok: false, reason: 'invalid_signature_payload' }
-
-  const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`
-  const expected = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
-  try {
-    const receivedBuffer = Buffer.from(received, 'hex')
-    const expectedBuffer = Buffer.from(expected, 'hex')
-    if (receivedBuffer.length !== expectedBuffer.length) {
-      return { ok: false, reason: 'signature_mismatch' }
-    }
-    const ok = crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
-    return { ok, reason: ok ? '' : 'signature_mismatch', paymentId: dataId, rawBodyLength: rawBody.length }
-  } catch {
-    return { ok: false, reason: 'invalid_signature_format' }
+  return {
+    ...verification,
+    rawBodyLength: rawBody.length,
   }
 }
 
