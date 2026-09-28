@@ -75,6 +75,20 @@ export async function POST(request) {
     headers: request.headers,
   })
   if (!signature.ok) {
+    const signaturePartKeys = new Set(
+      safeText(request.headers.get('x-signature'))
+        .split(',')
+        .map((part) => safeText(part).split('=', 1)[0])
+    )
+    console.warn({
+      event: 'mercado_pago_webhook_signature_rejected',
+      reason: signature.reason,
+      hasSignatureHeader: Boolean(safeText(request.headers.get('x-signature'))),
+      hasRequestIdHeader: Boolean(safeText(request.headers.get('x-request-id'))),
+      hasQueryDataId: Boolean(signatureDataId),
+      hasTimestamp: signaturePartKeys.has('ts'),
+      hasV1: signaturePartKeys.has('v1'),
+    })
     await writeCommercialAudit(database, {
       eventId: `webhook_invalid_signature_${paymentId || Date.now()}`,
       type: 'webhook_invalid_signature',
