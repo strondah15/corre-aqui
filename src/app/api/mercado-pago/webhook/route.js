@@ -95,7 +95,18 @@ export async function POST(request) {
       paymentReference: paymentId || null,
       statusAfter: signature.reason,
     })
-    return NextResponse.json({ ok: false, error: 'invalid_signature', reason: signature.reason }, { status: 401, headers: responseHeaders })
+    return NextResponse.json({
+      ok: false,
+      error: 'invalid_signature',
+      reason: signature.reason,
+      source: 'corre_aqui_webhook_signature',
+    }, {
+      status: 401,
+      headers: {
+        ...responseHeaders,
+        'X-Corre-Aqui-Webhook': 'signature-rejected',
+      },
+    })
   }
 
   const payment = await fetchMercadoPagoPayment(signature.paymentId)
