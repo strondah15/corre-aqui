@@ -9,11 +9,20 @@ import {
 
 const PENDING_CHECKOUT_KEY = 'correaqui:pending-subscription-checkout:v1'
 
-async function subscriptionRequest(path, body = {}) {
+function requestAbortedError() {
+  const error = new Error('A verificação foi cancelada.')
+  error.name = 'AbortError'
+  error.code = 'request_aborted'
+  return error
+}
+
+async function subscriptionRequest(path, body = {}, options = {}) {
+  if (options.signal?.aborted) throw requestAbortedError()
   const user = auth.currentUser
   if (!user) throw new Error('Entre na sua conta para continuar.')
   const expectedUid = user.uid
   const token = await user.getIdToken()
+  if (options.signal?.aborted) throw requestAbortedError()
   if (!isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) throw new Error('A sessão mudou durante esta ação. Tente novamente.')
   const response = await fetch(path, {
     method: 'POST',
@@ -22,6 +31,7 @@ async function subscriptionRequest(path, body = {}) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
+    signal: options.signal,
   })
   const data = await response.json().catch(() => ({}))
   if (!isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) throw new Error('A sessão mudou durante esta ação. Tente novamente.')
@@ -34,8 +44,8 @@ async function subscriptionRequest(path, body = {}) {
   return data
 }
 
-export function getSubscriptionStatus() {
-  return subscriptionRequest('/api/subscriptions/status')
+export function getSubscriptionStatus(options = {}) {
+  return subscriptionRequest('/api/subscriptions/status', {}, options)
 }
 
 export function activateProfessionalTrial() {

@@ -3,6 +3,10 @@ import crypto from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { verifyMercadoPagoHmacSignature } from '../src/lib/mercadoPagoWebhookSignature.js'
 import {
+  subscriptionKindFromProduct,
+  verifyAuthoritativeSubscriptionReturn,
+} from '../src/lib/subscriptionReturn.js'
+import {
   addCalendarMonths,
   canCreateClientDirectRequest,
   canReusePendingSubscriptionCheckout,
@@ -89,8 +93,197 @@ assert.equal(canReusePendingSubscriptionCheckout(pendingA, 'user-a', now), true,
 assert.equal(canReusePendingSubscriptionCheckout(pendingA, 'user-b', now), false, 'UID B nao reutiliza checkout de A')
 assert.equal(canReusePendingSubscriptionCheckout({ ...pendingA, uid: undefined }, 'user-a', now), false, 'pending legado sem UID falha fechado')
 assert.equal(canReusePendingSubscriptionCheckout({ ...pendingA, attemptId: '' }, 'user-a', now), false, 'pending estruturalmente invalido falha fechado')
+assert.equal(canReusePendingSubscriptionCheckout({ ...pendingA, productId: 'UNKNOWN' }, 'user-a', now), false, 'produto invalido nao restaura checkout')
+assert.equal(canReusePendingSubscriptionCheckout({ ...pendingA, createdAt: now + 1 }, 'user-a', now), false, 'pending com data futura falha fechado')
+assert.equal(canReusePendingSubscriptionCheckout({ ...pendingA, createdAt: now - (24 * 60 * 60 * 1000) - 1 }, 'user-a', now), false, 'pending expirado nao e reutilizado')
 assert.equal(isSubscriptionSessionCurrent('user-a', 'user-b'), false, 'resposta async de A nao pertence a sessao B')
 assert.equal(isSubscriptionSessionCurrent('user-a', ''), false, 'logout invalida operacao transitoria')
+
+function statusResult(kind, plan, otherPlan = {}) {
+  const otherKind = kind === 'client' ? 'professional' : 'client'
+  return {
+    subscriptions: {
+      [kind]: plan,
+      [otherKind]: otherPlan,
+    },
+  }
+}
+
+function testClock(initial = 0) {
+  let current = initial
+  return {
+    now: () => current,
+    wait: async (delay) => { current += delay },
+  }
+}
+
+const checkoutCreatedAt = now - 5_000
+let activeStatusReads = 0
+const alreadyActiveReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => {
+    activeStatusReads += 1
+    return statusResult('client', { active: true, startedAt: now - 1_000, expiresAt: now + 31_536_000_000 })
+  },
+  expectedKind: 'client',
+  checkoutCreatedAt,
+  automatic: true,
+})
+assert.equal(alreadyActiveReturn.state, 'approved', 'approved + backend ativo confirma imediatamente')
+assert.equal(activeStatusReads, 1, 'backend ja ativo exige uma unica consulta')
+
+const delayedClock = testClock()
+let delayedStatusReads = 0
+const delayedReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => {
+    delayedStatusReads += 1
+    return statusResult(
+      'professional',
+      delayedStatusReads >= 3
+        ? { active: true, startedAt: now, expiresAt: now + 31_536_000_000 }
+        : { active: false },
+      { active: true, startedAt: now, expiresAt: now + 31_536_000_000 },
+    )
+  },
+  expectedKind: 'professional',
+  checkoutCreatedAt,
+  automatic: true,
+  timeoutMs: 10_000,
+  intervalMs: 1_000,
+  requestTimeoutMs: 50,
+  now: delayedClock.now,
+  wait: delayedClock.wait,
+})
+assert.equal(delayedReturn.state, 'approved', 'webhook atrasado e reconhecido por polling autoritativo')
+assert.equal(delayedStatusReads, 3, 'polling para quando o plano correto fica ativo')
+
+const timeoutClock = testClock()
+let timeoutStatusReads = 0
+const timedOutReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => {
+    timeoutStatusReads += 1
+    return statusResult('client', { active: false })
+  },
+  expectedKind: 'client',
+  checkoutCreatedAt,
+  automatic: true,
+  timeoutMs: 3_000,
+  intervalMs: 1_000,
+  requestTimeoutMs: 50,
+  now: timeoutClock.now,
+  wait: timeoutClock.wait,
+})
+assert.equal(timedOutReturn.state, 'pending', 'webhook nunca confirmado termina em estado recuperavel')
+assert.equal(timedOutReturn.reason, 'confirmation_timeout')
+assert.equal(timedOutReturn.timedOut, true)
+assert.equal(timeoutStatusReads, 3, 'polling possui limite deterministico')
+
+const networkErrorReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => { throw new Error('network unavailable') },
+  expectedKind: 'client',
+  checkoutCreatedAt,
+})
+assert.equal(networkErrorReturn.state, 'pending', 'erro de status sai do loading')
+assert.equal(networkErrorReturn.reason, 'status_error')
+
+const hangingStatusReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: () => new Promise(() => {}),
+  expectedKind: 'client',
+  checkoutCreatedAt,
+  requestTimeoutMs: 5,
+})
+assert.equal(hangingStatusReturn.state, 'pending', 'status pendurado nao deixa spinner infinito')
+assert.equal(hangingStatusReturn.reason, 'status_timeout')
+
+const recoveredAfterError = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => statusResult('client', { active: true, startedAt: now, expiresAt: now + 31_536_000_000 }),
+  expectedKind: 'client',
+  checkoutCreatedAt,
+})
+assert.equal(recoveredAfterError.state, 'approved', 'verificar novamente consulta status e recupera depois de erro')
+
+const refreshPending = { ...pendingA }
+const refreshClock = testClock()
+const beforeRefresh = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => statusResult('client', { active: false }),
+  expectedKind: 'client',
+  checkoutCreatedAt,
+  automatic: true,
+  timeoutMs: 1_000,
+  intervalMs: 500,
+  requestTimeoutMs: 50,
+  now: refreshClock.now,
+  wait: refreshClock.wait,
+})
+assert.equal(beforeRefresh.state, 'pending')
+assert.equal(canReusePendingSubscriptionCheckout(refreshPending, 'user-a', now), true, 'refresh preserva tentativa valida do mesmo UID')
+const afterRefresh = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => statusResult('client', { active: true, startedAt: now, expiresAt: now + 31_536_000_000 }),
+  expectedKind: 'client',
+  checkoutCreatedAt,
+})
+assert.equal(afterRefresh.state, 'approved', 'nova montagem pode confirmar tentativa preservada')
+
+let obsoleteStatusReads = 0
+const obsoleteReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => {
+    obsoleteStatusReads += 1
+    return statusResult('client', { active: true, startedAt: now, expiresAt: now + 31_536_000_000 })
+  },
+  expectedKind: 'client',
+  checkoutCreatedAt,
+  shouldContinue: () => false,
+})
+assert.equal(obsoleteReturn.state, 'cancelled', 'retorno duplicado obsoleto e cancelado')
+assert.equal(obsoleteStatusReads, 0, 'execucao obsoleta nao consulta nem sobrescreve estado')
+
+let switchedSessionReads = 0
+const switchedSessionReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => {
+    switchedSessionReads += 1
+    return statusResult('client', { active: true, startedAt: now, expiresAt: now + 31_536_000_000 })
+  },
+  expectedKind: 'client',
+  checkoutCreatedAt,
+  shouldContinue: () => isSubscriptionSessionCurrent('user-a', 'user-b'),
+})
+assert.equal(switchedSessionReturn.state, 'cancelled', 'A para B cancela confirmacao de A')
+assert.equal(switchedSessionReads, 0, 'B nunca consulta ou aplica retorno pendente de A')
+
+assert.equal(subscriptionKindFromProduct('CLIENT_ANNUAL'), 'client')
+assert.equal(subscriptionKindFromProduct('PROFESSIONAL_ANNUAL'), 'professional')
+const independentPlansReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => statusResult(
+    'client',
+    { active: false },
+    { active: true, startedAt: now, expiresAt: now + 31_536_000_000 },
+  ),
+  expectedKind: 'client',
+  checkoutCreatedAt,
+})
+assert.equal(independentPlansReturn.state, 'pending', 'Profissional ativo nao confirma checkout Cliente')
+
+const earlyRenewalBaseline = now + 31_536_000_000
+const earlyRenewalReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => statusResult('client', {
+    active: true,
+    startedAt: now - 31_536_000_000,
+    expiresAt: earlyRenewalBaseline + 31_536_000_000,
+  }),
+  expectedKind: 'client',
+  baselineExpiresAt: earlyRenewalBaseline,
+  checkoutCreatedAt,
+})
+assert.equal(earlyRenewalReturn.state, 'approved', 'renovacao antecipada confirma somente quando validade aumenta')
+
+const redirectOnlyReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => ({
+    collection_status: 'approved',
+    subscriptions: { client: { active: false } },
+  }),
+  expectedKind: 'client',
+  checkoutCreatedAt,
+})
+assert.equal(redirectOnlyReturn.state, 'pending', 'redirect approved sozinho nunca ativa assinatura no frontend')
 
 assert.equal(canCreateClientOrder({}, { now, hasExistingOrder: false }).reason, 'first_free_order')
 assert.equal(canCreateClientDirectRequest({}, { now }).allowed, false, 'A/B: primeiro pedido gratis nao libera agendamento direto')
@@ -174,17 +367,25 @@ assert.match(subscriptionServerSource, /canCreateClientDirectRequest/)
 assert.match(subscriptionServerSource, /client_direct_subscription_required/)
 
 const subscriptionPaywallSource = await readFile(new URL('../src/components/SubscriptionPaywallHost.jsx', import.meta.url), 'utf8')
+const subscriptionReturnSource = await readFile(new URL('../src/lib/subscriptionReturn.js', import.meta.url), 'utf8')
 assert.match(subscriptionPaywallSource, /Seu primeiro pedido foi grátis\./)
 assert.match(subscriptionPaywallSource, /Seu período gratuito de 3 meses terminou\./)
-assert.match(subscriptionPaywallSource, /Pagamento aprovado!/)
+assert.match(subscriptionPaywallSource, /Pagamento confirmado!/)
 assert.match(subscriptionPaywallSource, /Estamos confirmando seu pagamento/)
+assert.match(subscriptionPaywallSource, /Pagamento em processamento/)
 assert.match(subscriptionPaywallSource, /Para agendar diretamente com um profissional, ative o Plano Cliente\./)
-assert.match(subscriptionPaywallSource, /await getSubscriptionStatus\(\)/)
+assert.match(subscriptionPaywallSource, /verifyAuthoritativeSubscriptionReturn\(/)
+assert.match(subscriptionPaywallSource, /readStatus: getSubscriptionStatus/)
 assert.match(subscriptionPaywallSource, /onAuthStateChanged\(auth/)
 assert.match(subscriptionPaywallSource, /readPendingSubscriptionCheckout\(sessionUid\)/)
 assert.match(subscriptionPaywallSource, /isSubscriptionSessionCurrent\(expectedUid, auth\.currentUser\?\.uid\)/)
-assert.match(subscriptionPaywallSource, /if \(!nextUid\) clearPendingSubscriptionCheckout\(\)/)
+assert.match(subscriptionPaywallSource, /verificationAbortRef\.current\?\.abort\(\)/, 'troca de execucao aborta consulta anterior')
+assert.match(subscriptionPaywallSource, /replaceState\(window\.history\.state/, 'limpeza da URL preserva estado do router')
+assert.match(subscriptionPaywallSource, /cleanCheckoutParams\(url\)[\s\S]*clearPendingSubscriptionCheckout\(\)[\s\S]*state: 'approved'/, 'confirmacao limpa URL antes do pending')
+assert.doesNotMatch(subscriptionPaywallSource, /if \(!nextUid\) clearPendingSubscriptionCheckout\(\)/, 'auth null transitorio nao apaga tentativa vinculada ao UID')
 assert.doesNotMatch(subscriptionPaywallSource, /set\([^\n]*subscriptions/)
+assert.doesNotMatch(subscriptionReturnSource, /collection_status|payment_id|external_reference/, 'redirect nao participa da confirmacao autoritativa')
+assert.doesNotMatch(subscriptionReturnSource, /planos\/checkout|startAnnualSubscriptionCheckout/, 'verificacao nunca cria nova cobranca')
 
 const subscriptionStatusCardSource = await readFile(new URL('../src/components/SubscriptionStatusCard.jsx', import.meta.url), 'utf8')
 assert.match(subscriptionStatusCardSource, /Válida até:/)
@@ -197,6 +398,7 @@ assert.match(subscriptionClientSource, /uid: checkoutUid/)
 assert.match(subscriptionClientSource, /canReusePendingSubscriptionCheckout\(value, expectedUid\)/)
 assert.match(subscriptionClientSource, /isSubscriptionSessionCurrent\(checkoutUid, auth\.currentUser\?\.uid\)/)
 assert.match(subscriptionClientSource, /\/api\/subscriptions\/status/)
+assert.match(subscriptionClientSource, /signal: options\.signal/, 'consulta de status suporta cancelamento')
 assert.match(subscriptionClientSource, /ensureClientDirectRequestAccess/)
 assert.doesNotMatch(subscriptionClientSource, /update\([^\n]*subscriptions/)
 

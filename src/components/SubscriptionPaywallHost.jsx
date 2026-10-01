@@ -16,6 +16,10 @@ import {
   readPendingSubscriptionCheckout,
   startAnnualSubscriptionCheckout,
 } from '@/lib/subscriptionClient'
+import {
+  subscriptionKindFromProduct,
+  verifyAuthoritativeSubscriptionReturn,
+} from '@/lib/subscriptionReturn'
 import { auth } from '@/lib/firebase'
 
 const copy = {
@@ -76,15 +80,9 @@ function dateLabel(timestamp) {
   }).format(new Date(timestamp))
 }
 
-function kindFromProduct(productId) {
-  if (productId === PROFESSIONAL_ANNUAL_PRODUCT_ID) return 'professional'
-  if (productId === CLIENT_ANNUAL_PRODUCT_ID) return 'client'
-  return ''
-}
-
 function cleanCheckoutParams(url) {
   checkoutQueryKeys.forEach((key) => url.searchParams.delete(key))
-  window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
 }
 
 function ReturnIcon({ state }) {
@@ -94,11 +92,12 @@ function ReturnIcon({ state }) {
   if (state === 'failed') {
     return <span className="grid h-16 w-16 place-items-center rounded-full bg-rose-100 text-2xl font-black text-rose-700 dark:bg-rose-400/15 dark:text-rose-200" aria-hidden="true">!</span>
   }
-  return (
+  if (state === 'checking') return (
     <span className="grid h-16 w-16 place-items-center rounded-full bg-blue-100 dark:bg-blue-400/15" aria-hidden="true">
       <span className="h-7 w-7 animate-spin rounded-full border-4 border-blue-200 border-t-blue-700 dark:border-blue-300/25 dark:border-t-blue-200" />
     </span>
   )
+  return <span className="grid h-16 w-16 place-items-center rounded-full bg-amber-100 text-3xl font-black text-amber-700 dark:bg-amber-400/15 dark:text-amber-200" aria-hidden="true">…</span>
 }
 
 export default function SubscriptionPaywallHost() {
@@ -110,12 +109,22 @@ export default function SubscriptionPaywallHost() {
   const [sessionUid, setSessionUid] = useState(undefined)
   const checkoutBusyRef = useRef(false)
   const verificationRunRef = useRef(0)
+  const verificationAbortRef = useRef(null)
   const activeUidRef = useRef(auth.currentUser?.uid || '')
+
+  const cancelPaymentVerification = useCallback(() => {
+    verificationRunRef.current += 1
+    verificationAbortRef.current?.abort()
+    verificationAbortRef.current = null
+  }, [])
 
   const verifyPayment = useCallback(async ({ expectedKind = '', expectedUid = '', automatic = false, baselineExpiresAt = 0, checkoutCreatedAt = 0 } = {}) => {
     if (!isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
+    verificationAbortRef.current?.abort()
     const runId = verificationRunRef.current + 1
     verificationRunRef.current = runId
+    const controller = new AbortController()
+    verificationAbortRef.current = controller
     setPaymentReturn((current) => ({
       ...current,
       kind: expectedKind || current?.kind || '',
@@ -125,70 +134,78 @@ export default function SubscriptionPaywallHost() {
       error: '',
     }))
 
-    const delays = automatic ? [0, 1200, 2500, 4500, 7000] : [0]
-    let lastError = ''
-    for (const delay of delays) {
-      if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay))
-      if (verificationRunRef.current !== runId || !isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
-      try {
-        const result = await getSubscriptionStatus()
-        if (verificationRunRef.current !== runId || !isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
-        const subscriptions = result?.subscriptions || {}
-        const plan = expectedKind ? subscriptions[expectedKind] : null
-        const previousExpiry = Number(baselineExpiresAt || 0)
-        const currentExpiry = Number(plan?.expiresAt || 0)
-        const activationStartedAt = Number(plan?.startedAt || 0)
-        const hasFreshActivation = checkoutCreatedAt > 0 && activationStartedAt >= checkoutCreatedAt - 60_000
-        const expiryWasExtended = previousExpiry > 0 && currentExpiry > previousExpiry
-        if (plan?.active && (expiryWasExtended || hasFreshActivation)) {
-          clearPendingSubscriptionCheckout()
-          setPaymentReturn({
-            kind: expectedKind,
-            state: 'approved',
-            expiresAt: plan.expiresAt,
-            error: '',
-          })
-          window.dispatchEvent(new CustomEvent('correaqui:subscription-status-refresh'))
-          return
-        }
-        lastError = ''
-      } catch (statusError) {
-        if (!isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
-        lastError = statusError?.message || 'Não foi possível consultar o pagamento agora.'
-      }
-    }
+    try {
+      const outcome = await verifyAuthoritativeSubscriptionReturn({
+        readStatus: getSubscriptionStatus,
+        expectedKind,
+        baselineExpiresAt,
+        checkoutCreatedAt,
+        automatic,
+        signal: controller.signal,
+        shouldContinue: () => verificationRunRef.current === runId
+          && isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid),
+      })
+      if (outcome.state === 'cancelled'
+        || verificationRunRef.current !== runId
+        || !isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
 
-    if (verificationRunRef.current !== runId || !isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
-    setPaymentReturn((current) => ({
-      ...current,
-      kind: expectedKind || current?.kind || '',
-      baselineExpiresAt: Number(baselineExpiresAt || current?.baselineExpiresAt || 0),
-      checkoutCreatedAt: Number(checkoutCreatedAt || current?.checkoutCreatedAt || 0),
-      state: 'pending',
-      error: lastError,
-    }))
+      if (outcome.state === 'approved') {
+        const url = new URL(window.location.href)
+        if (checkoutReturnValues.has(url.searchParams.get('checkout'))) cleanCheckoutParams(url)
+        clearPendingSubscriptionCheckout()
+        setPaymentReturn({
+          kind: expectedKind,
+          state: 'approved',
+          expiresAt: outcome.expiresAt,
+          error: '',
+        })
+        window.dispatchEvent(new CustomEvent('correaqui:subscription-status-refresh'))
+        return
+      }
+
+      const recoveryMessage = outcome.reason === 'status_timeout'
+        ? 'A consulta demorou mais que o esperado. O pagamento pode ainda estar sendo processado.'
+        : outcome.reason === 'status_error'
+          ? 'Não foi possível consultar o status agora. Tente verificar novamente em instantes.'
+          : 'O pagamento pode ainda estar sendo processado. Verifique novamente em alguns instantes.'
+      setPaymentReturn((current) => ({
+        ...current,
+        kind: expectedKind || current?.kind || '',
+        baselineExpiresAt: Number(baselineExpiresAt || current?.baselineExpiresAt || 0),
+        checkoutCreatedAt: Number(checkoutCreatedAt || current?.checkoutCreatedAt || 0),
+        state: 'pending',
+        error: recoveryMessage,
+      }))
+    } finally {
+      if (verificationAbortRef.current === controller) verificationAbortRef.current = null
+    }
   }, [])
 
-  useEffect(() => onAuthStateChanged(auth, (user) => {
-    const nextUid = user?.uid || ''
-    if (activeUidRef.current && activeUidRef.current !== nextUid) {
-      verificationRunRef.current += 1
-      if (!nextUid) clearPendingSubscriptionCheckout()
-      checkoutBusyRef.current = false
-      setKind('')
-      setReason('')
-      setLoading(false)
-      setError('')
-      setPaymentReturn(null)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      const nextUid = user?.uid || ''
+      if (activeUidRef.current && activeUidRef.current !== nextUid) {
+        cancelPaymentVerification()
+        checkoutBusyRef.current = false
+        setKind('')
+        setReason('')
+        setLoading(false)
+        setError('')
+        setPaymentReturn(null)
+      }
+      activeUidRef.current = nextUid
+      setSessionUid(nextUid)
+    })
+    return () => {
+      unsubscribe()
+      cancelPaymentVerification()
     }
-    activeUidRef.current = nextUid
-    setSessionUid(nextUid)
-  }), [])
+  }, [cancelPaymentVerification])
 
   useEffect(() => {
     const open = (event) => {
       const nextKind = event?.detail?.kind === 'professional' ? 'professional' : 'client'
-      verificationRunRef.current += 1
+      cancelPaymentVerification()
       setPaymentReturn(null)
       setKind(nextKind)
       setReason(String(event?.detail?.reason || ''))
@@ -196,7 +213,7 @@ export default function SubscriptionPaywallHost() {
     }
     window.addEventListener('correaqui:subscription-required', open)
     return () => window.removeEventListener('correaqui:subscription-required', open)
-  }, [])
+  }, [cancelPaymentVerification])
 
   useEffect(() => {
     if (sessionUid === undefined) return undefined
@@ -214,7 +231,7 @@ export default function SubscriptionPaywallHost() {
       setPaymentReturn({ kind: '', state: 'failed', error: 'Este retorno de pagamento não pertence à sessão atual.' })
       return undefined
     }
-    const returnKind = kindFromProduct(pendingCheckout.productId)
+    const returnKind = subscriptionKindFromProduct(pendingCheckout.productId)
     if (checkoutReturn === 'failure') {
       clearPendingSubscriptionCheckout()
       setPaymentReturn({ kind: returnKind, state: 'failed', error: '' })
@@ -228,13 +245,11 @@ export default function SubscriptionPaywallHost() {
       baselineExpiresAt: pendingCheckout?.baselineExpiresAt,
       checkoutCreatedAt: pendingCheckout?.createdAt,
     })
-    return () => {
-      verificationRunRef.current += 1
-    }
-  }, [sessionUid, verifyPayment])
+    return cancelPaymentVerification
+  }, [cancelPaymentVerification, sessionUid, verifyPayment])
 
   const close = () => {
-    verificationRunRef.current += 1
+    cancelPaymentVerification()
     const url = new URL(window.location.href)
     if (checkoutReturnValues.has(url.searchParams.get('checkout'))) cleanCheckoutParams(url)
     setKind('')
@@ -244,6 +259,7 @@ export default function SubscriptionPaywallHost() {
   }
 
   const retryAfterFailure = (requestedKind = '') => {
+    cancelPaymentVerification()
     const retryKind = requestedKind || paymentReturn?.kind
     const url = new URL(window.location.href)
     if (checkoutReturnValues.has(url.searchParams.get('checkout'))) cleanCheckoutParams(url)
@@ -278,9 +294,10 @@ export default function SubscriptionPaywallHost() {
   if (paymentReturn) {
     const isApproved = paymentReturn.state === 'approved'
     const isFailed = paymentReturn.state === 'failed'
+    const isChecking = paymentReturn.state === 'checking'
     const returnCopy = isApproved
       ? {
-          title: 'Pagamento aprovado!',
+          title: 'Pagamento confirmado!',
           description: 'Sua assinatura Corre Aqui está ativa.',
         }
       : isFailed
@@ -288,10 +305,15 @@ export default function SubscriptionPaywallHost() {
             title: 'Pagamento não concluído',
             description: 'O pagamento foi cancelado ou não pôde ser aprovado. Você pode tentar novamente quando quiser.',
           }
-        : {
-            title: 'Estamos confirmando seu pagamento',
-            description: 'Isso pode levar alguns instantes. A assinatura será liberada automaticamente após a confirmação segura.',
-          }
+        : isChecking
+          ? {
+              title: 'Estamos confirmando seu pagamento',
+              description: 'Isso pode levar alguns instantes. A assinatura será liberada automaticamente após a confirmação segura.',
+            }
+          : {
+              title: 'Pagamento em processamento',
+              description: 'A confirmação segura ainda não chegou. Você pode verificar novamente ou continuar usando o app.',
+            }
 
     return (
       <div className="fixed inset-0 z-[120000] grid place-items-center overflow-y-auto bg-slate-950/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="payment-return-title">
