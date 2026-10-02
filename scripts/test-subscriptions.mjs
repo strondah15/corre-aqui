@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { commercialAuditKey } from '../src/lib/commercialAuditKey.js'
-import { verifyMercadoPagoHmacSignature } from '../src/lib/mercadoPagoWebhookSignature.js'
+import {
+  buildMercadoPagoSignatureDiagnostic,
+  verifyMercadoPagoHmacSignature,
+} from '../src/lib/mercadoPagoWebhookSignature.js'
 import {
   subscriptionKindFromProduct,
   verifyAuthoritativeSubscriptionReturn,
@@ -39,6 +42,18 @@ const validWebhookSignature = verifyMercadoPagoHmacSignature({
 })
 assert.equal(validWebhookSignature.ok, true, 'data.id autoritativo da query valida a assinatura')
 assert.equal(validWebhookSignature.paymentId, validWebhookDataId)
+
+const validWebhookHash = signedWebhookHeaders(validWebhookDataId).get('x-signature').split('v1=')[1]
+const normalizedSignatureParts = verifyMercadoPagoHmacSignature({
+  secret: webhookSecret,
+  dataId: validWebhookDataId,
+  headers: new Headers({
+    'x-request-id': webhookRequestId,
+    'x-signature': ` V1 = ${validWebhookHash} , TS = ${webhookTimestamp} `,
+  }),
+})
+assert.equal(normalizedSignatureParts.ok, true, 'parser normaliza caixa e espacos dos componentes ts/v1')
+assert.equal(normalizedSignatureParts.paymentId, validWebhookDataId)
 
 const legacyWebhookResource = 'https://api.mercadopago.com/v1/payments/123456'
 const invalidWebhookAuditEventId = `webhook_received_${legacyWebhookResource}`
@@ -112,6 +127,66 @@ assert.equal(
   'missing_signature_headers',
   'headers obrigatorios ausentes sao rejeitados',
 )
+
+const diagnosticSecretMarkers = {
+  requestId: 'request-id-must-not-be-logged',
+  signature: 'signature-must-not-be-logged',
+  queryDataId: 'QUERY-ID-MUST-NOT-BE-LOGGED',
+}
+const safeSignatureDiagnostic = buildMercadoPagoSignatureDiagnostic({
+  reason: 'signature_mismatch',
+  headers: new Headers({
+    'x-request-id': diagnosticSecretMarkers.requestId,
+    'x-signature': `ts=${webhookTimestamp},v1=${diagnosticSecretMarkers.signature}`,
+  }),
+  queryDataId: diagnosticSecretMarkers.queryDataId,
+  body: {
+    type: 'payment',
+    live_mode: false,
+    data: { id: diagnosticSecretMarkers.queryDataId },
+  },
+})
+assert.deepEqual(safeSignatureDiagnostic, {
+  event: 'mercado_pago_webhook_signature_rejected',
+  reason: 'signature_mismatch',
+  hasSignatureHeader: true,
+  hasRequestIdHeader: true,
+  hasQueryDataId: true,
+  hasTimestamp: true,
+  hasV1: true,
+  hasLegacyIdQuery: false,
+  hasLegacyTopicQuery: false,
+  hasBodyDataId: true,
+  hasBodyResource: false,
+  canCompareQueryAndBodyDataId: true,
+  queryDataIdMatchesBodyDataId: true,
+  queryDataIdNeedsLowercase: true,
+  isPaymentNotification: true,
+  isTestNotification: true,
+  looksLegacyIpn: false,
+})
+const serializedSignatureDiagnostic = JSON.stringify(safeSignatureDiagnostic)
+for (const sensitiveValue of Object.values(diagnosticSecretMarkers)) {
+  assert.doesNotMatch(
+    serializedSignatureDiagnostic,
+    new RegExp(sensitiveValue),
+    'diagnostico nao inclui valores de headers ou identificadores',
+  )
+}
+
+const legacySignatureDiagnostic = buildMercadoPagoSignatureDiagnostic({
+  reason: 'missing_signature_data_id',
+  headers: new Headers(),
+  queryDataId: '',
+  legacyQueryId: 'legacy-id-must-not-be-logged',
+  legacyQueryTopic: 'payment',
+  body: { resource: 'resource-url-must-not-be-logged' },
+})
+assert.equal(legacySignatureDiagnostic.looksLegacyIpn, true, 'formato legado/IPN e identificado sem expor valores')
+assert.equal(legacySignatureDiagnostic.hasLegacyIdQuery, true)
+assert.equal(legacySignatureDiagnostic.hasLegacyTopicQuery, true)
+assert.equal(legacySignatureDiagnostic.hasBodyResource, true)
+assert.doesNotMatch(JSON.stringify(legacySignatureDiagnostic), /must-not-be-logged/)
 
 const pendingA = {
   uid: 'user-a',
@@ -391,6 +466,11 @@ assert.match(checkoutRouteSource, /invalid_plan/, 'produto invalido e rejeitado'
 assert.doesNotMatch(checkoutRouteSource, /body\?\.(?:uid|userId|amount|amountInCents|price|preco)/, 'checkout nao confia em UID ou preco do body')
 assert.match(commercialSource, /unit_price: product\.amountInCents \/ 100/, 'preco da Preference vem do catalogo backend')
 assert.match(webhookRouteSource, /verifyMercadoPagoSignature/, 'webhook valida assinatura')
+assert.match(
+  webhookRouteSource,
+  /console\.warn\(JSON\.stringify\(signatureDiagnostic\)\)/,
+  'rejeicao registra somente diagnostico seguro serializado',
+)
 assert.match(webhookRouteSource, /request\.nextUrl\.searchParams\.get\('data\.id'\)/, 'webhook le o data.id autoritativo da query')
 assert.match(webhookRouteSource, /dataId:\s*signatureDataId/, 'webhook passa explicitamente o data.id da query para validacao')
 assert.match(webhookRouteSource, /api\.mercadopago\.com\/v1\/payments/, 'webhook consulta o pagamento no Mercado Pago')
