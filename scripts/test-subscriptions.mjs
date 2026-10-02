@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { commercialAuditKey } from '../src/lib/commercialAuditKey.js'
 import { verifyMercadoPagoHmacSignature } from '../src/lib/mercadoPagoWebhookSignature.js'
 import {
   subscriptionKindFromProduct,
@@ -38,6 +39,35 @@ const validWebhookSignature = verifyMercadoPagoHmacSignature({
 })
 assert.equal(validWebhookSignature.ok, true, 'data.id autoritativo da query valida a assinatura')
 assert.equal(validWebhookSignature.paymentId, validWebhookDataId)
+
+const legacyWebhookResource = 'https://api.mercadopago.com/v1/payments/123456'
+const invalidWebhookAuditEventId = `webhook_received_${legacyWebhookResource}`
+assert.match(
+  invalidWebhookAuditEventId,
+  /[.#$[\]\/]/,
+  'resource URL reproduz o identificador invalido recebido pelo audit do webhook',
+)
+const safeWebhookAuditKey = commercialAuditKey(invalidWebhookAuditEventId)
+assert.doesNotMatch(
+  safeWebhookAuditKey,
+  /[.#$[\]\/]/,
+  'chave derivada do resource nao contem caracteres proibidos pelo RTDB',
+)
+assert.equal(
+  commercialAuditKey(invalidWebhookAuditEventId),
+  safeWebhookAuditKey,
+  'mesmo evento preserva uma chave deterministica para o audit',
+)
+assert.notEqual(
+  commercialAuditKey('webhook_received_https://api.mercadopago.com/v1/payments/123457'),
+  safeWebhookAuditKey,
+  'resources diferentes nao colidem na chave do audit',
+)
+assert.equal(
+  commercialAuditKey('checkout_created_firebase-push-key'),
+  'checkout_created_firebase-push-key',
+  'event IDs internos ja validos permanecem inalterados',
+)
 
 const mismatchedBodyRequest = new Request(`https://preview.example/api/mercado-pago/webhook?data.id=${validWebhookDataId}`, {
   method: 'POST',
@@ -339,6 +369,16 @@ const checkoutRouteSource = await readFile(new URL('../src/app/api/planos/checko
 const statusRouteSource = await readFile(new URL('../src/app/api/subscriptions/status/route.js', import.meta.url), 'utf8')
 const webhookRouteSource = await readFile(new URL('../src/app/api/mercado-pago/webhook/route.js', import.meta.url), 'utf8')
 assert.match(commercialSource, /processedPaymentEvents/)
+assert.match(
+  commercialSource,
+  /const id = eventId[\s\S]*?commercialAuditKey\(eventId\)[\s\S]*?commercialAuditLogs\/\$\{id\}/,
+  'audit usa chave RTDB segura para eventId externo',
+)
+assert.match(
+  commercialSource,
+  /eventId: eventId \|\| id/,
+  'audit preserva o identificador original como valor rastreavel',
+)
 assert.match(commercialSource, /referenceKey\(`\$\{paymentId\}:\$\{status \|\| 'unknown'\}`\)/)
 assert.match(commercialSource, /PAYMENT_EVENT_LEASE_MS/)
 assert.match(commercialSource, /lockStatus === 'failed'/)

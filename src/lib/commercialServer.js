@@ -16,6 +16,7 @@ import {
   PROFESSIONAL_ANNUAL_PRODUCT_ID,
   addCalendarMonths,
 } from '@/lib/subscriptions'
+import { commercialAuditKey } from '@/lib/commercialAuditKey'
 import { verifyMercadoPagoHmacSignature } from '@/lib/mercadoPagoWebhookSignature'
 
 export const COMMERCIAL_SOURCE = 'mercado_pago'
@@ -246,10 +247,13 @@ export async function loadPublicProfile(database, uid) {
 }
 
 export async function writeCommercialAudit(database, event) {
-  const id = safeText(event?.eventId) || database.ref('commercialAuditLogs').push().key
+  const eventId = safeText(event?.eventId)
+  const id = eventId
+    ? commercialAuditKey(eventId)
+    : database.ref('commercialAuditLogs').push().key
   await database.ref(`commercialAuditLogs/${id}`).set(cleanFirebasePayload({
     ...event,
-    eventId: id,
+    eventId: eventId || id,
     createdAt: Date.now(),
     source: event?.source || COMMERCIAL_SOURCE,
   }))
