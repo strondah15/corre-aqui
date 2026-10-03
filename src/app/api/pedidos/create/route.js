@@ -7,6 +7,7 @@ import {
   canCreateClientOrder,
   getClientSubscriptionStatus,
   isTerminalOrderStatus,
+  validateNormalClientOrderRequest,
 } from '@/lib/subscriptions'
 import { defaultClientSubscription } from '@/lib/subscriptionServer'
 
@@ -80,6 +81,15 @@ export async function POST(request) {
   try {
     const uid = await getAuthenticatedUid(request)
     const body = await request.json().catch(() => ({}))
+    const inputValidation = validateNormalClientOrderRequest(body)
+    if (!inputValidation.allowed) {
+      return NextResponse.json({
+        ok: false,
+        error: inputValidation.reason,
+        reason: inputValidation.reason,
+        message: 'Contratações diretas e agendamentos devem usar o fluxo protegido de contratação.',
+      }, { status: 400, headers })
+    }
     const database = getCommercialDatabase()
     const now = Date.now()
     lockRef = await acquireLock(database, uid, requestId, now)

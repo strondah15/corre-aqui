@@ -716,6 +716,16 @@ export async function processApprovedCommercialPayment({ database, payment }) {
       return { ok: false, reason: 'attempt_not_found' }
     }
 
+    const attemptIdentityMatches =
+      safeText(attempt.id) === parsed.attemptId
+      && safeText(attempt.userId) === parsed.userId
+      && safeText(attempt.productId) === parsed.productId
+      && safeText(attempt.targetId || 'profile') === parsed.targetId
+    if (!attemptIdentityMatches) {
+      await lockRef.update({ status: 'ignored', reason: 'attempt_identity_mismatch', updatedAt: Date.now() })
+      return { ok: false, reason: 'attempt_identity_mismatch' }
+    }
+
   const product = getCommercialProduct(attempt.productId)
   const amountInCents = Math.round(Number(payment?.transaction_amount || 0) * 100)
   const currency = safeText(payment?.currency_id || payment?.currency)

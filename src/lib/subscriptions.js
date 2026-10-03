@@ -7,6 +7,40 @@ export const PROFESSIONAL_TRIAL_MONTHS = 3
 export const ANNUAL_PLAN_MONTHS = 12
 export const PENDING_SUBSCRIPTION_CHECKOUT_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
+const NORMAL_CLIENT_ORDER_MODES = new Set([
+  'geral',
+  'corre',
+  'profissional',
+  'publico',
+  'public',
+  'descoberta',
+  'discovery',
+])
+
+const DIRECT_REQUEST_SEMANTIC_VALUES = new Set([
+  'direto',
+  'direct',
+  'privado',
+  'private',
+  'pedido_direto',
+  'agendamento',
+])
+
+const DIRECT_REQUEST_ONLY_FIELDS = [
+  'agendamento',
+  'aceitadorId',
+  'aceite',
+  'cliente',
+  'clienteId',
+  'destinatarioUid',
+  'privateRequestId',
+  'profissional',
+  'profissionalId',
+  'profissionalUid',
+  'servico',
+  'targetId',
+]
+
 export const TERMINAL_ORDER_STATUSES = new Set([
   'finalizado',
   'concluido',
@@ -134,6 +168,43 @@ export function canCreateClientDirectRequest(user = {}, options = {}) {
     reason: allowed ? 'active_client_subscription' : 'client_direct_subscription_required',
     subscription,
   }
+}
+
+export function validateNormalClientOrderRequest(body = {}) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { allowed: false, reason: 'invalid_normal_order' }
+  }
+  const input = body.order
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { allowed: false, reason: 'invalid_normal_order' }
+  }
+
+  const type = String(input.tipo || 'pedido').trim().toLowerCase()
+  const mode = String(input.modoPedido || 'geral').trim().toLowerCase()
+  if (DIRECT_REQUEST_SEMANTIC_VALUES.has(type) || DIRECT_REQUEST_SEMANTIC_VALUES.has(mode)) {
+    return { allowed: false, reason: 'direct_request_requires_client_subscription' }
+  }
+  if (!NORMAL_CLIENT_ORDER_MODES.has(mode)) {
+    return { allowed: false, reason: 'invalid_normal_order_mode' }
+  }
+
+  const hasDirectRequestField = DIRECT_REQUEST_ONLY_FIELDS.some((field) => (
+    Object.prototype.hasOwnProperty.call(body, field)
+    || Object.prototype.hasOwnProperty.call(input, field)
+  ))
+  if (
+    hasDirectRequestField
+    || body.privateRequest === true
+    || input.privateRequest === true
+    || body.privado === true
+    || input.privado === true
+    || body.publico === false
+    || input.publico === false
+  ) {
+    return { allowed: false, reason: 'direct_request_requires_client_subscription' }
+  }
+
+  return { allowed: true, reason: 'normal_client_order' }
 }
 
 export function canUseProfessionalFeatures(user = {}, now = Date.now()) {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { registerHooks } from 'node:module'
 import { commercialAuditKey } from '../src/lib/commercialAuditKey.js'
 import {
   buildMercadoPagoSignatureDiagnostic,
@@ -11,6 +12,10 @@ import {
   verifyAuthoritativeSubscriptionReturn,
 } from '../src/lib/subscriptionReturn.js'
 import {
+  CLIENT_ANNUAL_PRICE_CENTS,
+  CLIENT_ANNUAL_PRODUCT_ID,
+  PROFESSIONAL_ANNUAL_PRICE_CENTS,
+  PROFESSIONAL_ANNUAL_PRODUCT_ID,
   addCalendarMonths,
   canCreateClientDirectRequest,
   canReusePendingSubscriptionCheckout,
@@ -18,9 +23,27 @@ import {
   getClientSubscriptionStatus,
   getProfessionalSubscriptionStatus,
   isSubscriptionSessionCurrent,
+  validateNormalClientOrderRequest,
 } from '../src/lib/subscriptions.js'
 
 const now = Date.UTC(2026, 7, 30, 12)
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier.startsWith('@/')) {
+      return {
+        shortCircuit: true,
+        url: new URL(`../src/${specifier.slice(2)}.js`, import.meta.url).href,
+      }
+    }
+    return nextResolve(specifier, context)
+  },
+})
+
+const {
+  processApprovedCommercialPayment,
+  referenceKey,
+} = await import('../src/lib/commercialServer.js')
 
 const webhookSecret = 'test-only-webhook-secret'
 const webhookRequestId = 'request-test-123'
@@ -32,6 +55,134 @@ function signedWebhookHeaders(dataId, signatureOverride = '') {
     'x-request-id': webhookRequestId,
     'x-signature': `ts=${webhookTimestamp},v1=${signature}`,
   })
+}
+
+function cloneValue(value) {
+  return value === undefined ? undefined : structuredClone(value)
+}
+
+function createMemoryDatabase(initial = {}) {
+  const state = cloneValue(initial)
+  const pathParts = (path = '') => String(path).split('/').filter(Boolean)
+
+  const read = (path = '') => {
+    let current = state
+    for (const part of pathParts(path)) {
+      if (!current || typeof current !== 'object' || !(part in current)) return null
+      current = current[part]
+    }
+    return cloneValue(current)
+  }
+
+  const write = (path, value) => {
+    const parts = pathParts(path)
+    if (!parts.length) throw new Error('memory_database_root_write_not_supported')
+    let current = state
+    for (const part of parts.slice(0, -1)) {
+      if (!current[part] || typeof current[part] !== 'object') current[part] = {}
+      current = current[part]
+    }
+    const key = parts.at(-1)
+    if (value == null) delete current[key]
+    else current[key] = cloneValue(value)
+  }
+
+  const snapshot = (value) => ({ val: () => cloneValue(value) })
+
+  return {
+    ref(path = '') {
+      const basePath = pathParts(path).join('/')
+      return {
+        async get() {
+          return snapshot(read(basePath))
+        },
+        async set(value) {
+          write(basePath, value)
+        },
+        async update(values) {
+          for (const [relativePath, value] of Object.entries(values || {})) {
+            write([basePath, relativePath].filter(Boolean).join('/'), value)
+          }
+        },
+        async transaction(updater) {
+          const current = read(basePath)
+          const next = updater(cloneValue(current))
+          if (next === undefined) {
+            return { committed: false, snapshot: snapshot(current) }
+          }
+          write(basePath, next)
+          return { committed: true, snapshot: snapshot(next) }
+        },
+      }
+    },
+    read,
+    remove(path) {
+      write(path, null)
+    },
+  }
+}
+
+function commercialPaymentScenario({
+  attemptId = 'attempt-client',
+  userId = 'user-a',
+  productId = CLIENT_ANNUAL_PRODUCT_ID,
+  referenceUserId = userId,
+  referenceProductId = productId,
+  targetId = userId,
+  referenceTargetId = targetId,
+  paymentId = 'payment-client',
+  status = 'approved',
+  amountInCents = productId === PROFESSIONAL_ANNUAL_PRODUCT_ID
+    ? PROFESSIONAL_ANNUAL_PRICE_CENTS
+    : CLIENT_ANNUAL_PRICE_CENTS,
+  currency = 'BRL',
+  initial = {},
+} = {}) {
+  const externalReference = [
+    referenceProductId,
+    referenceUserId,
+    referenceTargetId,
+    attemptId,
+    'nonce1234567890',
+  ].join(':')
+  const attempt = {
+    id: attemptId,
+    userId,
+    productId,
+    targetId,
+    externalReference,
+    amountInCents,
+    currency: 'BRL',
+    status: 'checkout_created',
+  }
+  const database = createMemoryDatabase({
+    ...cloneValue(initial),
+    commercialCheckoutAttempts: {
+      ...(cloneValue(initial?.commercialCheckoutAttempts) || {}),
+      [attemptId]: attempt,
+    },
+  })
+  return {
+    attempt,
+    database,
+    payment: {
+      id: paymentId,
+      status,
+      external_reference: externalReference,
+      transaction_amount: amountInCents / 100,
+      currency_id: currency,
+    },
+  }
+}
+
+async function withFixedNow(timestamp, callback) {
+  const originalNow = Date.now
+  Date.now = () => timestamp
+  try {
+    return await callback()
+  } finally {
+    Date.now = originalNow
+  }
 }
 
 const validWebhookDataId = '123456789'
@@ -187,6 +338,256 @@ assert.equal(legacySignatureDiagnostic.hasLegacyIdQuery, true)
 assert.equal(legacySignatureDiagnostic.hasLegacyTopicQuery, true)
 assert.equal(legacySignatureDiagnostic.hasBodyResource, true)
 assert.doesNotMatch(JSON.stringify(legacySignatureDiagnostic), /must-not-be-logged/)
+
+const paymentNow = Date.UTC(2026, 9, 3, 12)
+const approvedClient = commercialPaymentScenario()
+const approvedClientResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: approvedClient.database,
+  payment: approvedClient.payment,
+}))
+const activatedClientPlan = approvedClient.database.read('users/user-a/subscriptions/client')
+assert.equal(approvedClientResult.ok, true, 'L: payment approved valido e processado')
+assert.equal(approvedClientResult.activated, true, 'L: payment approved valido ativa assinatura')
+assert.equal(activatedClientPlan.status, 'active')
+assert.equal(activatedClientPlan.plan, 'annual')
+assert.equal(activatedClientPlan.paymentId, approvedClient.payment.id)
+assert.equal(activatedClientPlan.expiresAt, addCalendarMonths(paymentNow, 12))
+assert.equal(
+  approvedClient.database.read('users/user-a/subscriptions/professional'),
+  null,
+  'V: pagamento Cliente nao ativa Plano Profissional',
+)
+
+const firstClientExpiry = activatedClientPlan.expiresAt
+approvedClient.database.remove(
+  `processedPaymentEvents/${referenceKey(`${approvedClient.payment.id}:approved`)}`,
+)
+const repeatedClientResult = await withFixedNow(paymentNow + 1_000, () => processApprovedCommercialPayment({
+  database: approvedClient.database,
+  payment: approvedClient.payment,
+}))
+assert.equal(repeatedClientResult.duplicate, true, 'M: transaction da assinatura reconhece paymentId repetido')
+assert.equal(
+  approvedClient.database.read('users/user-a/subscriptions/client/expiresAt'),
+  firstClientExpiry,
+  'M: mesmo paymentId nao amplia expiresAt mesmo se o lock precisar ser refeito',
+)
+
+for (const status of ['pending', 'rejected', 'cancelled']) {
+  const scenario = commercialPaymentScenario({
+    attemptId: `attempt-${status}`,
+    paymentId: `payment-${status}`,
+    status,
+  })
+  const result = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+    database: scenario.database,
+    payment: scenario.payment,
+  }))
+  assert.equal(result.activated, false, `${status} nao ativa assinatura`)
+  assert.equal(result.reason, 'payment_not_approved')
+  assert.equal(scenario.database.read('users/user-a/subscriptions/client'), null)
+}
+
+const invalidProduct = commercialPaymentScenario({
+  attemptId: 'attempt-invalid-product',
+  paymentId: 'payment-invalid-product',
+  productId: 'UNKNOWN_PRODUCT',
+  referenceProductId: 'UNKNOWN_PRODUCT',
+})
+const invalidProductResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: invalidProduct.database,
+  payment: invalidProduct.payment,
+}))
+assert.equal(invalidProductResult.reason, 'invalid_product', 'Q: produto fora do catalogo nao ativa')
+assert.equal(invalidProduct.database.read('users/user-a/subscriptions'), null)
+
+const invalidAmount = commercialPaymentScenario({
+  attemptId: 'attempt-invalid-amount',
+  paymentId: 'payment-invalid-amount',
+  amountInCents: CLIENT_ANNUAL_PRICE_CENTS + 1,
+})
+const invalidAmountResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: invalidAmount.database,
+  payment: invalidAmount.payment,
+}))
+assert.equal(invalidAmountResult.reason, 'invalid_amount_or_currency', 'R: valor divergente nao ativa')
+assert.equal(invalidAmount.database.read('users/user-a/subscriptions/client'), null)
+
+const invalidCurrency = commercialPaymentScenario({
+  attemptId: 'attempt-invalid-currency',
+  paymentId: 'payment-invalid-currency',
+  currency: 'USD',
+})
+const invalidCurrencyResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: invalidCurrency.database,
+  payment: invalidCurrency.payment,
+}))
+assert.equal(invalidCurrencyResult.reason, 'invalid_amount_or_currency', 'S: moeda divergente nao ativa')
+assert.equal(invalidCurrency.database.read('users/user-a/subscriptions/client'), null)
+
+const invalidReferenceResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: createMemoryDatabase(),
+  payment: {
+    id: 'payment-invalid-reference',
+    status: 'approved',
+    external_reference: 'invalid',
+    transaction_amount: CLIENT_ANNUAL_PRICE_CENTS / 100,
+    currency_id: 'BRL',
+  },
+}))
+assert.equal(invalidReferenceResult.reason, 'invalid_external_reference', 'T: external_reference invalida nao ativa')
+
+const missingAttemptResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: createMemoryDatabase(),
+  payment: {
+    id: 'payment-missing-attempt',
+    status: 'approved',
+    external_reference: `${CLIENT_ANNUAL_PRODUCT_ID}:user-a:user-a:missing-attempt:nonce`,
+    transaction_amount: CLIENT_ANNUAL_PRICE_CENTS / 100,
+    currency_id: 'BRL',
+  },
+}))
+assert.equal(missingAttemptResult.reason, 'attempt_not_found', 'attempt inexistente nao ativa')
+
+const incompatibleUid = commercialPaymentScenario({
+  attemptId: 'attempt-incompatible-uid',
+  paymentId: 'payment-incompatible-uid',
+  userId: 'user-a',
+  referenceUserId: 'user-b',
+})
+const incompatibleUidResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: incompatibleUid.database,
+  payment: incompatibleUid.payment,
+}))
+assert.equal(incompatibleUidResult.reason, 'attempt_identity_mismatch', 'U: UID incompatível nao ativa')
+assert.equal(incompatibleUid.database.read('users/user-a/subscriptions/client'), null)
+const incompatibleUidLockPath = `processedPaymentEvents/${referenceKey(`${incompatibleUid.payment.id}:approved`)}`
+assert.equal(
+  incompatibleUid.database.read(`${incompatibleUidLockPath}/status`),
+  'ignored',
+  'U: mismatch anterior a ativacao nao e marcado falsamente como processed',
+)
+const repeatedIncompatibleUidResult = await withFixedNow(paymentNow + 1_000, () => processApprovedCommercialPayment({
+  database: incompatibleUid.database,
+  payment: incompatibleUid.payment,
+}))
+assert.equal(repeatedIncompatibleUidResult.duplicate, true, 'U: repeticao nao contorna a guarda de identidade')
+assert.equal(incompatibleUid.database.read('users/user-a/subscriptions/client'), null)
+assert.equal(incompatibleUid.database.read('users/user-b/subscriptions/client'), null)
+
+const inverseIncompatibleUid = commercialPaymentScenario({
+  attemptId: 'attempt-inverse-incompatible-uid',
+  paymentId: 'payment-inverse-incompatible-uid',
+  userId: 'user-b',
+  targetId: 'user-b',
+  referenceUserId: 'user-a',
+  referenceTargetId: 'user-a',
+})
+const inverseIncompatibleUidResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: inverseIncompatibleUid.database,
+  payment: inverseIncompatibleUid.payment,
+}))
+assert.equal(inverseIncompatibleUidResult.reason, 'attempt_identity_mismatch', 'U: attempt UID B nao ativa external_reference UID A')
+assert.equal(inverseIncompatibleUid.database.read('users/user-a/subscriptions/client'), null)
+assert.equal(inverseIncompatibleUid.database.read('users/user-b/subscriptions/client'), null)
+assert.equal(
+  inverseIncompatibleUid.database.read(
+    `processedPaymentEvents/${referenceKey(`${inverseIncompatibleUid.payment.id}:approved`)}/status`,
+  ),
+  'ignored',
+  'U: mismatch inverso tambem permanece fail-closed',
+)
+
+const incompatibleTarget = commercialPaymentScenario({
+  attemptId: 'attempt-incompatible-target',
+  paymentId: 'payment-incompatible-target',
+  referenceTargetId: 'user-b',
+})
+const incompatibleTargetResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: incompatibleTarget.database,
+  payment: incompatibleTarget.payment,
+}))
+assert.equal(incompatibleTargetResult.reason, 'attempt_identity_mismatch', 'U: target incompatível nao ativa')
+assert.equal(incompatibleTarget.database.read('users/user-a/subscriptions/client'), null)
+
+const incompatibleAttemptId = commercialPaymentScenario({
+  attemptId: 'attempt-incompatible-id',
+  paymentId: 'payment-incompatible-attempt-id',
+})
+await incompatibleAttemptId.database.ref('commercialCheckoutAttempts/attempt-incompatible-id').update({
+  id: 'different-attempt-id',
+})
+const incompatibleAttemptIdResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: incompatibleAttemptId.database,
+  payment: incompatibleAttemptId.payment,
+}))
+assert.equal(incompatibleAttemptIdResult.reason, 'attempt_identity_mismatch', 'U: attemptId incompatível nao ativa')
+assert.equal(incompatibleAttemptId.database.read('users/user-a/subscriptions/client'), null)
+
+const incompatibleProduct = commercialPaymentScenario({
+  attemptId: 'attempt-incompatible-product',
+  paymentId: 'payment-incompatible-product',
+  productId: PROFESSIONAL_ANNUAL_PRODUCT_ID,
+  referenceProductId: CLIENT_ANNUAL_PRODUCT_ID,
+  amountInCents: PROFESSIONAL_ANNUAL_PRICE_CENTS,
+})
+const incompatibleProductResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: incompatibleProduct.database,
+  payment: incompatibleProduct.payment,
+}))
+assert.equal(incompatibleProductResult.reason, 'attempt_identity_mismatch', 'Q: produto incompatível com attempt nao ativa')
+assert.equal(incompatibleProduct.database.read('users/user-a/subscriptions'), null)
+
+const approvedProfessional = commercialPaymentScenario({
+  attemptId: 'attempt-professional',
+  paymentId: 'payment-professional',
+  productId: PROFESSIONAL_ANNUAL_PRODUCT_ID,
+})
+const approvedProfessionalResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: approvedProfessional.database,
+  payment: approvedProfessional.payment,
+}))
+assert.equal(approvedProfessionalResult.activated, true, 'J/L: pagamento Profissional approved ativa')
+assert.equal(
+  approvedProfessional.database.read('users/user-a/subscriptions/professional/status'),
+  'active',
+)
+assert.equal(
+  approvedProfessional.database.read('users/user-a/subscriptions/client'),
+  null,
+  'W: pagamento Profissional nao ativa Plano Cliente',
+)
+
+const renewalBase = Date.UTC(2027, 9, 3, 12)
+const earlyRenewal = commercialPaymentScenario({
+  attemptId: 'attempt-early-renewal',
+  paymentId: 'payment-early-renewal',
+  initial: {
+    users: {
+      'user-a': {
+        subscriptions: {
+          client: {
+            status: 'active',
+            plan: 'annual',
+            startedAt: paymentNow - 1_000,
+            expiresAt: renewalBase,
+            paymentId: 'previous-payment',
+          },
+        },
+      },
+    },
+  },
+})
+const earlyRenewalResult = await withFixedNow(paymentNow, () => processApprovedCommercialPayment({
+  database: earlyRenewal.database,
+  payment: earlyRenewal.payment,
+}))
+assert.equal(earlyRenewalResult.activated, true)
+assert.equal(
+  earlyRenewal.database.read('users/user-a/subscriptions/client/expiresAt'),
+  addCalendarMonths(renewalBase, 12),
+  'X: renovacao antecipada soma do vencimento atual',
+)
 
 const pendingA = {
   uid: 'user-a',
@@ -433,16 +834,82 @@ const trial = getProfessionalSubscriptionStatus({
 assert.equal(trial.canUseProfessionalFeatures, true)
 assert.equal(trial.status, 'trial')
 
+const activeProfessional = getProfessionalSubscriptionStatus({
+  subscriptions: { professional: { status: 'active', plan: 'annual', expiresAt: now + 10_000 } },
+}, now)
+assert.equal(activeProfessional.status, 'active', 'J: Profissional ativo permanece liberado')
+assert.equal(activeProfessional.canUseProfessionalFeatures, true)
+
 const expired = getProfessionalSubscriptionStatus({
   subscriptions: { professional: { status: 'trial', trialStartedAt: now - 1000, trialEndsAt: now - 1 } },
 }, now)
 assert.equal(expired.status, 'expired')
 assert.equal(expired.canUseProfessionalFeatures, false)
 
+const expiredProfessional = getProfessionalSubscriptionStatus({
+  subscriptions: { professional: { status: 'active', plan: 'annual', expiresAt: now - 1 } },
+}, now)
+assert.equal(expiredProfessional.status, 'expired', 'K: Profissional vencido deixa de poder iniciar novas ações protegidas')
+assert.equal(expiredProfessional.canUseProfessionalFeatures, false)
+
+assert.equal(
+  validateNormalClientOrderRequest({ order: { tipo: 'pedido', modoPedido: 'geral' } }).allowed,
+  true,
+  'A: pedido normal canonico permanece permitido pela validacao semantica',
+)
+assert.equal(
+  validateNormalClientOrderRequest({ order: { tipo: 'oferta', modoPedido: 'profissional' } }).allowed,
+  true,
+  'A: modo publico legado profissional continua sendo pedido publico, nao contratacao direta',
+)
+for (const directType of ['pedido_direto', 'agendamento', 'direto', 'privado']) {
+  assert.equal(
+    validateNormalClientOrderRequest({ order: { tipo: directType, modoPedido: 'geral' } }).allowed,
+    false,
+    `B/C: tipo ${directType} nao usa a gratuidade de pedido normal`,
+  )
+}
+for (const directMode of ['pedido_direto', 'agendamento', 'direto', 'private']) {
+  assert.equal(
+    validateNormalClientOrderRequest({ order: { tipo: 'pedido', modoPedido: directMode } }).allowed,
+    false,
+    `B/C: modo ${directMode} nao usa a gratuidade de pedido normal`,
+  )
+}
+for (const directField of ['profissionalId', 'profissional', 'agendamento', 'servico', 'aceite']) {
+  assert.equal(
+    validateNormalClientOrderRequest({
+      order: { tipo: 'pedido', modoPedido: 'geral', [directField]: directField.endsWith('Id') ? 'worker-b' : {} },
+    }).allowed,
+    false,
+    `C/D: campo ${directField} de contratacao direcionada e rejeitado`,
+  )
+}
+assert.equal(
+  validateNormalClientOrderRequest({
+    profissionalId: 'worker-b',
+    tipo: 'pedido_direto',
+    order: { tipo: 'pedido', modoPedido: 'geral' },
+  }).allowed,
+  false,
+  'D: envelope com profissional especifico nao e transformado silenciosamente em pedido normal',
+)
+assert.equal(
+  validateNormalClientOrderRequest({ order: { tipo: 'pedido', modoPedido: 'modo-desconhecido' } }).allowed,
+  false,
+  'E: modo inesperado nao transforma pedido normal em outro produto comercial',
+)
+assert.equal(
+  validateNormalClientOrderRequest({ order: { tipo: 'pedido', modoPedido: 'geral', campoInofensivo: 'ignorado' } }).allowed,
+  true,
+  'E: campo sem semantica comercial nao altera o produto',
+)
+
 const commercialSource = await readFile(new URL('../src/lib/commercialServer.js', import.meta.url), 'utf8')
 const checkoutRouteSource = await readFile(new URL('../src/app/api/planos/checkout/route.js', import.meta.url), 'utf8')
 const statusRouteSource = await readFile(new URL('../src/app/api/subscriptions/status/route.js', import.meta.url), 'utf8')
 const webhookRouteSource = await readFile(new URL('../src/app/api/mercado-pago/webhook/route.js', import.meta.url), 'utf8')
+const orderCreateRouteSource = await readFile(new URL('../src/app/api/pedidos/create/route.js', import.meta.url), 'utf8')
 assert.match(commercialSource, /processedPaymentEvents/)
 assert.match(
   commercialSource,
@@ -480,6 +947,36 @@ assert.ok(
 )
 assert.match(commercialSource, /activateAnnualSubscription\(\{ database, attempt, payment \}\)/, 'aprovado ativa somente pelo backend')
 assert.match(statusRouteSource, /readSubscriptionSummary\(database, uid\)/, 'frontend confirma pelo status backend')
+assert.match(
+  orderCreateRouteSource,
+  /const updates = \{[\s\S]*?pedidos\/\$\{id\}[\s\S]*?publicRequests\/\$\{id\}[\s\S]*?users\/\$\{uid\}\/clientFreeOrderUsed[\s\S]*?\}[\s\S]*?await database\.ref\(\)\.update\(updates\)/,
+  'B/C: pedido, publicação e consumo da gratuidade usam um único update multipath atômico',
+)
+assert.ok(
+  orderCreateRouteSource.indexOf('await database.ref().update(updates)')
+    < orderCreateRouteSource.indexOf('ok: true'),
+  'B/C: sucesso só é devolvido depois da criação atômica que consome a gratuidade',
+)
+assert.doesNotMatch(
+  orderCreateRouteSource,
+  /ref\([^\n]*clientFreeOrderUsed[^\n]*\)\.(?:set|update)\(/,
+  'B: não existe escrita isolada capaz de consumir gratuidade antes de criar o pedido',
+)
+assert.ok(
+  orderCreateRouteSource.indexOf('validateNormalClientOrderRequest(body)')
+    < orderCreateRouteSource.indexOf('const database = getCommercialDatabase()'),
+  'B-F: payload comercial incompatível e rejeitado antes de obter database, lock ou consumir gratuidade',
+)
+assert.ok(
+  orderCreateRouteSource.indexOf('validateNormalClientOrderRequest(body)')
+    < orderCreateRouteSource.indexOf('lockRef = await acquireLock(database, uid, requestId, now)'),
+  'F: rejeição semântica acontece antes do lock e de qualquer escrita',
+)
+assert.match(
+  orderCreateRouteSource,
+  /if \(!inputValidation\.allowed\) \{[\s\S]*?return NextResponse\.json\([\s\S]*?status: 400/,
+  'B-E: /api/pedidos/create falha fechado para payload que representa contratação direta',
+)
 
 const subscriptionServerSource = await readFile(new URL('../src/lib/subscriptionServer.js', import.meta.url), 'utf8')
 assert.match(subscriptionServerSource, /hasPaidSubscriptionHistory/)
@@ -523,6 +1020,8 @@ assert.match(subscriptionClientSource, /ensureClientDirectRequestAccess/)
 assert.doesNotMatch(subscriptionClientSource, /update\([^\n]*subscriptions/)
 
 const privateCreateRouteSource = await readFile(new URL('../src/app/api/private-requests/create/route.js', import.meta.url), 'utf8')
+const claimRouteSource = await readFile(new URL('../src/app/api/pedidos/claim/route.js', import.meta.url), 'utf8')
+const privateRespondRouteSource = await readFile(new URL('../src/app/api/private-requests/respond/route.js', import.meta.url), 'utf8')
 const privateRequestsSource = await readFile(new URL('../src/lib/privateRequests.js', import.meta.url), 'utf8')
 const mapSource = await readFile(new URL('../src/components/Mapadinamico.jsx', import.meta.url), 'utf8')
 for (const existingFlowRoute of [
@@ -538,6 +1037,8 @@ assert.match(privateCreateRouteSource, /getAuthenticatedUid\(request\)/, 'H: cha
 assert.match(privateCreateRouteSource, /ensureClientDirectRequestAccess\(database, uid, now\)/, 'H: chamada direta sem assinatura e bloqueada')
 assert.match(privateCreateRouteSource, /claimedClientUid && claimedClientUid !== uid/, 'I: UID C nao cria em nome de A')
 assert.match(privateCreateRouteSource, /database\.ref\(\)\.update\(\{[\s\S]*privateRequests[\s\S]*privateRequestInbox/, 'criacao permitida grava principal e indices atomicamente')
+assert.match(claimRouteSource, /ensureProfessionalFeatureAccess\(database, uid\)/, 'I/K: claim novo exige trial ou Plano Profissional válido')
+assert.match(privateRespondRouteSource, /ensureProfessionalFeatureAccess\(database, actorUid\)/, 'I/K: novo aceite privado exige trial ou Plano Profissional válido')
 assert.match(privateRequestsSource, /fetch\('\/api\/private-requests\/create'/, 'cliente nao cria privateRequest pelo SDK Firebase')
 assert.doesNotMatch(privateRequestsSource, /update\(ref\(database, requestPath\), request\)/, 'frontend nao possui writer direto antigo')
 assert.match(mapSource, /criarPedidoDiretoPortfolio[\s\S]*confirmarAcessoContratacaoDireta/, 'J: pedido direto do perfil/portfolio possui preflight')
