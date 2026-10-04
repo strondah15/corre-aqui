@@ -17,51 +17,104 @@ import {
   onDisconnect,
   remove,
   get,
+  getIfReadable,
   query,
+  orderByChild,
+  equalTo,
   limitToLast,
   runTransaction,
 } from '@/lib/firebaseDebug'
-import { getOnlineTimestamp, getUserOnlinePreference, isOnlineRecente, setUserOnlinePreference, splitUsuariosOnline } from '@/lib/presence'
-import { canPublishPublicAvailability, toPublicAvailabilityGrid } from '@/lib/publicAvailability'
+import { getOnlineTimestamp, getUserOnlinePreference, isOnlineRecente, setUserOnlinePreference, splitUsuariosOnline, updateOwnPresence } from '@/lib/presence'
+import {
+  buildPublicAvailabilityPayload,
+  describePublicAvailabilityEligibility,
+  describePublicAvailabilityPayload,
+  getPublicAvailabilityEligibility,
+  PUBLIC_AVAILABILITY_HEARTBEAT_MS,
+} from '@/lib/publicAvailability'
 import { normalizePublicRequest } from '@/lib/publicRequests'
+import { createClaimUiCheck, removePublicRequestCard, replacePublicRequestCards } from '@/lib/publicRequestClaimUi'
 import { deletePublicRequest, synchronizePublicRequest } from '@/lib/pedidoProjectionClient'
 import { subscribeParticipantAgendamentos } from '@/lib/agendamentos'
 import { createPrivateRequest, notifyPublicRequestAccepted, reconcilePrivateRequestInbox } from '@/lib/privateRequests'
-import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, transitionAtendimento } from '@/lib/atendimento'
+import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, normalizeServiceAttendanceStatus, transitionAtendimento } from '@/lib/atendimento'
 import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
 import { TUTORIAL_ACTIONS, TUTORIAL_EVENTS } from '@/lib/tutorial/tutorialConfig'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
 import { createEventNotificationId } from '@/lib/eventNotifications'
 import { REQUEST_BOOST_PRODUCT_ID } from '@/lib/commercialProducts'
-import { canAppearInPublicDirectory, mergePublicProfileWithPresence } from '@/lib/publicWorkProfile'
+import {
+  canAppearInPublicDirectory,
+  getPublicCategoryIds,
+  getOwnPublicAvailabilityProfileNormalization,
+  mergePublicProfileWithPresence,
+  projectPublicProfileForWrite,
+} from '@/lib/publicWorkProfile'
+import { resolveLegacyAccountState } from '@/lib/legacyAccountState'
 import { registrarMensagemSistemaConfiavel } from '@/lib/trustedSystemChat'
 import { saveCanonicalServiceRating } from '@/lib/serviceRatings'
+import { getIndexedPublicPedidoIds, getIndexedPublicPedidoRevisionKey, isPedidoParticipant } from '@/lib/conversations'
+import { subscribeSessionEnding } from '@/lib/sessionLogout'
+import { createChatHref, getChatOriginFromContext, prefetchChatRoute } from '@/lib/chatNavigation'
+import { ensureClientDirectRequestAccess } from '@/lib/subscriptionClient'
 
-import PerfilDrawer from '@/components/PerfilDrawer'
-import ModalIA from './ModalIA'
-import ModalAgenda from './ModalAgenda'
-import ChatMensagens from './ChatMensagens'
-import ListaConversas from './ListaConversas'
-import MeusPedidosCliente from '@/components/MeusPedidosCliente'
-import AgendaProfissional from '@/components/AgendaProfissional'
-import CentralNotificacoes from '@/components/CentralNotificacoes'
-import PainelProblemasDenuncias from '@/components/PainelProblemasDenuncias'
 import StatusFluxoServico from '@/components/StatusFluxoServico'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 import AvaliacaoAtendimentoModal from '@/components/AvaliacaoAtendimentoModal'
+import {
+  ClientHomeSkeleton,
+  FullScreenModalSkeleton,
+  ListPanelSkeleton,
+  ModalCardSkeleton,
+  ProfileDrawerSkeleton,
+} from '@/components/LoadingSkeletons'
 
 // ✅ NOVOS COMPONENTES
 import BottomBar from '@/components/BottomBar'
 
-import ClienteHome from '@/components/ClienteHome'
-import ListaProfissionais from '@/components/ListaProfissionais'
-import PerfilPublico from '@/components/PerfilPublico'
-
 // ✅ CATEGORIAS
 import { CATEGORIES, categoryMatches, getCanonicalCategoryId, getCategoryById } from '@/constants/categories'
 
+function AgendaPanelLoading() {
+  return <ListPanelSkeleton label="Carregando agenda" rows={3} />
+}
+
+function InboxPanelLoading() {
+  return <ListPanelSkeleton label="Carregando conversas" dark rows={4} />
+}
+
+function OrdersPanelLoading() {
+  return <ListPanelSkeleton label="Carregando pedidos" rows={3} />
+}
+
+function LightPanelLoading() {
+  return <ListPanelSkeleton label="Carregando conteúdo" rows={3} />
+}
+
+function CreationModalLoading() {
+  return <FullScreenModalSkeleton label="Carregando criação de pedido" />
+}
+
+function AgendaModalLoading() {
+  return <ModalCardSkeleton label="Carregando agendamento" />
+}
+
+function PublicProfileLoading() {
+  return <ModalCardSkeleton label="Carregando perfil profissional" />
+}
+
 const MapinhaModal = dynamic(() => import('./MapinhaModal'), { ssr: false })
+const ClienteHome = dynamic(() => import('@/components/ClienteHome'), { loading: ClientHomeSkeleton })
+const PerfilDrawer = dynamic(() => import('@/components/PerfilDrawer'), { loading: ProfileDrawerSkeleton })
+const ModalIA = dynamic(() => import('./ModalIA'), { loading: CreationModalLoading })
+const ModalAgenda = dynamic(() => import('./ModalAgenda'), { loading: AgendaModalLoading })
+const ListaConversas = dynamic(() => import('@/components/ListaConversas'), { loading: InboxPanelLoading })
+const MeusPedidosCliente = dynamic(() => import('@/components/MeusPedidosCliente'), { loading: OrdersPanelLoading })
+const AgendaProfissional = dynamic(() => import('@/components/AgendaProfissional'), { loading: AgendaPanelLoading })
+const CentralNotificacoes = dynamic(() => import('@/components/CentralNotificacoes'), { loading: LightPanelLoading })
+const PainelProblemasDenuncias = dynamic(() => import('@/components/PainelProblemasDenuncias'), { loading: LightPanelLoading })
+const PerfilPublico = dynamic(() => import('@/components/PerfilPublico'), { loading: PublicProfileLoading })
 const COMMERCIAL_HIGHLIGHTS_UI_ENABLED = false
 
 /* =======================
@@ -87,18 +140,34 @@ const compactCategoryLabel = (label, max = 12) => {
 const DEBUG_PRESENCE =
   process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEBUG_PRESENCE === 'true'
 const DEBUG_NAV_PERF = process.env.NODE_ENV !== 'production'
+const DEBUG_PUBLIC_REQUESTS = process.env.NODE_ENV !== 'production'
 const LIST_STATE_PREFIX = 'correAqui:listState:v2'
 const LIST_RETURN_FLAG = 'correAqui:returningToList'
 const PEDIDOS_PAGE_SIZE = 10
 const PEDIDO_NOVO_MS = 24 * 60 * 60 * 1000
 const PEDIDO_RECENTE_MS = 3 * 24 * 60 * 60 * 1000
 const PEDIDO_ANTIGO_MS = 7 * 24 * 60 * 60 * 1000
-let pedidosCache = []
-let pedidosCacheReady = false
 
 function debugPresence(message, data = {}) {
   if (!DEBUG_PRESENCE) return
   console.log(`[PRESENCE] ${message}`, data)
+}
+
+function debugPublicAvailability(data = {}) {
+  if (!DEBUG_PRESENCE) return
+  console.log('[PUBLIC_AVAILABILITY]', data)
+}
+
+function debugLegacyOnline(data = {}) {
+  if (process.env.NODE_ENV === 'production') return
+  console.log('[LEGACY_ONLINE]', JSON.stringify(data))
+}
+
+function canonicalWorkRole(accountState = {}) {
+  if (accountState.isCorre && accountState.isProfissional) return 'both'
+  if (accountState.isProfissional) return 'professional'
+  if (accountState.isCorre) return 'corre'
+  return 'client'
 }
 
 function CorreHeroSpeedIcon({ className = '' }) {
@@ -193,10 +262,7 @@ async function getMyLocation() {
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        debugPresence('localizacao permitida', {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        })
+        debugPresence('localizacao aproximada disponivel', { available: true })
         resolve({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
@@ -205,7 +271,6 @@ async function getMyLocation() {
       (error) => {
         debugPresence('localizacao negada', {
           code: error?.code || null,
-          message: error?.message || 'sem detalhe',
         })
         resolve(null)
       },
@@ -254,6 +319,7 @@ const boostInfo = (p) => {
 const PEDIDO_ATIVO_STATUSES = [
   ATENDIMENTO_STATUS.ACEITO,
   ATENDIMENTO_STATUS.EM_ANDAMENTO,
+  ATENDIMENTO_STATUS.A_CAMINHO,
   ATENDIMENTO_STATUS.CHEGOU,
   ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
   'aguardando_inicio',
@@ -262,14 +328,19 @@ const PEDIDO_ATIVO_STATUSES = [
 const isPedidoAtivoStatus = (status) => PEDIDO_ATIVO_STATUSES.includes(normalizeAtendimentoStatus(status))
 
 const getProximoPassoPedido = (p, meuId) => {
-  const status = normalizeAtendimentoStatus(p?.status)
+  const status = normalizeServiceAttendanceStatus({
+    status: p?.status,
+    kind: 'pedido',
+    type: p?.tipo,
+    record: p,
+  })
   const souCliente = !!meuId && String(p?.criador?.id || '') === String(meuId)
   const souAceitador = !!meuId && String(p?.aceite?.id || '') === String(meuId)
 
-  if (status === ATENDIMENTO_STATUS.ACEITO && souCliente) return 'O profissional aceitou. Aguarde o inicio do atendimento.'
-  if (status === ATENDIMENTO_STATUS.ACEITO && souAceitador) return 'Confira os detalhes e toque em Iniciar atendimento.'
-  if (status === ATENDIMENTO_STATUS.EM_ANDAMENTO && souCliente) return 'O profissional esta a caminho.'
-  if (status === ATENDIMENTO_STATUS.EM_ANDAMENTO && souAceitador) return 'Quando chegar, informe ao cliente pelo botao de chegada.'
+  if (status === ATENDIMENTO_STATUS.EM_ANDAMENTO && souCliente) return 'O profissional aceitou. Combine os detalhes pelo chat.'
+  if (status === ATENDIMENTO_STATUS.EM_ANDAMENTO && souAceitador) return 'Combine os detalhes e marque no chat quando estiver a caminho.'
+  if (status === ATENDIMENTO_STATUS.A_CAMINHO && souCliente) return 'O profissional informou que está a caminho.'
+  if (status === ATENDIMENTO_STATUS.A_CAMINHO && souAceitador) return 'Quando chegar, informe ao cliente pelo tracker do chat.'
   if (status === ATENDIMENTO_STATUS.CHEGOU && souCliente) return 'O profissional informou que chegou ao local.'
   if (status === ATENDIMENTO_STATUS.CHEGOU && souAceitador) return 'Solicite a finalizacao quando concluir o servico.'
   if (status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO && souCliente) return 'Confirme a conclusao para finalizar o atendimento.'
@@ -280,8 +351,8 @@ const getProximoPassoPedido = (p, meuId) => {
 
   if (p?.problemaServico) return 'Problema registrado. Acompanhe pelo chat até resolver.'
   if (status === 'aberto') return 'Aguardando alguém aceitar.'
-  if (status === 'aguardando_inicio' && souCliente) return 'O profissional aceitou. Aguarde o início do atendimento.'
-  if (status === 'aguardando_inicio' && souAceitador) return 'Confira os detalhes e toque em Iniciar atendimento.'
+  if (status === 'aguardando_inicio' && souCliente) return 'O profissional aceitou. Combine os detalhes pelo chat.'
+  if (status === 'aguardando_inicio' && souAceitador) return 'Combine os detalhes pelo chat antes do deslocamento.'
   if (status === 'em_atendimento' && souCliente) return 'Atendimento em andamento. Combine tudo pelo chat.'
   if (status === 'em_atendimento' && souAceitador) return 'Atendimento em andamento. Use o chat como central.'
   if (isPedidoAtivoStatus(status) && souCliente) return 'Combine no chat e confirme quando o serviço terminar.'
@@ -403,6 +474,41 @@ const getFreshnessBadgeClass = (status) => {
   if (status === 'antigo') return 'bg-amber-50 text-amber-700 ring-amber-200'
   if (status === 'sem_data') return 'bg-slate-100 text-slate-600 ring-slate-200'
   return 'bg-blue-50 text-blue-700 ring-blue-200'
+}
+
+function getPedidoListExclusionReason({
+  pedido,
+  filtro,
+  meuId,
+  isProfissional,
+  categoriaFiltro,
+  buscaTerm,
+  now,
+}) {
+  const modo = String(pedido?.modoPedido || 'geral').toLowerCase()
+  if (modo === 'profissional' && !isProfissional) return 'professional_role_required'
+
+  const status = normalizeAtendimentoStatus(pedido?.status)
+  if (filtro === 'abertos' && status !== ATENDIMENTO_STATUS.ABERTO) return 'status_not_open'
+  if (filtro === 'meus' && (pedido?.aceite?.id !== meuId || !isPedidoAtivoStatus(status))) return 'not_accepted_by_current_user'
+  if (filtro === 'finalizados' && (status !== ATENDIMENTO_STATUS.FINALIZADO || !isPedidoParticipant(pedido, meuId))) {
+    return 'not_finalized_participant'
+  }
+  if (status === ATENDIMENTO_STATUS.ABERTO && !getRequestFreshness(pedido, now).visibleInPublicList) return 'expired'
+
+  const category = pedido?.categoriaId ?? pedido?.categoria ?? pedido?.category ?? null
+  if (categoriaFiltro === 'sem' && category) return 'category_filter'
+  if (categoriaFiltro !== 'todas' && categoriaFiltro !== 'sem' && !categoryMatches(category, categoriaFiltro)) return 'category_filter'
+
+  if (buscaTerm) {
+    const matches =
+      String(pedido?.titulo || '').toLowerCase().includes(buscaTerm) ||
+      String(pedido?.descricao || '').toLowerCase().includes(buscaTerm) ||
+      String(pedido?.criador?.nome || '').toLowerCase().includes(buscaTerm)
+    if (!matches) return 'search_filter'
+  }
+
+  return ''
 }
 
 const formatDataHora = (v) => {
@@ -1276,7 +1382,7 @@ function GlobalProfileMenu({
 export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {}) {
   const router = useRouter()
   const [tab, setTab] = useState('corre') // corre | inbox | agenda
-  const [clientePainelBaixo, setClientePainelBaixo] = useState('') // '' | meusPedidos | conversas | chat
+  const [clientePainelBaixo, setClientePainelBaixo] = useState('') // '' | meusPedidos | conversas
 
   const [modoApp, setModoApp] = useState(initialMode === 'cliente' || initialMode === 'corre' ? initialMode : 'corre') // cliente | corre
   const [openPerfil, setOpenPerfil] = useState(false)
@@ -1285,11 +1391,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [perfilInitialProfSection, setPerfilInitialProfSection] = useState('')
   const [meuNome, setMeuNome] = useState('')
   const [meuId, setMeuId] = useState('')
+  const [authReady, setAuthReady] = useState(false)
 
   const [fotoURL, setFotoURL] = useState('')
   const [avatarEmoji, setAvatarEmoji] = useState('')
 
-  const [corres, setCorres] = useState(() => (pedidosCacheReady ? pedidosCache : []))
+  const [corres, setCorres] = useState([])
+  const [pedidosParticipantes, setPedidosParticipantes] = useState([])
   const [cardAbertoId, setCardAbertoId] = useState(null)
 
   const [filtro, setFiltro] = useState('abertos')
@@ -1312,43 +1420,68 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [openIA, setOpenIA] = useState(false)
 
   const [categoriaFiltro, setCategoriaFiltro] = useState('todas')
-  const [chatPedido, setChatPedido] = useState(null)
   const [editItem, setEditItem] = useState(null)
   const [editTitulo, setEditTitulo] = useState('')
   const [editDescricao, setEditDescricao] = useState('')
   const [editValor, setEditValor] = useState('')
 
   const [usersObj, setUsersObj] = useState({})
+  const [publicAvailabilityStatus, setPublicAvailabilityStatus] = useState({ loaded: false, error: '' })
   const [publicPortfolioObj, setPublicPortfolioObj] = useState({})
+  const [publicPortfolioStatus, setPublicPortfolioStatus] = useState({ loaded: false, error: '' })
   const [registeredUsersObj, setRegisteredUsersObj] = useState({})
+  const [registeredUsersStatus, setRegisteredUsersStatus] = useState({ loaded: false, error: '' })
   const [meuUserProfile, setMeuUserProfile] = useState(null)
+  const [meuUserProfileLoaded, setMeuUserProfileLoaded] = useState(false)
+  const [ownAvailabilityProfile, setOwnAvailabilityProfile] = useState(null)
+  const [ownAvailabilityProfileLoaded, setOwnAvailabilityProfileLoaded] = useState(false)
+  const [availabilityProfilesObj, setAvailabilityProfilesObj] = useState({})
+  const [availabilityNow, setAvailabilityNow] = useState(() => Date.now())
 
   const [toast, setToast] = useState(null)
   const [usuarioSelecionado, setUsuarioSelecionado] = useState(null)
   const [agendaClienteUser, setAgendaClienteUser] = useState(null)
   const [agendaClienteService, setAgendaClienteService] = useState(null)
   const [privateRequests, setPrivateRequests] = useState([])
+  const [privateRequestsStatus, setPrivateRequestsStatus] = useState({ contextKey: '', loading: false, error: '' })
   const [boostPedidoModal, setBoostPedidoModal] = useState(null)
   const [boostCheckoutLoading, setBoostCheckoutLoading] = useState(false)
   const [boostCheckoutResult, setBoostCheckoutResult] = useState(null)
   const notificacoesInicializadasRef = useRef(false)
   const notificacoesVistasRef = useRef(new Set())
   const recompensasEmCursoRef = useRef(new Set())
+  const authoritativeAcceptLockRef = useRef('')
+  const navigationLockRef = useRef('')
+  const chatPrefetchesRef = useRef(new Set())
   const showToast = useCallback((t) => setToast({ ms: 2800, ...t }), [])
+  const navigateOnce = useCallback((href, { replace = false } = {}) => {
+    if (!href || navigationLockRef.current) return false
+    navigationLockRef.current = href
+    if (replace) router.replace(href)
+    else router.push(href)
+    window.setTimeout(() => {
+      if (navigationLockRef.current === href) navigationLockRef.current = ''
+    }, 1200)
+    return true
+  }, [router])
 
-  const [loadingPedidos, setLoadingPedidos] = useState(() => !pedidosCacheReady)
+  useEffect(() => {
+    authoritativeAcceptLockRef.current = ''
+    navigationLockRef.current = ''
+    chatPrefetchesRef.current.clear()
+  }, [meuId])
+
+  const [loadingPedidos, setLoadingPedidos] = useState(true)
   const [erroPedidos, setErroPedidos] = useState(null)
+  const [loadingPedidosParticipantes, setLoadingPedidosParticipantes] = useState(true)
+  const [erroPedidosParticipantes, setErroPedidosParticipantes] = useState(null)
   const [abrindoPedidoId, setAbrindoPedidoId] = useState(null)
   const [pedidosRenderLimit, setPedidosRenderLimit] = useState(PEDIDOS_PAGE_SIZE)
   const [pedidosFreshnessNow, setPedidosFreshnessNow] = useState(() => Date.now())
 
   const [aceitandoId, setAceitandoId] = useState(null)
-  const [atendimentoId, setAtendimentoId] = useState(null)
-  const [cancelandoId, setCancelandoId] = useState(null)
-  const [serviçondoId, setServiçondoId] = useState(null)
   const [excluindoId, setExcluindoId] = useState(null)
   const [salvandoEdicao, setSalvandoEdicao] = useState(false)
-  const [conclusaoPedido, setConclusaoPedido] = useState(null)
   const [avaliacaoPedido, setAvaliacaoPedido] = useState(null)
   const [avaliacaoNota, setAvaliacaoNota] = useState(5)
   const [avaliacaoComentario, setAvaliacaoComentario] = useState('')
@@ -1357,6 +1490,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [problemaTipo, setProblemaTipo] = useState('servico_nao_resolvido')
   const [problemaDescricao, setProblemaDescricao] = useState('')
   const [salvandoProblema, setSalvandoProblema] = useState(false)
+
+  const privateRequestsContextKey = meuId && (
+    (modoApp === 'corre' && tab === 'agenda')
+    || (modoApp === 'cliente' && clientePainelBaixo === 'meusPedidos')
+  )
+    ? `${meuId}:${modoApp}`
+    : ''
+  const privateRequestsLoading = Boolean(privateRequestsContextKey)
+    && (privateRequestsStatus.contextKey !== privateRequestsContextKey || privateRequestsStatus.loading)
+  const privateRequestsError = privateRequestsStatus.contextKey === privateRequestsContextKey
+    ? privateRequestsStatus.error
+    : ''
 
   const [unreadInbox, setUnreadInbox] = useState(0)
   const [notificacoesNaoLidas, setNotificacoesNaoLidas] = useState(0)
@@ -1378,9 +1523,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [])
 
   useEffect(() => {
-    if (!meuId || !Array.isArray(corres)) return
+    if (!meuId || !Array.isArray(pedidosParticipantes)) return
 
-    corres
+    pedidosParticipantes
       .filter((pedido) => (
         normalizeAtendimentoStatus(pedido?.status) === ATENDIMENTO_STATUS.FINALIZADO
         && String(pedido?.aceite?.id || '') === String(meuId)
@@ -1394,15 +1539,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           .catch((error) => console.warn('Nao foi possivel contabilizar as recompensas:', error))
           .finally(() => recompensasEmCursoRef.current.delete(pedido.id))
       })
-  }, [corres, meuId])
+  }, [pedidosParticipantes, meuId])
 
   const saveListState = useCallback((markReturning = false) => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || !meuId) return
 
     try {
       window.sessionStorage.setItem(
         listStateKey,
         JSON.stringify({
+          uid: meuId,
           modoApp,
           tab,
           filtro,
@@ -1419,15 +1565,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         window.sessionStorage.setItem(LIST_RETURN_FLAG, listStateKey)
       }
     } catch {}
-  }, [busca, cardAbertoId, categoriaFiltro, clientePainelBaixo, filtro, listStateKey, modoApp, tab])
+  }, [busca, cardAbertoId, categoriaFiltro, clientePainelBaixo, filtro, listStateKey, meuId, modoApp, tab])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined
+    if (typeof window === 'undefined' || !meuId) return undefined
 
     try {
       const raw = window.sessionStorage.getItem(listStateKey)
       const saved = raw ? JSON.parse(raw) : null
       if (!saved || Date.now() - Number(saved.ts || 0) > 10 * 60 * 1000) return undefined
+      if (String(saved.uid || '') !== String(meuId)) return undefined
 
       if (saved.modoApp === 'cliente' || saved.modoApp === 'corre') setModoApp(saved.modoApp)
       if (saved.tab) setTab(saved.tab)
@@ -1485,7 +1632,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       }
     } catch {}
     return undefined
-  }, [listStateKey])
+  }, [listStateKey, meuId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
@@ -1518,7 +1665,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const voltarModoLimpo = () => {
     setOpenPerfil(false)
     setOpenIA(false)
-    setChatPedido(null)
     setMapItem(null)
     setOpenMapaAoVivo(false)
     setBuscaUsuarioMapa('')
@@ -1533,12 +1679,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
     lastScrollYRef.current = window.scrollY || document.documentElement.scrollTop || 0
     let ticking = false
+    let frame = 0
 
     const onScroll = () => {
       if (ticking) return
 
       ticking = true
-      window.requestAnimationFrame(() => {
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
         const currentY = window.scrollY || document.documentElement.scrollTop || 0
         const diff = currentY - lastScrollYRef.current
         const isMobile = window.innerWidth < 768
@@ -1563,6 +1711,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     window.addEventListener('resize', onScroll)
     onScroll()
     return () => {
+      if (frame) window.cancelAnimationFrame(frame)
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onScroll)
     }
@@ -1572,9 +1721,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
      0) Cache visual do avatar ate o Firebase carregar
   ======================= */
   useEffect(() => {
+    if (!meuId) {
+      setFotoURL('')
+      setAvatarEmoji('')
+      return
+    }
     if (meuId && (meuUserProfile || usersObj?.[meuId])) return
 
     try {
+      if (localStorage.getItem('meuId') !== meuId) {
+        setFotoURL('')
+        setAvatarEmoji('')
+        return
+      }
       const f =
         localStorage.getItem('fotoURL') ||
         localStorage.getItem('fotoUrl') ||
@@ -1591,14 +1750,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     notificacoesVistasRef.current = new Set()
   }, [meuId])
 
+  const notificacoesAtivas = meuUserProfile?.profile?.notificacoes !== false
+
   useEffect(() => {
+    setNotificacoesNaoLidas(0)
     if (!meuId) {
-      setNotificacoesNaoLidas(0)
       navigator.clearAppBadge?.().catch?.(() => {})
       return
     }
-    const userAtual = meuUserProfile || {}
-    const notificacoesAtivas = userAtual?.profile?.notificacoes !== false
+    const effectUid = meuId
+    let active = true
     if (!notificacoesAtivas) {
       setNotificacoesNaoLidas(0)
       navigator.clearAppBadge?.().catch?.(() => {})
@@ -1608,6 +1769,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     let rawLegacy = {}
     let rawModern = {}
     const emitLista = () => {
+      if (!active || auth.currentUser?.uid !== effectUid) return
       const merged = new Map()
       const add = (id, n) => {
         if (!n || typeof n !== 'object') return
@@ -1650,21 +1812,22 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
     }
 
-    const offLegacy = onValue(query(ref(database, `notificacoes/${meuId}`), limitToLast(20)), (snap) => {
+    const offLegacy = onValue(query(ref(database, `notificacoes/${effectUid}`), limitToLast(20)), (snap) => {
       rawLegacy = snap.val() || {}
       emitLista()
     })
 
-    const offModern = onValue(query(ref(database, `notifications/${meuId}`), limitToLast(20)), (snap) => {
+    const offModern = onValue(query(ref(database, `notifications/${effectUid}`), limitToLast(20)), (snap) => {
       rawModern = snap.val() || {}
       emitLista()
     })
 
     return () => {
+      active = false
       offLegacy()
       offModern()
     }
-  }, [meuId, meuUserProfile])
+  }, [meuId, notificacoesAtivas])
 
   /* =======================
      modoApp (prioriza initialMode)
@@ -1690,12 +1853,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       localStorage.setItem('modoApp', modoApp)
     } catch {}
 
-    if (meuId) {
+    if (meuId && auth.currentUser?.uid === meuId) {
       const agoraPresence = Date.now()
       const onlineNow = modoApp === 'corre' && correDisponivel && getUserOnlinePreference()
       debugPresence('uid atual', meuId)
       debugPresence(`salvando status em presence/${meuId}`, { origem: 'modoApp', online: onlineNow })
-      update(ref(database, `presence/${meuId}`), {
+      updateOwnPresence(database, meuId, {
         modoAtual: modoApp,
         online: onlineNow,
         disponivel: onlineNow,
@@ -1721,56 +1884,171 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   useEffect(() => {
     let off = () => {}
     try {
-      const nomeLS = localStorage.getItem('meuNome') || 'Anônimo'
-      setMeuNome(nomeLS)
-
       off = onAuthStateChanged(auth, (u) => {
+        setAuthReady(true)
+        setUnreadInbox(0)
+        setNotificacoesNaoLidas(0)
+        setPrivateRequests([])
+        setPedidosParticipantes([])
+        setAgendaPendentes(0)
+        setAgendaConfirmados(0)
+        setAgendaRecusados(0)
+        setMeuUserProfile(null)
+        setMeuUserProfileLoaded(false)
+        setOwnAvailabilityProfile(null)
+        setOwnAvailabilityProfileLoaded(false)
+        setFotoURL('')
+        setAvatarEmoji('')
         if (!u?.uid) {
           setMeuId('')
+          setMeuNome('')
           return
         }
         const uid = u.uid
         setMeuId(uid)
 
         const lsId = localStorage.getItem('meuId')
-        if (lsId !== uid) localStorage.setItem('meuId', uid)
-
-        const lsNome = localStorage.getItem('meuNome') || 'Anônimo'
-        setMeuNome(lsNome)
+        const sameCachedUser = lsId === uid
+        const lsNome = sameCachedUser ? localStorage.getItem('meuNome') || '' : ''
+        const lsFoto = sameCachedUser ? localStorage.getItem('fotoURL') || '' : ''
+        const lsAvatar = sameCachedUser ? localStorage.getItem('avatarEmoji') || '' : ''
+        if (!sameCachedUser) localStorage.setItem('meuId', uid)
+        setMeuNome(lsNome || u.displayName || 'Anônimo')
+        setFotoURL(lsFoto || u.photoURL || '')
+        setAvatarEmoji(lsAvatar)
       })
     } catch {
       setMeuNome('Anônimo')
       setMeuId('')
+      setAuthReady(true)
     }
     return () => off()
   }, [])
 
   /* =======================
-     ✅ Inbox unread count (leve)
+     ✅ Índice privado de conversas + pedidos participantes
   ======================= */
   useEffect(() => {
-    if (!meuId) {
+    if (!authReady) {
       setUnreadInbox(0)
-      return
+      setPedidosParticipantes([])
+      setLoadingPedidosParticipantes(true)
+      setErroPedidosParticipantes(null)
+      return undefined
     }
 
-    const cRef = query(ref(database, `conversas/${meuId}`), limitToLast(80))
+    if (!meuId) {
+      setUnreadInbox(0)
+      setPedidosParticipantes([])
+      setLoadingPedidosParticipantes(false)
+      setErroPedidosParticipantes(null)
+      return undefined
+    }
+
+    let cancelled = false
+    const effectUid = meuId
+    let indexedRevisionKey = null
+    let requestSequence = 0
+    setPedidosParticipantes([])
+    setLoadingPedidosParticipantes(true)
+    setErroPedidosParticipantes(null)
+
+    const cRef = ref(database, `conversas/${effectUid}`)
     const off = onValue(cRef, (snap) => {
+      if (cancelled || auth.currentUser?.uid !== effectUid) return
       const raw = snap.val() || {}
       const list = Object.values(raw)
       const total = list.reduce((acc, c) => acc + (c?.unread === true ? 1 : 0), 0)
       setUnreadInbox(total)
+
+      const pedidoIds = getIndexedPublicPedidoIds(raw)
+      const nextRevisionKey = getIndexedPublicPedidoRevisionKey(raw)
+      if (nextRevisionKey === indexedRevisionKey) return
+      indexedRevisionKey = nextRevisionKey
+
+      const currentSequence = ++requestSequence
+      setLoadingPedidosParticipantes(true)
+      setErroPedidosParticipantes(null)
+
+      if (!pedidoIds.length) {
+        setPedidosParticipantes([])
+        setLoadingPedidosParticipantes(false)
+        return
+      }
+
+      void Promise.allSettled(
+        pedidoIds.map(async (pedidoId) => {
+          if (cancelled || auth.currentUser?.uid !== effectUid) return null
+
+          const publicSnapshot = await get(ref(database, `publicRequests/${pedidoId}`))
+          if (cancelled || auth.currentUser?.uid !== effectUid || !publicSnapshot.exists()) return null
+
+          const snapshot = await getIfReadable(ref(database, `pedidos/${pedidoId}`), {
+            source: 'Mapadinamico/conversas-participantes',
+          })
+          if (cancelled || auth.currentUser?.uid !== effectUid || !snapshot) return null
+          if (!snapshot.exists()) return null
+
+          const pedido = { id: pedidoId, ...(snapshot.val() || {}) }
+          return isPedidoParticipant(pedido, effectUid) ? normalizeLocal(pedido) : null
+        })
+      ).then((results) => {
+        if (cancelled || auth.currentUser?.uid !== effectUid || currentSequence !== requestSequence) return
+
+        const pedidos = results
+          .filter((result) => result.status === 'fulfilled' && result.value)
+          .map((result) => result.value)
+        const failure = results.find((result) => result.status === 'rejected')
+
+        setPedidosParticipantes(pedidos)
+        setLoadingPedidosParticipantes(false)
+
+        if (!failure) return
+        const error = failure.reason
+        const code = String(error?.code || '')
+        const permissionDenied = code.includes('PERMISSION_DENIED')
+        const message = permissionDenied
+          ? 'Sem permissão para ler seus pedidos participantes (Rules do RTDB).'
+          : error?.message || 'Erro ao carregar seus pedidos participantes.'
+        setErroPedidosParticipantes(message)
+        showToast({
+          type: 'error',
+          title: permissionDenied ? 'Sem permissão' : 'Erro ao ler seus pedidos',
+          message: permissionDenied
+            ? 'Confira as Rules do Realtime Database para pedidos participantes.'
+            : message,
+        })
+      })
+    }, (error) => {
+      if (cancelled || auth.currentUser?.uid !== effectUid) return
+      setUnreadInbox(0)
+      setPedidosParticipantes([])
+      setLoadingPedidosParticipantes(false)
+      const permissionDenied = String(error?.code || '').includes('PERMISSION_DENIED')
+      const message = permissionDenied
+        ? 'Sem permissão para ler o índice privado de pedidos (Rules do RTDB).'
+        : error?.message || 'Erro ao carregar o índice privado de pedidos.'
+      setErroPedidosParticipantes(message)
+      showToast({
+        type: 'error',
+        title: permissionDenied ? 'Sem permissão' : 'Erro ao ler seus pedidos',
+        message,
+      })
     })
 
-    return () => off()
-  }, [meuId])
+    return () => {
+      cancelled = true
+      requestSequence += 1
+      off()
+    }
+  }, [authReady, meuId, showToast])
 
 
   /* =======================
      ✅ Agenda counters
   ======================= */
   useEffect(() => {
-    if (!meuId) {
+    if (!meuId || modoApp !== 'corre') {
       setAgendaPendentes(0)
       setAgendaConfirmados(0)
       setAgendaRecusados(0)
@@ -1807,144 +2085,428 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
 
     return () => off()
-  }, [meuId])
+  }, [meuId, modoApp])
 
   useEffect(() => {
-    if (!meuId) {
+    if (!privateRequestsContextKey) {
       setPrivateRequests([])
+      setPrivateRequestsStatus({ contextKey: '', loading: false, error: '' })
       return undefined
     }
 
     let cancelled = false
+    setPrivateRequestsStatus({ contextKey: privateRequestsContextKey, loading: true, error: '' })
     const off = onValue(ref(database, `privateRequestInbox/${meuId}`), (snap) => {
       const raw = snap.val() || {}
       const lista = Object.entries(raw)
         .map(([id, value]) => ({ id, ...(value || {}) }))
         .sort((a, b) => Number(b?.atualizadoEm || b?.criadoEm || 0) - Number(a?.atualizadoEm || a?.criadoEm || 0))
 
-      void reconcilePrivateRequestInbox({ database, uid: meuId, entries: lista }).then(({ valid }) => {
-        if (!cancelled) setPrivateRequests(valid)
+      void reconcilePrivateRequestInbox({ database, uid: meuId, entries: lista })
+        .then(({ valid }) => {
+          if (cancelled) return
+          setPrivateRequests(valid)
+          setPrivateRequestsStatus({ contextKey: privateRequestsContextKey, loading: false, error: '' })
+        })
+        .catch((error) => {
+          if (cancelled) return
+          console.warn('[PRIVATE_REQUESTS] erro reconciliando inbox', error)
+          setPrivateRequests([])
+          setPrivateRequestsStatus({
+            contextKey: privateRequestsContextKey,
+            loading: false,
+            error: 'Não foi possível carregar os pedidos diretos agora.',
+          })
+        })
+    }, (error) => {
+      if (cancelled) return
+      console.warn('[PRIVATE_REQUESTS] erro lendo inbox', error)
+      setPrivateRequests([])
+      setPrivateRequestsStatus({
+        contextKey: privateRequestsContextKey,
+        loading: false,
+        error: 'Não foi possível carregar os pedidos diretos agora.',
       })
-    }, () => {
-      if (!cancelled) setPrivateRequests([])
     })
 
     return () => {
       cancelled = true
       off()
     }
-  }, [meuId])
+  }, [meuId, privateRequestsContextKey])
 
   /* =======================
      2) Disponibilidade publica do Corre/Profissional
   ======================= */
   useEffect(() => {
-    if (!meuId) return
-    let cancelled = false
-
-    const availabilityRef = ref(database, `publicAvailability/${meuId}`)
-    const connectedRef = ref(database, '.info/connected')
-    const publicProfile = registeredUsersObj?.[meuId] || null
-    const canPublishAvailability = canPublishPublicAvailability({
-      mode: modoApp,
-      available: correDisponivel,
-      onlinePreference: getUserOnlinePreference(),
-      showOnlineStatus: publicProfile?.showOnlineStatus,
-      publicProfileReady: canAppearInPublicDirectory(publicProfile),
-    })
-    debugPresence('uid atual', meuId)
-    debugPresence('usando disponibilidade publica', `publicAvailability/${meuId}`)
-
-    if (!canPublishAvailability) {
-      remove(availabilityRef).catch((error) => console.error('[PRESENCE] erro limpando disponibilidade publica', error))
-      return
-    }
-
-    const writeOnline = async () => {
-      if (cancelled) return
-
-      const agoraPresence = Date.now()
-      const local = await getMyLocation()
-      if (cancelled) return
-      const publicGrid = toPublicAvailabilityGrid(local)
-      debugPresence(`salvando disponibilidade em publicAvailability/${meuId}`, {
-        origem: 'Mapadinamico/writeAvailability',
-        temLocalAproximado: !!publicGrid,
-      })
-
-      await set(availabilityRef, {
-        uid: meuId,
-        id: meuId,
-        online: true,
-        disponivel: true,
-        lastSeen: agoraPresence,
-        updatedAt: agoraPresence,
-        modoAtual: 'corre',
-        showOnlineStatus: true,
-        ...(publicGrid || {}),
-      })
-      debugPresence('disponibilidade publica salva', { uid: meuId })
-    }
-
-    const writeOffline = () => remove(availabilityRef).catch((error) => {
-      console.error('[PRESENCE] erro limpando disponibilidade publica', error)
-    })
-
-    const offConnected = onValue(connectedRef, async (snap) => {
-      const connected = !!snap.val()
-      debugPresence('conectado .info/connected', { uid: meuId, connected, origem: 'Mapadinamico' })
-      if (!connected || cancelled) return
-
-      try {
-        await onDisconnect(availabilityRef).remove()
-      } catch {}
-
-      try {
-        await writeOnline()
-      } catch (error) {
-        console.error('[PRESENCE] erro ao salvar presença', error)
-      }
-    })
-
-    const heartbeat = setInterval(() => {
-      writeOnline().catch((error) => console.error('[PRESENCE] erro ao salvar disponibilidade publica', error))
-    }, 15000)
-
-    const onExit = () => writeOffline()
-    window.addEventListener('beforeunload', onExit)
-    window.addEventListener('pagehide', onExit)
-
-    return () => {
-      cancelled = true
-      clearInterval(heartbeat)
-      offConnected()
-      window.removeEventListener('beforeunload', onExit)
-      window.removeEventListener('pagehide', onExit)
-      onExit()
-    }
-  }, [meuId, modoApp, correDisponivel, registeredUsersObj])
+    const refreshClock = window.setInterval(() => setAvailabilityNow(Date.now()), PUBLIC_AVAILABILITY_HEARTBEAT_MS)
+    return () => window.clearInterval(refreshClock)
+  }, [])
 
   useEffect(() => {
     if (!meuId) {
-      setMeuUserProfile(null)
+      setOwnAvailabilityProfile(null)
+      setOwnAvailabilityProfileLoaded(false)
       return undefined
     }
 
+    setOwnAvailabilityProfileLoaded(false)
     const off = onValue(
-      ref(database, `users/${meuId}`),
+      ref(database, `publicProfiles/${meuId}`),
       (snap) => {
-        setMeuUserProfile(snap.val() || null)
+        const value = snap.exists() ? { uid: meuId, id: meuId, ...(snap.val() || {}) } : null
+        setOwnAvailabilityProfile(value)
+        setOwnAvailabilityProfileLoaded(true)
+        debugPublicAvailability({
+          uid: meuId,
+          operation: 'read_own_public_profile',
+          exists: !!value,
+          fields: value ? Object.keys(value).sort() : [],
+          updatedAtNumeric: typeof value?.updatedAt === 'number' && Number.isFinite(value.updatedAt),
+          createdAtNumeric: typeof value?.createdAt === 'number' && Number.isFinite(value.createdAt),
+        })
       },
       (error) => {
-        console.warn('[PRESENCE] erro lendo meu perfil em users/{uid}', error)
+        setOwnAvailabilityProfile(null)
+        setOwnAvailabilityProfileLoaded(true)
+        console.warn('[PUBLIC_AVAILABILITY] erro lendo perfil publico proprio', {
+          uid: meuId,
+          errorCode: error?.code || 'unknown',
+        })
       }
     )
 
     return () => off()
   }, [meuId])
 
+  useEffect(() => {
+    if (!meuId || modoApp !== 'corre' || !ownAvailabilityProfileLoaded || !meuUserProfileLoaded) return undefined
+
+    const normalization = getOwnPublicAvailabilityProfileNormalization(ownAvailabilityProfile || {}, {
+      ownerProfile: meuUserProfile || {},
+      uid: meuId,
+    })
+    if (!normalization.required) return undefined
+
+    const legacyState = resolveLegacyAccountState({
+      uid: meuId,
+      sources: [ownAvailabilityProfile, meuUserProfile],
+    })
+
+    let cancelled = false
+    debugLegacyOnline({
+      uid: meuId,
+      mode: modoApp,
+      legacyRoleDetected: legacyState.legacyAliases.length > 0,
+      canonicalRole: canonicalWorkRole(legacyState),
+      publicProfileExists: !!ownAvailabilityProfile,
+      normalizationResult: normalization.reason,
+      eligible: false,
+      reason: 'profile_normalization_pending',
+      setAttempted: false,
+      setSucceeded: false,
+      heartbeatStarted: false,
+    })
+    debugPublicAvailability({
+      uid: meuId,
+      operation: 'normalize_own_public_profile',
+      reason: normalization.reason,
+      fields: Object.keys(normalization.patch || {}).sort(),
+    })
+
+    void runTransaction(ref(database, `publicProfiles/${meuId}`), (current) => {
+      if (cancelled) return current
+      const freshNormalization = getOwnPublicAvailabilityProfileNormalization(current || {}, {
+        ownerProfile: meuUserProfile || {},
+        uid: meuId,
+      })
+      if (!freshNormalization.required) return current
+      return projectPublicProfileForWrite({ current, payload: freshNormalization.patch })
+    }).then((result) => {
+      if (!cancelled) {
+        debugPublicAvailability({ uid: meuId, operation: 'normalize_own_public_profile', result: 'success' })
+        debugLegacyOnline({
+          uid: meuId,
+          mode: modoApp,
+          legacyRoleDetected: legacyState.legacyAliases.length > 0,
+          canonicalRole: canonicalWorkRole(legacyState),
+          publicProfileExists: true,
+          normalizationResult: result?.committed ? 'normalized' : 'already_normalized',
+          eligible: false,
+          reason: 'awaiting_normalized_profile_snapshot',
+          setAttempted: false,
+          setSucceeded: false,
+          heartbeatStarted: false,
+        })
+      }
+    }).catch((error) => {
+      if (!cancelled) {
+        console.warn('[PUBLIC_AVAILABILITY] erro normalizando perfil publico proprio', {
+          uid: meuId,
+          errorCode: error?.code || 'unknown',
+        })
+        debugLegacyOnline({
+          uid: meuId,
+          mode: modoApp,
+          legacyRoleDetected: legacyState.legacyAliases.length > 0,
+          canonicalRole: canonicalWorkRole(legacyState),
+          publicProfileExists: !!ownAvailabilityProfile,
+          normalizationResult: 'failed',
+          eligible: false,
+          reason: 'profile_normalization_failed',
+          setAttempted: false,
+          setSucceeded: false,
+          heartbeatStarted: false,
+        })
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [meuId, meuUserProfile, meuUserProfileLoaded, modoApp, ownAvailabilityProfile, ownAvailabilityProfileLoaded])
+
+  useEffect(() => {
+    if (!meuId) return
+    let cancelled = false
+
+    const availabilityRef = ref(database, `publicAvailability/${meuId}`)
+    const connectedRef = ref(database, '.info/connected')
+    let availabilityDisconnectOperation = null
+    let heartbeatStarted = false
+    const pendingOperations = new Set()
+    const isAuthenticatedOwner = () => String(auth.currentUser?.uid || '') === String(meuId)
+    const trackOperation = (operation) => {
+      const tracked = Promise.resolve(operation)
+      pendingOperations.add(tracked)
+      tracked.then(
+        () => pendingOperations.delete(tracked),
+        () => pendingOperations.delete(tracked)
+      )
+      return tracked
+    }
+    const publicProfile = ownAvailabilityProfile
+    const onlinePreference = getUserOnlinePreference()
+    const normalization = getOwnPublicAvailabilityProfileNormalization(publicProfile || {}, {
+      ownerProfile: meuUserProfile || {},
+      uid: meuId,
+    })
+    const rawEligibility = getPublicAvailabilityEligibility({
+      mode: modoApp,
+      available: correDisponivel,
+      onlinePreference,
+      publicProfile,
+      publicProfileReady: ownAvailabilityProfileLoaded && canAppearInPublicDirectory(publicProfile),
+    })
+    const availabilityEligibility = modoApp === 'corre' && !meuUserProfileLoaded
+      ? { allowed: false, reason: 'owner_preferences_not_ready' }
+      : normalization.required
+        ? { allowed: false, reason: 'profile_normalization_pending' }
+        : modoApp === 'corre' && correDisponivel && onlinePreference && normalization.reason !== 'canonical_profile_ready'
+          ? { allowed: false, reason: normalization.reason }
+          : rawEligibility
+    const legacyState = resolveLegacyAccountState({
+      uid: meuId,
+      sources: [publicProfile, meuUserProfile],
+    })
+    const legacyTrace = {
+      uid: meuId,
+      mode: modoApp,
+      legacyRoleDetected: legacyState.legacyAliases.length > 0,
+      canonicalRole: canonicalWorkRole(legacyState),
+      publicProfileExists: !!publicProfile,
+      normalizationResult: normalization.required ? normalization.reason : 'canonical_profile_ready',
+      eligible: availabilityEligibility.allowed,
+      reason: availabilityEligibility.reason,
+    }
+    debugPresence('uid atual', meuId)
+    debugPresence('usando disponibilidade publica', `publicAvailability/${meuId}`)
+    debugPublicAvailability(describePublicAvailabilityEligibility({
+      uid: meuId,
+      eligibility: availabilityEligibility,
+      mode: modoApp,
+      available: correDisponivel,
+      onlinePreference,
+      publicProfile,
+    }))
+    debugLegacyOnline({
+      ...legacyTrace,
+      setAttempted: false,
+      setSucceeded: false,
+      heartbeatStarted,
+    })
+
+    if (!availabilityEligibility.allowed) {
+      debugPresence('disponibilidade publica nao elegivel', {
+        origem: 'Mapadinamico/writeAvailability',
+        reason: availabilityEligibility.reason,
+      })
+      debugPublicAvailability({ uid: meuId, operation: 'remove', reason: availabilityEligibility.reason })
+      const cleanup = isAuthenticatedOwner()
+        ? trackOperation(remove(availabilityRef)).catch((error) => console.error('[PRESENCE] erro limpando disponibilidade publica', error))
+        : Promise.resolve()
+      const unsubscribeSessionEnding = subscribeSessionEnding(meuId, () => cleanup)
+      return () => unsubscribeSessionEnding()
+    }
+
+    const writeOnline = async (source = 'heartbeat') => {
+      if (cancelled || !isAuthenticatedOwner()) return false
+
+      const local = await getMyLocation()
+      if (cancelled || !isAuthenticatedOwner()) return false
+      const payload = buildPublicAvailabilityPayload({ uid: meuId, location: local, now: Date.now() })
+      debugLegacyOnline({
+        ...legacyTrace,
+        reason: `${source}_set_attempt`,
+        setAttempted: true,
+        setSucceeded: false,
+        heartbeatStarted,
+      })
+      debugPresence(`salvando disponibilidade em publicAvailability/${meuId}`, {
+        origem: 'Mapadinamico/writeAvailability',
+        schema: describePublicAvailabilityPayload(payload),
+      })
+
+      try {
+        await trackOperation(set(availabilityRef, payload))
+      } catch (error) {
+        debugLegacyOnline({
+          ...legacyTrace,
+          eligible: true,
+          reason: `${source}_set_failed:${error?.code || 'unknown'}`,
+          setAttempted: true,
+          setSucceeded: false,
+          heartbeatStarted,
+        })
+        throw error
+      }
+      debugPresence('disponibilidade publica salva', { uid: meuId })
+      debugPublicAvailability({
+        uid: meuId,
+        operation: 'set',
+        result: 'success',
+        updatedAt: payload.updatedAt,
+      })
+      debugLegacyOnline({
+        ...legacyTrace,
+        eligible: true,
+        reason: `${source}_set_succeeded`,
+        setAttempted: true,
+        setSucceeded: true,
+        heartbeatStarted,
+      })
+      return true
+    }
+
+    const writeOffline = (reason = 'offline') => {
+      debugPublicAvailability({ uid: meuId, operation: 'remove', reason })
+      if (!isAuthenticatedOwner()) return Promise.resolve(false)
+      return trackOperation(remove(availabilityRef)).catch((error) => {
+        console.error('[PRESENCE] erro limpando disponibilidade publica', error)
+        return false
+      })
+    }
+
+    const offConnected = onValue(connectedRef, async (snap) => {
+      const connected = !!snap.val()
+      debugPresence('conectado .info/connected', { uid: meuId, connected, origem: 'Mapadinamico' })
+      if (!connected || cancelled || !isAuthenticatedOwner()) return
+
+      try {
+        availabilityDisconnectOperation = onDisconnect(availabilityRef)
+        await trackOperation(availabilityDisconnectOperation.remove())
+        debugPublicAvailability({ uid: meuId, operation: 'onDisconnect.remove', result: 'registered' })
+      } catch {}
+
+      try {
+        await writeOnline('connected')
+      } catch (error) {
+        console.error('[PRESENCE] erro ao salvar presença', error)
+      }
+    })
+
+    const heartbeat = setInterval(() => {
+      writeOnline('heartbeat').catch((error) => console.error('[PRESENCE] erro ao salvar disponibilidade publica', error))
+    }, PUBLIC_AVAILABILITY_HEARTBEAT_MS)
+    heartbeatStarted = true
+    debugLegacyOnline({
+      ...legacyTrace,
+      eligible: true,
+      reason: 'heartbeat_started',
+      setAttempted: false,
+      setSucceeded: false,
+      heartbeatStarted,
+    })
+
+    let stopped = false
+    let stopPromise = null
+    const stopAvailabilityRuntime = (reason, { removeAvailability = true } = {}) => {
+      if (stopped) return stopPromise || Promise.resolve()
+      stopped = true
+      cancelled = true
+      clearInterval(heartbeat)
+      offConnected()
+      window.removeEventListener('beforeunload', onExit)
+      window.removeEventListener('pagehide', onExit)
+      const disconnectCleanup = availabilityDisconnectOperation?.cancel?.().catch(() => {})
+      const availabilityCleanup = removeAvailability ? writeOffline(reason) : Promise.resolve()
+      const operationsInFlight = Array.from(pendingOperations)
+      stopPromise = Promise.allSettled([
+        ...operationsInFlight,
+        disconnectCleanup,
+        availabilityCleanup,
+      ]).then(() => undefined)
+      return stopPromise
+    }
+    const onExit = () => stopAvailabilityRuntime('page_exit')
+    const unsubscribeSessionEnding = subscribeSessionEnding(meuId, () => (
+      stopAvailabilityRuntime('session_logout', { removeAvailability: false })
+    ))
+    window.addEventListener('beforeunload', onExit)
+    window.addEventListener('pagehide', onExit)
+
+    return () => {
+      unsubscribeSessionEnding()
+      stopAvailabilityRuntime('effect_cleanup')
+    }
+  }, [meuId, meuUserProfile, meuUserProfileLoaded, modoApp, correDisponivel, ownAvailabilityProfile, ownAvailabilityProfileLoaded])
+
+  useEffect(() => {
+    if (!meuId) {
+      setMeuUserProfile(null)
+      setMeuUserProfileLoaded(false)
+      return undefined
+    }
+
+    const effectUid = meuId
+    let active = true
+    setMeuUserProfile(null)
+    setMeuUserProfileLoaded(false)
+
+    const off = onValue(
+      ref(database, `users/${effectUid}`),
+      (snap) => {
+        if (!active || auth.currentUser?.uid !== effectUid) return
+        setMeuUserProfile(snap.val() || null)
+        setMeuUserProfileLoaded(true)
+      },
+      (error) => {
+        if (!active || auth.currentUser?.uid !== effectUid) return
+        setMeuUserProfile(null)
+        setMeuUserProfileLoaded(true)
+        console.warn('[PRESENCE] erro lendo meu perfil em users/{uid}', error)
+      }
+    )
+
+    return () => {
+      active = false
+      off()
+    }
+  }, [meuId])
+
   const profissionalStats = useMemo(() => {
-    const meus = (Array.isArray(corres) ? corres : []).filter((pedido) => pedido?.aceite?.id === meuId)
+    const meus = (Array.isArray(pedidosParticipantes) ? pedidosParticipantes : [])
+      .filter((pedido) => pedido?.aceite?.id === meuId)
     const concluidos = meus.filter((pedido) => normalizeAtendimentoStatus(pedido?.status) === ATENDIMENTO_STATUS.FINALIZADO)
     const ativos = meus.filter((pedido) => isPedidoAtivoStatus(pedido?.status))
     const notas = concluidos
@@ -2012,27 +2574,43 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       clientesRecorrentes,
       semana,
     }
-  }, [corres, meuId])
+  }, [pedidosParticipantes, meuId])
 
   /* =======================
      3) Ler pedidos
   ======================= */
   useEffect(() => {
-    if (pedidosCacheReady) {
-      setCorres(pedidosCache)
-      setLoadingPedidos(false)
-    } else {
+    if (!authReady) {
+      setCorres([])
       setLoadingPedidos(true)
+      setErroPedidos(null)
+      return undefined
     }
+
+    if (!meuId) {
+      setCorres([])
+      setLoadingPedidos(false)
+      setErroPedidos(null)
+      return undefined
+    }
+
+    setCorres([])
+    setLoadingPedidos(true)
     setErroPedidos(null)
 
-    const pedidosRef = ref(database, 'publicRequests')
+    const pedidosRef = query(
+      ref(database, 'publicRequests'),
+      orderByChild('status'),
+      equalTo(ATENDIMENTO_STATUS.ABERTO),
+    )
 
     const off = onValue(
       pedidosRef,
       (snap) => {
         const raw = snap.val() || {}
-        const lista = Object.entries(raw).map(([id, item]) => normalizeLocal(normalizePublicRequest(id, item)))
+        const lista = replacePublicRequestCards(
+          Object.entries(raw).map(([id, item]) => normalizeLocal(normalizePublicRequest(id, item)))
+        )
 
         // ✅ BOOST primeiro
         lista.sort((a, b) => {
@@ -2049,14 +2627,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           return (tb || 0) - (ta || 0)
         })
 
-        pedidosCache = lista
-        pedidosCacheReady = true
         setCorres(lista)
         setLoadingPedidos(false)
         setErroPedidos(null)
       },
       (err) => {
         console.error('❌ erro ao ler pedidos:', err)
+        setCorres([])
         setLoadingPedidos(false)
 
         const code = err?.code || ''
@@ -2079,12 +2656,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     )
 
     return () => off()
-  }, [showToast])
+  }, [authReady, meuId, showToast])
 
   /* =======================
      4) Ler /publicAvailability (online)
   ======================= */
   useEffect(() => {
+    setPublicAvailabilityStatus({ loaded: false, error: '' })
     debugPresence('lendo disponibilidade publica', { path: 'publicAvailability', origem: 'Mapadinamico' })
     const off = onValue(
       ref(database, 'publicAvailability'),
@@ -2095,53 +2673,112 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           origem: 'Mapadinamico',
         })
         setUsersObj(raw)
+        setPublicAvailabilityStatus({ loaded: true, error: '' })
       },
       (error) => {
         console.warn('[PRESENCE] erro lendo publicAvailability', error)
+        setUsersObj({})
+        setPublicAvailabilityStatus({ loaded: true, error: 'Não foi possível carregar quem está online.' })
       }
     )
     return () => off()
   }, [])
 
   useEffect(() => {
-    if (!meuId) {
+    if (!meuId || modoApp !== 'cliente') {
       setPublicPortfolioObj({})
+      setPublicPortfolioStatus({ loaded: false, error: '' })
       return
     }
 
+    setPublicPortfolioStatus({ loaded: false, error: '' })
     const off = onValue(
       ref(database, 'publicPortfolio'),
       (snap) => {
         setPublicPortfolioObj(snap.val() || {})
+        setPublicPortfolioStatus({ loaded: true, error: '' })
       },
       (error) => {
         console.warn('[PORTFOLIO] erro lendo publicPortfolio', error)
         setPublicPortfolioObj({})
+        setPublicPortfolioStatus({ loaded: true, error: 'Não foi possível carregar os portfólios agora.' })
       }
     )
 
     return () => off()
-  }, [meuId])
+  }, [meuId, modoApp])
 
   useEffect(() => {
     if (!meuId) {
       setRegisteredUsersObj({})
+      setRegisteredUsersStatus({ loaded: false, error: '' })
       return
     }
 
+    setRegisteredUsersStatus({ loaded: false, error: '' })
     const off = onValue(
       query(ref(database, 'publicProfiles'), limitToLast(300)),
       (snap) => {
         setRegisteredUsersObj(snap.val() || {})
+        setRegisteredUsersStatus({ loaded: true, error: '' })
       },
       (error) => {
         console.warn('[CLIENTE_HOME] erro lendo publicProfiles', error)
         setRegisteredUsersObj({})
+        setRegisteredUsersStatus({ loaded: true, error: 'Não foi possível carregar os perfis agora.' })
       }
     )
 
     return () => off()
   }, [meuId])
+
+  const availabilityProfileIdsKey = useMemo(
+    () => JSON.stringify(Object.keys(usersObj || {}).sort()),
+    [usersObj]
+  )
+
+  useEffect(() => {
+    if (!meuId || availabilityProfileIdsKey === '[]') {
+      setAvailabilityProfilesObj({})
+      return undefined
+    }
+
+    let cancelled = false
+    const ids = JSON.parse(availabilityProfileIdsKey)
+    const missingIds = ids.filter((uid) => (
+      !registeredUsersObj?.[uid]
+      && String(uid) !== String(meuId)
+    ))
+
+    if (!missingIds.length) {
+      setAvailabilityProfilesObj({})
+      return undefined
+    }
+
+    void Promise.allSettled(missingIds.map(async (uid) => {
+        const snap = await get(ref(database, `publicProfiles/${uid}`))
+        return snap.exists() ? [uid, { uid, id: uid, ...(snap.val() || {}) }] : null
+    })).then((results) => {
+      if (cancelled) return
+      results.forEach((result, index) => {
+        if (result.status !== 'rejected') return
+        debugPublicAvailability({
+          uid: missingIds[index],
+          operation: 'read_profile_for_public_availability',
+          result: 'error',
+          errorCode: result.reason?.code || 'unknown',
+        })
+      })
+      const entries = results
+        .filter((result) => result.status === 'fulfilled' && result.value)
+        .map((result) => result.value)
+      setAvailabilityProfilesObj(Object.fromEntries(entries))
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [availabilityProfileIdsKey, meuId, registeredUsersObj])
 
   const registeredUsers = useMemo(() => {
     return Object.entries(registeredUsersObj || {})
@@ -2155,16 +2792,23 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const publicProfilesByUid = useMemo(() => {
     return new Map(
-      registeredUsers
+      Object.entries({
+        ...(availabilityProfilesObj || {}),
+        ...(registeredUsersObj || {}),
+        ...(ownAvailabilityProfile && meuId ? { [meuId]: ownAvailabilityProfile } : {}),
+      })
+        .map(([uid, profile]) => ({ uid, id: uid, ...(profile || {}) }))
+        .filter((profile) => canAppearInPublicDirectory(profile))
         .map((profile) => [String(profile?.uid || profile?.id || ''), profile])
         .filter(([uid]) => uid)
     )
-  }, [registeredUsers])
+  }, [availabilityProfilesObj, meuId, ownAvailabilityProfile, registeredUsersObj])
 
   const { usuariosOnlineLista, usuariosOnlineMapa } = useMemo(() => {
-    const now = Date.now()
+    const now = availabilityNow
     const publicPresence = Object.fromEntries(
       Object.entries(usersObj || {})
+        .filter(([uid]) => String(uid) !== String(meuId))
         .map(([uid, presence]) => {
           const publicProfile = publicProfilesByUid.get(String(uid))
           const merged = publicProfile
@@ -2176,7 +2820,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     )
 
     return splitUsuariosOnline(publicPresence, now)
-  }, [usersObj, publicProfilesByUid])
+  }, [availabilityNow, usersObj, publicProfilesByUid, meuId])
 
   const onlineUsers = usuariosOnlineLista
 
@@ -2200,10 +2844,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [onlineUsers])
 
   const meuPublicProfile = useMemo(() => {
-    if (!meuId) return null
-    const profile = registeredUsersObj?.[meuId]
-    return profile ? { uid: meuId, id: meuId, ...(profile || {}) } : null
-  }, [registeredUsersObj, meuId])
+    if (!meuId || !ownAvailabilityProfile) return null
+    return { uid: meuId, id: meuId, ...(ownAvailabilityProfile || {}) }
+  }, [ownAvailabilityProfile, meuId])
+
+  const meuAccountState = useMemo(() => resolveLegacyAccountState({
+    uid: meuId,
+    sources: [meuUserProfile, meuPublicProfile],
+  }), [meuId, meuPublicProfile, meuUserProfile])
 
   const meuUserNode = useMemo(() => {
     if (!meuId) return null
@@ -2219,8 +2867,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       local: presenceNode?.local ?? profileNode?.local,
       latitude: presenceNode?.latitude ?? profileNode?.latitude,
       longitude: presenceNode?.longitude ?? profileNode?.longitude,
+      isCorre: meuAccountState.isCorre,
+      isProfissional: meuAccountState.isProfissional,
     }
-  }, [usersObj, meuId, meuUserProfile, meuPublicProfile])
+  }, [usersObj, meuId, meuUserProfile, meuPublicProfile, meuAccountState])
 
   useEffect(() => {
     if (!meuUserNode) return
@@ -2259,7 +2909,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     } catch {}
   }, [meuUserNode])
 
-  const isProfissional = useMemo(() => !!(meuUserNode?.isProfissional || meuPublicProfile?.isProfissional), [meuUserNode, meuPublicProfile])
+  const isProfissional = meuAccountState.isProfissional
 
   const minhasIniciais = useMemo(() => {
     const partes = String(meuNome || 'Corre Aqui').trim().split(/\s+/).filter(Boolean)
@@ -2267,9 +2917,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [meuNome])
 
   const minhasCategoriasProf = useMemo(() => {
-    const arr = meuUserNode?.profCategorias
-    return Array.isArray(arr) ? arr : []
-  }, [meuUserNode])
+    return getPublicCategoryIds(meuPublicProfile || {}, meuUserProfile || {})
+  }, [meuPublicProfile, meuUserProfile])
 
   const minhasConfiguracoesMapa = useMemo(() => {
     const mapa = meuUserNode?.settings?.mapa || {}
@@ -2291,16 +2940,27 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const problemasVisiveisCount = useMemo(() => {
     if (!meuId) return 0
-    return (corres || []).filter((p) => {
+    return (pedidosParticipantes || []).filter((p) => {
       if (!p?.problemaServico) return false
       return p?.criador?.id === meuId || p?.aceite?.id === meuId
     }).length
-  }, [corres, meuId])
+  }, [pedidosParticipantes, meuId])
+
+  const pedidosConhecidos = useMemo(() => {
+    const byId = new Map()
+    ;(corres || []).forEach((pedido) => {
+      if (pedido?.id) byId.set(String(pedido.id), pedido)
+    })
+    ;(pedidosParticipantes || []).forEach((pedido) => {
+      if (pedido?.id) byId.set(String(pedido.id), pedido)
+    })
+    return Array.from(byId.values())
+  }, [corres, pedidosParticipantes])
 
   const clientePedidosCount = useMemo(() => {
     if (!meuId) return 0
-    return (corres || []).filter((p) => String(p?.criador?.id || '') === String(meuId)).length
-  }, [corres, meuId])
+    return pedidosConhecidos.filter((p) => String(p?.criador?.id || '') === String(meuId)).length
+  }, [pedidosConhecidos, meuId])
 
   const getCatObj = useCallback((id) => {
     if (!id) return null
@@ -2310,37 +2970,56 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const buscaTerm = useMemo(() => busca.trim().toLowerCase(), [busca])
 
   const corresFiltrados = useMemo(() => {
-    return (corres || [])
-      .filter((p) => {
-        const modo = String(p?.modoPedido || 'geral').toLowerCase()
+    const source = filtro === 'abertos' ? corres : pedidosParticipantes
 
-        if (modo === 'profissional' && !isProfissional) return false
-
-        const status = normalizeAtendimentoStatus(p?.status)
-        if (filtro === 'abertos' && status !== ATENDIMENTO_STATUS.ABERTO) return false
-        if (filtro === 'meus' && p?.aceite?.id !== meuId) return false
-        if (filtro === 'finalizados' && status !== ATENDIMENTO_STATUS.FINALIZADO) return false
-        if (status === ATENDIMENTO_STATUS.ABERTO && !getRequestFreshness(p, pedidosFreshnessNow).visibleInPublicList) return false
-
-        const cat = p?.categoriaId ?? p?.categoria ?? p?.category ?? null
-        if (categoriaFiltro === 'sem') {
-          if (cat) return false
-        } else if (categoriaFiltro !== 'todas') {
-          if (!categoryMatches(cat, categoriaFiltro)) return false
-        }
-
-        if (buscaTerm) {
-          const t = buscaTerm
-          const hay =
-            (p.titulo || '').toLowerCase().includes(t) ||
-            (p.descricao || '').toLowerCase().includes(t) ||
-            (p.criador?.nome || '').toLowerCase().includes(t)
-          if (!hay) return false
-        }
-        return true
-      })
+    return (source || [])
+      .filter((pedido) => !getPedidoListExclusionReason({
+        pedido,
+        filtro,
+        meuId,
+        isProfissional,
+        categoriaFiltro,
+        buscaTerm,
+        now: pedidosFreshnessNow,
+      }))
       .sort((a, b) => comparePedidosDisponiveis(a, b, meuUserNode, pedidosFreshnessNow))
-  }, [corres, filtro, buscaTerm, meuId, categoriaFiltro, isProfissional, meuUserNode, pedidosFreshnessNow])
+  }, [corres, pedidosParticipantes, filtro, buscaTerm, meuId, categoriaFiltro, isProfissional, meuUserNode, pedidosFreshnessNow])
+
+  useEffect(() => {
+    if (!DEBUG_PUBLIC_REQUESTS || !authReady || !meuId) return
+    const source = filtro === 'abertos' ? corres : pedidosParticipantes
+    const excludedBy = {}
+    ;(source || []).forEach((pedido) => {
+      const reason = getPedidoListExclusionReason({
+        pedido,
+        filtro,
+        meuId,
+        isProfissional,
+        categoriaFiltro,
+        buscaTerm,
+        now: pedidosFreshnessNow,
+      })
+      if (reason) excludedBy[reason] = (excludedBy[reason] || 0) + 1
+    })
+    console.info('[PUBLIC_REQUESTS] fluxo sanitizado', {
+      authStatus: 'authenticated',
+      uidPresent: true,
+      source: filtro === 'abertos' ? 'publicRequests' : 'conversas/{uid} + pedidos/{pedidoId}',
+      receivedCount: (source || []).length,
+      visibleCount: corresFiltrados.length,
+      excludedBy,
+      activeFilters: {
+        status: filtro,
+        category: categoriaFiltro,
+        searchActive: !!buscaTerm,
+      },
+      accountState: {
+        isCorre: meuAccountState.isCorre,
+        isProfissional: meuAccountState.isProfissional,
+        legacyAliases: meuAccountState.legacyAliases,
+      },
+    })
+  }, [authReady, buscaTerm, categoriaFiltro, corres, corresFiltrados.length, filtro, isProfissional, meuAccountState, meuId, pedidosFreshnessNow, pedidosParticipantes])
 
   useEffect(() => {
     setPedidosRenderLimit(PEDIDOS_PAGE_SIZE)
@@ -2384,6 +3063,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const pedidosTotalElegivel = corresFiltrados.length
   const pedidosTotalRenderizado = pedidosRenderizados.length
   const pedidosTemMais = pedidosTotalRenderizado < pedidosTotalElegivel
+  const usandoIndicePrivadoPedidos = filtro === 'meus' || filtro === 'finalizados'
+  const loadingPedidosVisivel = usandoIndicePrivadoPedidos ? loadingPedidosParticipantes : loadingPedidos
+  const erroPedidosVisivel = usandoIndicePrivadoPedidos ? erroPedidosParticipantes : erroPedidos
 
   const categoriaPedidosCount = useMemo(() => {
     const counts = { todas: 0, sem: 0 }
@@ -2391,14 +3073,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       counts[cat.id] = 0
     })
 
-    ;(corres || []).forEach((p) => {
+    const source = filtro === 'abertos' ? corres : pedidosParticipantes
+    ;(source || []).forEach((p) => {
       const modo = String(p?.modoPedido || 'geral').toLowerCase()
       if (modo === 'profissional' && !isProfissional) return
 
       const status = normalizeAtendimentoStatus(p?.status)
       if (filtro === 'abertos' && status !== 'aberto') return
-      if (filtro === 'meus' && p?.aceite?.id !== meuId) return
-      if (filtro === 'finalizados' && status !== ATENDIMENTO_STATUS.FINALIZADO) return
+      if (filtro === 'meus' && (p?.aceite?.id !== meuId || !isPedidoAtivoStatus(status))) return
+      if (filtro === 'finalizados' && (status !== ATENDIMENTO_STATUS.FINALIZADO || !isPedidoParticipant(p, meuId))) return
       if (status === ATENDIMENTO_STATUS.ABERTO && !getRequestFreshness(p, pedidosFreshnessNow).visibleInPublicList) return
 
       if (buscaTerm) {
@@ -2423,7 +3106,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
 
     return counts
-  }, [corres, filtro, buscaTerm, meuId, isProfissional, pedidosFreshnessNow])
+  }, [corres, pedidosParticipantes, filtro, buscaTerm, meuId, isProfissional, pedidosFreshnessNow])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof router.prefetch !== 'function' || modoApp !== 'corre') return undefined
@@ -2447,21 +3130,21 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [corresFiltrados, modoApp, router])
 
   const resumoCorre = useMemo(() => {
-    const lista = Array.isArray(corres) ? corres : []
-    return lista.reduce(
-      (acc, p) => {
-        const status = normalizeAtendimentoStatus(p?.status)
-        if (status === 'aberto') acc.abertos += 1
-        if (p?.aceite?.id === meuId) acc.meus += 1
-        if (status === ATENDIMENTO_STATUS.FINALIZADO) acc.concluidos += 1
-        return acc
-      },
-      { abertos: 0, meus: 0, concluidos: 0 }
-    )
-  }, [corres, meuId])
+    const publicos = Array.isArray(corres) ? corres : []
+    const participantes = Array.isArray(pedidosParticipantes) ? pedidosParticipantes : []
+    return {
+      abertos: publicos.filter((p) => normalizeAtendimentoStatus(p?.status) === ATENDIMENTO_STATUS.ABERTO).length,
+      meus: participantes.filter((p) => p?.aceite?.id === meuId && isPedidoAtivoStatus(p?.status)).length,
+      concluidos: participantes.filter((p) => (
+        isPedidoParticipant(p, meuId)
+        && normalizeAtendimentoStatus(p?.status) === ATENDIMENTO_STATUS.FINALIZADO
+      )).length,
+    }
+  }, [corres, pedidosParticipantes, meuId])
 
   const ganhosStatsPorModo = useMemo(() => {
-    const meus = (Array.isArray(corres) ? corres : []).filter((p) => p?.aceite?.id === meuId)
+    const meus = (Array.isArray(pedidosParticipantes) ? pedidosParticipantes : [])
+      .filter((p) => p?.aceite?.id === meuId)
 
     const buildStats = (modo) => {
       const modoProf = modo === 'prof'
@@ -2521,7 +3204,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       corre: buildStats('corre'),
       prof: buildStats('prof'),
     }
-  }, [corres, meuId])
+  }, [pedidosParticipantes, meuId])
 
   const ganhosSelecionados = ganhosStatsPorModo[ganhosModo] || ganhosStatsPorModo.corre
 
@@ -2560,10 +3243,35 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       return
     }
 
-    if (aceitandoId) return
+    const actionKey = String(p?.id || '')
+    if (aceitandoId || authoritativeAcceptLockRef.current || navigationLockRef.current) return
+    authoritativeAcceptLockRef.current = actionKey
     setAceitandoId(p.id)
+    let navigatingToChat = false
 
     try {
+      const publicSnapshot = await get(ref(database, `publicRequests/${p.id}`))
+      const publicCurrent = publicSnapshot.exists() ? publicSnapshot.val() : null
+      const claimUiCheck = createClaimUiCheck({
+        pedidoId: p.id,
+        cardPresent: corres.some((item) => String(item?.id || '') === String(p.id)),
+        publicExistsNow: publicSnapshot.exists(),
+        publicStatus: publicCurrent?.status,
+      })
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[CLAIM_UI_CHECK]', JSON.stringify(claimUiCheck))
+      }
+      if (!claimUiCheck.publicExistsNow) {
+        setCorres((current) => removePublicRequestCard(current, p.id))
+        if (String(mapItem?.id || '') === String(p.id)) setMapItem(null)
+        showToast({
+          type: 'info',
+          title: 'Pedido indisponível',
+          message: 'Este pedido não está mais disponível.',
+        })
+        return
+      }
+
       const agora = Date.now()
       const local = await getMyLocation()
       const aceite = {
@@ -2611,59 +3319,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         atualizadoEm: serverTimestamp(),
       }).catch(() => {})
 
-      // ✅ conversa do cliente
-      if (p?.criador?.id) {
-        await update(ref(database, `conversas/${p.criador.id}/${conversaId}`), {
-          pedidoId: p.id,
-          titulo: p.titulo || 'Corre aqui',
-          outroId: meuId,
-          outroNome: meuNome || 'Anônimo',
-          unread: true,
-          status: 'ativa',
-          pedidoStatus: ATENDIMENTO_STATUS.ACEITO,
-          categoriaId: p?.categoriaId || p?.categoria || '',
-          categoriaNome: p?.categoriaNome || p?.categoriaLabel || '',
-          valor: p?.valor || null,
-          tipoNotificacao: 'corre_aceito',
-          lastText: `${meuNome || 'Alguém'} aceitou seu corre.`,
-          lastAt: serverTimestamp(),
-          lastById: meuId,
-          lastByNome: meuNome || 'Anônimo',
-          mensagemPreview: `${meuNome || 'Alguém'} aceitou seu corre.`,
-          updatedAt: serverTimestamp(),
-        })
-
-      }
-
-      // ✅ conversa de quem aceitou
-      await update(ref(database, `conversas/${meuId}/${conversaId}`), {
+      // A rota autenticada cria a mensagem e materializa os dois índices canônicos.
+      await registrarMensagemSistemaConfiavel({
         pedidoId: p.id,
-        titulo: p.titulo || 'Corre aqui',
-        outroId: p?.criador?.id || null,
-        outroNome: p?.criador?.nome || 'Cliente',
-        unread: false,
-        status: 'ativa',
-        pedidoStatus: ATENDIMENTO_STATUS.ACEITO,
-        categoriaId: p?.categoriaId || p?.categoria || '',
-        categoriaNome: p?.categoriaNome || p?.categoriaLabel || '',
-        valor: p?.valor || null,
-        lastText: 'Você aceitou esse corre.',
-        lastAt: serverTimestamp(),
-        lastById: meuId,
-        lastByNome: meuNome || 'Anônimo',
-        mensagemPreview: 'Você aceitou esse corre.',
-        updatedAt: serverTimestamp(),
+        eventType: 'pedido_aceito',
+        contextKind: 'pedido',
       })
-
-      // A mensagem automática é criada somente pela rota autenticada após o aceite real.
-      await registrarMensagemSistemaConfiavel({ pedidoId: p.id, eventType: 'pedido_aceito' })
-
-      // ✅ atalhos de conversa
-      if (p?.criador?.id) {
-        await set(ref(database, `usersChats/${p.criador.id}/${conversaId}`), true)
-      }
-
-      await set(ref(database, `usersChats/${meuId}/${conversaId}`), true)
 
       if (p?.criador?.id) {
         await notifyPublicRequestAccepted({
@@ -2683,7 +3344,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         target: 'aceitar-pedido',
       })
 
-      router.replace(`/pedido/${encodeURIComponent(String(p.id))}?voltar=corre&aceito=1`)
+      navigatingToChat = navigateOnce(createChatHref(p.id, 'corre'))
       showToast({
         type: 'success',
         title: 'Corre aceito! ✅',
@@ -2693,206 +3354,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       console.error('Erro ao aceitar:', e)
       showToast({ type: 'error', title: 'Falha ao aceitar', message: e?.message || 'Veja o console.' })
     } finally {
-      setAceitandoId(null)
+      if (!navigatingToChat) {
+        if (authoritativeAcceptLockRef.current === actionKey) authoritativeAcceptLockRef.current = ''
+        setAceitandoId(null)
+      }
     }
   }
   aceitarCorreRef.current = aceitarCorre
-
-  async function cancelarAceite(p) {
-    if (cancelandoId) return
-    setCancelandoId(p.id)
-
-    try {
-      if (p?.aceite?.id && p.aceite.id !== meuId) {
-        showToast({ type: 'error', title: 'Ops', message: 'Esse corre foi aceito por outra pessoa.' })
-        return
-      }
-
-      await transitionAtendimento({
-        database,
-        pedidoId: p.id,
-        actorUid: meuId,
-        expectedStatus: normalizeAtendimentoStatus(p.status),
-        nextStatus: ATENDIMENTO_STATUS.CANCELADO,
-        atendimentoPatch: {
-          canceladoEm: Date.now(),
-          canceladoPor: { id: meuId, nome: meuNome || 'Profissional' },
-        },
-        topLevelPatch: {
-          canceladoEm: Date.now(),
-          canceladoPor: { id: meuId, nome: meuNome || 'Profissional' },
-          atualizadoEmServer: serverTimestamp(),
-        },
-      })
-
-      if (mapItem?.id === p.id) setMapItem(null)
-      if (chatPedido?.id === p.id) setChatPedido(null)
-
-      showToast({ type: 'success', title: 'Atendimento cancelado', message: 'O pedido foi encerrado sem voltar para uma etapa anterior.' })
-    } catch (e) {
-      console.error('Erro ao cancelar aceite:', e)
-      showToast({ type: 'error', title: 'Falha ao cancelar', message: e?.message || 'Veja o console.' })
-    } finally {
-      setCancelandoId(null)
-    }
-  }
-
-  async function avancarAtendimento(p, nextStatus) {
-    if (!p?.id || !meuId || atendimentoId) return
-
-    const currentStatus = normalizeAtendimentoStatus(p.status)
-    const isWorker = String(p?.aceite?.id || '') === String(meuId)
-    const isClient = String(p?.criador?.id || '') === String(meuId)
-    if (!isWorker && !(nextStatus === ATENDIMENTO_STATUS.FINALIZADO && isClient)) return
-
-    setAtendimentoId(p.id)
-    try {
-      const agora = Date.now()
-      const conversaId = p?.conversaId || p.id
-      const profissionalNome = p?.aceite?.nome || 'Profissional'
-      const clienteNome = p?.criador?.nome || 'Cliente'
-      const event = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
-        ? 'atendimento_iniciado'
-        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? 'atendimento_chegou'
-          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? 'finalizacao_solicitada'
-            : 'atendimento_finalizado'
-      const text = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
-        ? '✓ Atendimento iniciado.'
-        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? `✓ ${profissionalNome} informou que chegou ao local.`
-          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? `✓ ${profissionalNome} solicitou a finalização do atendimento.`
-            : '✓ Atendimento finalizado com sucesso.'
-      const actorName = isClient ? clienteNome : profissionalNome
-
-      const patch = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
-        ? { iniciadoEm: agora, iniciadoPor: { id: meuId, nome: actorName } }
-        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? { chegouEm: agora, chegouPor: { id: meuId, nome: actorName } }
-          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? { finalizacaoSolicitadaEm: agora, finalizacaoSolicitadaPor: { id: meuId, nome: actorName } }
-            : { finalizadoEm: agora, finalizadoPor: { id: meuId, nome: actorName } }
-
-      await transitionAtendimento({
-        database,
-        pedidoId: p.id,
-        actorUid: meuId,
-        expectedStatus: currentStatus,
-        nextStatus,
-        atendimentoPatch: patch,
-        topLevelPatch: { ...patch, ...(nextStatus === ATENDIMENTO_STATUS.FINALIZADO ? { avaliacaoPendente: true } : {}) },
-      })
-
-      const updates = {}
-      for (const uid of [p?.criador?.id, p?.aceite?.id]) {
-        if (!uid) continue
-        updates[`conversas/${uid}/${conversaId}/pedidoStatus`] = nextStatus
-        updates[`conversas/${uid}/${conversaId}/lastText`] = text
-        updates[`conversas/${uid}/${conversaId}/mensagemPreview`] = text
-        updates[`conversas/${uid}/${conversaId}/lastAt`] = serverTimestamp()
-        updates[`conversas/${uid}/${conversaId}/updatedAt`] = serverTimestamp()
-        updates[`conversas/${uid}/${conversaId}/lastById`] = meuId
-        updates[`conversas/${uid}/${conversaId}/lastByNome`] = actorName
-        updates[`conversas/${uid}/${conversaId}/unread`] = uid !== meuId
-        updates[`conversas/${uid}/${conversaId}/status`] = nextStatus === ATENDIMENTO_STATUS.FINALIZADO ? 'arquivavel' : 'ativa'
-      }
-
-      const destinatario = isWorker ? p?.criador?.id : p?.aceite?.id
-      const notificationId = destinatario
-        ? createEventNotificationId({
-            type: event,
-            sourceId: p.id,
-            toUid: destinatario,
-            state: nextStatus,
-          })
-        : ''
-      const notificationTitle = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
-        ? 'Atendimento iniciado'
-        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? 'Seu profissional chegou'
-          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? 'Confirme a conclusão'
-            : 'Serviço concluído ✅'
-      const notificationMessage = nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO
-        ? `${profissionalNome} iniciou o atendimento do seu pedido.`
-        : nextStatus === ATENDIMENTO_STATUS.CHEGOU
-          ? `${profissionalNome} informou que chegou ao local.`
-          : nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO
-            ? `${profissionalNome} solicitou a finalização do atendimento.`
-            : 'O cliente confirmou a conclusão do atendimento.'
-      const notificationAction = nextStatus === ATENDIMENTO_STATUS.FINALIZADO
-        ? { label: 'Ver histórico', screen: 'ver_historico', id: p.id }
-        : { label: 'Abrir atendimento', screen: 'chat', id: conversaId }
-      if (destinatario) {
-        const notification = {
-          id: notificationId,
-          eventId: notificationId,
-          tipo: event,
-          titulo: notificationTitle,
-          mensagem: notificationMessage,
-          pedidoId: p.id,
-          fromUid: meuId,
-          toUid: destinatario,
-          lida: false,
-          read: false,
-          criadoEm: agora,
-          action: notificationAction,
-          autor: { id: meuId, nome: actorName },
-        }
-        updates[`notifications/${destinatario}/${notificationId}`] = notification
-        updates[`notificacoes/${destinatario}/${notificationId}`] = notification
-      }
-
-      await update(ref(database), updates)
-      await registrarMensagemSistemaConfiavel({ pedidoId: p.id, eventType: event })
-      if (destinatario) {
-        enviarPushParaUsuario(destinatario, {
-          type: event,
-          pedidoId: p.id,
-          conversaId,
-          titulo: notificationTitle,
-          mensagem: notificationMessage,
-          prioridade: 'alta',
-          action: notificationAction,
-          notificationId,
-          eventId: notificationId,
-        })
-      }
-      if (nextStatus === ATENDIMENTO_STATUS.EM_ANDAMENTO) {
-        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.atendimentoIniciado, {
-          id: CONTEXTUAL_TIP_IDS.atendimentoIniciado,
-          target: 'progresso',
-        })
-      } else if (nextStatus === ATENDIMENTO_STATUS.CHEGOU) {
-        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.cheguei, {
-          id: CONTEXTUAL_TIP_IDS.cheguei,
-          target: 'progresso',
-        })
-      } else if (nextStatus === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) {
-        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.solicitarConclusao, {
-          id: CONTEXTUAL_TIP_IDS.solicitarConclusao,
-          target: 'confirmacao-final',
-        })
-      } else if (nextStatus === ATENDIMENTO_STATUS.FINALIZADO) {
-        showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.conclusaoConfirmada, {
-          id: CONTEXTUAL_TIP_IDS.conclusaoConfirmada,
-          evaluationActive: true,
-        })
-      }
-      showToast({ type: 'success', title: 'Atendimento atualizado', message: text })
-    } catch (error) {
-      console.error('Erro ao avançar atendimento:', error)
-      showToast({ type: 'error', title: 'Falha no atendimento', message: error?.message || 'Tente novamente.' })
-    } finally {
-      setAtendimentoId(null)
-    }
-  }
-
-  function abrirConclusao(p) {
-    setConclusaoPedido(p)
-  }
 
   function abrirAvaliacao(p) {
     setAvaliacaoPedido(p)
@@ -2904,141 +3372,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     setProblemaPedido(p)
     setProblemaTipo('servico_nao_resolvido')
     setProblemaDescricao('')
-  }
-
-  async function marcarConcluído(p) {
-    if (serviçondoId) return
-    setServiçondoId(p.id)
-
-    try {
-      const criadorId = p?.criador?.id
-      const aceitadorId = p?.aceite?.id
-      // ✅ Regra correta: somente o CLIENTE/CRIADOR confirma que o serviço foi feito.
-      // Corre/profissional não pode marcar concluido sozinho.
-      const pode = meuId && meuId === criadorId
-
-      if (!pode) {
-        showToast({
-          type: 'error',
-          title: 'Sem permissão',
-          message: 'Somente o cliente que criou o pedido pode confirmar que o serviço foi feito.',
-        })
-        return
-      }
-
-        if (normalizeAtendimentoStatus(p.status) !== ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) {
-          showToast({
-            type: 'info',
-            title: 'Ainda não',
-            message: 'A confirmação só fica disponível quando o profissional solicitar a finalização.',
-        })
-        return
-      }
-
-      const concluidoAgora = Date.now()
-      const conversaId = p?.conversaId || p.id
-      const completionEventId = aceitadorId
-        ? createEventNotificationId({
-            type: 'atendimento_finalizado',
-            sourceId: p.id,
-            toUid: aceitadorId,
-            state: ATENDIMENTO_STATUS.FINALIZADO,
-          })
-        : ''
-
-      await transitionAtendimento({
-        database,
-        pedidoId: p.id,
-        actorUid: meuId,
-        expectedStatus: ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
-        nextStatus: ATENDIMENTO_STATUS.FINALIZADO,
-        atendimentoPatch: {
-          finalizadoEm: concluidoAgora,
-          finalizadoPor: { id: meuId, nome: meuNome || 'Cliente' },
-        },
-        topLevelPatch: {
-          finalizadoEm: concluidoAgora,
-          finalizadoPor: { id: meuId, nome: meuNome || 'Cliente' },
-          avaliacaoPendente: true,
-          atualizadoEmServer: serverTimestamp(),
-        },
-      })
-
-      await update(ref(database, `pedidos/${p.id}`), {
-        concluidoEm: concluidoAgora,
-        concluidoPor: { id: meuId, nome: meuNome || 'Anônimo' },
-        avaliacaoPendente: true,
-        atualizadoEm: concluidoAgora,
-        atualizadoEmServer: serverTimestamp(),
-      })
-
-      if (aceitadorId && aceitadorId !== meuId) {
-        const notification = {
-          id: completionEventId,
-          eventId: completionEventId,
-          tipo: 'servico_concluido',
-          pedidoId: p.id,
-          conversaId,
-          titulo: 'Serviço concluído ✅',
-          mensagem: 'O cliente confirmou a conclusão do atendimento.',
-          prioridade: 'media',
-          lida: false,
-          read: false,
-          criadoEm: concluidoAgora,
-          fromUid: meuId,
-          toUid: aceitadorId,
-          action: { label: 'Ver histórico', screen: 'ver_historico', id: p.id },
-          autor: { id: meuId, nome: meuNome || 'Cliente' },
-        }
-        await Promise.allSettled([
-          set(ref(database, `notifications/${aceitadorId}/${completionEventId}`), notification),
-          set(ref(database, `notificacoes/${aceitadorId}/${completionEventId}`), notification),
-        ]).then((results) => {
-          const notifyError = results.find((result) => result.status === 'rejected')
-          if (!notifyError) return
-          if (process.env.NODE_ENV !== 'production') {
-            console.warn('Serviço concluído, mas a notificação não foi enviada:', notifyError)
-          }
-        })
-
-        enviarPushParaUsuario(aceitadorId, {
-          type: 'atendimento_finalizado',
-          pedidoId: p.id,
-          conversaId,
-          titulo: 'Serviço concluído ✅',
-          mensagem: 'O cliente confirmou a conclusão do atendimento.',
-          prioridade: 'media',
-          action: { label: 'Ver histórico', screen: 'ver_historico', id: p.id },
-          notificationId: completionEventId,
-          eventId: completionEventId,
-        })
-      }
-
-      await registrarMensagemSistemaConfiavel({ pedidoId: p.id, eventType: 'atendimento_finalizado' })
-
-      if (meuId && aceitadorId && aceitadorId === meuId && p?.criador?.id !== meuId) {
-        await contabilizarAtendimentoFinalizado({ database, pedido: p, uid: meuId })
-      }
-
-      showToast({
-        type: 'success',
-        title: 'Fechado!',
-        message: 'Serviço concluído. Agora avalie como foi a experiência.',
-      })
-
-      showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.conclusaoConfirmada, {
-        id: CONTEXTUAL_TIP_IDS.conclusaoConfirmada,
-        evaluationActive: true,
-      })
-
-      setConclusaoPedido(null)
-      abrirAvaliacao({ ...p, status: ATENDIMENTO_STATUS.FINALIZADO, finalizadoEm: concluidoAgora })
-    } catch (e) {
-      console.error('Erro ao marcar concluido:', e)
-      showToast({ type: 'error', title: 'Falha', message: e?.message || 'Veja o console.' })
-    } finally {
-      setServiçondoId(null)
-    }
   }
 
   async function salvarAvaliacaoServico() {
@@ -3298,11 +3631,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       if (!ok) return
 
       await deletePublicRequest(p.id)
-      await remove(ref(database, `pedidos/${p.id}`))
 
       if (mapItem?.id === p.id) setMapItem(null)
-      if (chatPedido?.id === p.id) setChatPedido(null)
-
       showToast({ type: 'success', title: 'Excluído', message: 'Pedido removido.' })
     } catch (e) {
       console.error('Erro ao excluir:', e)
@@ -3370,6 +3700,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const abrirPedidoFocado = (pedido) => {
     if (!pedido?.id) return
+    const statusAtual = normalizeServiceAttendanceStatus({
+      status: pedido?.status,
+      kind: pedido?.privateRequest ? 'privateRequest' : 'pedido',
+      type: pedido?.tipo,
+      record: pedido,
+    })
+    const participante = !!meuId && [pedido?.criador?.id, pedido?.aceite?.id].some((id) => String(id || '') === String(meuId))
+    if (statusAtual !== ATENDIMENTO_STATUS.ABERTO && participante) {
+      const origin = getChatOriginFromContext({ mode: modoApp, tab, fallback: modoApp })
+      saveListState(false)
+      navigateOnce(createChatHref(pedido.id, origin))
+      return
+    }
     setFiltro('todos')
     setCardAbertoId(pedido.id)
     if (modoApp === 'cliente') {
@@ -3380,25 +3723,46 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }
 
   const abrirFichaPedido = useCallback((pedido) => {
-    if (!pedido?.id) return
-    const href = `/pedido/${encodeURIComponent(String(pedido.id))}?voltar=${modoApp}`
+    if (!pedido?.id || navigationLockRef.current) return
+    const origin = getChatOriginFromContext({ mode: modoApp, tab, fallback: modoApp })
+    const statusAtual = normalizeServiceAttendanceStatus({
+      status: pedido?.status,
+      kind: pedido?.privateRequest ? 'privateRequest' : 'pedido',
+      type: pedido?.tipo,
+      record: pedido,
+    })
+    const participante = !!meuId && [pedido?.criador?.id, pedido?.aceite?.id].some((id) => String(id || '') === String(meuId))
+    if (statusAtual !== ATENDIMENTO_STATUS.ABERTO && participante) {
+      saveListState(false)
+      navigateOnce(createChatHref(pedido.id, origin))
+      return
+    }
+    const href = `/pedido/${encodeURIComponent(String(pedido.id))}?voltar=${origin}`
     if (DEBUG_NAV_PERF) console.time('open-card')
     saveListState(false)
     setAbrindoPedidoId(pedido.id)
     router.prefetch?.(href)
-    router.push(href)
+    navigateOnce(href)
     if (DEBUG_NAV_PERF) {
       window.requestAnimationFrame(() => console.timeEnd('open-card'))
     }
-  }, [modoApp, router, saveListState])
+  }, [meuId, modoApp, navigateOnce, router, saveListState, tab])
 
   const abrirChatFocado = useCallback((pedido) => {
-    if (!pedido?.id) return
+    if (!pedido?.id || navigationLockRef.current) return false
+    const origin = getChatOriginFromContext({ mode: modoApp, tab, fallback: modoApp })
+    const href = createChatHref(pedido.id, origin)
     saveListState(false)
     setClientePainelBaixo('')
-    setChatPedido(null)
-    router.push(`/chat/${encodeURIComponent(String(pedido.id))}?voltar=${modoApp}`)
-  }, [modoApp, router, saveListState])
+    return navigateOnce(href)
+  }, [modoApp, navigateOnce, saveListState, tab])
+
+  const preloadChatFocado = useCallback((pedido) => {
+    const pedidoId = String(pedido?.id || pedido?.pedidoId || pedido?.privateRequestId || '').trim()
+    if (!pedidoId) return ''
+    const origin = getChatOriginFromContext({ mode: modoApp, tab, fallback: modoApp })
+    return prefetchChatRoute(router, chatPrefetchesRef.current, pedidoId, origin)
+  }, [modoApp, router, tab])
 
   const abrirBoostPedido = useCallback((pedido) => {
     if (!COMMERCIAL_HIGHLIGHTS_UI_ENABLED) return
@@ -3462,8 +3826,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     const id = action?.id || notificacao?.privateRequestId || notificacao?.pedidoId || notificacao?.conversaId || notificacao?.servicoId
 
     if ((destino === 'abrir_pedido' || destino === 'pedido' || destino === 'pedidodetails' || destino === 'pedido_details') && id) {
-      setChatPedido(null)
-      router.push(`/pedido/${encodeURIComponent(String(id))}?voltar=${modoApp}`)
+      const origin = getChatOriginFromContext({ mode: modoApp, tab, fallback: modoApp })
+      navigateOnce(`/pedido/${encodeURIComponent(String(id))}?voltar=${origin}`)
       return
     }
 
@@ -3476,20 +3840,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       const href = id
         ? `/corre/agenda?requestId=${encodeURIComponent(String(id))}`
         : '/corre/agenda'
-      router.replace(href)
+      navigateOnce(href, { replace: true })
       return
     }
 
     if (destino === 'myorders') {
       setModoApp('cliente')
-      setChatPedido(null)
       setClientePainelBaixo('meusPedidos')
       return
     }
 
     if (destino === 'professionalreviews') {
       setModoApp('corre')
-      setChatPedido(null)
       setClientePainelBaixo('')
       setTab('corre')
       setPerfilInitialTab('profissional')
@@ -3501,7 +3863,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
     if (destino === 'portfolio') {
       setModoApp('cliente')
-      setChatPedido(null)
       setClientePainelBaixo('')
       showToast({
         type: 'info',
@@ -3509,7 +3870,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         message: 'Abra um perfil ou servico do portfolio para tentar novamente.',
       })
     }
-  }, [abrirChatFocado, modoApp, router, showToast])
+  }, [abrirChatFocado, modoApp, navigateOnce, showToast, tab])
 
   const abrirPerfilCliente = useCallback((u) => {
     if (!u) {
@@ -3564,6 +3925,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     })
   }, [showToast])
 
+  const confirmarAcessoContratacaoDireta = useCallback(async () => {
+    try {
+      return await ensureClientDirectRequestAccess()
+    } catch (error) {
+      showToast({
+        type: 'error',
+        title: 'Não foi possível verificar sua assinatura',
+        message: error?.message || 'Confira sua conexão e tente novamente.',
+      })
+      return false
+    }
+  }, [showToast])
+
   const criarPedidoDiretoPortfolio = useCallback(async (u, servico = null) => {
     const profissionalId = u?.uid || u?.id || u?.profissionalId
     if (!meuId) {
@@ -3578,6 +3952,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       showToast({ type: 'info', title: 'Este perfil é seu', message: 'Você não pode solicitar o próprio serviço.' })
       return
     }
+
+    if (!await confirmarAcessoContratacaoDireta()) return
 
     try {
       const request = await createPrivateRequest({
@@ -3610,6 +3986,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         message: `${request.profissionalNome} recebeu sua solicitação.`,
       })
     } catch (error) {
+      if (error?.code === 'client_direct_subscription_required') return
       console.error('[PRIVATE_REQUEST] erro ao criar pedido direto', error)
       showToast({
         type: 'error',
@@ -3617,12 +3994,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         message: error?.message || 'Tente novamente em alguns segundos.',
       })
     }
-  }, [avatarEmoji, fotoURL, meuId, meuNome, showToast])
+  }, [avatarEmoji, confirmarAcessoContratacaoDireta, fotoURL, meuId, meuNome, showToast])
 
-  const abrirAgendaCliente = useCallback((u, servico = null) => {
+  const abrirAgendaCliente = useCallback(async (u, servico = null) => {
+    if (!await confirmarAcessoContratacaoDireta()) return false
     setAgendaClienteService(servico || null)
     setAgendaClienteUser(u)
-  }, [])
+    return true
+  }, [confirmarAcessoContratacaoDireta])
 
   const glassCard = 'bg-white/10  border border-white/10 shadow-xl shadow-black/30'
 
@@ -3631,9 +4010,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
   const btnPrimary =
     'flex min-h-[38px] items-center justify-center rounded-[18px] bg-[#ffd91a] px-2.5 py-2 text-xs font-black text-blue-950 shadow-[0_12px_26px_rgba(250,204,21,0.30)] transition hover:bg-yellow-300 md:min-h-[38px] md:px-4 md:text-sm'
-
-  const btnDanger =
-    'flex min-h-[38px] items-center justify-center rounded-[16px] bg-red-600 px-2.5 py-2 text-xs font-black text-white shadow-md shadow-red-500/20 transition hover:bg-red-700 md:min-h-[38px] md:px-4 md:text-sm'
 
   const btnDark =
     'flex min-h-[38px] items-center justify-center rounded-[18px] border border-blue-950 bg-[#071535] px-2.5 py-2 text-xs font-black text-white shadow-[0_10px_22px_rgba(7,21,53,0.22)] transition hover:bg-blue-950 md:min-h-[38px] md:px-4 md:text-sm'
@@ -3683,7 +4059,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const abrirPainelCliente = useCallback((painel) => {
     setOpenProfileMenu(false)
     setModoApp('cliente')
-    setChatPedido(null)
     setClientePainelBaixo(painel)
   }, [])
 
@@ -3692,7 +4067,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
     setModoApp('corre')
     setTab(nextTab)
     setClientePainelBaixo('')
-    setChatPedido(null)
   }, [])
 
   useEffect(() => {
@@ -3709,7 +4083,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       setAgendaClienteService(null)
       setOpenProfissionaisLateral(false)
       setOpenCorresLateral(false)
-      setChatPedido(null)
     }
 
     const showClientBase = () => {
@@ -3802,9 +4175,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       setCorreDisponivel(next)
       setUserOnlinePreference(next)
 
-        if (meuId) {
+        if (meuId && auth.currentUser?.uid === meuId) {
           const agoraPresence = Date.now()
-          update(ref(database, `presence/${meuId}`), {
+          updateOwnPresence(database, meuId, {
             modoAtual: modoApp,
             online: next,
             disponivel: next,
@@ -4076,8 +4449,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                 <div className="space-y-3 p-3 bg-slate-50">
                   <CentralNotificacoes
+                    key={`notifications:${meuId}`}
                     meuId={meuId}
-                    corres={corres}
+                    corres={pedidosConhecidos}
                     onAbrirChat={abrirChatFocado}
                     onAbrirPedido={abrirPedidoFocado}
                     onAction={abrirAcaoNotificacao}
@@ -4085,13 +4459,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   />
 
                   <ListaConversas
+                    key={`conversations:${meuId}`}
                     meuId={meuId}
+                    onPreloadChat={(pedidoId) => preloadChatFocado({ id: pedidoId })}
                     onAbrirChat={(pedidoId) => {
-                      const p = corres.find((x) => x.id === pedidoId)
+                      const p = pedidosConhecidos.find((x) => x.id === pedidoId)
                       if (p) {
                         abrirChatFocado(p)
                       } else {
-                        router.push(`/chat/${encodeURIComponent(String(pedidoId))}?voltar=${modoApp}`)
+                        abrirChatFocado({ id: pedidoId })
                       }
                     }}
                   />
@@ -4113,14 +4489,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
                 <div className="h-full min-h-0">
                   <AgendaProfissional
+                    key={`agenda:${meuId}`}
                     uid={meuId}
                     nome={meuNome}
                     fotoURL={fotoURL}
                     privateRequests={privateRequests}
+                    privateRequestsLoading={privateRequestsLoading}
+                    privateRequestsError={privateRequestsError}
                     notificacoesCount={notificacoesNaoLidas}
                     onAbrirPerfil={() => setOpenProfileMenu(true)}
                     onAbrirNotificacoes={() => setTab('inbox')}
                     onAbrirChat={abrirChatFocado}
+                    onPreloadChat={preloadChatFocado}
                     onToast={showToast}
                     reserveFloatingControls
                   />
@@ -4282,7 +4662,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               <div className="mb-4">
                 <PainelProblemasDenuncias
                   meuId={meuId}
-                  corres={corres}
+                  corres={pedidosConhecidos}
                   onAbrirChat={abrirChatFocado}
                   onAbrirPedido={abrirPedidoFocado}
                 />
@@ -4296,8 +4676,14 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               currentUid={meuId}
               meuNome={meuNome}
               onlineUsers={onlineUsers}
+              onlineLoading={!publicAvailabilityStatus.loaded || !registeredUsersStatus.loaded}
+              onlineError={publicAvailabilityStatus.error || registeredUsersStatus.error}
               registeredUsers={registeredUsers}
+              profilesLoading={!registeredUsersStatus.loaded}
+              profilesError={registeredUsersStatus.error}
               publicPortfolio={publicPortfolioObj}
+              portfolioLoading={!publicPortfolioStatus.loaded || !registeredUsersStatus.loaded}
+              portfolioError={publicPortfolioStatus.error || registeredUsersStatus.error}
               viewerLocation={meuUserProfile?.local || meuUserProfile?.location || meuUserProfile?.profile?.local || null}
               viewerRegion={meuUserProfile?.cidade || meuUserProfile?.profile?.cidade || ''}
               onCriarPedido={() => setOpenIA(true)}
@@ -4423,13 +4809,13 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               </div>
             </div>
 
-            {loadingPedidos && (
+            {loadingPedidosVisivel && (
               <div className={`mb-3 text-sm text-gray-200 rounded-2xl p-3 ${glassCard}`}>⏳ Carregando pedidos...</div>
             )}
 
-            {!loadingPedidos && erroPedidos && (
+            {!loadingPedidosVisivel && erroPedidosVisivel && (
               <div className="mb-3 text-sm text-red-200 bg-red-500/15 border border-red-400/20 rounded-2xl p-3 ">
-                ❌ {erroPedidos}
+                ❌ {erroPedidosVisivel}
               </div>
             )}
 
@@ -4451,14 +4837,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             ) : null}
 
             <div data-tutorial="lista-pedidos" className="grid grid-cols-1 items-stretch gap-2.5 pb-52 min-[360px]:grid-cols-2 min-[360px]:gap-3 sm:pb-48 md:grid-cols-2 md:gap-3 md:pb-32 lg:grid-cols-3 xl:grid-cols-4">
-              {!loadingPedidos && !erroPedidos && pedidosTotalElegivel === 0 && (
+              {!loadingPedidosVisivel && !erroPedidosVisivel && pedidosTotalElegivel === 0 && (
                 <div className="col-span-full rounded-[24px] bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">
                   Nenhum trabalho para mostrar agora.
                 </div>
               )}
 
               {pedidosRenderizados.map((p, index) => {
-                const status = normalizeAtendimentoStatus(p.status)
+                const status = normalizeServiceAttendanceStatus({
+                  status: p.status,
+                  kind: 'pedido',
+                  type: p.tipo,
+                  record: p,
+                })
                 const aceitoPorMim = p?.aceite?.id === meuId
                 const temAceitador = !!p?.aceite?.id
                 const mapOk = !!(p?.local?.lat != null && p?.local?.lng != null)
@@ -4490,6 +4881,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                 const distanciaPedido = formatDistancePedido(p, meuUserNode)
                 const tempoPostado = formatTempoPostado(p.criadoEm || p.createdAt || p.atualizadoEm)
                 const dataCurtaPedido = formatDataCurtaPedido(p.criadoEm || p.createdAt || p.atualizadoEm)
+                const cardAbreChat = status !== ATENDIMENTO_STATUS.ABERTO && (souCriador(p) || souAceitador(p))
 
                 return (
                   <motion.div
@@ -4543,6 +4935,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       <button
                         type="button"
                         onClick={() => abrirFichaPedido(p)}
+                        onPointerEnter={cardAbreChat ? () => preloadChatFocado(p) : undefined}
+                        onPointerDown={cardAbreChat ? () => preloadChatFocado(p) : undefined}
+                        onFocus={cardAbreChat ? () => preloadChatFocado(p) : undefined}
                         aria-busy={abrindoEstePedido}
                         className="min-w-0 text-left"
                         title={tituloPedido}
@@ -4804,30 +5199,33 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {([ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO, ATENDIMENTO_STATUS.FINALIZADO].includes(status)) && (souCriador(p) || souAceitador(p)) ? (
-                        <button className={btnDark} onClick={() => abrirChatFocado(p)} type="button">
+                      {([ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.A_CAMINHO, ATENDIMENTO_STATUS.CHEGOU, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO, ATENDIMENTO_STATUS.FINALIZADO, ATENDIMENTO_STATUS.CANCELADO].includes(status)) && (souCriador(p) || souAceitador(p)) ? (
+                        <button
+                          className={btnDark}
+                          onClick={() => abrirChatFocado(p)}
+                          onPointerEnter={() => preloadChatFocado(p)}
+                          onPointerDown={() => preloadChatFocado(p)}
+                          onFocus={() => preloadChatFocado(p)}
+                          type="button"
+                        >
                           💬 Chat
                         </button>
                       ) : null}
 
                       {status === ATENDIMENTO_STATUS.ACEITO && (souCriador(p) || souAceitador(p)) ? (
-                        <button className={btnDark} onClick={() => abrirFichaPedido(p)} type="button">
+                        <button
+                          className={btnDark}
+                          onClick={() => abrirFichaPedido(p)}
+                          onPointerEnter={() => preloadChatFocado(p)}
+                          onPointerDown={() => preloadChatFocado(p)}
+                          onFocus={() => preloadChatFocado(p)}
+                          type="button"
+                        >
                           Detalhes
                         </button>
                       ) : null}
 
-                      {aceitoPorMim && status === ATENDIMENTO_STATUS.ACEITO && (
-                        <button
-                          className={`${btnPrimary} col-span-2 disabled:opacity-60 md:col-span-1`}
-                          onClick={() => avancarAtendimento(p, ATENDIMENTO_STATUS.EM_ANDAMENTO)}
-                          disabled={atendimentoId === p.id}
-                          type="button"
-                        >
-                          {atendimentoId === p.id ? 'Iniciando...' : 'Iniciar atendimento'}
-                        </button>
-                      )}
-
-                      {([ATENDIMENTO_STATUS.ACEITO, ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO].includes(status)) && (souCriador(p) || souAceitador(p)) && (
+                      {([ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.A_CAMINHO, ATENDIMENTO_STATUS.CHEGOU, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO].includes(status)) && (souCriador(p) || souAceitador(p)) && (
                         <button
                           className="col-span-2 min-h-[38px] rounded-[16px] border border-red-200 bg-white px-2 py-2 text-[11px] font-black text-red-700 shadow-sm transition hover:bg-red-50 md:col-span-1 md:px-3 md:text-xs"
                           onClick={() => abrirProblema(p)}
@@ -4849,50 +5247,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                         </button>
                       )}
 
-                      {aceitoPorMim && status === ATENDIMENTO_STATUS.ACEITO && (
-                        <button
-                          className={`${btnDanger} col-span-2 disabled:opacity-60 md:col-span-1`}
-                          onClick={() => cancelarAceite(p)}
-                          disabled={cancelandoId === p.id}
-                          type="button"
-                        >
-                          {cancelandoId === p.id ? 'Cancelando…' : 'Cancelar'}
-                        </button>
-                      )}
-
-                      {aceitoPorMim && status === ATENDIMENTO_STATUS.EM_ANDAMENTO && (
-                        <button
-                          className={`${btnPrimary} col-span-2 disabled:opacity-60 md:col-span-1`}
-                          onClick={() => avancarAtendimento(p, ATENDIMENTO_STATUS.CHEGOU)}
-                          disabled={atendimentoId === p.id}
-                          type="button"
-                        >
-                          {atendimentoId === p.id ? 'Atualizando...' : 'Cheguei ao local'}
-                        </button>
-                      )}
-
-                      {aceitoPorMim && status === ATENDIMENTO_STATUS.CHEGOU && (
-                        <button
-                          className={`${btnPrimary} col-span-2 disabled:opacity-60 md:col-span-1`}
-                          onClick={() => avancarAtendimento(p, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO)}
-                          disabled={atendimentoId === p.id}
-                          type="button"
-                        >
-                          {atendimentoId === p.id ? 'Solicitando...' : 'Solicitar finalização'}
-                        </button>
-                      )}
-
-                      {status === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO && souCriador(p) && (
-                        <button
-                          className="col-span-2 min-h-[38px] rounded-[16px] bg-emerald-600 px-2 py-2 text-[11px] font-black text-white shadow-md shadow-emerald-500/20 transition hover:bg-emerald-700 disabled:opacity-60 md:col-span-1 md:px-3 md:text-xs"
-                          onClick={() => abrirConclusao(p)}
-                          disabled={serviçondoId === p.id}
-                          type="button"
-                        >
-                          {serviçondoId === p.id ? 'Confirmando…' : 'Concluir'}
-                        </button>
-                      )}
-
                       {status === ATENDIMENTO_STATUS.FINALIZADO && souCriador(p) && !p?.avaliacao ? (
                         <button
                           className="min-h-[38px] rounded-[16px] bg-amber-500 px-2 py-2 text-[11px] font-black text-slate-950 shadow-md shadow-amber-500/20 transition hover:bg-amber-600 md:px-3 md:text-xs"
@@ -4911,38 +5265,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       )}
                     </div>
 
-                    {chatPedido?.id === p.id && (
-                      <div className="pt-2">
-                        <div className="flex items-center justify-between">
-                          <div className="text-xs text-slate-500">
-                            Chat do pedido: <b className="text-slate-800">{p.titulo || p.id}</b>
-                          </div>
-                          <button
-                            className="text-[11px] md:text-xs px-2 py-0.5 md:py-1 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-white"
-                            onClick={() => setChatPedido(null)}
-                            type="button"
-                          >
-                            Fechar chat
-                          </button>
-                        </div>
-
-                        <ChatMensagens
-                          pedidoId={p.id}
-                          meuId={meuId}
-                          meuNome={meuNome}
-                          pedidoTitulo={p.titulo || 'Corre aqui'}
-                          outroUser={getOutroUserComPresence(p)}
-                          planoAtual={meuUserNode?.plano || 'free'}
-                          mostrarAnuncio={false}
-                          onToast={showToast}
-                        />
-                      </div>
-                    )}
                   </motion.div>
                 )
               })}
 
-              {!loadingPedidos && !erroPedidos && pedidosTotalElegivel > 0 ? (
+              {!loadingPedidosVisivel && !erroPedidosVisivel && pedidosTotalElegivel > 0 ? (
                 <div className="col-span-full flex flex-col items-center gap-2 rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 text-center">
                   <div className="text-[11px] font-black text-slate-500">
                     {pedidosTotalRenderizado} de {pedidosTotalElegivel} pedidos
@@ -4967,7 +5294,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         )}
 
         {/* MODAL IA */}
-        <ModalIA open={openIA} onClose={() => setOpenIA(false)} abrirCriacaoManual={() => setOpenIA(false)} />
+        {openIA ? (
+          <ModalIA
+            open
+            onClose={() => setOpenIA(false)}
+            abrirCriacaoManual={() => setOpenIA(false)}
+            meuId={meuId}
+            meuNome={meuNome}
+          />
+        ) : null}
 
         {/* MAPA DO PEDIDO */}
         {mapItem && (
@@ -5042,47 +5377,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             />
           </>
         )}
-
-
-        {/* CHAT MODAL NO MODO CLIENTE */}
-        {modoApp === 'cliente' && chatPedido && !clientePainelBaixo && (
-          <div className="fixed inset-0 z-[99999] bg-black/70  flex items-center justify-center p-3">
-            <div className="w-full max-w-2xl rounded-2xl bg-[#0b1220] border border-white/10 shadow-2xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/5">
-                <div>
-                  <div className="text-sm font-semibold text-white">
-                    Conversa do pedido
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    {chatPedido?.titulo || 'Corre aqui'}
-                  </div>
-                </div>
-
-                <button
-                  className="text-xs px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-white"
-                  onClick={() => setChatPedido(null)}
-                  type="button"
-                >
-                  Fechar
-                </button>
-              </div>
-
-              <div className="p-3">
-                <ChatMensagens
-                  pedidoId={chatPedido.id}
-                  meuId={meuId}
-                  meuNome={meuNome}
-                  pedidoTitulo={chatPedido.titulo || 'Corre aqui'}
-                  outroUser={getOutroUserComPresence(chatPedido)}
-                  planoAtual={meuUserNode?.plano || 'free'}
-                  mostrarAnuncio={false}
-                  onToast={showToast}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* EDITAR */}
         {editItem && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70">
@@ -5141,9 +5435,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           onPedirServico={(u, servico) => {
             criarPedidoDiretoPortfolio(u, servico)
           }}
-          onAgendar={(u, servico) => {
-            setUsuarioSelecionado(null)
-            abrirAgendaCliente(u, servico)
+          onAgendar={async (u, servico) => {
+            if (await abrirAgendaCliente(u, servico)) setUsuarioSelecionado(null)
           }}
         />
       )}
@@ -5166,7 +5459,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               type="button"
               onClick={() => {
                 setClientePainelBaixo('')
-                setChatPedido(null)
                 try {
                   window.scrollTo({ top: 0, behavior: 'smooth' })
                 } catch {}
@@ -5226,7 +5518,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               data-tutorial="chat"
               className={[
                 'relative flex h-[54px] min-w-0 flex-col items-center justify-center rounded-[20px] text-[10px] font-black transition-all duration-200 active:scale-[0.96] md:h-[104px] md:rounded-[30px] md:text-[20px]',
-                clientePainelBaixo === 'conversas' || clientePainelBaixo === 'chat'
+                clientePainelBaixo === 'conversas'
                   ? 'bg-[#ffd91a] text-blue-950 shadow-[0_10px_24px_rgba(250,204,21,0.24)]'
                   : 'text-slate-600 hover:bg-slate-100 md:text-slate-500 md:hover:bg-slate-50 md:hover:text-blue-950',
               ].join(' ')}
@@ -5328,9 +5620,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   >
                     {clientePainelBaixo === 'meusPedidos'
                       ? 'Histórico de serviços'
-                      : clientePainelBaixo === 'chat'
-                        ? '💬 Conversa'
-                        : clientePainelBaixo === 'notificacoes'
+                      : clientePainelBaixo === 'notificacoes'
                           ? '🔔 Notificações'
                           : clientePainelBaixo === 'seguranca'
                             ? '🛡️ Segurança'
@@ -5342,7 +5632,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   type="button"
                   onClick={() => {
                     setClientePainelBaixo('')
-                    if (clientePainelBaixo === 'chat') setChatPedido(null)
                   }}
                   className={[
                     'h-9 w-9 rounded-xl font-black border transition active:scale-[0.97] md:h-11 md:w-11 md:rounded-2xl',
@@ -5366,15 +5655,18 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               {clientePainelBaixo === 'meusPedidos' && (
                 <MeusPedidosCliente
                   meuId={meuId}
-                  corres={corres}
+                  corres={pedidosConhecidos}
                   privateRequests={privateRequests}
+                  publicOrdersLoading={loadingPedidos || loadingPedidosParticipantes}
+                  publicOrdersError={erroPedidos || erroPedidosParticipantes || ''}
+                  privateRequestsLoading={privateRequestsLoading}
+                  privateRequestsError={privateRequestsError}
                   onAbrirChat={abrirChatFocado}
+                  onPreloadChat={preloadChatFocado}
                   onVerMapa={(pedido) => {
                     setMapItem(pedido)
                   }}
-                  onConfirmarServicoFeito={(pedido) => {
-                    abrirConclusao(pedido)
-                  }}
+                  onConfirmarServicoFeito={abrirChatFocado}
                   onProblemaServico={abrirProblema}
                   onAvaliarServico={abrirAvaliacao}
                   onBoostPedido={abrirBoostPedido}
@@ -5385,14 +5677,16 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               {clientePainelBaixo === 'conversas' && (
                 <div className="overflow-hidden rounded-[20px] bg-[#0f172a] border border-slate-700 shadow-lg text-white md:rounded-[28px]">
                   <ListaConversas
+                    key={`conversations:${meuId}`}
                     meuId={meuId}
+                    onPreloadChat={(pedidoId) => preloadChatFocado({ id: pedidoId })}
                     onAbrirChat={(pedidoId) => {
-                      const p = corres.find((x) => x.id === pedidoId)
+                      const p = pedidosConhecidos.find((x) => x.id === pedidoId)
 
                       if (p) {
                         abrirChatFocado(p)
                       } else {
-                        router.push(`/chat/${encodeURIComponent(String(pedidoId))}?voltar=${modoApp}`)
+                        abrirChatFocado({ id: pedidoId })
                       }
                     }}
                   />
@@ -5401,8 +5695,9 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
               {clientePainelBaixo === 'notificacoes' && (
                 <CentralNotificacoes
+                  key={`notifications:${meuId}`}
                   meuId={meuId}
-                  corres={corres}
+                  corres={pedidosConhecidos}
                   onAbrirChat={abrirChatFocado}
                   onAbrirPedido={abrirPedidoFocado}
                   onAction={abrirAcaoNotificacao}
@@ -5413,46 +5708,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               {clientePainelBaixo === 'seguranca' && (
                 <PainelProblemasDenuncias
                   meuId={meuId}
-                  corres={corres}
+                  corres={pedidosConhecidos}
                   onAbrirChat={abrirChatFocado}
                   onAbrirPedido={abrirPedidoFocado}
                 />
-              )}
-
-              {clientePainelBaixo === 'chat' && chatPedido && (
-                <div className="overflow-hidden rounded-[20px] bg-[#0f172a] border border-slate-700 shadow-lg text-white md:rounded-[28px]">
-                  <div className="border-b border-slate-700 bg-[#111827] px-3 py-2.5 md:px-4 md:py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-300 md:text-xs md:tracking-[0.16em]">Chat do pedido</div>
-                        <div className="mt-0.5 truncate text-sm font-black text-white md:mt-1 md:text-base">{chatPedido?.titulo || 'Corre aqui'}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setChatPedido(null)
-                          setClientePainelBaixo('conversas')
-                        }}
-                        className="rounded-xl bg-[#1e293b] px-3 py-1.5 text-xs font-black text-white border border-slate-700 hover:bg-[#263449] md:rounded-2xl md:py-2"
-                      >
-                        Voltar
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="p-2 md:p-3">
-                    <ChatMensagens
-                      pedidoId={chatPedido.id}
-                      meuId={meuId}
-                      meuNome={meuNome}
-                      pedidoTitulo={chatPedido.titulo || 'Corre aqui'}
-                      outroUser={getOutroUserComPresence(chatPedido)}
-                      planoAtual={meuUserNode?.plano || 'free'}
-                      mostrarAnuncio={false}
-                      onToast={showToast}
-                    />
-                  </div>
-                </div>
               )}
             </div>
           </div>
@@ -5542,66 +5801,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                   {boostCheckoutLoading ? 'Criando...' : 'Impulsionar'}
                 </button>
               </div>
-            </div>
-          </motion.div>
-        </div>
-      ) : null}
-
-      {conclusaoPedido ? (
-        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 md:p-4">
-          <motion.div
-            initial={{ opacity: 0, y: 18, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="w-full max-w-lg rounded-[20px] border border-white/10 bg-[#07111f] p-3 text-white shadow-[0_28px_95px_rgba(0,0,0,0.62)] md:rounded-[30px] md:p-5 md:shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">
-                  Conclusão do serviço
-                </div>
-                <h2 className="mt-1 text-lg font-black md:text-2xl">Está tudo certo?</h2>
-                <p className="mt-1.5 text-xs leading-relaxed text-slate-300 md:mt-2 md:text-sm">
-                  Confirme somente depois que o combinado foi entregue. Depois disso você poderá avaliar quem fez o serviço.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setConclusaoPedido(null)}
-                className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/10 font-black hover:bg-white/15 md:h-11 md:w-11 md:rounded-2xl"
-                aria-label="Fechar"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 md:mt-5 md:rounded-3xl md:p-4">
-              <div className="text-sm font-black text-white">{conclusaoPedido?.titulo || 'Serviço'}</div>
-              <div className="mt-1 text-xs text-slate-400">
-                {conclusaoPedido?.aceite?.nome ? `Feito por ${conclusaoPedido.aceite.nome}` : 'Aguardando dados de quem aceitou'}
-              </div>
-            </div>
-
-            <StatusFluxoServico pedido={conclusaoPedido} tone="dark" className="mt-3 md:mt-4" />
-
-            <div className="mt-3 grid gap-2 md:mt-5 md:gap-3">
-              <button
-                type="button"
-                disabled={serviçondoId === conclusaoPedido.id}
-                onClick={() => marcarConcluído(conclusaoPedido)}
-                className="w-full rounded-2xl bg-emerald-600 px-3 py-2.5 text-sm font-black text-white shadow-[0_14px_44px_rgba(16,185,129,0.2)] hover:bg-emerald-500 disabled:opacity-60 md:rounded-3xl md:px-4 md:py-4 md:text-base md:shadow-[0_18px_60px_rgba(16,185,129,0.24)]"
-              >
-                {serviçondoId === conclusaoPedido.id ? 'Confirmando...' : 'Confirmar serviço feito'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  abrirProblema(conclusaoPedido)
-                  setConclusaoPedido(null)
-                }}
-                className="w-full rounded-2xl border border-red-400/25 bg-red-500/12 px-3 py-2.5 text-sm font-black text-red-100 hover:bg-red-500/18 md:rounded-3xl md:px-4 md:py-4 md:text-base"
-              >
-                Problema com serviço
-              </button>
             </div>
           </motion.div>
         </div>
@@ -5734,23 +5933,27 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         onAjuda={() => abrirPerfilDrawer('ajuda')}
       />
 
-      <PerfilDrawer
-        open={openPerfil}
-        onClose={() => setOpenPerfil(false)}
-        uid={meuId}
-        initialTab={perfilInitialTab}
-        initialProfSection={perfilInitialProfSection}
-      />
+      {openPerfil ? (
+        <PerfilDrawer
+          open
+          onClose={() => setOpenPerfil(false)}
+          uid={meuId}
+          initialTab={perfilInitialTab}
+          initialProfSection={perfilInitialProfSection}
+        />
+      ) : null}
 
-      <ModalAgenda
-        open={!!agendaClienteUser}
-        profissional={agendaClienteUser}
-        servico={agendaClienteService}
-        onClose={() => {
-          setAgendaClienteUser(null)
-          setAgendaClienteService(null)
-        }}
-      />
+      {agendaClienteUser ? (
+        <ModalAgenda
+          open
+          profissional={agendaClienteUser}
+          servico={agendaClienteService}
+          onClose={() => {
+            setAgendaClienteUser(null)
+            setAgendaClienteService(null)
+          }}
+        />
+      ) : null}
 
       {modoApp === 'corre' && !openIA && !isMapOpen ? (
         <button

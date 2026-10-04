@@ -1,4 +1,5 @@
 import { ref, serverTimestamp, update } from '@/lib/firebaseDebug'
+import { auth } from '@/lib/firebase'
 
 export const SERVICE_RATING_COMMENT_LIMIT = 500
 
@@ -36,4 +37,28 @@ export async function saveCanonicalServiceRating({ database, pedido, clienteId, 
   })
 
   return payload
+}
+
+export async function savePrivateRequestServiceRating({ pedido, nota, comentario }) {
+  const requestId = String(pedido?.id || pedido?.privateRequestId || '').trim()
+  const currentUser = auth.currentUser
+  if (!requestId || !currentUser?.uid || typeof currentUser.getIdToken !== 'function') {
+    throw new Error('Sessão indisponível para avaliar este atendimento.')
+  }
+
+  const idToken = await currentUser.getIdToken()
+  if (auth.currentUser?.uid !== currentUser.uid) throw new Error('A sessão mudou durante a avaliação.')
+  const response = await fetch('/api/private-requests/rating', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ requestId, nota, comentario }),
+  })
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok || result?.ratingSaved !== true || result?.requestId !== requestId) {
+    throw new Error(result?.message || 'Não foi possível enviar a avaliação. Tente novamente.')
+  }
+  return result.rating
 }

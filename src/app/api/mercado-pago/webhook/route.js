@@ -6,6 +6,7 @@ import {
   verifyMercadoPagoSignature,
   writeCommercialAudit,
 } from '@/lib/commercialServer'
+import { buildMercadoPagoSignatureDiagnostic } from '@/lib/mercadoPagoWebhookSignature'
 
 export const runtime = 'nodejs'
 
@@ -52,6 +53,7 @@ export async function POST(request) {
   }
 
   const paymentId = safeText(body?.data?.id || body?.id || body?.resource)
+  const signatureDataId = safeText(request.nextUrl.searchParams.get('data.id'))
 
   await writeCommercialAudit(database, {
     eventId: `webhook_received_${paymentId || Date.now()}`,
@@ -68,15 +70,39 @@ export async function POST(request) {
     }, { status: 202, headers: responseHeaders })
   }
 
-  const signature = verifyMercadoPagoSignature({ rawBody, body, headers: request.headers })
+  const signature = verifyMercadoPagoSignature({
+    rawBody,
+    dataId: signatureDataId,
+    headers: request.headers,
+  })
   if (!signature.ok) {
+    const signatureDiagnostic = buildMercadoPagoSignatureDiagnostic({
+      reason: signature.reason,
+      headers: request.headers,
+      queryDataId: signatureDataId,
+      legacyQueryId: request.nextUrl.searchParams.get('id'),
+      legacyQueryTopic: request.nextUrl.searchParams.get('topic'),
+      body,
+    })
+    console.warn(JSON.stringify(signatureDiagnostic))
     await writeCommercialAudit(database, {
       eventId: `webhook_invalid_signature_${paymentId || Date.now()}`,
       type: 'webhook_invalid_signature',
       paymentReference: paymentId || null,
       statusAfter: signature.reason,
     })
-    return NextResponse.json({ ok: false, error: 'invalid_signature', reason: signature.reason }, { status: 401, headers: responseHeaders })
+    return NextResponse.json({
+      ok: false,
+      error: 'invalid_signature',
+      reason: signature.reason,
+      source: 'corre_aqui_webhook_signature',
+    }, {
+      status: 401,
+      headers: {
+        ...responseHeaders,
+        'X-Corre-Aqui-Webhook': 'signature-rejected',
+      },
+    })
   }
 
   const payment = await fetchMercadoPagoPayment(signature.paymentId)

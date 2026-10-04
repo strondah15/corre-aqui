@@ -9,6 +9,14 @@ function normalizedStatus(value) {
   return text(value, 40).toLowerCase()
 }
 
+function uidDiagnostic(value) {
+  const present = typeof value === 'string' && value.trim().length > 0
+  return {
+    present,
+    valid: present && value.trim().length <= 128,
+  }
+}
+
 function privateLocation(value) {
   const lat = Number(value?.lat ?? value?.latitude)
   const lng = Number(value?.lng ?? value?.longitude)
@@ -64,16 +72,69 @@ export function canSynchronizePublicRequest({ pedido, pedidoId, actorUid } = {})
 }
 
 export function canStartAuthoritativeClaim({ pedido, pedidoId, actorUid } = {}) {
-  const authority = getPedidoAuthority(pedido, pedidoId)
+  return getAuthoritativeClaimBlockReason({ pedido, pedidoId, actorUid }) === ''
+}
+
+export function getAuthoritativeClaimBlockReason({ pedido, pedidoId, actorUid } = {}) {
+  return assessAuthoritativeClaim({ pedido, pedidoId, actorUid }).abortReason
+}
+
+export function assessAuthoritativeClaim(options = {}) {
+  const { pedido, pedidoId, actorUid } = options
+  const publicProjectionWasProvided = Object.prototype.hasOwnProperty.call(options, 'publicRequest')
+  const publicRequest = options.publicRequest
+  const privateExists = !!pedido && typeof pedido === 'object'
+  const authority = getPedidoAuthority(pedido || {}, pedidoId)
   const actor = text(actorUid)
-  return Boolean(
-    actor &&
-    authority.creatorId &&
-    actor !== authority.creatorId &&
-    authority.status === 'aberto' &&
-    !authority.acceptedId &&
-    hasAuthoritativePublication(pedido, authority.pedidoId)
-  )
+  const acceptedUid = pedido?.aceite?.id ?? pedido?.aceite?.uid
+  const accepted = uidDiagnostic(acceptedUid)
+  const marker = pedido?.publicacao
+  const markerExists = !!marker && typeof marker === 'object'
+  const markerDiagnostic = {
+    exists: markerExists,
+    pedidoIdMatches: markerExists && text(marker.pedidoId) === authority.pedidoId,
+    creatorMatches: markerExists && text(marker.criadorId) === authority.creatorId,
+    originMatches: markerExists && marker.origem === PUBLICATION_ORIGIN,
+    versionMatches: markerExists && Number(marker.versao) === PUBLICATION_VERSION,
+  }
+  const markerValid = Object.values(markerDiagnostic).every(Boolean)
+  const publicationExists = !!publicRequest && typeof publicRequest === 'object'
+  const publicationStatus = normalizedStatus(publicRequest?.status)
+  const publicCreatorId = text(publicRequest?.criador?.id || publicRequest?.criador?.uid)
+  const publicIdMatches = publicationExists && text(publicRequest?.id) === authority.pedidoId
+  const publicCreatorMatches = publicationExists && publicCreatorId === authority.creatorId
+  const publicAccepted = uidDiagnostic(publicRequest?.aceite?.id ?? publicRequest?.aceite?.uid)
+  const publicProjectionValid = publicationExists && publicIdMatches && publicCreatorMatches && publicationStatus === 'aberto' && !publicAccepted.present
+  const publicationValid = markerValid && (!publicProjectionWasProvided || publicProjectionValid)
+
+  let abortReason = ''
+  if (!actor) abortReason = 'authentication_required'
+  else if (!privateExists) abortReason = 'private_request_missing'
+  else if (!authority.pedidoId || !authority.creatorId) abortReason = 'creator_mismatch'
+  else if (actor === authority.creatorId) abortReason = 'own_request'
+  else if (accepted.valid) abortReason = 'already_accepted'
+  else if (accepted.present) abortReason = 'claim_conflict'
+  else if (authority.status !== 'aberto') abortReason = 'status_not_open'
+  else if (!markerExists) abortReason = 'publication_missing'
+  else if (!markerValid) abortReason = 'publication_invalid'
+  else if (publicProjectionWasProvided && !publicationExists) abortReason = 'publication_missing'
+  else if (publicProjectionWasProvided && !publicCreatorMatches) abortReason = 'creator_mismatch'
+  else if (publicProjectionWasProvided && !publicProjectionValid) abortReason = 'publication_invalid'
+
+  return {
+    pedidoId: authority.pedidoId || text(pedidoId),
+    authUid: actor,
+    privateExists,
+    privateStatus: authority.status,
+    creatorMatchesAuth: !!actor && !!authority.creatorId && actor === authority.creatorId,
+    hasAcceptedUid: accepted.present,
+    acceptedUidValid: accepted.valid,
+    publicationExists,
+    publicationValid,
+    publicationStatus,
+    publicationMarker: markerDiagnostic,
+    abortReason,
+  }
 }
 
 export function hasDiscoverablePublicProjection({ pedido, pedidoId, publicRequest } = {}) {
@@ -115,6 +176,15 @@ export function buildAuthoritativeClaim({ pedido, pedidoId, actorUid, actorName,
       aceitoPor: { id: actor, nome: name },
     },
   }
+}
+
+export function buildAuthoritativeClaimTransactionValue(options = {}) {
+  // RTDB pode invocar o callback inicialmente com o cache local vazio, mesmo
+  // quando o registro existe no servidor. Retornar undefined nesse primeiro
+  // passe abortaria a transacao antes da leitura autoritativa. Manter null faz
+  // o servidor comparar o estado e reenviar o valor atual quando ele existe.
+  if (options?.pedido == null) return null
+  return buildAuthoritativeClaim(options) || undefined
 }
 
 export const PEDIDO_PUBLICATION = Object.freeze({

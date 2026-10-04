@@ -131,7 +131,6 @@ function CompactDirectoryCard({ item, mode, onAbrir }) {
   const reputation = buildProfessionalReputation(item)
   const ratingLabel = reputation.rating ? `★ ${reputation.rating.toFixed(1).replace('.', ',')} · ${reputation.reviewCount}` : 'Novo no app'
   const servicesLabel = `${reputation.completedServices} serviço${reputation.completedServices === 1 ? '' : 's'}`
-  const avatarStyle = fotoURL ? { backgroundImage: `url(${JSON.stringify(fotoURL)})` } : undefined
   const handleAbrir = () => onAbrir?.(item)
 
   return (
@@ -142,13 +141,10 @@ function CompactDirectoryCard({ item, mode, onAbrir }) {
       <div className="pointer-events-none absolute -bottom-10 -left-8 h-20 w-20 rounded-full bg-yellow-100/80 blur-2xl" />
 
       <div className="relative flex min-w-0 items-start gap-2.5">
-        <div
-          className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl border border-white bg-slate-100 bg-cover bg-center shadow-[0_8px_18px_rgba(15,23,42,0.12)] ring-[3px] ring-blue-50"
-          style={avatarStyle}
-          aria-label={nome}
-        >
+        <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-2xl border border-white bg-slate-100 shadow-[0_8px_18px_rgba(15,23,42,0.12)] ring-[3px] ring-blue-50" aria-label={nome}>
           {fotoURL ? (
-            <span className="sr-only">{nome}</span>
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={fotoURL} alt="" width="44" height="44" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
           ) : (
             <div className="grid h-full w-full place-items-center text-xl" aria-hidden="true">{emoji}</div>
           )}

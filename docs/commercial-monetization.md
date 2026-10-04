@@ -117,3 +117,15 @@ e mostram selo `Previa`.
 Os nos comerciais possuem leitura e escrita negadas nas regras do Realtime
 Database. Somente rotas server-side com Firebase Admin criam checkout, validam
 webhook e ativam ou encerram entitlements.
+# Assinaturas anuais
+
+O Corre Aqui oferece um pedido gratuito ao Cliente. A gratuidade é consumida somente quando a rota autenticada `/api/pedidos/create` grava o pedido e o marcador `users/{uid}/clientFreeOrderUsed` na mesma atualização atômica. Pedidos seguintes exigem `subscriptions/client/status = active` e `expiresAt` futuro.
+
+O período grátis de Profissional/Corre começa na primeira entrada no modo Trabalhar, pela rota `/api/subscriptions/status`, e dura três meses de calendário. Ações profissionais novas, como aceitar pedido ou responder solicitação privada, são verificadas no backend. Trabalhos, conversas e dados existentes não são apagados.
+
+Planos Mercado Pago:
+
+- `CLIENT_ANNUAL`: R$ 19,90 por 12 meses.
+- `PROFESSIONAL_ANNUAL`: R$ 49,90 por 12 meses.
+
+O checkout reutiliza `/api/planos/checkout`; a liberação ocorre exclusivamente pelo webhook `/api/mercado-pago/webhook`, após validação de assinatura, consulta do pagamento, valor, moeda, produto, tentativa e idempotência. Impulsionamentos e destaques existentes permanecem produtos independentes das assinaturas.

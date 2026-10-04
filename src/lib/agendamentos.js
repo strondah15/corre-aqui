@@ -1,4 +1,5 @@
 import { get, onValue, ref, update } from './firebaseDebug'
+import { activateProfessionalTrial, announceSubscriptionRequired } from './subscriptionClient'
 
 const cleanId = (value) => String(value || '').trim()
 
@@ -56,6 +57,14 @@ export async function respondLegacyAgendamento({ database, agendamento = {}, act
   if (!database || !id || !actor || !clienteId || !profissionalId) throw new Error('Agendamento inválido.')
   if (actor !== profissionalId || !['aceito', 'recusado'].includes(nextStatus)) {
     throw new Error('Somente o profissional vinculado pode responder a esta solicitação.')
+  }
+
+  if (nextStatus === 'aceito') {
+    const subscriptionResult = await activateProfessionalTrial()
+    if (!subscriptionResult?.subscriptions?.professional?.canUseProfessionalFeatures) {
+      announceSubscriptionRequired({ kind: 'professional', reason: 'professional_subscription_required' })
+      throw new Error('Assine o plano anual para aceitar novas solicitações.')
+    }
   }
 
   const agora = Date.now()

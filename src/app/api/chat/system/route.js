@@ -4,6 +4,10 @@ import {
   getFirebaseAdminDatabase,
   isFirebaseAdminConfigured,
 } from '@/lib/firebaseAdmin'
+import {
+  applyConversationActivity,
+  readConversationContext,
+} from '@/lib/conversationActivityServer'
 
 export const runtime = 'nodejs'
 
@@ -11,9 +15,11 @@ const SYSTEM_MESSAGES = Object.freeze({
   atendimento_intro: 'Este chat é exclusivo deste atendimento. Combine detalhes importantes por aqui.',
   pedido_aceito: '✓ Pedido aceito.',
   atendimento_iniciado: '✓ Atendimento iniciado.',
+  atendimento_a_caminho: '✓ Profissional informou que está a caminho.',
   atendimento_chegou: '✓ Profissional informou que chegou ao local.',
   finalizacao_solicitada: '✓ Profissional solicitou a finalização do atendimento.',
   atendimento_finalizado: '✓ Atendimento finalizado com sucesso.',
+  atendimento_cancelado: 'Atendimento cancelado.',
   agendamento_solicitado: '📅 Solicitação de agendamento enviada.',
   agendamento_aceito: '✓ Agendamento confirmado.',
   agendamento_recusado: 'Agendamento recusado.',
@@ -53,10 +59,16 @@ function canCreatePublicSystemMessage({ eventType, record, actorUid }) {
   if (eventType === 'atendimento_intro') return actorUid === creatorId || actorUid === professionalId
   if (eventType === 'pedido_aceito') return actorUid === professionalId && status === 'aceito'
   if (eventType === 'atendimento_iniciado') return actorUid === professionalId && status === 'em_andamento'
+  if (eventType === 'atendimento_a_caminho') return actorUid === professionalId && status === 'a_caminho'
   if (eventType === 'atendimento_chegou') return actorUid === professionalId && status === 'chegou'
   if (eventType === 'finalizacao_solicitada') return actorUid === professionalId && status === 'aguardando_confirmacao'
   if (eventType === 'atendimento_finalizado') {
     return (actorUid === creatorId && status === 'finalizado') || (actorUid === professionalId && status === 'concluido')
+  }
+  if (eventType === 'atendimento_cancelado') {
+    return status === 'cancelado'
+      && (actorUid === creatorId || actorUid === professionalId)
+      && text(record?.canceladoPor?.id) === actorUid
   }
 
   return false
@@ -74,8 +86,26 @@ function canCreatePrivateSystemMessage({ eventType, record, actorUid }) {
   if (eventType === 'agendamento_solicitado') return type === 'agendamento' && actorUid === creatorId && status === 'pendente'
   if (eventType === 'agendamento_aceito') return type === 'agendamento' && actorUid === professionalId && status === 'agendado'
   if (eventType === 'agendamento_recusado') return type === 'agendamento' && actorUid === professionalId && status === 'recusado'
+  if (eventType === 'atendimento_iniciado') return actorUid === professionalId && status === 'em_andamento'
+  if (eventType === 'atendimento_a_caminho') return actorUid === professionalId && status === 'a_caminho'
+  if (eventType === 'atendimento_chegou') return actorUid === professionalId && status === 'chegou'
+  if (eventType === 'finalizacao_solicitada') return actorUid === professionalId && status === 'aguardando_confirmacao'
+  if (eventType === 'atendimento_finalizado') return actorUid === creatorId && status === 'finalizado'
+  if (eventType === 'atendimento_cancelado') {
+    return status === 'cancelado'
+      && (actorUid === creatorId || actorUid === professionalId)
+      && text(record?.canceladoPor?.id) === actorUid
+  }
 
   return false
+}
+
+function systemMessageText(eventType, record, actorUid, kind) {
+  if (eventType !== 'atendimento_cancelado') return SYSTEM_MESSAGES[eventType]
+  const participants = kind === 'pedido' ? publicParticipants(record) : privateParticipants(record)
+  return actorUid === participants.creatorId
+    ? 'Atendimento cancelado pelo cliente.'
+    : 'Atendimento cancelado pelo profissional.'
 }
 
 function isTrustedSystemMessage(value, expected) {
@@ -90,16 +120,6 @@ function isTrustedSystemMessage(value, expected) {
     value.autorNome === 'Sistema' &&
     typeof value.criadoEm === 'number' &&
     value.hora === value.criadoEm
-}
-
-async function readChatContext(db, pedidoId) {
-  const pedido = (await db.ref(`pedidos/${pedidoId}`).get()).val()
-  if (pedido) return { kind: 'pedido', record: pedido, conversaId: pedidoId }
-
-  const privateRequest = (await db.ref(`privateRequests/${pedidoId}`).get()).val()
-  if (privateRequest) return { kind: 'privateRequest', record: privateRequest, conversaId: pedidoId }
-
-  return null
 }
 
 export async function POST(request) {
@@ -120,7 +140,10 @@ export async function POST(request) {
 
   const pedidoId = text(body?.pedidoId)
   const eventType = text(body?.eventType)
-  if (!validId(pedidoId) || !Object.hasOwn(SYSTEM_MESSAGES, eventType)) {
+  const contextKind = text(body?.contextKind)
+  if (!validId(pedidoId)
+    || !Object.hasOwn(SYSTEM_MESSAGES, eventType)
+    || (contextKind !== 'pedido' && contextKind !== 'privateRequest')) {
     return NextResponse.json({ ok: false, error: 'invalid_system_event' }, { status: 400 })
   }
 
@@ -141,19 +164,28 @@ export async function POST(request) {
   }
 
   const actorUid = text(decoded?.uid)
-  const context = await readChatContext(db, pedidoId)
-  if (!context) return NextResponse.json({ ok: false, error: 'chat_context_not_found' }, { status: 404 })
+  const contextResult = await readConversationContext(db, pedidoId, { kind: contextKind })
+  if (!contextResult.ok) {
+    const status = contextResult.error === 'conversation_context_not_found' ? 404 : 409
+    return NextResponse.json({ ok: false, error: contextResult.error }, { status })
+  }
+  const context = { ...contextResult, conversaId: pedidoId }
 
   const authorized = context.kind === 'pedido'
     ? canCreatePublicSystemMessage({ eventType, record: context.record, actorUid })
     : canCreatePrivateSystemMessage({ eventType, record: context.record, actorUid })
   if (!authorized) return NextResponse.json({ ok: false, error: 'system_event_not_authorized' }, { status: 403 })
+  if (context.kind === 'privateRequest'
+    && eventType !== 'agendamento_solicitado'
+    && context.privateResponseAuthorized !== true) {
+    return NextResponse.json({ ok: false, error: 'private_request_response_unverified' }, { status: 403 })
+  }
 
   const now = Date.now()
   const eventId = `system:${context.conversaId}:${eventType}`
   const message = {
     tipo: 'sistema',
-    texto: SYSTEM_MESSAGES[eventType],
+    texto: systemMessageText(eventType, context.record, actorUid, context.kind),
     sistema: true,
     evento: eventType,
     eventId,
@@ -175,5 +207,36 @@ export async function POST(request) {
     isTrustedSystemMessage(current, stored) ? current : stored
   ))
 
-  return NextResponse.json({ ok: true, messageId, eventId, idempotent })
+  const shouldPrepareConversation = context.kind === 'pedido'
+    || eventType === 'pedido_aceito'
+    || eventType === 'agendamento_aceito'
+    || eventType === 'atendimento_intro'
+    || eventType === 'atendimento_iniciado'
+    || eventType === 'atendimento_a_caminho'
+    || eventType === 'atendimento_chegou'
+    || eventType === 'finalizacao_solicitada'
+    || eventType === 'atendimento_finalizado'
+    || eventType === 'atendimento_cancelado'
+  let conversationReady = false
+  if (shouldPrepareConversation) {
+    const activity = await applyConversationActivity({
+      database: db,
+      context,
+      conversationId: context.conversaId,
+      messageId,
+      message: stored,
+      actorUid,
+    })
+    if (!activity.ok) {
+      const status = activity.error === 'conversation_actor_not_participant' || activity.error === 'conversation_not_active'
+        ? 403
+        : activity.error === 'conversation_identity_conflict'
+          ? 409
+          : 500
+      return NextResponse.json({ ok: false, error: activity.error }, { status })
+    }
+    conversationReady = true
+  }
+
+  return NextResponse.json({ ok: true, messageId, eventId, idempotent, conversationReady })
 }

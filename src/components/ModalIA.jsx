@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { ref, push, update, serverTimestamp } from '@/lib/firebaseDebug'
-import { database } from '@/lib/firebase'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { auth } from '@/lib/firebase'
 import { CATEGORIES, getCategoryById } from '@/constants/categories'
 import { showCorreAquiTipOnce } from '@/components/tutorial/TutorialProvider'
-import { synchronizePublicRequest } from '@/lib/pedidoProjectionClient'
+import { createAuthorizedClientOrder } from '@/lib/clientOrders'
 import { CONTEXTUAL_TIP_IDS } from '@/lib/tutorial/contextualTipsConfig'
 
 const DRAFT_KEY = 'correAqui:novoPedido:draft:v1'
@@ -207,24 +206,10 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
   const [prazo, setPrazo] = useState('')
   const [materiais, setMateriais] = useState('')
   const [rascunhoSalvo, setRascunhoSalvo] = useState(false)
+  const publishLockRef = useRef(false)
 
-  const meuNome = useMemo(() => {
-    if (meuNomeProp) return meuNomeProp
-    try {
-      return localStorage.getItem('meuNome') || 'Anonimo'
-    } catch {
-      return 'Anonimo'
-    }
-  }, [meuNomeProp])
-
-  const meuId = useMemo(() => {
-    if (meuIdProp) return meuIdProp
-    try {
-      return localStorage.getItem('meuId') || ''
-    } catch {
-      return ''
-    }
-  }, [meuIdProp])
+  const meuNome = String(meuNomeProp || '').trim() || 'Anonimo'
+  const meuId = String(meuIdProp || '').trim()
 
   useEffect(() => {
     if (!open) return
@@ -283,15 +268,17 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
   }
 
   async function criarNoFirebase({ local }) {
-    const agora = Date.now()
-    const novo = push(ref(database, 'pedidos'))
+    const authenticatedUid = String(auth.currentUser?.uid || '').trim()
+    if (!authenticatedUid || authenticatedUid !== meuId) {
+      throw new Error('A sessão mudou. Entre novamente antes de publicar o pedido.')
+    }
+
     const detalhes = [
       prazo ? `Prazo: ${prazo}` : '',
       materiais ? `Materiais/detalhes: ${materiais}` : '',
     ].filter(Boolean)
 
-    const payload = {
-      id: novo.key,
+    const draftPayload = {
       tipo: tipoPreview,
       modoPedido: 'geral',
       titulo: tituloFinal,
@@ -301,26 +288,20 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
       categoriaLabel: categoria?.label || 'Serviços gerais',
       status: 'aberto',
       local: local || null,
-      criador: { nome: meuNome || 'Anonimo', id: meuId || null },
+      criador: { nome: meuNome, id: authenticatedUid },
       urgencia: 'normal',
       emergencia: false,
       destaque: false,
       prioridade: 'normal',
       boost: null,
-      criadoEm: agora,
-      atualizadoEm: agora,
-      criadoEmServer: serverTimestamp(),
-      atualizadoEmServer: serverTimestamp(),
     }
+    const payload = await createAuthorizedClientOrder(draftPayload)
 
     try {
       window?.dispatchEvent?.(new CustomEvent('correaqui:pedido-criado', {
-        detail: { pedido: payload, otimista: true },
+        detail: { pedido: payload, otimista: false },
       }))
     } catch {}
-
-    await update(ref(database, `pedidos/${payload.id}`), payload)
-    await synchronizePublicRequest(payload.id)
 
     showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoCriado, {
       id: CONTEXTUAL_TIP_IDS.pedidoCriado,
@@ -336,7 +317,8 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
   }
 
   async function publicarPedido() {
-    if (!mensagemLimpa || loading) return
+    if (!mensagemLimpa || loading || publishLockRef.current) return
+    publishLockRef.current = true
     setLoading(true)
     setResposta('')
 
@@ -356,8 +338,9 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
       window.setTimeout(() => onClose?.(), 650)
     } catch (error) {
       console.error(error)
-      setResposta('Não consegui publicar agora. Confira sua conexão e tente novamente.')
+      setResposta(error?.message || 'Não consegui publicar agora. Confira sua conexão e tente novamente.')
     } finally {
+      publishLockRef.current = false
       setLoading(false)
     }
   }
@@ -366,7 +349,7 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
     <div
       className="fixed inset-0 z-[100200] bg-white text-slate-950"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose?.()
+        if (!publishLockRef.current && !loading && event.target === event.currentTarget) onClose?.()
       }}
     >
       <div className="mx-auto flex h-[100dvh] w-full max-w-[720px] flex-col overflow-hidden bg-white">
@@ -374,7 +357,10 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
           <div className="flex items-center justify-between gap-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                if (!publishLockRef.current && !loading) onClose?.()
+              }}
+              disabled={loading}
               className="grid h-9 w-9 place-items-center rounded-full text-2xl font-light text-blue-950 transition hover:bg-slate-50 active:scale-95 md:h-11 md:w-11 md:text-3xl"
               aria-label="Fechar"
             >
@@ -383,6 +369,7 @@ export default function ModalIA({ open, onClose, meuNome: meuNomeProp, meuId: me
             <button
               type="button"
               onClick={salvarRascunho}
+              disabled={loading}
               className="rounded-full px-2.5 py-1.5 text-xs font-black text-blue-600 transition hover:bg-blue-50 active:scale-95 md:px-3 md:py-2 md:text-sm"
             >
               {rascunhoSalvo ? 'Rascunho salvo' : 'Salvar rascunho'}

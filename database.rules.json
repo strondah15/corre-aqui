@@ -6,11 +6,11 @@
       ".indexOn": ["online", "lastSeen", "isCorre", "isProfissional"],
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid && (!newData.child('admin').exists() || newData.child('admin').val() === data.child('admin').val()) && (!newData.child('role').exists() || newData.child('role').val() === data.child('role').val()) && (!newData.child('profile/admin').exists() || newData.child('profile/admin').val() === data.child('profile/admin').val()) && (!newData.child('profile/role').exists() || newData.child('profile/role').val() === data.child('profile/role').val()) && (!newData.child('cpf').exists() || newData.child('cpf').val() === data.child('cpf').val()) && (!newData.child('cpfDigits').exists() || newData.child('cpfDigits').val() === data.child('cpfDigits').val()) && (!newData.child('cpfMasked').exists() || newData.child('cpfMasked').val() === data.child('cpfMasked').val()) && (!newData.child('cpfStatus').exists() || newData.child('cpfStatus').val() === data.child('cpfStatus').val()) && (!newData.child('cpfVerificacao').exists() || newData.child('cpfVerificacao').val() === data.child('cpfVerificacao').val()) && (!newData.child('documento').exists() || newData.child('documento').val() === data.child('documento').val()) && (!newData.child('documentoVerificacao').exists() || newData.child('documentoVerificacao').val() === data.child('documentoVerificacao').val()) && (!newData.child('profile/cpf').exists() || newData.child('profile/cpf').val() === data.child('profile/cpf').val()) && (!newData.child('profile/cpfDigits').exists() || newData.child('profile/cpfDigits').val() === data.child('profile/cpfDigits').val()) && (!newData.child('profile/cpfMasked').exists() || newData.child('profile/cpfMasked').val() === data.child('profile/cpfMasked').val()) && (!newData.child('profile/cpfStatus').exists() || newData.child('profile/cpfStatus').val() === data.child('profile/cpfStatus').val()) && (!newData.child('profile/cpfVerificacao').exists() || newData.child('profile/cpfVerificacao').val() === data.child('profile/cpfVerificacao').val()) && (!newData.child('profile/documento').exists() || newData.child('profile/documento').val() === data.child('profile/documento').val()) && (!newData.child('profile/documentoVerificacao').exists() || newData.child('profile/documentoVerificacao').val() === data.child('profile/documentoVerificacao').val())",
+        ".write": "auth != null && auth.uid === $uid && (!newData.child('admin').exists() || newData.child('admin').val() === data.child('admin').val()) && (!newData.child('role').exists() || newData.child('role').val() === data.child('role').val()) && (!newData.child('profile/admin').exists() || newData.child('profile/admin').val() === data.child('profile/admin').val()) && (!newData.child('profile/role').exists() || newData.child('profile/role').val() === data.child('profile/role').val()) && (!newData.child('cpf').exists() || newData.child('cpf').val() === data.child('cpf').val()) && (!newData.child('cpfDigits').exists() || newData.child('cpfDigits').val() === data.child('cpfDigits').val()) && (!newData.child('cpfMasked').exists() || newData.child('cpfMasked').val() === data.child('cpfMasked').val()) && (!newData.child('cpfStatus').exists() || newData.child('cpfStatus').val() === data.child('cpfStatus').val()) && (!newData.child('cpfVerificacao').exists() || newData.child('cpfVerificacao').val() === data.child('cpfVerificacao').val()) && (!newData.child('documento').exists() || newData.child('documento').val() === data.child('documento').val()) && (!newData.child('documentoVerificacao').exists() || newData.child('documentoVerificacao').val() === data.child('documentoVerificacao').val()) && (!newData.child('profile/cpf').exists() || newData.child('profile/cpf').val() === data.child('profile/cpf').val()) && (!newData.child('profile/cpfDigits').exists() || newData.child('profile/cpfDigits').val() === data.child('profile/cpfDigits').val()) && (!newData.child('profile/cpfMasked').exists() || newData.child('profile/cpfMasked').val() === data.child('profile/cpfMasked').val()) && (!newData.child('profile/cpfStatus').exists() || newData.child('profile/cpfStatus').val() === data.child('profile/cpfStatus').val()) && (!newData.child('profile/cpfVerificacao').exists() || newData.child('profile/cpfVerificacao').val() === data.child('profile/cpfVerificacao').val()) && (!newData.child('profile/documento').exists() || newData.child('profile/documento').val() === data.child('profile/documento').val()) && (!newData.child('profile/documentoVerificacao').exists() || newData.child('profile/documentoVerificacao').val() === data.child('profile/documentoVerificacao').val()) && newData.child('subscriptions').exists() === data.child('subscriptions').exists() && newData.child('clientFreeOrderUsed').val() === data.child('clientFreeOrderUsed').val()",
         "privacy": {
           ".read": "auth != null && auth.uid === $uid",
           ".write": "auth != null && auth.uid === $uid",
-          ".validate": "!newData.exists() || (newData.child('profileVisible').isBoolean() && newData.child('shareLocationDuringActiveJob').isBoolean() && newData.child('showOnlineStatus').isBoolean() && newData.child('allowPublicContact').isBoolean())"
+          ".validate": "!newData.exists() || (newData.child('profileVisible').isBoolean() && newData.child('shareLocationDuringActiveJob').isBoolean() && newData.child('showOnlineStatus').isBoolean() && newData.child('allowPublicContact').isBoolean() && (!newData.child('sharePhoneDuringActiveJob').exists() || newData.child('sharePhoneDuringActiveJob').isBoolean()))"
         },
         "portfolio": {
           ".indexOn": ["ativo", "categoriaId", "updatedAt"],
@@ -28,7 +28,9 @@
         "cpfStatus": { ".validate": "newData.val() === data.val()" },
         "cpfVerificacao": { ".validate": "newData.val() === data.val()" },
         "documento": { ".validate": "newData.val() === data.val()" },
-        "documentoVerificacao": { ".validate": "newData.val() === data.val()" }
+        "documentoVerificacao": { ".validate": "newData.val() === data.val()" },
+        "subscriptions": { ".validate": false },
+        "clientFreeOrderUsed": { ".validate": "newData.val() === data.val()" }
       }
     },
     "enderecos": {
@@ -56,9 +58,9 @@
           ],
           ".write": "auth != null && auth.uid === $uid",
           "$serviceId": {
-            ".validate": "!newData.exists() || ($serviceId.matches('^[A-Za-z0-9_-]{1,120}$') && newData.hasChildren(['id', 'nome', 'titulo', 'descricao', 'categoriaId', 'categoriaNome', 'categoria', 'preco', 'faixaPreco', 'valor', 'tempoMedio', 'fotoURL', 'regiao', 'atendeDomicilio', 'urgente', 'ativo', 'createdAt', 'updatedAt', 'profissionalId', 'uid', 'profissionalNome', 'providerName', 'profissionalFotoURL', 'providerFotoURL', 'cidade', 'isCorre', 'isProfissional']) && newData.child('id').val() === $serviceId && newData.child('nome').isString() && newData.child('nome').val().length > 0 && newData.child('ativo').val() === true && newData.child('profissionalId').val() === $uid && newData.child('uid').val() === $uid)",
+            ".validate": "!newData.exists() || ($serviceId.matches(/^[A-Za-z0-9_-]{1,120}$/) && newData.hasChildren(['id', 'nome', 'titulo', 'descricao', 'categoriaId', 'categoriaNome', 'categoria', 'preco', 'faixaPreco', 'valor', 'tempoMedio', 'fotoURL', 'regiao', 'atendeDomicilio', 'urgente', 'ativo', 'createdAt', 'updatedAt', 'profissionalId', 'uid', 'profissionalNome', 'providerName', 'profissionalFotoURL', 'providerFotoURL', 'cidade', 'isCorre', 'isProfissional']) && newData.child('id').val() === $serviceId && newData.child('nome').isString() && newData.child('nome').val().length > 0 && newData.child('ativo').val() === true && newData.child('profissionalId').val() === $uid && newData.child('uid').val() === $uid)",
             "id": {
-              ".validate": "newData.isString() && newData.val() === $serviceId && newData.val().matches('^[A-Za-z0-9_-]{1,120}$')"
+              ".validate": "newData.isString() && newData.val() === $serviceId && newData.val().matches(/^[A-Za-z0-9_-]{1,120}$/)"
             },
             "nome": {
               ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 140"
@@ -70,7 +72,7 @@
               ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2000)"
             },
             "categoriaId": {
-              ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 64 && (newData.val() === '' || newData.val().matches('^[a-z0-9_]{1,64}$')))"
+              ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 64 && (newData.val() === '' || newData.val().matches(/^[a-z0-9_]{1,64}$/)))"
             },
             "categoriaNome": {
               ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 120)"
@@ -92,14 +94,11 @@
             },
             "fotos": {
               "$photoIndex": {
-                ".validate": "$photoIndex.matches('^[0-4]$') && newData.isString() && newData.val().length <= 2048 && newData.val().matches('^https?://.+$')"
-              },
-              "$other": {
-                ".validate": false
+                ".validate": "$photoIndex.matches(/^[0-4]$/) && newData.isString() && newData.val().length <= 2048 && newData.val().matches(/^https?:\\/\\/.+$/)"
               }
             },
             "fotoURL": {
-              ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || (newData.val().matches('^https?://.+$') && newData.val() === newData.parent().child('fotos').child('0').val())))"
+              ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || (newData.val().matches(/^https?:\\/\\/.+$/) && newData.val() === newData.parent().child('fotos').child('0').val())))"
             },
             "regiao": {
               ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 160)"
@@ -132,7 +131,7 @@
               ".validate": "newData.isString() && newData.val().length <= 120 && newData.val() === newData.parent().child('profissionalNome').val()"
             },
             "profissionalFotoURL": {
-              ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || newData.val().matches('^https?://.+$')))"
+              ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || newData.val().matches(/^https?:\\/\\/.+$/)))"
             },
             "providerFotoURL": {
               ".validate": "newData.isString() && newData.val().length <= 2048 && newData.val() === newData.parent().child('profissionalFotoURL').val()"
@@ -149,9 +148,6 @@
             "$other": {
               ".validate": false
             }
-          },
-          "$other": {
-            ".validate": false
           }
         }
       },
@@ -179,13 +175,13 @@
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 120)"
           },
           "fotoURL": {
-            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || newData.val().matches('^https?://.+$')))"
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || newData.val().matches(/^https?:\\/\\/.+$/)))"
           },
           "photoURL": {
-            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || newData.val().matches('^https?://.+$')))"
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || newData.val().matches(/^https?:\\/\\/.+$/)))"
           },
           "avatar": {
-            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || newData.val().length <= 32 || newData.val().matches('^https?://.+$')))"
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || newData.val().length <= 32 || newData.val().matches(/^https?:\\/\\/.+$/)))"
           },
           "avatarEmoji": {
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 32)"
@@ -210,10 +206,7 @@
           },
           "regionKeys": {
             "$regionKeyIndex": {
-              ".validate": "$regionKeyIndex.matches('^(0|[1-5])$') && newData.isString() && newData.val().length > 0 && newData.val().length <= 120"
-            },
-            "$other": {
-              ".validate": false
+              ".validate": "$regionKeyIndex.matches(/^(0|[1-5])$/) && newData.isString() && newData.val().length > 0 && newData.val().length <= 120"
             }
           },
           "visibility": {
@@ -250,16 +243,16 @@
             ".validate": "!newData.exists() || newData.isBoolean()"
           },
           "primaryCategoryId": {
-            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 64 && (newData.val() === '' || newData.val().matches('^[a-z0-9_]{1,64}$')))"
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 64 && (newData.val() === '' || newData.val().matches(/^[a-z0-9_]{1,64}$/)))"
           },
           "categoriaId": {
-            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 64 && (newData.val() === '' || newData.val().matches('^[a-z0-9_]{1,64}$')))"
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 64 && (newData.val() === '' || newData.val().matches(/^[a-z0-9_]{1,64}$/)))"
           },
           "categoriaNome": {
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 120)"
           },
           "professionId": {
-            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 80 && (newData.val() === '' || newData.val().matches('^[a-z0-9_]{1,80}$')))"
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 80 && (newData.val() === '' || newData.val().matches(/^[a-z0-9_]{1,80}$/)))"
           },
           "professionName": {
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 120)"
@@ -268,7 +261,7 @@
             ".validate": "!newData.exists() || (newData.val() === 'catalog' || newData.val() === 'custom' || newData.val() === '')"
           },
           "profissaoId": {
-            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 80 && (newData.val() === '' || newData.val().matches('^[a-z0-9_]{1,80}$')))"
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 80 && (newData.val() === '' || newData.val().matches(/^[a-z0-9_]{1,80}$/)))"
           },
           "profissaoNome": {
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 120)"
@@ -277,7 +270,7 @@
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 120)"
           },
           "correProfessionId": {
-            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 80 && (newData.val() === '' || newData.val().matches('^[a-z0-9_]{1,80}$')))"
+            ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 80 && (newData.val() === '' || newData.val().matches(/^[a-z0-9_]{1,80}$/)))"
           },
           "correTitulo": {
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 160)"
@@ -287,18 +280,12 @@
           },
           "correCategorias": {
             "$categoryIndex": {
-              ".validate": "$categoryIndex.matches('^(0|[1-9]|1[0-1])$') && newData.isString() && newData.val().matches('^[a-z0-9_]{1,64}$')"
-            },
-            "$other": {
-              ".validate": false
+              ".validate": "$categoryIndex.matches(/^(0|[1-9]|1[0-1])$/) && newData.isString() && newData.val().matches(/^[a-z0-9_]{1,64}$/)"
             }
           },
           "profCategorias": {
             "$categoryIndex": {
-              ".validate": "$categoryIndex.matches('^(0|[1-9]|1[0-1])$') && newData.isString() && newData.val().matches('^[a-z0-9_]{1,64}$')"
-            },
-            "$other": {
-              ".validate": false
+              ".validate": "$categoryIndex.matches(/^(0|[1-9]|1[0-1])$/) && newData.isString() && newData.val().matches(/^[a-z0-9_]{1,64}$/)"
             }
           },
           "correResumo": {
@@ -320,7 +307,7 @@
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 120)"
           },
           "profWhats": {
-            ".validate": "!newData.exists() || (newData.parent().child('allowPublicContact').val() === true && newData.isString() && newData.val().matches('^[0-9]{10,15}$') && newData.val() === newData.parent().child('profissional').child('whatsapp').val())"
+            ".validate": "!newData.exists() || (newData.parent().child('allowPublicContact').val() === true && newData.isString() && newData.val().matches(/^[0-9]{10,15}$/) && newData.val() === newData.parent().child('profissional').child('whatsapp').val())"
           },
           "profExperiencia": {
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2000)"
@@ -367,7 +354,7 @@
               ".validate": "newData.isString() && newData.val().length <= 120"
             },
             "whatsapp": {
-              ".validate": "!newData.exists() || (newData.parent().parent().child('allowPublicContact').val() === true && newData.isString() && newData.val().matches('^[0-9]{10,15}$') && newData.val() === newData.parent().parent().child('profWhats').val())"
+              ".validate": "!newData.exists() || (newData.parent().parent().child('allowPublicContact').val() === true && newData.isString() && newData.val().matches(/^[0-9]{10,15}$/) && newData.val() === newData.parent().parent().child('profWhats').val())"
             },
             "regiao": {
               ".validate": "newData.isString() && newData.val().length <= 160"
@@ -390,9 +377,9 @@
           },
           "portfolio": {
             "$serviceId": {
-              ".validate": "!newData.exists() || ($serviceId.matches('^[A-Za-z0-9_-]{1,120}$') && newData.hasChildren(['id', 'nome', 'titulo', 'descricao', 'categoriaId', 'categoriaNome', 'categoria', 'preco', 'faixaPreco', 'valor', 'tempoMedio', 'fotoURL', 'regiao', 'atendeDomicilio', 'urgente', 'ativo', 'createdAt', 'updatedAt']) && newData.child('id').val() === $serviceId && newData.child('nome').isString() && newData.child('nome').val().length > 0 && newData.child('ativo').val() === true)",
+              ".validate": "!newData.exists() || ($serviceId.matches(/^[A-Za-z0-9_-]{1,120}$/) && newData.hasChildren(['id', 'nome', 'titulo', 'descricao', 'categoriaId', 'categoriaNome', 'categoria', 'preco', 'faixaPreco', 'valor', 'tempoMedio', 'fotoURL', 'regiao', 'atendeDomicilio', 'urgente', 'ativo', 'createdAt', 'updatedAt']) && newData.child('id').val() === $serviceId && newData.child('nome').isString() && newData.child('nome').val().length > 0 && newData.child('ativo').val() === true)",
               "id": {
-                ".validate": "newData.isString() && newData.val() === $serviceId && newData.val().matches('^[A-Za-z0-9_-]{1,120}$')"
+                ".validate": "newData.isString() && newData.val() === $serviceId && newData.val().matches(/^[A-Za-z0-9_-]{1,120}$/)"
               },
               "nome": {
                 ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 140"
@@ -404,7 +391,7 @@
                 ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2000)"
               },
               "categoriaId": {
-                ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 64 && (newData.val() === '' || newData.val().matches('^[a-z0-9_]{1,64}$')))"
+                ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 64 && (newData.val() === '' || newData.val().matches(/^[a-z0-9_]{1,64}$/)))"
               },
               "categoriaNome": {
                 ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 120)"
@@ -426,14 +413,11 @@
               },
               "fotos": {
                 "$photoIndex": {
-                  ".validate": "$photoIndex.matches('^[0-4]$') && newData.isString() && newData.val().length <= 2048 && newData.val().matches('^https?://.+$')"
-                },
-                "$other": {
-                  ".validate": false
+                  ".validate": "$photoIndex.matches(/^[0-4]$/) && newData.isString() && newData.val().length <= 2048 && newData.val().matches(/^https?:\\/\\/.+$/)"
                 }
               },
               "fotoURL": {
-                ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || (newData.val().matches('^https?://.+$') && newData.val() === newData.parent().child('fotos').child('0').val())))"
+                ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2048 && (newData.val() === '' || (newData.val().matches(/^https?:\\/\\/.+$/) && newData.val() === newData.parent().child('fotos').child('0').val())))"
               },
               "regiao": {
                 ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 160)"
@@ -456,9 +440,6 @@
               "$other": {
                 ".validate": false
               }
-            },
-            "$other": {
-              ".validate": false
             }
           },
           "createdAt": {
@@ -714,7 +695,7 @@
       ".indexOn": ["status", "categoriaId", "criadoEm", "atualizadoEm", "criador/id", "aceite/id"],
       "$pedidoId": {
         ".write": "auth != null && root.child('admins').child(auth.uid).val() === true",
-        ".validate": "!newData.exists() || (newData.hasChildren(['id', 'titulo', 'descricao', 'tipo', 'status', 'criador']) && newData.child('id').val() === $pedidoId && newData.child('titulo').isString() && newData.child('titulo').val().length <= 100 && newData.child('descricao').isString() && newData.child('descricao').val().length <= 500 && newData.child('tipo').isString() && newData.child('status').isString() && (!data.exists() || newData.child('criador').val() === data.child('criador').val()) && (!data.child('aceite/id').exists() || newData.child('aceite').val() === data.child('aceite').val()) && (data.child('aceite/id').exists() || !newData.child('aceite/id').exists() || (data.child('status').val() === 'aberto' && newData.child('status').val() === 'aceito' && newData.child('aceite/id').val() === auth.uid && data.child('criador/id').val() !== auth.uid)) && (newData.child('gridLat').exists() === newData.child('gridLng').exists()) && (newData.child('status').val() === 'aberto' || newData.child('status').val() === 'aceito' || newData.child('status').val() === 'em_andamento' || newData.child('status').val() === 'chegou' || newData.child('status').val() === 'aguardando_confirmacao' || newData.child('status').val() === 'finalizado' || newData.child('status').val() === 'cancelado'))",
+        ".validate": "!newData.exists() || (newData.hasChildren(['id', 'titulo', 'descricao', 'tipo', 'status', 'criador']) && newData.child('id').val() === $pedidoId && newData.child('titulo').isString() && newData.child('titulo').val().length <= 100 && newData.child('descricao').isString() && newData.child('descricao').val().length <= 500 && newData.child('tipo').isString() && newData.child('status').isString() && (!data.exists() || newData.child('criador').val() === data.child('criador').val()) && (!data.child('aceite/id').exists() || newData.child('aceite').val() === data.child('aceite').val()) && (data.child('aceite/id').exists() || !newData.child('aceite/id').exists() || (data.child('status').val() === 'aberto' && newData.child('status').val() === 'aceito' && newData.child('aceite/id').val() === auth.uid && data.child('criador/id').val() !== auth.uid)) && (newData.child('gridLat').exists() === newData.child('gridLng').exists()) && (newData.child('status').val() === 'aberto' || newData.child('status').val() === 'aceito' || newData.child('status').val() === 'em_andamento' || newData.child('status').val() === 'a_caminho' || newData.child('status').val() === 'chegou' || newData.child('status').val() === 'aguardando_confirmacao' || newData.child('status').val() === 'finalizado' || newData.child('status').val() === 'cancelado'))",
         "id": { ".validate": "newData.isString() && newData.val() === $pedidoId" },
         "titulo": { ".validate": "newData.isString() && newData.val().length <= 100" },
         "descricao": { ".validate": "newData.isString() && newData.val().length <= 500" },
@@ -758,8 +739,8 @@
       ".indexOn": ["status", "categoriaId", "criadoEm", "atualizadoEm", "concluidoEm", "criador/id", "aceite/id"],
       "$pedidoId": {
         ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || data.child('criador/id').val() === auth.uid || data.child('aceite/id').val() === auth.uid)",
-        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (((!data.exists() && newData.exists() && newData.child('criador/id').val() === auth.uid) || (data.exists() && !newData.exists() && data.child('criador/id').val() === auth.uid) || (data.exists() && newData.exists() && (data.child('criador/id').val() === auth.uid || data.child('aceite/id').val() === auth.uid))) && (!data.child('avaliacao').exists() || newData.child('avaliacao').exists()) && (!data.child('problemaServico').exists() || newData.child('problemaServico').exists())))",
-        ".validate": "!newData.exists() || (newData.hasChildren(['criador', 'status']) && newData.child('criador/id').isString() && newData.child('status').isString() && (!data.exists() || newData.child('criador/id').val() === data.child('criador/id').val()) && (!data.child('aceite/id').exists() || newData.child('aceite/id').val() === data.child('aceite/id').val()) && (data.child('aceite/id').exists() || !newData.child('aceite/id').exists()) && (newData.child('status').val() === 'aberto' || newData.child('status').val() === 'aceito' || newData.child('status').val() === 'em_andamento' || newData.child('status').val() === 'chegou' || newData.child('status').val() === 'aguardando_confirmacao' || newData.child('status').val() === 'finalizado' || newData.child('status').val() === 'cancelado' || newData.child('status').val() === 'aguardando_inicio' || newData.child('status').val() === 'em_atendimento' || newData.child('status').val() === 'concluido' || newData.child('status').val() === 'avaliado'))",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (((data.exists() && !newData.exists() && data.child('criador/id').val() === auth.uid) || (data.exists() && newData.exists() && (data.child('criador/id').val() === auth.uid || data.child('aceite/id').val() === auth.uid))) && (!data.child('avaliacao').exists() || newData.child('avaliacao').exists()) && (!data.child('problemaServico').exists() || newData.child('problemaServico').exists())))",
+        ".validate": "!newData.exists() || (newData.hasChildren(['criador', 'status']) && newData.child('criador/id').isString() && newData.child('status').isString() && (!data.exists() || newData.child('criador/id').val() === data.child('criador/id').val()) && (!data.child('aceite/id').exists() || newData.child('aceite/id').val() === data.child('aceite/id').val()) && (data.child('aceite/id').exists() || !newData.child('aceite/id').exists()) && (newData.child('status').val() === 'aberto' || newData.child('status').val() === 'aceito' || newData.child('status').val() === 'em_andamento' || newData.child('status').val() === 'a_caminho' || newData.child('status').val() === 'chegou' || newData.child('status').val() === 'aguardando_confirmacao' || newData.child('status').val() === 'finalizado' || newData.child('status').val() === 'cancelado' || newData.child('status').val() === 'aguardando_inicio' || newData.child('status').val() === 'em_atendimento' || newData.child('status').val() === 'concluido' || newData.child('status').val() === 'avaliado'))",
         "local": { ".validate": "!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || data.parent().child('criador/id').val() === auth.uid || newData.val() === data.val()" },
         "latitude": { ".validate": "!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || data.parent().child('criador/id').val() === auth.uid || newData.val() === data.val()" },
         "longitude": { ".validate": "!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || data.parent().child('criador/id').val() === auth.uid || newData.val() === data.val()" },
@@ -772,7 +753,7 @@
           "$other": { ".validate": "root.child('admins').child(auth.uid).val() === true || newData.val() === data.val()" }
         },
         "avaliacao": {
-          ".validate": "root.child('admins').child(auth.uid).val() === true || (data.exists() && newData.exists() && newData.child('pedidoId').val() === data.child('pedidoId').val() && newData.child('nota').val() === data.child('nota').val() && newData.child('comentario').val() === data.child('comentario').val() && newData.child('cliente/id').val() === data.child('cliente/id').val() && newData.child('cliente/nome').val() === data.child('cliente/nome').val() && newData.child('avaliado/id').val() === data.child('avaliado/id').val() && newData.child('avaliado/nome').val() === data.child('avaliado/nome').val() && newData.child('criadoEm').val() === data.child('criadoEm').val() && newData.child('origem').val() === data.child('origem').val()) || (!data.exists() && newData.exists() && newData.hasChildren(['pedidoId', 'nota', 'comentario', 'cliente', 'avaliado', 'criadoEm', 'origem']) && newData.child('pedidoId').val() === $pedidoId && newData.child('nota').isNumber() && newData.child('nota').val() >= 1 && newData.child('nota').val() <= 5 && newData.child('nota').val() % 1 === 0 && newData.child('comentario').isString() && newData.child('comentario').val().length <= 500 && newData.child('cliente/id').val() === auth.uid && newData.child('avaliado/id').val() === newData.parent().child('aceite/id').val() && newData.child('avaliado/id').val() !== auth.uid && newData.parent().child('criador/id').val() === auth.uid && newData.parent().child('status').val() === 'finalizado' && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('pedidoId').val() === $pedidoId && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('cliente/id').val() === auth.uid && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('avaliado/id').val() === newData.parent().child('aceite/id').val() && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('nota').val() === newData.child('nota').val() && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('comentario').val() === newData.child('comentario').val() && newData.child('origem').val() === 'pos_servico'))",
+          ".validate": "root.child('admins').child(auth.uid).val() === true || (data.exists() && newData.exists() && newData.child('pedidoId').val() === data.child('pedidoId').val() && newData.child('nota').val() === data.child('nota').val() && newData.child('comentario').val() === data.child('comentario').val() && newData.child('cliente/id').val() === data.child('cliente/id').val() && newData.child('cliente/nome').val() === data.child('cliente/nome').val() && newData.child('avaliado/id').val() === data.child('avaliado/id').val() && newData.child('avaliado/nome').val() === data.child('avaliado/nome').val() && newData.child('criadoEm').val() === data.child('criadoEm').val() && newData.child('origem').val() === data.child('origem').val()) || (!data.exists() && newData.exists() && newData.hasChildren(['pedidoId', 'nota', 'comentario', 'cliente', 'avaliado', 'criadoEm', 'origem']) && newData.child('pedidoId').val() === $pedidoId && newData.child('nota').isNumber() && newData.child('nota').val() >= 1 && newData.child('nota').val() <= 5 && newData.child('nota').val() % 1 === 0 && newData.child('comentario').isString() && newData.child('comentario').val().length <= 500 && newData.child('cliente/id').val() === auth.uid && newData.child('avaliado/id').val() === newData.parent().child('aceite/id').val() && newData.child('avaliado/id').val() !== auth.uid && newData.parent().child('criador/id').val() === auth.uid && newData.parent().child('status').val() === 'finalizado' && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('pedidoId').val() === $pedidoId && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('cliente/id').val() === auth.uid && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('avaliado/id').val() === newData.parent().child('aceite/id').val() && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('nota').val() === newData.child('nota').val() && newData.parent().parent().parent().child('avaliacoes').child($pedidoId).child('comentario').val() === newData.child('comentario').val() && newData.child('origem').val() === 'pos_servico')",
           "pedidoId": { ".validate": "newData.isString() && newData.val() === $pedidoId" },
           "nota": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 5 && newData.val() % 1 === 0" },
           "comentario": { ".validate": "newData.isString() && newData.val().length <= 500" },
@@ -792,7 +773,7 @@
           "$other": { ".validate": "root.child('admins').child(auth.uid).val() === true" }
         },
         "problemaServico": {
-          ".validate": "root.child('admins').child(auth.uid).val() === true || (data.exists() && newData.exists() && newData.child('registroId').val() === data.child('registroId').val() && newData.child('tipo').val() === data.child('tipo').val() && newData.child('denuncia').val() === data.child('denuncia').val() && newData.child('status').val() === data.child('status').val() && newData.child('criadoEm').val() === data.child('criadoEm').val() && newData.child('descricao').val() === data.child('descricao').val() && newData.child('autor/id').val() === data.child('autor/id').val() && newData.child('autor/nome').val() === data.child('autor/nome').val()) || (newData.exists() && newData.hasChildren(['registroId', 'tipo', 'denuncia', 'status', 'criadoEm']) && newData.child('registroId').isString() && newData.child('registroId').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('id').val() && newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('pedidoId').val() === $pedidoId && newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('autor/id').val() === auth.uid && newData.child('tipo').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('tipo').val() && newData.child('denuncia').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('denuncia').val() && newData.child('status').val() === 'aberto' && newData.child('criadoEm').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('criadoEm').val() && ((newData.child('denuncia').val() === true && !newData.child('descricao').exists() && !newData.child('autor').exists()) || (newData.child('denuncia').val() !== true && newData.child('descricao').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('descricao').val() && newData.child('autor/id').val() === auth.uid && newData.child('autor/id').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('autor/id').val()))))",
+          ".validate": "root.child('admins').child(auth.uid).val() === true || (data.exists() && newData.exists() && newData.child('registroId').val() === data.child('registroId').val() && newData.child('tipo').val() === data.child('tipo').val() && newData.child('denuncia').val() === data.child('denuncia').val() && newData.child('status').val() === data.child('status').val() && newData.child('criadoEm').val() === data.child('criadoEm').val() && newData.child('descricao').val() === data.child('descricao').val() && newData.child('autor/id').val() === data.child('autor/id').val() && newData.child('autor/nome').val() === data.child('autor/nome').val()) || (newData.exists() && newData.hasChildren(['registroId', 'tipo', 'denuncia', 'status', 'criadoEm']) && newData.child('registroId').isString() && newData.child('registroId').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('id').val() && newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('pedidoId').val() === $pedidoId && newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('autor/id').val() === auth.uid && newData.child('tipo').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('tipo').val() && newData.child('denuncia').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('denuncia').val() && newData.child('status').val() === 'aberto' && newData.child('criadoEm').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('criadoEm').val() && ((newData.child('denuncia').val() === true && !newData.child('descricao').exists() && !newData.child('autor').exists()) || (newData.child('denuncia').val() !== true && newData.child('descricao').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('descricao').val() && newData.child('autor/id').val() === auth.uid && newData.child('autor/id').val() === newData.parent().parent().parent().child('problemasServico').child(newData.child('registroId').val()).child('autor/id').val())))",
           "registroId": { ".validate": "newData.isString() && newData.val().length <= 200" },
           "tipo": { ".validate": "newData.val() === 'servico_nao_resolvido' || newData.val() === 'valor_combinado' || newData.val() === 'atraso_cancelamento' || newData.val() === 'conduta_inadequada' || newData.val() === 'seguranca_golpe' || newData.val() === 'outro'" },
           "descricao": { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 800)" },
@@ -807,8 +788,55 @@
           "moderacao": { ".validate": "root.child('admins').child(auth.uid).val() === true" },
           "$other": { ".validate": "root.child('admins').child(auth.uid).val() === true" }
         },
+        "atendimento": {
+          "aCaminhoEm": {
+            ".validate": "!newData.parent().parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().parent().child('status').val() === 'a_caminho' && newData.isNumber()))"
+          },
+          "aCaminhoPor": {
+            ".validate": "!newData.parent().parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().parent().child('status').val() === 'a_caminho' && newData.child('id').val() === auth.uid && newData.child('nome').isString() && newData.child('nome').val().length <= 80))",
+            "id": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+            "nome": { ".validate": "newData.isString() && newData.val().length <= 80" },
+            "$other": { ".validate": false }
+          },
+          "canceladoEm": {
+            ".validate": "!newData.parent().parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().parent().child('status').val() === 'cancelado' && newData.isNumber()))"
+          },
+          "canceladoPor": {
+            ".validate": "!newData.parent().parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().parent().child('status').val() === 'cancelado' && newData.child('id').val() === auth.uid && newData.child('nome').isString() && newData.child('nome').val().length <= 80))",
+            "id": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+            "nome": { ".validate": "newData.isString() && newData.val().length <= 80" },
+            "$other": { ".validate": false }
+          }
+        },
         "status": {
-          ".validate": "auth != null && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.val() === 'aberto') || data.val() === newData.val() || ((data.val() === 'aceito' || data.val() === 'aguardando_inicio') && newData.val() === 'em_andamento' && data.parent().child('aceite/id').val() === auth.uid && newData.parent().child('atendimento/iniciadoPor/id').val() === auth.uid) || ((data.val() === 'em_andamento' || data.val() === 'em_atendimento' || data.val() === 'a_caminho' || data.val() === 'em_deslocamento') && newData.val() === 'chegou' && data.parent().child('aceite/id').val() === auth.uid && newData.parent().child('atendimento/chegouPor/id').val() === auth.uid) || ((data.val() === 'chegou' || data.val() === 'em_local' || data.val() === 'chegando') && newData.val() === 'aguardando_confirmacao' && data.parent().child('aceite/id').val() === auth.uid && newData.parent().child('atendimento/finalizacaoSolicitadaPor/id').val() === auth.uid) || (data.val() === 'aguardando_confirmacao' && newData.val() === 'finalizado' && data.parent().child('criador/id').val() === auth.uid && newData.parent().child('atendimento/finalizadoPor/id').val() === auth.uid) || (newData.val() === 'cancelado' && (data.parent().child('criador/id').val() === auth.uid || data.parent().child('aceite/id').val() === auth.uid)))"
+          ".validate": "auth != null && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.val() === 'aberto') || data.val() === newData.val() || (((data.val() === 'aceito' || data.val() === 'aguardando_inicio' || data.val() === 'em_andamento') && newData.val() === 'a_caminho') && data.parent().child('aceite/id').val() === auth.uid && newData.parent().child('atendimento/aCaminhoPor/id').val() === auth.uid && newData.parent().child('atendimento/aCaminhoEm').isNumber()) || ((data.val() === 'em_andamento' || data.val() === 'em_atendimento' || data.val() === 'a_caminho' || data.val() === 'em_deslocamento') && newData.val() === 'chegou' && data.parent().child('aceite/id').val() === auth.uid && newData.parent().child('atendimento/chegouPor/id').val() === auth.uid) || ((data.val() === 'chegou' || data.val() === 'em_local' || data.val() === 'chegando') && newData.val() === 'aguardando_confirmacao' && data.parent().child('aceite/id').val() === auth.uid && newData.parent().child('atendimento/finalizacaoSolicitadaPor/id').val() === auth.uid) || (data.val() === 'aguardando_confirmacao' && newData.val() === 'finalizado' && data.parent().child('criador/id').val() === auth.uid && newData.parent().child('atendimento/finalizadoPor/id').val() === auth.uid) || ((data.val() === 'aceito' || data.val() === 'aguardando_inicio' || data.val() === 'em_andamento' || data.val() === 'em_atendimento' || data.val() === 'a_caminho' || data.val() === 'em_deslocamento' || data.val() === 'chegou' || data.val() === 'em_local' || data.val() === 'chegando' || data.val() === 'aguardando_confirmacao') && newData.val() === 'cancelado' && (data.parent().child('criador/id').val() === auth.uid || data.parent().child('aceite/id').val() === auth.uid) && newData.parent().child('canceladoPor/id').val() === auth.uid && newData.parent().child('canceladoEm').isNumber() && newData.parent().child('canceladoNaEtapa').isString() && newData.parent().child('motivoCodigo').isString() && newData.parent().child('motivo').isString() && newData.parent().child('motivo').val().length > 0 && newData.parent().child('motivo').val().length <= 160 && newData.parent().child('atendimento/canceladoPor/id').val() === auth.uid && newData.parent().child('atendimento/canceladoEm').isNumber()))"
+        },
+        "aCaminhoEm": {
+          ".validate": "!newData.parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().child('status').val() === 'a_caminho' && newData.isNumber()))"
+        },
+        "aCaminhoPor": {
+          ".validate": "!newData.parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().child('status').val() === 'a_caminho' && newData.child('id').val() === auth.uid && newData.child('nome').isString() && newData.child('nome').val().length <= 80))",
+          "id": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+          "nome": { ".validate": "newData.isString() && newData.val().length <= 80" },
+          "$other": { ".validate": false }
+        },
+        "canceladoEm": {
+          ".validate": "!newData.parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().child('status').val() === 'cancelado' && newData.isNumber()))"
+        },
+        "canceladoPor": {
+          ".validate": "!newData.parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().child('status').val() === 'cancelado' && newData.child('id').val() === auth.uid && newData.child('nome').isString() && newData.child('nome').val().length <= 80))",
+          "id": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+          "nome": { ".validate": "newData.isString() && newData.val().length <= 80" },
+          "$other": { ".validate": false }
+        },
+        "canceladoNaEtapa": {
+          ".validate": "!newData.parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().child('status').val() === 'cancelado' && newData.isString() && (newData.val() === 'em_andamento' || newData.val() === 'a_caminho' || newData.val() === 'chegou' || newData.val() === 'aguardando_confirmacao')))"
+        },
+        "motivoCodigo": {
+          ".validate": "!newData.parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().child('status').val() === 'cancelado' && newData.isString() && (newData.val() === 'sem_acordo' || newData.val() === 'valor_nao_combinado' || newData.val() === 'horario_incompativel' || newData.val() === 'servico_divergente' || newData.val() === 'nao_consigo_realizar' || newData.val() === 'cliente_desistiu' || newData.val() === 'profissional_desistiu' || newData.val() === 'outro')))"
+        },
+        "motivo": {
+          ".validate": "!newData.parent().exists() || root.child('admins').child(auth.uid).val() === true || (data.exists() ? newData.val() === data.val() : (newData.parent().child('status').val() === 'cancelado' && newData.isString() && newData.val().length > 0 && newData.val().length <= 160))"
         }
       }
     },
@@ -919,9 +947,9 @@
       ".indexOn": ["clienteId", "profissionalId", "status", "tipo", "criadoEm"],
       "$requestId": {
         ".read": "auth != null && (!data.exists() || data.child('clienteId').val() === auth.uid || data.child('profissionalId').val() === auth.uid)",
-        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.exists() && newData.child('clienteId').val() === auth.uid && newData.child('profissionalId').isString() && newData.child('profissionalId').val() !== auth.uid && newData.child('privado').val() === true && newData.child('publico').val() === false && (newData.child('tipo').val() === 'pedido_direto' || newData.child('tipo').val() === 'agendamento') && (newData.child('tipo').val() !== 'agendamento' || (root.child('publicProfiles').child(newData.child('profissionalId').val()).exists() && root.child('publicProfiles').child(newData.child('profissionalId').val()).child('agendaAberta').val() !== false))) || (data.exists() && newData.exists() && data.child('profissionalId').val() === auth.uid && data.child('status').val() === 'pendente' && (newData.child('status').val() === 'aceito' || newData.child('status').val() === 'agendado' || newData.child('status').val() === 'recusado') && newData.child('clienteId').val() === data.child('clienteId').val() && newData.child('profissionalId').val() === data.child('profissionalId').val() && newData.child('tipo').val() === data.child('tipo').val() && ((!data.child('servicoId').exists() && !newData.child('servicoId').exists()) || (data.child('servicoId').exists() && newData.child('servicoId').exists() && newData.child('servicoId').val() === data.child('servicoId').val())) && ((!data.child('valor').exists() && !newData.child('valor').exists()) || (data.child('valor').exists() && newData.child('valor').exists() && newData.child('valor').val() === data.child('valor').val()))) || (data.exists() && !newData.exists() && data.child('clienteId').val() === auth.uid && data.child('status').val() === 'pendente'))",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (data.exists() && !newData.exists() && data.child('clienteId').val() === auth.uid && data.child('status').val() === 'pendente'))",
         "status": {
-          ".write": "auth != null && data.parent().child('profissionalId').val() === auth.uid && data.val() === 'pendente' && (newData.val() === 'aceito' || newData.val() === 'recusado')",
+          ".write": false,
           ".validate": "newData.isString() && (newData.val() === 'pendente' || newData.val() === 'aceito' || newData.val() === 'agendado' || newData.val() === 'recusado') && (!data.parent().exists() || data.val() === newData.val() || (data.val() === 'pendente' && (newData.val() === 'aceito' || newData.val() === 'agendado' || newData.val() === 'recusado')) )"
         },
         "id": { ".validate": "!data.parent().exists() || newData.val() === data.val()" },
@@ -956,7 +984,11 @@
         ".read": "auth != null && auth.uid === $uid",
         "$conversaId": {
           ".write": "auth != null && newData.exists() && ((root.child('pedidos').child($conversaId).child('criador/id').val() === auth.uid && root.child('pedidos').child($conversaId).child('aceite/id').val() === $uid) || (root.child('pedidos').child($conversaId).child('aceite/id').val() === auth.uid && root.child('pedidos').child($conversaId).child('criador/id').val() === $uid) || (root.child('privateRequests').child($conversaId).child('clienteId').val() === auth.uid && root.child('privateRequests').child($conversaId).child('profissionalId').val() === $uid) || (root.child('privateRequests').child($conversaId).child('profissionalId').val() === auth.uid && root.child('privateRequests').child($conversaId).child('clienteId').val() === $uid))",
-          ".validate": "newData.child('pedidoId').val() === $conversaId && newData.child('outroId').isString() && (((root.child('pedidos').child($conversaId).child('criador/id').val() === $uid && newData.child('outroId').val() === root.child('pedidos').child($conversaId).child('aceite/id').val()) || (root.child('pedidos').child($conversaId).child('aceite/id').val() === $uid && newData.child('outroId').val() === root.child('pedidos').child($conversaId).child('criador/id').val()) || (root.child('privateRequests').child($conversaId).child('clienteId').val() === $uid && newData.child('outroId').val() === root.child('privateRequests').child($conversaId).child('profissionalId').val()) || (root.child('privateRequests').child($conversaId).child('profissionalId').val() === $uid && newData.child('outroId').val() === root.child('privateRequests').child($conversaId).child('clienteId').val())) && (!newData.child('lastById').exists() || (newData.child('lastById').isString() && (newData.child('lastById').val() === root.child('pedidos').child($conversaId).child('criador/id').val() || newData.child('lastById').val() === root.child('pedidos').child($conversaId).child('aceite/id').val() || newData.child('lastById').val() === root.child('privateRequests').child($conversaId).child('clienteId').val() || newData.child('lastById').val() === root.child('privateRequests').child($conversaId).child('profissionalId').val()))))"
+          ".validate": "newData.child('pedidoId').val() === $conversaId && newData.child('outroId').isString() && (((root.child('pedidos').child($conversaId).child('criador/id').val() === $uid && newData.child('outroId').val() === root.child('pedidos').child($conversaId).child('aceite/id').val()) || (root.child('pedidos').child($conversaId).child('aceite/id').val() === $uid && newData.child('outroId').val() === root.child('pedidos').child($conversaId).child('criador/id').val()) || (root.child('privateRequests').child($conversaId).child('clienteId').val() === $uid && newData.child('outroId').val() === root.child('privateRequests').child($conversaId).child('profissionalId').val()) || (root.child('privateRequests').child($conversaId).child('profissionalId').val() === $uid && newData.child('outroId').val() === root.child('privateRequests').child($conversaId).child('clienteId').val())) && (!newData.child('lastById').exists() || (newData.child('lastById').isString() && (newData.child('lastById').val() === root.child('pedidos').child($conversaId).child('criador/id').val() || newData.child('lastById').val() === root.child('pedidos').child($conversaId).child('aceite/id').val() || newData.child('lastById').val() === root.child('privateRequests').child($conversaId).child('clienteId').val() || newData.child('lastById').val() === root.child('privateRequests').child($conversaId).child('profissionalId').val()))))",
+          "unread": {
+            ".write": "auth != null && auth.uid === $uid && data.parent().exists() && newData.val() === false && ((root.child('pedidos').child($conversaId).child('criador/id').val() === $uid || root.child('pedidos').child($conversaId).child('aceite/id').val() === $uid) || (root.child('privateRequests').child($conversaId).child('clienteId').val() === $uid || root.child('privateRequests').child($conversaId).child('profissionalId').val() === $uid))",
+            ".validate": "newData.val() === false"
+          }
         }
       }
     },
@@ -992,7 +1024,7 @@
       ".indexOn": ["profissionalId", "clienteId", "status", "data", "pedidoId"],
       "$agendamentoId": {
         ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || data.child('clienteId').val() === auth.uid || data.child('profissionalId').val() === auth.uid)",
-        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.exists() && newData.child('clienteId').val() === auth.uid && newData.child('profissionalId').isString() && newData.child('profissionalId').val() !== auth.uid && newData.child('privateRequestId').isString() && root.child('privateRequests').child(newData.child('privateRequestId').val()).child('clienteId').val() === auth.uid && root.child('privateRequests').child(newData.child('privateRequestId').val()).child('profissionalId').val() === newData.child('profissionalId').val()) || (data.exists() && newData.exists() && data.child('profissionalId').val() === auth.uid && data.child('status').val() === 'pendente' && (newData.child('status').val() === 'aceito' || newData.child('status').val() === 'recusado') && newData.child('clienteId').val() === data.child('clienteId').val() && newData.child('profissionalId').val() === data.child('profissionalId').val() && ((!data.child('pedidoId').exists() && !newData.child('pedidoId').exists()) || (data.child('pedidoId').exists() && newData.child('pedidoId').val() === data.child('pedidoId').val())) && ((!data.child('privateRequestId').exists() && !newData.child('privateRequestId').exists()) || (data.child('privateRequestId').exists() && newData.child('privateRequestId').val() === data.child('privateRequestId').val())))))",
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() === true || (!data.exists() && newData.exists() && newData.child('clienteId').val() === auth.uid && newData.child('profissionalId').isString() && newData.child('profissionalId').val() !== auth.uid && newData.child('privateRequestId').isString() && root.child('privateRequests').child(newData.child('privateRequestId').val()).child('clienteId').val() === auth.uid && root.child('privateRequests').child(newData.child('privateRequestId').val()).child('profissionalId').val() === newData.child('profissionalId').val()) || (data.exists() && newData.exists() && data.child('profissionalId').val() === auth.uid && (newData.child('status').val() === 'recusado' || ((root.child('users').child(auth.uid).child('subscriptions/professional/status').val() === 'active' && root.child('users').child(auth.uid).child('subscriptions/professional/expiresAt').val() > now) || (root.child('users').child(auth.uid).child('subscriptions/professional/status').val() === 'trial' && root.child('users').child(auth.uid).child('subscriptions/professional/trialEndsAt').val() > now))) && data.child('status').val() === 'pendente' && (newData.child('status').val() === 'aceito' || newData.child('status').val() === 'recusado') && newData.child('clienteId').val() === data.child('clienteId').val() && newData.child('profissionalId').val() === data.child('profissionalId').val() && ((!data.child('pedidoId').exists() && !newData.child('pedidoId').exists()) || (data.child('pedidoId').exists() && newData.child('pedidoId').val() === data.child('pedidoId').val())) && ((!data.child('privateRequestId').exists() && !newData.child('privateRequestId').exists()) || (data.child('privateRequestId').exists() && newData.child('privateRequestId').val() === data.child('privateRequestId').val()))))",
         ".validate": "!newData.exists() || (newData.child('clienteId').isString() && newData.child('profissionalId').isString() && newData.child('clienteId').val() !== newData.child('profissionalId').val() && newData.child('status').isString() && (!data.exists() || (newData.child('clienteId').val() === data.child('clienteId').val() && newData.child('profissionalId').val() === data.child('profissionalId').val() && ((!data.child('pedidoId').exists() && !newData.child('pedidoId').exists()) || (data.child('pedidoId').exists() && newData.child('pedidoId').val() === data.child('pedidoId').val())) && ((!data.child('privateRequestId').exists() && !newData.child('privateRequestId').exists()) || (data.child('privateRequestId').exists() && newData.child('privateRequestId').val() === data.child('privateRequestId').val())))))",
         "clienteId": { ".validate": "!data.parent().exists() || newData.val() === data.val()" },
         "profissionalId": { ".validate": "!data.parent().exists() || newData.val() === data.val()" },
@@ -1048,7 +1080,7 @@
           "criadoEmServer": { ".validate": "newData.isNumber() && newData.val() >= now - 300000 && newData.val() <= now + 300000" },
           "duracao": { ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 0 && newData.val() <= 900 && newData.parent().child('tipo').val() === 'audio')" },
           "anexo": {
-            ".validate": "!newData.exists() || (newData.hasChildren(['tipo', 'url', 'nome', 'mime', 'tamanho', 'storage']) && newData.child('tipo').val() === newData.parent().child('tipo').val() && ((newData.child('tipo').val() === 'imagem' && (newData.child('mime').val() === 'image/jpeg' || newData.child('mime').val() === 'image/png' || newData.child('mime').val() === 'image/webp') && newData.child('url').val().matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$')) || (newData.child('tipo').val() === 'audio' && (newData.child('mime').val() === 'audio/webm' || newData.child('mime').val() === 'audio/mp4') && newData.child('url').val().matches('^data:audio/(webm|mp4);base64,[A-Za-z0-9+/=]+$'))) && newData.child('url').isString() && newData.child('url').val().length <= 1229000 && newData.child('nome').isString() && newData.child('nome').val().length > 0 && newData.child('nome').val().length <= 80 && newData.child('tamanho').isNumber() && newData.child('tamanho').val() > 0 && newData.child('tamanho').val() <= 921600 && newData.child('storage').val() === 'database_mvp')",
+            ".validate": "!newData.exists() || (newData.hasChildren(['tipo', 'url', 'nome', 'mime', 'tamanho', 'storage']) && newData.child('tipo').val() === newData.parent().child('tipo').val() && ((newData.child('tipo').val() === 'imagem' && (newData.child('mime').val() === 'image/jpeg' || newData.child('mime').val() === 'image/png' || newData.child('mime').val() === 'image/webp') && newData.child('url').val().matches(/^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+\\/=]+$/)) || (newData.child('tipo').val() === 'audio' && (newData.child('mime').val() === 'audio/webm' || newData.child('mime').val() === 'audio/mp4') && newData.child('url').val().matches(/^data:audio\\/(webm|mp4);base64,[A-Za-z0-9+\\/=]+$/))) && newData.child('url').isString() && newData.child('url').val().length <= 1229000 && newData.child('nome').isString() && newData.child('nome').val().length > 0 && newData.child('nome').val().length <= 80 && newData.child('tamanho').isNumber() && newData.child('tamanho').val() > 0 && newData.child('tamanho').val() <= 921600 && newData.child('storage').val() === 'database_mvp')",
             "tipo": { ".validate": "newData.val() === newData.parent().parent().child('tipo').val()" },
             "url": { ".validate": "newData.isString() && newData.val().length <= 1229000" },
             "nome": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80" },
