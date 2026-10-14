@@ -18,6 +18,7 @@ import {
 } from '@/lib/subscriptions'
 import { commercialAuditKey } from '@/lib/commercialAuditKey'
 import { verifyMercadoPagoHmacSignature } from '@/lib/mercadoPagoWebhookSignature'
+import { assessMercadoPagoCheckoutConfiguration } from '@/lib/commercialRuntimeConfig'
 
 export const COMMERCIAL_SOURCE = 'mercado_pago'
 const PAYMENT_EVENT_LEASE_MS = 5 * 60 * 1000
@@ -95,9 +96,12 @@ export function isProduction() {
   return process.env.NODE_ENV === 'production'
 }
 
+export function getMercadoPagoCheckoutReadiness() {
+  return assessMercadoPagoCheckoutConfiguration(process.env)
+}
+
 export function isMercadoPagoCheckoutEnabled() {
-  return process.env.MERCADO_PAGO_CHECKOUT_ENABLED === 'true'
-    && !!process.env.MERCADO_PAGO_ACCESS_TOKEN
+  return getMercadoPagoCheckoutReadiness().ready
 }
 
 export function isCommercialHighlightsEnabled() {
@@ -276,7 +280,7 @@ export function parseExternalReference(externalReference) {
   return { productId, userId, targetId, attemptId }
 }
 
-export async function createCommercialCheckoutAttempt({
+async function createCommercialCheckoutAttempt({
   database,
   userId,
   product,
@@ -304,7 +308,7 @@ export async function createCommercialCheckoutAttempt({
     amountInCents: product.amountInCents,
     currency: product.currency,
     status: 'checkout_created',
-    checkoutStatus: isMercadoPagoCheckoutEnabled() ? 'provider_enabled' : 'provider_not_configured',
+    checkoutStatus: 'provider_enabled',
     provider: COMMERCIAL_SOURCE,
     externalReference,
     createdAt: now,
@@ -327,21 +331,27 @@ export async function createCommercialCheckoutAttempt({
   return attempt
 }
 
-export async function maybeCreateMercadoPagoPreference({ product, attempt, payerEmail = '' }) {
-  if (!isMercadoPagoCheckoutEnabled()) {
-    return {
-      checkoutAvailable: false,
-      checkoutUrl: '',
-      initPoint: '',
-      reason: 'mercado_pago_not_configured',
-    }
-  }
+function checkoutConfigurationError(readiness) {
+  const error = new Error('checkout_configuration_incomplete')
+  error.code = 'checkout_configuration_incomplete'
+  error.status = 503
+  error.configurationIssues = Array.from(readiness?.issues || [])
+  return error
+}
 
-  const siteUrl = safeText(process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL)
-  const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+async function createMercadoPagoPreference({
+  product,
+  attempt,
+  payerEmail = '',
+}) {
+  const readiness = getMercadoPagoCheckoutReadiness()
+  if (!readiness.ready) throw checkoutConfigurationError(readiness)
+
+  const siteUrl = readiness.siteOrigin
+  const response = await globalThis.fetch('https://api.mercadopago.com/checkout/preferences', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${safeText(process.env.MERCADO_PAGO_ACCESS_TOKEN)}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -354,13 +364,13 @@ export async function maybeCreateMercadoPagoPreference({ product, attempt, payer
       }],
       payer: payerEmail ? { email: payerEmail } : undefined,
       external_reference: attempt.externalReference,
-      notification_url: siteUrl ? `${siteUrl.replace(/\/$/, '')}/api/mercado-pago/webhook` : undefined,
-      back_urls: siteUrl ? {
-        success: `${siteUrl.replace(/\/$/, '')}/?checkout=success`,
-        pending: `${siteUrl.replace(/\/$/, '')}/?checkout=pending`,
-        failure: `${siteUrl.replace(/\/$/, '')}/?checkout=failure`,
-      } : undefined,
-      auto_return: siteUrl ? 'approved' : undefined,
+      notification_url: `${siteUrl}/api/mercado-pago/webhook`,
+      back_urls: {
+        success: `${siteUrl}/?checkout=success`,
+        pending: `${siteUrl}/?checkout=pending`,
+        failure: `${siteUrl}/?checkout=failure`,
+      },
+      auto_return: 'approved',
       metadata: {
         attempt_id: attempt.id,
         product_id: product.id,
@@ -373,16 +383,60 @@ export async function maybeCreateMercadoPagoPreference({ product, attempt, payer
   if (!response.ok) {
     const error = new Error(data?.message || `mercado_pago_${response.status}`)
     error.status = 502
-    error.details = data
+    throw error
+  }
+
+  const checkoutUrl = readiness.environment === 'staging'
+    ? safeText(data?.sandbox_init_point)
+    : safeText(data?.init_point)
+  if (!checkoutUrl) {
+    const error = new Error('mercado_pago_checkout_url_missing')
+    error.code = 'mercado_pago_checkout_url_missing'
+    error.status = 502
     throw error
   }
 
   return {
     checkoutAvailable: true,
-    checkoutUrl: data?.init_point || data?.sandbox_init_point || '',
-    initPoint: data?.init_point || data?.sandbox_init_point || '',
+    checkoutUrl,
+    initPoint: checkoutUrl,
     preferenceId: data?.id || '',
   }
+}
+
+export async function createMercadoPagoCheckout({
+  database,
+  userId,
+  product,
+  targetId = '',
+  targetType = '',
+  targetSummary = {},
+  payerEmail = '',
+}) {
+  const readiness = getMercadoPagoCheckoutReadiness()
+  if (!readiness.ready) throw checkoutConfigurationError(readiness)
+
+  const attempt = await createCommercialCheckoutAttempt({
+    database,
+    userId,
+    product,
+    targetId,
+    targetType,
+    targetSummary,
+  })
+  const checkout = await createMercadoPagoPreference({
+    product,
+    attempt,
+    payerEmail,
+  })
+
+  await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update({
+    preferenceId: checkout.preferenceId || null,
+    checkoutUrl: checkout.checkoutUrl,
+    updatedAt: Date.now(),
+  })
+
+  return { attempt, checkout }
 }
 
 export function verifyMercadoPagoSignature({ rawBody, dataId, headers }) {

@@ -45,6 +45,7 @@ const {
   referenceKey,
 } = await import('../src/lib/commercialServer.js')
 
+const webhookSecurityRouteSource = await readFile(new URL('../src/app/api/mercado-pago/webhook/route.js', import.meta.url), 'utf8')
 const webhookSecret = 'test-only-webhook-secret'
 const webhookRequestId = 'request-test-123'
 const webhookTimestamp = '1704908010'
@@ -338,6 +339,24 @@ assert.equal(legacySignatureDiagnostic.hasLegacyIdQuery, true)
 assert.equal(legacySignatureDiagnostic.hasLegacyTopicQuery, true)
 assert.equal(legacySignatureDiagnostic.hasBodyResource, true)
 assert.doesNotMatch(JSON.stringify(legacySignatureDiagnostic), /must-not-be-logged/)
+
+const webhookConfigurationGuardAt = webhookSecurityRouteSource.indexOf('mercado_pago_webhook_unavailable')
+const webhookSignatureGuardAt = webhookSecurityRouteSource.indexOf('if (!signature.ok)')
+const webhookBodyParseAt = webhookSecurityRouteSource.indexOf('body = rawBody ? JSON.parse(rawBody) : {}')
+const webhookDatabaseAt = webhookSecurityRouteSource.indexOf('const database = getCommercialDatabase()')
+const webhookAuditAt = webhookSecurityRouteSource.indexOf('await writeCommercialAudit(database')
+assert.ok(webhookConfigurationGuardAt >= 0, 'webhook bloqueia quando credenciais server-side estao ausentes')
+assert.match(webhookSecurityRouteSource, /mercado_pago_webhook_unavailable[\s\S]{0,180}status:\s*503/, 'webhook indisponivel pede retry em vez de confirmar descarte')
+assert.ok(
+  webhookSignatureGuardAt >= 0
+    && webhookBodyParseAt > webhookSignatureGuardAt
+    && webhookDatabaseAt > webhookBodyParseAt
+    && webhookAuditAt > webhookDatabaseAt,
+  'webhook autentica antes de interpretar e persistir o evento',
+)
+const rejectedSignatureBlock = webhookSecurityRouteSource.slice(webhookSignatureGuardAt, webhookBodyParseAt)
+assert.doesNotMatch(rejectedSignatureBlock, /getCommercialDatabase|writeCommercialAudit/, 'assinatura invalida nao toca a RTDB')
+assert.match(webhookSecurityRouteSource, /fetchMercadoPagoPayment\(signature\.paymentId\)/, 'consulta do pagamento usa o ID autenticado da query')
 
 const paymentNow = Date.UTC(2026, 9, 3, 12)
 const approvedClient = commercialPaymentScenario()
@@ -906,7 +925,9 @@ assert.equal(
 )
 
 const commercialSource = await readFile(new URL('../src/lib/commercialServer.js', import.meta.url), 'utf8')
+const commercialRuntimeConfigSource = await readFile(new URL('../src/lib/commercialRuntimeConfig.js', import.meta.url), 'utf8')
 const checkoutRouteSource = await readFile(new URL('../src/app/api/planos/checkout/route.js', import.meta.url), 'utf8')
+const boostCheckoutRouteSource = await readFile(new URL('../src/app/api/request-boost/checkout/route.js', import.meta.url), 'utf8')
 const statusRouteSource = await readFile(new URL('../src/app/api/subscriptions/status/route.js', import.meta.url), 'utf8')
 const webhookRouteSource = await readFile(new URL('../src/app/api/mercado-pago/webhook/route.js', import.meta.url), 'utf8')
 const orderCreateRouteSource = await readFile(new URL('../src/app/api/pedidos/create/route.js', import.meta.url), 'utf8')
@@ -931,6 +952,19 @@ assert.match(checkoutRouteSource, /getAuthenticatedUid\(request\)/, 'checkout us
 assert.match(checkoutRouteSource, /CLIENT_ANNUAL_PRODUCT_ID[\s\S]*PROFESSIONAL_ANNUAL_PRODUCT_ID/, 'checkout aceita os produtos anuais canonicos')
 assert.match(checkoutRouteSource, /invalid_plan/, 'produto invalido e rejeitado')
 assert.doesNotMatch(checkoutRouteSource, /body\?\.(?:uid|userId|amount|amountInCents|price|preco)/, 'checkout nao confia em UID ou preco do body')
+assert.match(checkoutRouteSource, /getMercadoPagoCheckoutReadiness\(\)/, 'checkout anual faz preflight fail-closed')
+assert.match(checkoutRouteSource, /createMercadoPagoCheckout\(/, 'checkout anual usa o gateway unico')
+assert.match(boostCheckoutRouteSource, /getMercadoPagoCheckoutReadiness\(\)/, 'checkout de impulso faz preflight fail-closed')
+assert.match(boostCheckoutRouteSource, /createMercadoPagoCheckout\(/, 'checkout de impulso usa o gateway unico')
+assert.doesNotMatch(checkoutRouteSource, /createCommercialCheckoutAttempt|maybeCreateMercadoPagoPreference/)
+assert.doesNotMatch(boostCheckoutRouteSource, /createCommercialCheckoutAttempt|maybeCreateMercadoPagoPreference/)
+assert.match(commercialRuntimeConfigSource, /MERCADO_PAGO_WEBHOOK_SECRET/, 'gate exige webhook secret')
+assert.match(commercialRuntimeConfigSource, /MERCADO_PAGO_CREDENTIAL_ENV/, 'gate exige declaracao server-side do ambiente da credencial')
+assert.doesNotMatch(commercialRuntimeConfigSource, /startsWith\(['"](?:TEST-|APP_USR-)/, 'gate nao infere ambiente pelo prefixo do token')
+assert.match(commercialRuntimeConfigSource, /FIREBASE_ADMIN_DATABASE_URL/, 'gate exige RTDB server-side')
+assert.match(commercialRuntimeConfigSource, /corre-aqui-3f9ec[\s\S]*corre-aqui-staging/, 'gate conhece os projetos canonicos')
+assert.match(commercialSource, /function createMercadoPagoPreference/, 'criacao bruta de Preference e privada')
+assert.doesNotMatch(commercialSource, /export async function (?:createCommercialCheckoutAttempt|maybeCreateMercadoPagoPreference)/)
 assert.match(commercialSource, /unit_price: product\.amountInCents \/ 100/, 'preco da Preference vem do catalogo backend')
 assert.match(webhookRouteSource, /verifyMercadoPagoSignature/, 'webhook valida assinatura')
 assert.match(

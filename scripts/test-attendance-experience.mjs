@@ -367,17 +367,6 @@ for (const transition of transitionCases) {
     assert.equal(Object.hasOwn(privatePayload, immutableField), false, `${transition.next} não regrava ${immutableField}`)
   }
   const counterpartUid = transition.expectedActor === 'B' ? 'A' : 'B'
-  const notification = {
-    id: `notification_${transition.next}`,
-    tipo: 'atendimento',
-    titulo: 'Atualização',
-    mensagem: 'Status atualizado',
-    pedidoId: 'pedido-1',
-    fromUid: transition.expectedActor,
-    toUid: counterpartUid,
-    lida: false,
-    autor: actor(transition.expectedActor),
-  }
   const multipath = attendanceWrites.buildAttendanceTransitionMultipath({
     pedidoId: 'pedido-1',
     actorUid: transition.expectedActor,
@@ -391,13 +380,12 @@ for (const transition of transitionCases) {
         text: 'Status atualizado',
         timestamp: 10,
       },
-      notification,
     },
   })
   assert.equal(multipath['pedidos/pedido-1/status'], transition.next)
   assert.equal(multipath[`conversas/${counterpartUid}/pedido-1/outroId`], transition.expectedActor)
-  assert.equal(multipath[`notifications/${counterpartUid}/${notification.id}`], notification)
-  assert.equal(multipath[`notificacoes/${counterpartUid}/${notification.id}`], notification)
+  assert.equal(Object.keys(multipath).some((path) => path.startsWith('notifications/')), false, 'cliente não materializa notificações')
+  assert.equal(Object.keys(multipath).some((path) => path.startsWith('notificacoes/')), false, 'cliente não materializa inbox legado')
   assert.equal(Object.keys(multipath).some((path) => path.startsWith(`conversas/${transition.expectedActor}/`)), false, 'ator não escreve o próprio índice')
   assert.equal(Object.keys(multipath).some((path) => path.endsWith('/unread')), false, 'evento não forja unread=true')
   assert.equal(canRuleTransition({
@@ -520,12 +508,12 @@ assert.match(pedidoPage, /onPointerEnter=\{podeAbrirChat \? preloadChat[\s\S]*on
 assert.match(profile, /allowPublicContact[\s\S]*whatsapp/)
 assert.match(attendanceSource, /\[ATTENDANCE_TRANSITION\]/, 'transição possui diagnóstico sanitizado dedicado')
 assert.match(attendanceSource, /buildAttendanceTransitionMultipath/, 'transição usa um único writer multipath canônico')
-assert.match(attendanceSource, /await update\(ref\(database\), updatePayload\)/, 'pedido, índice do outro e notificações são confirmados atomicamente')
+assert.match(attendanceSource, /await update\(ref\(database\), updatePayload\)/, 'pedido e índice do outro são confirmados atomicamente')
 assert.doesNotMatch(attendanceSource, /runTransaction\(ref\(database, path\)/, 'transição não regrava o pedido privado inteiro')
 for (const source of [pedidoPage, chat, map]) {
   assert.doesNotMatch(source, /for \(const uid of \[(?:clienteId, profissionalId|meuId, outroId|p\?\.criador\?\.id, p\?\.aceite\?\.id)\]\)/, 'UI não escreve índices dos dois participantes')
 }
-assert.match(chat, /eventWrite:/, 'Chat delega os efeitos pós-aceite ao writer canônico')
+assert.match(chat, /eventWrite:/, 'Chat delega pedido e índice de conversa ao writer canônico')
 assert.equal((`${pedidoPage}\n${map}`.match(/finalizarAtendimento|avancarAtendimento|cancelarAtendimento|cancelarAceite|marcarConclu/g) || []).length, 0, 'detalhe e mapa não duplicam ações pós-aceite')
 assert.match(pedidoPage, /const acceptedPedido = await transitionAtendimento\([\s\S]*setPrivatePedido\(\{ id: pedido\.id, \.\.\.acceptedPedido/, 'detalhe preserva apenas o claim confirmado e abre o Chat depois')
 assert.match(pedidoPage, /podeAbrirChat[\s\S]*Abrir conversa/, 'pedido aceito encaminha para o Chat canônico')

@@ -38,37 +38,15 @@ async function fetchMercadoPagoPayment(paymentId) {
 }
 
 export async function POST(request) {
-  const rawBody = await request.text()
-  const database = getCommercialDatabase()
-  let body = {}
-  try {
-    body = rawBody ? JSON.parse(rawBody) : {}
-  } catch {
-    await writeCommercialAudit(database, {
-      eventId: `webhook_invalid_json_${Date.now()}`,
-      type: 'webhook_invalid_json',
-      statusAfter: 'invalid_json',
-    })
-    return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: responseHeaders })
-  }
-
-  const paymentId = safeText(body?.data?.id || body?.id || body?.resource)
-  const signatureDataId = safeText(request.nextUrl.searchParams.get('data.id'))
-
-  await writeCommercialAudit(database, {
-    eventId: `webhook_received_${paymentId || Date.now()}`,
-    type: 'webhook_received',
-    paymentReference: paymentId || null,
-    statusAfter: safeText(body?.action || body?.type || 'received'),
-  })
-
-  if (!process.env.MERCADO_PAGO_WEBHOOK_SECRET || !process.env.MERCADO_PAGO_ACCESS_TOKEN) {
+  if (!safeText(process.env.MERCADO_PAGO_WEBHOOK_SECRET) || !safeText(process.env.MERCADO_PAGO_ACCESS_TOKEN)) {
     return NextResponse.json({
-      ok: true,
-      ignored: true,
-      reason: 'mercado_pago_webhook_not_configured',
-    }, { status: 202, headers: responseHeaders })
+      ok: false,
+      error: 'mercado_pago_webhook_unavailable',
+    }, { status: 503, headers: responseHeaders })
   }
+
+  const rawBody = await request.text()
+  const signatureDataId = safeText(request.nextUrl.searchParams.get('data.id'))
 
   const signature = verifyMercadoPagoSignature({
     rawBody,
@@ -82,15 +60,8 @@ export async function POST(request) {
       queryDataId: signatureDataId,
       legacyQueryId: request.nextUrl.searchParams.get('id'),
       legacyQueryTopic: request.nextUrl.searchParams.get('topic'),
-      body,
     })
     console.warn(JSON.stringify(signatureDiagnostic))
-    await writeCommercialAudit(database, {
-      eventId: `webhook_invalid_signature_${paymentId || Date.now()}`,
-      type: 'webhook_invalid_signature',
-      paymentReference: paymentId || null,
-      statusAfter: signature.reason,
-    })
     return NextResponse.json({
       ok: false,
       error: 'invalid_signature',
@@ -104,6 +75,21 @@ export async function POST(request) {
       },
     })
   }
+
+  let body = {}
+  try {
+    body = rawBody ? JSON.parse(rawBody) : {}
+  } catch {
+    return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: responseHeaders })
+  }
+
+  const database = getCommercialDatabase()
+  await writeCommercialAudit(database, {
+    eventId: `webhook_received_${signature.paymentId}`,
+    type: 'webhook_received',
+    paymentReference: signature.paymentId,
+    statusAfter: safeText(body?.action || body?.type || 'received'),
+  })
 
   const payment = await fetchMercadoPagoPayment(signature.paymentId)
   const result = await processApprovedCommercialPayment({ database, payment })

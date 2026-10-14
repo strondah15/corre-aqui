@@ -45,8 +45,9 @@ assert.match(securityIndex.$uid.$registroId['.write'], /problemasServico/)
 assert.equal(securityIndex.$uid.$registroId.$other['.validate'], false, 'índice não duplica conteúdo sensível')
 assert.match(privatePedido.avaliacao['.validate'], /avaliacoes/)
 assert.match(privatePedido.problemaServico['.validate'], /!newData\.child\('descricao'\)\.exists\(\)/, 'resumo de denúncia não vaza texto')
-assert.match(privatePedido['.write'], /!data\.child\('avaliacao'\)\.exists\(\)/, 'espelho da avaliação não pode ser removido pelo participante')
-assert.match(privatePedido['.write'], /!data\.child\('problemaServico'\)\.exists\(\)/, 'espelho do problema não pode ser removido pelo participante')
+assert.match(privatePedido['.write'], /admins/, 'escrita do pedido inteiro é reservada ao servidor/admin')
+assert.match(privatePedido.avaliacao['.write'], /!data\.exists\(\).*newData\.exists\(\)/, 'espelho da avaliação não pode ser removido pelo participante')
+assert.match(privatePedido.problemaServico['.write'], /newData\.exists\(\)/, 'espelho do problema não pode ser removido pelo participante')
 
 for (const field of [
   'reputation', 'reputacao', 'trust', 'trustStats', 'rating', 'ratingAvg', 'ratingCount', 'reviewCount',

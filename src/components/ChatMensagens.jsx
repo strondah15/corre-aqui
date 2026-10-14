@@ -26,24 +26,6 @@ function debugChatWarning(...args) {
   if (process.env.NODE_ENV !== 'production') console.warn(...args)
 }
 
-function scheduleChatNotification({ recipientUid, notificationId, payload, authUid }) {
-  const path = `notifications/${recipientUid}/${notificationId}`
-  const expectedUid = String(authUid || '').trim()
-  if (!expectedUid || auth.currentUser?.uid !== expectedUid) return
-
-  void set(ref(database, path), payload).catch((error) => {
-    if (auth.currentUser?.uid !== expectedUid) return
-    debugChatWarning('[CHAT_NOTIFICATION]', {
-      operation: 'set',
-      path,
-      authUid: authUid || null,
-      recipientUid: recipientUid || null,
-      eventType: payload?.tipo || null,
-      error: { code: error?.code || null },
-    })
-  })
-}
-
 function getMsgMs(v) {
   if (!v) return 0
   if (typeof v === 'number') return v
@@ -786,11 +768,11 @@ export default function ChatMensagens({
     if (auth.currentUser?.uid !== expectedUid) return false
     const messageRef = await push(ref(database, `chats/${pedidoId}`), payload)
     const messageId = messageRef.key || `message_${agora}`
-    if (auth.currentUser?.uid !== expectedUid) return true
+    if (auth.currentUser?.uid !== expectedUid) return messageId
     scheduleConversationActivity({ conversationId: pedidoId, messageId, authUid: expectedUid })
 
     if (outroId) {
-      if (skipNotification) return true
+      if (skipNotification) return messageId
 
       const notificationId = createEventNotificationId({
         type: 'NOVA_MENSAGEM',
@@ -798,35 +780,11 @@ export default function ChatMensagens({
         toUid: outroId,
         state: 'enviada',
       })
-      const notificationPayload = {
-        id: notificationId,
-        eventId: notificationId,
-        tipo: 'mensagem_chat',
-        pedidoId,
-        conversaId: pedidoId,
-        titulo: `Nova mensagem de ${nomeMeu}`,
-        mensagem: preview,
-        prioridade: 'normal',
-        acao: 'abrir_chat',
-        lida: false,
-        read: false,
-        criadoEm: agora,
-        fromUid: expectedUid,
-        toUid: outroId,
-        action: { label: 'Abrir conversa', screen: 'chat', id: pedidoId },
-        autor: { id: expectedUid, nome: nomeMeu },
-      }
-      scheduleChatNotification({
-        recipientUid: outroId,
-        notificationId,
-        payload: notificationPayload,
-        authUid: expectedUid,
-      })
-
-      if (auth.currentUser?.uid === expectedUid) enviarPushParaUsuario(outroId, {
+      if (auth.currentUser?.uid === expectedUid) await enviarPushParaUsuario(outroId, {
         type: 'nova_mensagem',
         pedidoId,
         conversaId: pedidoId,
+        messageId,
         titulo: `Nova mensagem de ${nomeMeu}`,
         mensagem: preview,
         prioridade: 'normal',
@@ -835,7 +793,7 @@ export default function ChatMensagens({
         eventId: notificationId,
       })
     }
-    return true
+    return messageId
   }
 
   async function iniciarGravacao() {
@@ -988,45 +946,15 @@ export default function ChatMensagens({
       const mensagem = `${nomeMeu} esta aguardando voce na conversa sobre ${tituloPedido}.`
       const systemMessage = `${nomeMeu} chamou atencao na conversa.`
 
-      await update(ref(database), {
-        [`notificacoes/${outroId}/${notificationId}`]: {
-          tipo: 'chamar_atencao_chat',
-          pedidoId,
-          conversaId: pedidoId,
-          titulo,
-          mensagem,
-          prioridade: 'alta',
-          acao: 'abrir_chat',
-          lida: false,
-          criadoEm: agora,
-          toUid: outroId,
-          fromUid: expectedUid,
-          autor: { id: expectedUid, nome: nomeMeu },
-        },
-        [`notifications/${outroId}/${notificationId}`]: {
-          id: notificationId,
-          tipo: 'chamar_atencao_chat',
-          titulo,
-          mensagem,
-          pedidoId,
-          servicoId: pedido?.servicoId || '',
-          fromUid: expectedUid,
-          toUid: outroId,
-          lida: false,
-          criadoEm: agora,
-          action: { label: 'Abrir conversa', screen: 'chat', id: pedidoId },
-          autor: { id: expectedUid, nome: nomeMeu },
-        },
-      })
-
       if (auth.currentUser?.uid !== expectedUid) return
       const messageStored = await registrarMensagem({ texto: systemMessage, skipNotification: true })
       if (!messageStored || auth.currentUser?.uid !== expectedUid) return
 
-      enviarPushParaUsuario(outroId, {
+      await enviarPushParaUsuario(outroId, {
         type: 'chamar_atencao_chat',
         pedidoId,
         conversaId: pedidoId,
+        messageId: messageStored,
         titulo,
         mensagem,
         prioridade: 'alta',
@@ -1128,22 +1056,6 @@ export default function ChatMensagens({
       const notificationAction = nextStatus === ATENDIMENTO_STATUS.FINALIZADO
         ? { label: 'Ver histórico', screen: 'ver_historico', id: pedidoId }
         : { label: 'Abrir atendimento', screen: 'chat', id: pedidoId }
-      const notification = outroId ? {
-        id: notificationId,
-        eventId: notificationId,
-        tipo: evento,
-        titulo: notificationTitle,
-        mensagem: notificationMessage,
-        pedidoId,
-        fromUid: meuId,
-        toUid: outroId,
-        lida: false,
-        read: false,
-        criadoEm: agora,
-        action: notificationAction,
-        autor: { id: meuId, nome: actorName },
-      } : null
-
       if (conversationContextKind === 'privateRequest') {
         await transitionPrivateAttendance({
           requestId: pedidoId,
@@ -1173,7 +1085,6 @@ export default function ChatMensagens({
               categoryName: pedido?.categoriaNome || pedido?.categoriaLabel || '',
               value: pedido?.valor ?? null,
             },
-            notification,
           } : null,
         })
       }
@@ -1184,7 +1095,7 @@ export default function ChatMensagens({
         contextKind: conversationContextKind,
       })
       if (outroId) {
-        enviarPushParaUsuario(outroId, {
+        await enviarPushParaUsuario(outroId, {
           type: evento,
           pedidoId,
           conversaId: pedidoId,
@@ -1257,22 +1168,6 @@ export default function ChatMensagens({
       toUid: counterpartUid,
       state: ATENDIMENTO_STATUS.CANCELADO,
     }) : ''
-    const notification = counterpartUid ? {
-      id: notificationId,
-      eventId: notificationId,
-      tipo: 'atendimento_cancelado',
-      titulo: 'Atendimento cancelado',
-      mensagem: textoEvento,
-      pedidoId,
-      fromUid: meuId,
-      toUid: counterpartUid,
-      lida: false,
-      read: false,
-      criadoEm: agora,
-      action: { label: 'Ver conversa', screen: 'chat', id: pedidoId },
-      autor: { id: meuId, nome: actorName },
-    } : null
-
     attendanceActionLockRef.current = true
     try {
       setEtapaProcessando('cancel')
@@ -1312,7 +1207,6 @@ export default function ChatMensagens({
               categoryName: pedido?.categoriaNome || pedido?.categoriaLabel || '',
               value: pedido?.valor ?? null,
             },
-            notification,
           } : null,
         })
       }
@@ -1323,7 +1217,7 @@ export default function ChatMensagens({
         contextKind: conversationContextKind,
       })
       if (counterpartUid) {
-        enviarPushParaUsuario(counterpartUid, {
+        await enviarPushParaUsuario(counterpartUid, {
           type: 'atendimento_cancelado',
           pedidoId,
           conversaId: pedidoId,
@@ -1357,13 +1251,14 @@ export default function ChatMensagens({
     ratingActionLockRef.current = true
     try {
       setSalvandoAvaliacao(true)
-      const payload = conversationContextKind === 'privateRequest'
-        ? await savePrivateRequestServiceRating({
+      if (conversationContextKind === 'privateRequest') {
+        await savePrivateRequestServiceRating({
             pedido,
             nota: avaliacaoNota,
             comentario: avaliacaoComentario,
           })
-        : await saveCanonicalServiceRating({
+      } else {
+        await saveCanonicalServiceRating({
             database,
             pedido,
             clienteId: meuId,
@@ -1371,6 +1266,7 @@ export default function ChatMensagens({
             nota: avaliacaoNota,
             comentario: avaliacaoComentario,
           })
+      }
 
       const notificationId = createEventNotificationId({
         type: 'avaliacao_recebida',
@@ -1378,35 +1274,14 @@ export default function ChatMensagens({
         toUid: avaliadoId,
         state: 'recebida',
       })
-      const notification = {
-        id: notificationId,
-        eventId: notificationId,
-        tipo: 'avaliacao_recebida',
+      await enviarPushParaUsuario(avaliadoId, {
+        type: 'avaliacao_recebida',
         pedidoId: pedido.id,
         conversaId: pedido?.conversaId || pedido.id,
         titulo: 'Você recebeu uma avaliação ⭐',
         mensagem: 'Veja como foi seu atendimento.',
         prioridade: 'media',
-        lida: false,
-        read: false,
-        criadoEm: payload.criadoEm,
-        fromUid: meuId,
-        toUid: avaliadoId,
         action: { label: 'Ver avaliações', screen: 'avaliacoes', id: pedido.id },
-        autor: { id: meuId, nome: nomeMeu },
-      }
-      await Promise.allSettled([
-        set(ref(database, `notifications/${avaliadoId}/${notificationId}`), notification),
-        set(ref(database, `notificacoes/${avaliadoId}/${notificationId}`), notification),
-      ])
-      enviarPushParaUsuario(avaliadoId, {
-        type: 'avaliacao_recebida',
-        pedidoId: pedido.id,
-        conversaId: pedido?.conversaId || pedido.id,
-        titulo: notification.titulo,
-        mensagem: notification.mensagem,
-        prioridade: 'media',
-        action: notification.action,
         notificationId,
         eventId: notificationId,
       })

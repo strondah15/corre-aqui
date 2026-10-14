@@ -72,6 +72,26 @@ assert.equal(visibleExactLocation(pedidoX, 'C'), null, 'C não lê local exato a
 assert.equal(canClientWritePrivate(pedidoX, 'C'), false, 'C não altera pedidos/X diretamente')
 assert.equal(canReadPrivate(pedidoX, 'A'), true, 'A continua vendo o próprio pedido')
 assert.equal(policy.canStartAuthoritativeClaim({ pedido: pedidoX, pedidoId: 'X', actorUid: 'B' }), false, 'pedido legado sem marcador/projeção confiável falha fechado')
+assert.equal(
+  policy.getPedidoDeletionBlockReason({ pedido: pedidoX, pedidoId: 'X', actorUid: 'A' }),
+  '',
+  'criador pode excluir somente enquanto o pedido permanece aberto e sem aceite',
+)
+assert.equal(
+  policy.getPedidoDeletionBlockReason({ pedido: pedidoX, pedidoId: 'X', actorUid: 'C' }),
+  'creator_mismatch',
+  'terceiro não pode excluir o pedido',
+)
+assert.equal(
+  policy.getPedidoDeletionBlockReason({ pedido: { ...pedidoX, aceite: { id: 'B' } }, pedidoId: 'X', actorUid: 'A' }),
+  'already_accepted',
+  'criador não pode apagar pedido já aceito',
+)
+assert.equal(
+  policy.getPedidoDeletionBlockReason({ pedido: { ...pedidoX, status: 'finalizado' }, pedidoId: 'X', actorUid: 'A' }),
+  'status_not_open',
+  'histórico finalizado não pode ser apagado pela rota de publicação',
+)
 
 const pedidoPublicado = {
   ...pedidoX,
@@ -234,8 +254,11 @@ assert.match(projectionRoute, /const projection = buildPublicRequest\(\{ \.\.\.p
 assert.match(projectionRoute, /canSynchronizePublicRequest\(\{ pedido, pedidoId, actorUid: uid \}\)/, 'publicação vincula pedido, path e usuário autenticado')
 assert.match(projectionRoute, /\['publicRequests\/' \+ pedidoId\]: projection[\s\S]*\['pedidos\/' \+ pedidoId \+ '\/publicacao'\]: stamp/, 'projeção e marcador autoritativo usam o mesmo ID no multipath')
 assert.doesNotMatch(projectionRoute, /body\?\.(?:pedido\b|criador\b|aceite\b|actorUid\b|projection\b)/, 'cliente não fornece pedido, participantes ou projeção autoritativa')
-assert.match(projectionRoute, /\['publicRequests\/' \+ pedidoId\]: null[\s\S]*\['pedidos\/' \+ pedidoId\]: null/, 'exclusão remove público e privado no mesmo multipath Admin')
 assert.match(projectionRoute, /const authority = getPedidoAuthority\(pedido, pedidoId\)[\s\S]*!authority\.creatorId \|\| uid !== authority\.creatorId[\s\S]*403/, 'exclusão exige o criador autoritativo autenticado')
+assert.match(projectionRoute, /getPedidoDeletionBlockReason\(\{ pedido, pedidoId, actorUid: uid \}\)/, 'exclusão bloqueia pedido aceito ou fora do estado aberto')
+assert.match(projectionRoute, /ref\('pedidos\/' \+ pedidoId\)\.transaction/, 'exclusão privada usa transação para não disputar incorretamente com o aceite')
+assert.match(projectionRoute, /if \(!deletion\.committed\)[\s\S]*409/, 'conflito entre aceite e exclusão falha fechado')
+assert.match(projectionRoute, /ref\('publicRequests\/' \+ pedidoId\)\.remove\(\)/, 'projeção pública só é removida após a exclusão privada confirmada')
 assert.doesNotMatch(projectionRoute, /console\.(?:log|info)\s*\(/, 'rota pública não mantém logs diagnósticos identificáveis')
 assert.doesNotMatch(projectionRoute, /\bauthUid\b|creationIntegrity|\bintegrity\s*:/, 'resposta pública não inclui identidade ou integridade diagnóstica')
 assert.doesNotMatch(mapSource, /remove\(ref\(database, `pedidos\/\$\{p\.id\}`\)\)/, 'frontend não mantém deleter privado isolado')

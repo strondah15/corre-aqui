@@ -114,21 +114,5 @@ export function buildAttendanceTransitionMultipath({
     rootUpdate[`${conversationBase}/${field}`] = value
   })
 
-  const notification = eventWrite?.notification || null
-  if (notification) {
-    const notificationId = assertPathSegment(notification.id, 'notificationId')
-    if (
-      notification.pedidoId !== orderId ||
-      notification.fromUid !== actor ||
-      notification.toUid !== counterpart ||
-      notification?.autor?.id !== actor ||
-      notification.lida !== false
-    ) {
-      throw new Error('Notificação incompatível com os participantes da transição.')
-    }
-    rootUpdate[`notifications/${counterpart}/${notificationId}`] = notification
-    rootUpdate[`notificacoes/${counterpart}/${notificationId}`] = notification
-  }
-
   return rootUpdate
 }

@@ -3401,7 +3401,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
 
     try {
       setSalvandoAvaliacao(true)
-      const payload = await saveCanonicalServiceRating({
+      await saveCanonicalServiceRating({
         database,
         pedido: p,
         clienteId: meuId,
@@ -3409,8 +3409,6 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         nota: avaliacaoNota,
         comentario: avaliacaoComentario,
       })
-      const agora = payload.criadoEm
-
       if (avaliadoId && avaliadoId !== meuId) {
         const notificationId = createEventNotificationId({
           type: 'avaliacao_recebida',
@@ -3418,35 +3416,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           toUid: avaliadoId,
           state: 'recebida',
         })
-        const notification = {
-          id: notificationId,
-          eventId: notificationId,
-          tipo: 'avaliacao_recebida',
-          pedidoId: p.id,
-          conversaId: p?.conversaId || p.id,
-          titulo: 'Você recebeu uma avaliação ⭐',
-          mensagem: 'Veja como foi seu atendimento.',
-          prioridade: 'media',
-          lida: false,
-          read: false,
-          criadoEm: agora,
-          fromUid: meuId,
-          toUid: avaliadoId,
-          action: { label: 'Ver avaliações', screen: 'avaliacoes', id: p.id },
-          autor: { id: meuId, nome: meuNome || 'Cliente' },
-        }
-        await Promise.allSettled([
-          set(ref(database, `notifications/${avaliadoId}/${notificationId}`), notification),
-          set(ref(database, `notificacoes/${avaliadoId}/${notificationId}`), notification),
-        ]).then((results) => {
-          const notifyError = results.find((result) => result.status === 'rejected')
-          if (!notifyError) return
-          if (process.env.NODE_ENV !== 'production') {
-            console.warn('Avaliação salva, mas a notificação não foi enviada:', notifyError)
-          }
-        })
-
-        enviarPushParaUsuario(avaliadoId, {
+        await enviarPushParaUsuario(avaliadoId, {
           type: 'avaliacao_recebida',
           pedidoId: p.id,
           conversaId: p?.conversaId || p.id,

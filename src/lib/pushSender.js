@@ -22,15 +22,15 @@ export async function enviarPushParaUsuario(toUid, payload = {}) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        ...payload,
-        ...normalized,
         toUid,
         type: normalized.type,
-        title: normalized.title,
-        body: normalized.body,
-        url: normalized.url,
-        action: normalized.action,
-        actions: normalized.actions,
+        pedidoId: payload.pedidoId || '',
+        privateRequestId: payload.privateRequestId || '',
+        conversaId: payload.conversaId || '',
+        messageId: payload.messageId || '',
+        notificationId: payload.notificationId || '',
+        eventId: payload.eventId || '',
+        test: payload.test === true,
       }),
     })
     const data = await response.json().catch(() => ({}))

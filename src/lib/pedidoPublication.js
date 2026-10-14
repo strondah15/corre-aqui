@@ -71,6 +71,18 @@ export function canSynchronizePublicRequest({ pedido, pedidoId, actorUid } = {})
   return hasAuthoritativePublication(pedido, authority.pedidoId) && actor === authority.acceptedId
 }
 
+export function getPedidoDeletionBlockReason({ pedido, pedidoId, actorUid } = {}) {
+  if (!pedido || typeof pedido !== 'object') return 'private_request_missing'
+
+  const authority = getPedidoAuthority(pedido, pedidoId)
+  const actor = text(actorUid)
+  if (!actor) return 'authentication_required'
+  if (!authority.pedidoId || !authority.creatorId || actor !== authority.creatorId) return 'creator_mismatch'
+  if (authority.acceptedId) return 'already_accepted'
+  if (authority.status !== 'aberto') return 'status_not_open'
+  return ''
+}
+
 export function canStartAuthoritativeClaim({ pedido, pedidoId, actorUid } = {}) {
   return getAuthoritativeClaimBlockReason({ pedido, pedidoId, actorUid }) === ''
 }

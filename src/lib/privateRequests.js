@@ -288,21 +288,6 @@ export async function createBilateralNotification(database, options) {
     createdAt: payload.criadoEm,
     read: false,
   })
-  const updates = {
-    [`notifications/${toUid}/${id}`]: storedPayload,
-    [`notificacoes/${toUid}/${id}`]: storedPayload,
-  }
-
-  await updateWithTrace(database, updates, {
-    context: {
-      operation: 'createBilateralNotification',
-      uid: auth.currentUser?.uid || null,
-      tipo: payload.tipo,
-      pedidoId: payload.pedidoId,
-      authUid: auth.currentUser?.uid || null,
-      destinatarioUid: toUid,
-    },
-  })
   return storedPayload
 }
 
@@ -548,7 +533,7 @@ export async function createPrivateRequest({
       },
     })
 
-    void enviarPushParaUsuario(profissionalId, {
+    await enviarPushParaUsuario(profissionalId, {
       type: notification?.tipo,
       title: notification?.titulo,
       body: notification?.mensagem,
@@ -648,7 +633,7 @@ export async function notifyPublicRequestAccepted({ database, pedido = {}, profi
     },
   })
 
-  void enviarPushParaUsuario(clienteId, {
+  await enviarPushParaUsuario(clienteId, {
     type: 'pedido_aceito',
     title: notification?.titulo,
     body: notification?.mensagem,
@@ -685,7 +670,7 @@ function logAgendaNotificationFailure({ operation, path, recipientUid, eventType
   })
 }
 
-async function updateAgendaSourceNotifications({ database, requestId, profissionalId, finalStatus, accepted, agora }) {
+async function updateAgendaSourceNotifications({ database, requestId, profissionalId }) {
   const eventType = EVENT_NOTIFICATION_TYPES.AGENDAMENTO_SOLICITADO
   const sourceEventId = createEventNotificationId({
     type: eventType,
@@ -718,12 +703,12 @@ async function updateAgendaSourceNotifications({ database, requestId, profission
       if (!existingNotification) return
 
       try {
+        const readAt = Date.now()
         await update(notificationRef, {
           lida: true,
           read: true,
-          eventoStatus: accepted ? 'confirmado' : 'recusado',
-          statusAtual: finalStatus,
-          respondidoEm: agora,
+          lidaEm: readAt,
+          vistoEm: readAt,
         })
       } catch (error) {
         logAgendaNotificationFailure({
@@ -863,7 +848,7 @@ async function deliverPrivateRequestResponseNotification({
     return
   }
 
-  void enviarPushParaUsuario(clienteId, {
+  await enviarPushParaUsuario(clienteId, {
     type: notification?.tipo,
     title: notification?.titulo,
     body: notification?.mensagem,
@@ -879,7 +864,7 @@ async function deliverPrivateRequestResponseNotification({
   })
 }
 
-function schedulePrivateRequestResponseSideEffects(options) {
+async function schedulePrivateRequestResponseSideEffects(options) {
   const systemEventType = options.finalStatus === 'aceito'
     ? 'pedido_aceito'
     : options.finalStatus === 'agendado'
@@ -901,16 +886,15 @@ function schedulePrivateRequestResponseSideEffects(options) {
   }
   tasks.push(deliverPrivateRequestResponseNotification(options))
 
-  void Promise.allSettled(tasks).then((results) => {
-    if (!DEBUG_PRIVATE_REQUESTS) return
-    results.forEach((result, index) => {
-      if (result.status !== 'rejected') return
-      console.warn('[AGENDA_SIDE_EFFECT]', {
-        operation: index === 0 && systemEventType ? 'system_message' : 'background_effect',
-        requestId: options.requestId,
-        authUid: auth.currentUser?.uid || null,
-        error: { code: result.reason?.code || null },
-      })
+  const results = await Promise.allSettled(tasks)
+  if (!DEBUG_PRIVATE_REQUESTS) return
+  results.forEach((result, index) => {
+    if (result.status !== 'rejected') return
+    console.warn('[AGENDA_SIDE_EFFECT]', {
+      operation: index === 0 && systemEventType ? 'system_message' : 'background_effect',
+      requestId: options.requestId,
+      authUid: auth.currentUser?.uid || null,
+      error: { code: result.reason?.code || null },
     })
   })
 }
@@ -1058,7 +1042,7 @@ export async function respondPrivateRequest({ database, request = {}, profission
   const accepted = finalStatus === 'aceito' || finalStatus === 'agendado'
   const conversation = accepted ? await ensurePrivateRequestConversation(requestId, actionUid) : null
   requireAgendaSession(actionUid)
-  schedulePrivateRequestResponseSideEffects({
+  await schedulePrivateRequestResponseSideEffects({
     database,
     request,
     requestId,

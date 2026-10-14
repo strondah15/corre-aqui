@@ -8,14 +8,14 @@ import {
   PROFESSIONAL_ANNUAL_PRODUCT_ID,
 } from '@/lib/subscriptions'
 import {
-  createCommercialCheckoutAttempt,
+  createMercadoPagoCheckout,
   getAuthenticatedUid,
   getCommercialDatabase,
+  getMercadoPagoCheckoutReadiness,
   getProfileRegionKeys,
   isCommercialHighlightsEnabled,
   isProfileEligibleForFeaturedPlan,
   loadPublicProfile,
-  maybeCreateMercadoPagoPreference,
   safeText,
 } from '@/lib/commercialServer'
 
@@ -25,6 +25,16 @@ const responseHeaders = { 'Cache-Control': 'private, no-store' }
 
 export async function POST(request) {
   try {
+    const checkoutReadiness = getMercadoPagoCheckoutReadiness()
+    if (!checkoutReadiness.ready) {
+      return NextResponse.json({
+        ok: false,
+        error: 'checkout_configuration_incomplete',
+        message: 'O checkout esta temporariamente indisponivel.',
+        checkoutAvailable: false,
+      }, { status: 503, headers: responseHeaders })
+    }
+
     const uid = await getAuthenticatedUid(request)
     const body = await request.json().catch(() => ({}))
     const planId = safeText(body?.planId)
@@ -64,7 +74,7 @@ export async function POST(request) {
       }, { status: 409, headers: responseHeaders })
     }
 
-    const attempt = await createCommercialCheckoutAttempt({
+    const { attempt, checkout } = await createMercadoPagoCheckout({
       database,
       userId: uid,
       product,
@@ -75,15 +85,6 @@ export async function POST(request) {
         regions: getProfileRegionKeys(profile),
       },
     })
-
-    const checkout = await maybeCreateMercadoPagoPreference({ product, attempt })
-    if (checkout.preferenceId || checkout.checkoutUrl) {
-      await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update({
-        preferenceId: checkout.preferenceId || null,
-        checkoutUrl: checkout.checkoutUrl || null,
-        updatedAt: Date.now(),
-      })
-    }
 
     return NextResponse.json({
       ok: true,
@@ -98,9 +99,7 @@ export async function POST(request) {
       },
       status: attempt.status,
       ...checkout,
-      message: checkout.checkoutAvailable
-        ? 'Checkout criado.'
-        : 'Checkout seguro preparado; Mercado Pago nao configurado neste ambiente.',
+      message: 'Checkout criado.',
     }, { headers: responseHeaders })
   } catch (error) {
     console.error('[planos/checkout] falha ao criar checkout:', {
