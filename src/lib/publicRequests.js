@@ -64,5 +64,5 @@ export function buildPublicRequest(privateRequest = {}) {
 }
 
 export function normalizePublicRequest(id, request = {}) {
-  return { id, ...request, local: fromPublicRequestGrid(request), publicDiscovery: true }
+  return { ...request, id: asText(id, 128), local: fromPublicRequestGrid(request), publicDiscovery: true }
 }

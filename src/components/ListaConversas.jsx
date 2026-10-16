@@ -1,12 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ref, onValue, update } from '@/lib/firebaseDebug'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ref, onValue, set } from '@/lib/firebaseDebug'
 import { motion } from 'framer-motion'
-import { database } from '@/lib/firebase'
+import { auth, database } from '@/lib/firebase'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
+import { ListPanelSkeleton } from '@/components/LoadingSkeletons'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus } from '@/lib/atendimento'
-import { conversationTimestampMs, normalizeAndSortConversations } from '@/lib/conversations'
+import {
+  conversationTimestampMs,
+  createConversationSessionSnapshot,
+  selectConversationSessionItems,
+} from '@/lib/conversations'
 
 function timeShort(ts) {
   const ms = conversationTimestampMs(ts)
@@ -36,11 +41,14 @@ function getStatusConversa(c) {
 
 function statusMeta(c) {
   const s = getStatusConversa(c)
+  if (s === ATENDIMENTO_STATUS.A_CAMINHO) {
+    return { label: 'A caminho', tone: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-300', dot: 'bg-emerald-400', active: true }
+  }
   if ([ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO].includes(s)) {
     return { label: 'Em atendimento', tone: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-300', dot: 'bg-emerald-400', active: true }
   }
   if (s === ATENDIMENTO_STATUS.ACEITO) {
-    return { label: 'Aguardando início', tone: 'border-yellow-300/25 bg-yellow-400/10 text-yellow-200', dot: 'bg-yellow-300', active: true }
+    return { label: 'Combinando', tone: 'border-yellow-300/25 bg-yellow-400/10 text-yellow-200', dot: 'bg-yellow-300', active: true }
   }
   if (s === ATENDIMENTO_STATUS.FINALIZADO) {
     return { label: 'Concluído', tone: 'border-blue-400/25 bg-blue-500/10 text-blue-200', dot: 'bg-blue-400', archived: true }
@@ -65,29 +73,52 @@ function safeAvatarUrl(value) {
 export default function ListaConversas({
   meuId,
   onAbrirChat,
+  onPreloadChat,
   limit = 60,
   logoUrl,
 }) {
-  const [conversas, setConversas] = useState([])
+  const openConversationLockRef = useRef('')
+  const sessionUid = String(meuId || '')
+  const [conversationState, setConversationState] = useState(() => createConversationSessionSnapshot(''))
+  const [loadingState, setLoadingState] = useState(() => ({ uid: sessionUid, loading: true }))
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState('todas')
+  const conversas = selectConversationSessionItems(conversationState, sessionUid)
+  const loading = loadingState.uid === sessionUid ? loadingState.loading : true
 
   useEffect(() => {
-    if (!meuId) {
-      setConversas([])
+    const effectUid = String(meuId || '')
+    let active = true
+    setConversationState(createConversationSessionSnapshot(effectUid))
+    setLoadingState({ uid: effectUid, loading: true })
+    setBusca('')
+    setFiltro('todas')
+
+    if (!effectUid || auth.currentUser?.uid !== effectUid) {
+      setLoadingState({ uid: effectUid, loading: false })
       return undefined
     }
 
     const lim = clamp(toInt(limit, 60), 20, 200)
     // RTDB cannot order by a coalesced timestamp. Read the user's private index,
     // deduplicate legacy mirrors, then apply the limit after the canonical sort.
-    const cRef = ref(database, `conversas/${meuId}`)
+    const cRef = ref(database, `conversas/${effectUid}`)
 
     const off = onValue(cRef, (snap) => {
-      setConversas(normalizeAndSortConversations(snap.val() || {}, lim))
+      if (!active || auth.currentUser?.uid !== effectUid) return
+      setConversationState(createConversationSessionSnapshot(effectUid, snap.val() || {}, lim))
+      setLoadingState({ uid: effectUid, loading: false })
+    }, () => {
+      if (active && auth.currentUser?.uid === effectUid) {
+        setConversationState(createConversationSessionSnapshot(effectUid))
+        setLoadingState({ uid: effectUid, loading: false })
+      }
     })
 
-    return () => off()
+    return () => {
+      active = false
+      off()
+    }
   }, [meuId, limit])
 
   const totalNaoLidas = useMemo(() => {
@@ -136,10 +167,12 @@ export default function ListaConversas({
 
   const marcarLidaOptimista = useCallback(
     (pedidoId) => {
-      if (!pedidoId) return
+      const expectedUid = String(sessionUid || '')
+      if (!pedidoId || !expectedUid || auth.currentUser?.uid !== expectedUid) return
 
-      setConversas((prev) => {
-        const arr = prev || []
+      setConversationState((current) => {
+        if (current.uid !== sessionUid) return current
+        const arr = current.items || []
         let changed = false
         const next = arr.map((c) => {
           if (c.pedidoId === pedidoId && c.unread === true) {
@@ -148,17 +181,37 @@ export default function ListaConversas({
           }
           return c
         })
-        return changed ? next : arr
+        return changed ? { ...current, items: next } : current
       })
 
-      if (!meuId) return
-      update(ref(database, `conversas/${meuId}/${pedidoId}`), {
-        unread: false,
-        abertoEm: Date.now(),
-      }).catch(() => {})
+      set(ref(database, `conversas/${expectedUid}/${pedidoId}/unread`), false).catch((error) => {
+        if (process.env.NODE_ENV !== 'production' && auth.currentUser?.uid === expectedUid) {
+          console.warn('[CONVERSATION_READ]', {
+            operation: 'set',
+            path: `conversas/${expectedUid}/${pedidoId}/unread`,
+            authUid: expectedUid,
+            error: { code: error?.code || null },
+          })
+        }
+      })
     },
-    [meuId]
+    [sessionUid]
   )
+
+  const abrirConversa = useCallback((pedidoId) => {
+    const id = String(pedidoId || '').trim()
+    if (!id || openConversationLockRef.current) return
+    openConversationLockRef.current = id
+    marcarLidaOptimista(id)
+    onAbrirChat?.(id)
+    window.setTimeout(() => {
+      if (openConversationLockRef.current === id) openConversationLockRef.current = ''
+    }, 1200)
+  }, [marcarLidaOptimista, onAbrirChat])
+
+  useEffect(() => {
+    openConversationLockRef.current = ''
+  }, [sessionUid])
 
   return (
     <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[#050b14] text-white shadow-[0_26px_80px_rgba(0,0,0,0.35)] md:rounded-[32px]">
@@ -232,7 +285,15 @@ export default function ListaConversas({
       </div>
 
       <div className="max-h-[calc(100dvh-13rem)] overflow-y-auto bg-[#050b14] p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
-        {conversasFiltradas.length === 0 ? (
+        {loading ? (
+          <ListPanelSkeleton
+            label="Carregando conversas"
+            dark
+            rows={4}
+            showHeader={false}
+            className="border-0 bg-transparent shadow-none"
+          />
+        ) : conversasFiltradas.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-white/12 bg-white/[0.04] p-5 text-slate-300">
             <div className="font-black text-white">Nenhuma conversa aqui</div>
             <div className="mt-1 text-sm leading-relaxed text-slate-400">
@@ -248,7 +309,7 @@ export default function ListaConversas({
               const pessoa = c.pessoa || 'Participante'
               const enviadaPorMim = c.lastById && meuId && String(c.lastById) === String(meuId)
               const meta = c._statusMeta || statusMeta(c)
-              const avatarUrl = safeAvatarUrl(c?.outroFotoURL || c?.outroPhotoURL || c?.outroFoto || c?.photoURL)
+              const avatarUrl = safeAvatarUrl(c?.outroFotoURL || c?.outroPhotoURL || c?.outroFoto)
               const inicial = pessoa.slice(0, 1).toUpperCase() || 'C'
 
               return (
@@ -260,10 +321,10 @@ export default function ListaConversas({
                   whileHover={{ y: -2 }}
                   whileTap={{ scale: 0.98 }}
                   type="button"
-                  onClick={() => {
-                    marcarLidaOptimista(c.pedidoId)
-                    onAbrirChat?.(c.pedidoId)
-                  }}
+                  onClick={() => abrirConversa(c.pedidoId)}
+                  onPointerEnter={() => onPreloadChat?.(c.pedidoId)}
+                  onPointerDown={() => onPreloadChat?.(c.pedidoId)}
+                  onFocus={() => onPreloadChat?.(c.pedidoId)}
                   className={[
                     'w-full rounded-[17px] border px-2.5 py-2.5 text-left transition-all duration-200 md:rounded-[20px] md:px-3 md:py-3',
                     c.unread
@@ -275,10 +336,15 @@ export default function ListaConversas({
                     <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
                       <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-gradient-to-br from-blue-600 to-emerald-500 text-sm font-black text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)] md:h-12 md:w-12 md:text-base">
                         {avatarUrl ? (
-                          <span
-                            className="h-full w-full bg-cover bg-center"
-                            style={{ backgroundImage: `url(${JSON.stringify(avatarUrl)})` }}
-                            aria-hidden="true"
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={avatarUrl}
+                            alt=""
+                            width="48"
+                            height="48"
+                            loading="lazy"
+                            decoding="async"
+                            className="h-full w-full object-cover"
                           />
                         ) : inicial}
                       </div>

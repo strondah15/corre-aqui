@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import { ref, get, onValue, update, set, runTransaction, serverTimestamp } from '@/lib/firebaseDebug';
 import { auth, database } from "@/lib/firebase";
-import { uploadProfilePhotoToImgBB } from "@/lib/imgbbClient";
+import {
+  optimizePortfolioPhoto,
+  uploadPortfolioPhotoToImgBB,
+  uploadProfilePhotoToImgBB,
+} from "@/lib/imgbbClient";
 import {
   ativarPushNotifications,
   desativarPushNotifications,
@@ -20,8 +24,13 @@ import { normalizeAtendimentoStatus, ATENDIMENTO_STATUS } from "@/lib/atendiment
 import { openAssistantHelpCenter, startClientTutorial, startWorkerTutorial } from "@/components/tutorial/TutorialProvider";
 import { normalizeProfileStatus, projectPublicProfileForWrite, safePublicImageUrl } from "@/lib/publicWorkProfile";
 import { normalizePublicRequest } from "@/lib/publicRequests";
+import { logoutFirebaseSession } from "@/lib/sessionLogout";
+import { ListPanelSkeleton } from "@/components/LoadingSkeletons";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
+  ssr: false,
+});
+const SubscriptionStatusCard = dynamic(() => import("@/components/SubscriptionStatusCard"), {
   ssr: false,
 });
 
@@ -31,6 +40,7 @@ const defaultPrivacy = {
   profileVisible: true,
   profileVisibilityExplicit: false,
   shareLocationDuringActiveJob: true,
+  sharePhoneDuringActiveJob: false,
   showOnlineStatus: true,
   allowPublicContact: false,
 };
@@ -96,6 +106,8 @@ function normalizePrivacy(value = {}, fallback = {}) {
     profileVisibilityExplicit,
     shareLocationDuringActiveJob:
       value.shareLocationDuringActiveJob ?? fallback.shareLocationDuringActiveJob ?? true,
+    sharePhoneDuringActiveJob:
+      value.sharePhoneDuringActiveJob ?? fallback.sharePhoneDuringActiveJob ?? false,
     showOnlineStatus: value.showOnlineStatus ?? fallback.showOnlineStatus ?? true,
     allowPublicContact: value.allowPublicContact ?? fallback.allowPublicContact ?? false,
   };
@@ -472,6 +484,7 @@ function ConfiguracoesOrganizadas({
       </header>
 
       <main className="mx-auto flex w-full max-w-[1120px] flex-col gap-4 px-3 py-5 md:gap-5 md:px-6 md:py-6">
+        <SubscriptionStatusCard />
         <ConfigSection id="presenca" title="Presen&ccedil;a e mapa" description="Controle sua visibilidade e como voc&ecirc; aparece no mapa." icon="M" tone="blue" open={sections.presenca} onToggle={onToggleSection}>
           <ConfigRow icon="P" title="Aparecer dispon&iacute;vel para clientes" description="Permita que outros vejam que voc&ecirc; est&aacute; dispon&iacute;vel." tone="blue">
             <ConfigToggle checked={profile.visivel !== false} onChange={(checked) => onProfileChange({ visivel: checked })} label="Aparecer disponivel para clientes" tone="blue" />
@@ -537,11 +550,11 @@ function ConfiguracoesOrganizadas({
           <ConfigRow icon="C" title="Permitir contato p&uacute;blico" description="Outros usu&aacute;rios poder&atilde;o entrar em contato com voc&ecirc;." tone="emerald">
             <ConfigToggle checked={privacy.allowPublicContact} onChange={(checked) => onPrivacyChange("allowPublicContact", checked)} label="Permitir contato publico" tone="emerald" />
           </ConfigRow>
+          <ConfigRow icon="T" title="Telefone durante atendimento" description="Compartilhe somente com cliente ou profissional aceito enquanto o atendimento estiver ativo." tone="emerald">
+            <ConfigToggle checked={privacy.sharePhoneDuringActiveJob} onChange={(checked) => onPrivacyChange("sharePhoneDuringActiveJob", checked)} label="Compartilhar telefone durante atendimento" tone="emerald" />
+          </ConfigRow>
           <ConfigRow icon="D" title="Ver meus dados" description="Veja e gerencie suas informa&ccedil;&otilde;es." tone="emerald" onClick={onOpenDados}>
             <span className="text-xl font-black text-slate-500">&rarr;</span>
-          </ConfigRow>
-          <ConfigRow icon="S" title="Sair da conta" description="Encerre sua sess&atilde;o neste dispositivo." danger onClick={onLogout}>
-            <span className="text-xl font-black text-rose-500">&rarr;</span>
           </ConfigRow>
         </ConfigSection>
 
@@ -575,6 +588,27 @@ function ConfiguracoesOrganizadas({
             <div className="mt-0.5 text-xs font-semibold text-slate-500">Todas as configura&ccedil;&otilde;es s&atilde;o aplicadas em tempo real.</div>
           </div>
           {configAviso ? <span className="ml-auto shrink-0 text-xs font-black text-emerald-700">{configAviso}</span> : null}
+        </div>
+
+        <div className="mt-2 border-t border-slate-200 pt-5">
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex min-h-12 w-full items-center gap-3 rounded-2xl border border-rose-200/80 bg-rose-50/70 px-4 py-3 text-left text-rose-700 transition hover:border-rose-300 hover:bg-rose-100/80 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-200 sm:w-auto sm:min-w-64"
+            aria-label="Sair da conta"
+          >
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-rose-600 shadow-sm" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 17l5-5-5-5" />
+                <path d="M15 12H3" />
+                <path d="M14 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              </svg>
+            </span>
+            <span>
+              <span className="block text-sm font-black">Sair da conta</span>
+              <span className="mt-0.5 block text-xs font-semibold text-rose-700/70">Encerrar esta sess&atilde;o com seguran&ccedil;a.</span>
+            </span>
+          </button>
         </div>
       </main>
     </div>
@@ -1170,6 +1204,7 @@ function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
 }
 
 export default function PerfilDrawer({ open, onClose, uid, initialTab = "config", initialProfSection = "" }) {
+  const router = useRouter();
   const [tab, setTab] = useState("config");
   const [profSection, setProfSection] = useState("");
   const [professionalProfileStep, setProfessionalProfileStep] = useState("choice");
@@ -1179,8 +1214,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [portfolioEditingId, setPortfolioEditingId] = useState("");
   const [portfolioSaving, setPortfolioSaving] = useState(false);
   const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
+  const [portfolioPhotoStage, setPortfolioPhotoStage] = useState("");
   const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
   const [addresses, setAddresses] = useState([]);
+  const [addressesStatus, setAddressesStatus] = useState({ uid: "", loaded: false, error: "" });
   const [addressDraft, setAddressDraft] = useState(createEmptyAddressDraft);
   const [addressEditingId, setAddressEditingId] = useState("");
   const [addressSaving, setAddressSaving] = useState(false);
@@ -1208,6 +1245,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [cpfAviso, setCpfAviso] = useState("");
   const [privacyAviso, setPrivacyAviso] = useState("");
   const [configAviso, setConfigAviso] = useState("");
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [logoutSubmitting, setLogoutSubmitting] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
   const [configSecoesAbertas, setConfigSecoesAbertas] = useState(() => createConfigSectionsState("presenca"));
   const [serviceStats, setServiceStats] = useState({
     total: 0,
@@ -1230,16 +1270,61 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     amostrasResposta: 0,
     clientesRecorrentes: 0,
   });
+  const [serviceStatsStatus, setServiceStatsStatus] = useState({ uid: "", loaded: false, error: "" });
   const settingsLoadedRef = useRef(false);
   const drawerScrollRef = useRef(null);
   const portfolioFormRef = useRef(null);
   const portfolioFirstInputRef = useRef(null);
   const portfolioSavingRef = useRef(false);
+  const portfolioPhotoUploadLockRef = useRef(false);
+  const portfolioPreviewUrlsRef = useRef(new Set());
+  const portfolioPreviewOwnerRef = useRef(String(uid || ""));
   const configSaveTimerRef = useRef(null);
   const configSnapshotRef = useRef("");
   const configLastSavedRef = useRef(null);
+  const logoutCancelButtonRef = useRef(null);
 
   const userBasePath = useMemo(() => (uid ? `users/${uid}` : ""), [uid]);
+  const currentAddressesStatus = addressesStatus.uid === String(uid || "")
+    ? addressesStatus
+    : { uid: String(uid || ""), loaded: false, error: "" };
+  const currentServiceStatsStatus = serviceStatsStatus.uid === String(uid || "")
+    ? serviceStatsStatus
+    : { uid: String(uid || ""), loaded: false, error: "" };
+
+  const revokePortfolioPreviewUrl = (url) => {
+    if (!String(url || "").startsWith("blob:") || !portfolioPreviewUrlsRef.current.has(url)) return;
+    URL.revokeObjectURL(url);
+    portfolioPreviewUrlsRef.current.delete(url);
+  };
+
+  useEffect(() => () => {
+    portfolioPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    portfolioPreviewUrlsRef.current.clear();
+    portfolioPhotoUploadLockRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    const nextOwner = String(uid || "");
+    const ownerChanged = portfolioPreviewOwnerRef.current !== nextOwner;
+    portfolioPreviewOwnerRef.current = nextOwner;
+    if (open && !ownerChanged) return;
+
+    const localUrls = new Set(portfolioPreviewUrlsRef.current);
+    if (!localUrls.size) return;
+    localUrls.forEach((url) => URL.revokeObjectURL(url));
+    portfolioPreviewUrlsRef.current.clear();
+    setPortfolioDraft((prev) => {
+      const previousFotos = Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev);
+      const fotos = previousFotos.filter((url) => !localUrls.has(url));
+      if (fotos.length === previousFotos.length && !localUrls.has(prev.fotoURL)) return prev;
+      return {
+        ...prev,
+        fotos,
+        fotoURL: localUrls.has(prev.fotoURL) ? fotos[0] || "" : prev.fotoURL,
+      };
+    });
+  }, [open, uid]);
 
   useEffect(() => {
     settingsLoadedRef.current = false;
@@ -1260,8 +1345,21 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setAddressAviso("");
     setSupportAviso("");
     setConfigAviso("");
+    setLogoutConfirmOpen(false);
+    setLogoutSubmitting(false);
+    setLogoutError("");
     setConfigSecoesAbertas(createConfigSectionsState("presenca"));
-  }, [open, initialTab, initialProfSection]);
+  }, [open, initialTab, initialProfSection, uid]);
+
+  useEffect(() => {
+    if (!logoutConfirmOpen) return undefined;
+    logoutCancelButtonRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !logoutSubmitting) setLogoutConfirmOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [logoutConfirmOpen, logoutSubmitting]);
 
   useEffect(() => {
     if (!open || !uid) return;
@@ -1425,14 +1523,19 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   useEffect(() => {
     if (!open || !uid) {
       setAddresses([]);
+      setAddressesStatus({ uid: "", loaded: false, error: "" });
       return undefined;
     }
 
+    const effectUid = String(uid);
+    setAddressesStatus({ uid: effectUid, loaded: false, error: "" });
     const addressesRef = ref(database, `enderecos/${uid}`);
     return onValue(addressesRef, (snap) => {
       setAddresses(normalizeAddresses(snap.val() || {}));
+      setAddressesStatus({ uid: effectUid, loaded: true, error: "" });
     }, () => {
       setAddresses([]);
+      setAddressesStatus({ uid: effectUid, loaded: true, error: "Não foi possível carregar os endereços agora." });
     });
   }, [open, uid, userBasePath]);
 
@@ -1449,8 +1552,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   }, [open, uid]);
 
   useEffect(() => {
-    if (!open || !uid) return;
+    if (!open || !uid) {
+      setServiceStatsStatus({ uid: "", loaded: false, error: "" });
+      return undefined;
+    }
 
+    const effectUid = String(uid);
+    setServiceStatsStatus({ uid: effectUid, loaded: false, error: "" });
     const pedidosRef = ref(database, "publicRequests");
     return onValue(pedidosRef, (snap) => {
       const data = snap.val() || {};
@@ -1550,6 +1658,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         amostrasResposta: temposResposta.length,
         clientesRecorrentes,
       });
+      setServiceStatsStatus({ uid: effectUid, loaded: true, error: "" });
+    }, () => {
+      setServiceStatsStatus({ uid: effectUid, loaded: true, error: "Não foi possível carregar o histórico agora." });
     });
   }, [open, uid]);
 
@@ -1696,26 +1807,28 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   }
 
   async function sairDaConta() {
-    if (!window.confirm("Deseja realmente sair da sua conta?")) return;
+    if (logoutSubmitting) return;
 
     try {
-      if (uid) await removerPushTokenDoDispositivo(uid).catch(() => {})
-      await signOut(auth);
-      [
-        "meuId",
-        "meuNome",
-        "cadastroCompleto",
-        "fotoURL",
-        "fotoUrl",
-        "avatarURL",
-        "avatarEmoji",
-        "visivelNoMapa",
-        "notifsAtivas",
-      ].forEach((key) => window.localStorage.removeItem(key));
-      if (uid) window.localStorage.removeItem(`cadastroCompleto:${uid}`);
-      window.location.href = "/";
-    } catch {
-      window.location.href = "/";
+      setLogoutSubmitting(true);
+      setLogoutError("");
+      await logoutFirebaseSession({
+        auth,
+        database,
+        uid,
+        removePushToken: removerPushTokenDoDispositivo,
+      });
+      setLogoutConfirmOpen(false);
+      setProfile(initialProfile);
+      setPortfolioDraft(createEmptyPortfolioDraft());
+      setAddresses([]);
+      onClose?.();
+      router.replace("/login");
+      router.refresh();
+    } catch (error) {
+      setLogoutError(error?.message || "Nao foi possivel sair agora. Tente novamente.");
+    } finally {
+      setLogoutSubmitting(false);
     }
   }
 
@@ -1879,26 +1992,40 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       return;
     }
 
-    if (!file?.type?.startsWith("image/")) {
-      setPortfolioPhotoError("Escolha um arquivo de imagem.");
-      return;
+    if (!file || (!file.type?.startsWith("image/") && !/\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name || ""))) {
+      setPortfolioPhotoError("Escolha uma imagem JPEG, PNG, WebP, GIF, HEIC ou HEIF.");
+      return false;
     }
 
     if (file.size > PHOTO_SOURCE_MAX_BYTES) {
-      setPortfolioPhotoError("Escolha uma imagem de ate 8 MB. O app comprime antes de enviar.");
-      return;
+      setPortfolioPhotoError("A imagem é muito grande. Escolha uma foto menor.");
+      return false;
     }
 
     if (currentFotos.length >= 5) {
       setPortfolioPhotoError("Voce pode anexar ate 5 fotos por trabalho.");
-      return;
+      return false;
     }
 
+    let previewUrl = "";
     try {
-      setPortfolioPhotoUploading(true);
+      setPortfolioPhotoStage("optimizing");
+      const prepared = await optimizePortfolioPhoto(file);
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[PORTFOLIO_IMAGE] otimização", prepared.metrics);
+      }
+
+      previewUrl = URL.createObjectURL(prepared.file);
+      portfolioPreviewUrlsRef.current.add(previewUrl);
+      setPortfolioDraft((prev) => {
+        const fotos = [...new Set([...(Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)), previewUrl])].slice(0, 5);
+        return { ...prev, fotoURL: prev.fotoURL || previewUrl, fotos };
+      });
+
+      setPortfolioPhotoStage("uploading");
       const idToken = await currentUser.getIdToken(true);
       const uploaded = await promiseComTimeout(
-        uploadProfilePhotoToImgBB(file, {
+        uploadPortfolioPhotoToImgBB(prepared.file, {
           uid: currentUid,
           idToken,
         }),
@@ -1906,29 +2033,52 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         "portfolio_upload_timeout",
       );
 
-      setPortfolioDraft((prev) => ({
-        ...prev,
-        fotoURL: prev.fotoURL || uploaded.url,
-        fotos: [...new Set([...(Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)), uploaded.url])].slice(0, 5),
-        fotoImgBbId: uploaded.imageId || "",
-      }));
+      if (auth.currentUser?.uid !== currentUid || !portfolioPreviewUrlsRef.current.has(previewUrl)) {
+        revokePortfolioPreviewUrl(previewUrl);
+        return false;
+      }
+
+      setPortfolioDraft((prev) => {
+        const currentDraftFotos = Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev);
+        if (!currentDraftFotos.includes(previewUrl)) return prev;
+        return {
+          ...prev,
+          fotoURL: prev.fotoURL === previewUrl || !prev.fotoURL ? uploaded.url : prev.fotoURL,
+          fotos: [...new Set(currentDraftFotos.map((foto) => foto === previewUrl ? uploaded.url : foto))].slice(0, 5),
+          fotoImgBbId: uploaded.imageId || "",
+        };
+      });
+      window.setTimeout(() => revokePortfolioPreviewUrl(previewUrl), 0);
+      return true;
     } catch (error) {
       const code = String(error?.code || error?.message || "");
+      if (previewUrl) {
+        setPortfolioDraft((prev) => {
+          const fotos = (Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)).filter((foto) => foto !== previewUrl);
+          return { ...prev, fotoURL: prev.fotoURL === previewUrl ? fotos[0] || "" : prev.fotoURL, fotos };
+        });
+        window.setTimeout(() => revokePortfolioPreviewUrl(previewUrl), 0);
+      }
       setPortfolioPhotoError(
         error?.message === "portfolio_upload_timeout"
           ? "A foto demorou para enviar. Tente novamente."
-          : error?.message === "foto_grande"
-            ? "Escolha uma imagem de ate 2 MB."
+          : code === "portfolio_source_too_large" || code === "portfolio_dimensions_too_large" || code === "portfolio_original_too_large" || code === "foto_grande"
+            ? "A imagem é muito grande. Escolha uma foto menor."
+            : code === "tipo_invalido"
+              ? "Escolha uma imagem JPEG, PNG, WebP, GIF, HEIC ou HEIF."
             : code.toLowerCase().includes("permission") || code.toLowerCase().includes("auth")
               ? "Entre novamente para anexar a foto."
               : "Nao foi possivel anexar a foto.",
       );
-    } finally {
-      setPortfolioPhotoUploading(false);
+      return false;
     }
   }
 
   async function alterarFotoPortfolio(event) {
+    if (portfolioPhotoUploadLockRef.current) {
+      event.target.value = "";
+      return;
+    }
     const files = Array.from(event.target.files || []);
     event.target.value = "";
     if (!files.length) return;
@@ -1943,12 +2093,23 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       return;
     }
 
-    for (const file of files.slice(0, vagas)) {
-      await handlePortfolioPhotoUpload(file);
+    portfolioPhotoUploadLockRef.current = true;
+    setPortfolioPhotoUploading(true);
+    setPortfolioPhotoError("");
+    try {
+      for (const file of files.slice(0, vagas)) {
+        const uploaded = await handlePortfolioPhotoUpload(file);
+        if (!uploaded) break;
+      }
+    } finally {
+      portfolioPhotoUploadLockRef.current = false;
+      setPortfolioPhotoStage("");
+      setPortfolioPhotoUploading(false);
     }
   }
 
   function removerFotoPortfolioDraft(fotoURL) {
+    if (portfolioPhotoUploadLockRef.current) return;
     setPortfolioDraft((prev) => {
       const fotos = (Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)).filter((foto) => foto !== fotoURL);
       return {
@@ -1957,6 +2118,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         fotoURL: fotos[0] || "",
       };
     });
+    revokePortfolioPreviewUrl(fotoURL);
     setPortfolioPhotoError("");
   }
 
@@ -3138,13 +3300,21 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-base font-black text-blue-950">Enderecos salvos</div>
-                        <div className="mt-1 text-xs font-bold text-slate-500">{addresses.length} local(is)</div>
+                        <div className="mt-1 text-xs font-bold text-slate-500">
+                          {currentAddressesStatus.loaded ? `${addresses.length} local(is)` : "Carregando locais..."}
+                        </div>
                       </div>
                       <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-xl shadow-sm">📍</div>
                     </div>
 
                     <div className="mt-4 space-y-3">
-                      {addresses.length ? addresses.map((address) => (
+                      {!currentAddressesStatus.loaded ? (
+                        <ListPanelSkeleton label="Carregando endereços" rows={2} showHeader={false} />
+                      ) : currentAddressesStatus.error ? (
+                        <div role="alert" className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-bold text-amber-800">
+                          {currentAddressesStatus.error}
+                        </div>
+                      ) : addresses.length ? addresses.map((address) => (
                         <article key={address.id} className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -3668,6 +3838,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                             tone="blue"
                           />
                         </label>
+                        <label className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-2.5 ring-1 ring-slate-200">
+                          <span className="text-xs font-black text-slate-700">Telefone durante atendimento ativo</span>
+                          <ToggleSwitch
+                            checked={privacy.sharePhoneDuringActiveJob}
+                            onChange={(checked) => setPrivacyPreference("sharePhoneDuringActiveJob", checked)}
+                            label="Compartilhar telefone durante atendimento ativo"
+                            tone="blue"
+                          />
+                        </label>
                         <div className="mt-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
                           Nunca compartilhar em segundo plano.
                         </div>
@@ -3961,8 +4140,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
                   <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5 text-xs font-bold text-slate-300">
                     <span className="rounded-full bg-[#ffd91a] px-2.5 py-1 font-black text-blue-950">
-                      {serviceStats.notaMedia ? `★ ${serviceStats.notaMedia.toFixed(1)}` : "Sem nota"}
-                      {serviceStats.avaliacoes ? ` (${serviceStats.avaliacoes})` : ""}
+                      {!currentServiceStatsStatus.loaded
+                        ? "Carregando histórico..."
+                        : currentServiceStatsStatus.error
+                          ? "Histórico indisponível"
+                        : serviceStats.notaMedia
+                          ? `★ ${serviceStats.notaMedia.toFixed(1)}${serviceStats.avaliacoes ? ` (${serviceStats.avaliacoes})` : ""}`
+                          : "Sem nota"}
                     </span>
                     <span>{profile.titulo || "Profissional local"}</span>
                   </div>
@@ -3974,10 +4158,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
                   <div className="mt-5 grid w-full grid-cols-2 gap-2 md:grid-cols-4">
                     {[
-                      ["Ganhos", formatMoneyBR(serviceStats.ganhosTotal)],
-                      ["Como Corre", formatMoneyBR(serviceStats.ganhosCorreTotal)],
-                      ["Como Pro", formatMoneyBR(serviceStats.ganhosProfTotal)],
-                      ["Serviços", serviceStats.comoCorre + serviceStats.comoProfissional],
+                      ["Ganhos", currentServiceStatsStatus.loaded && !currentServiceStatsStatus.error ? formatMoneyBR(serviceStats.ganhosTotal) : "…"],
+                      ["Como Corre", currentServiceStatsStatus.loaded && !currentServiceStatsStatus.error ? formatMoneyBR(serviceStats.ganhosCorreTotal) : "…"],
+                      ["Como Pro", currentServiceStatsStatus.loaded && !currentServiceStatsStatus.error ? formatMoneyBR(serviceStats.ganhosProfTotal) : "…"],
+                      ["Serviços", currentServiceStatsStatus.loaded && !currentServiceStatsStatus.error ? serviceStats.comoCorre + serviceStats.comoProfissional : "…"],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.06] px-2 py-2">
                         <div className="truncate text-base font-black md:text-lg">{value}</div>
@@ -3985,6 +4169,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                       </div>
                     ))}
                   </div>
+                  {currentServiceStatsStatus.error ? (
+                    <div role="alert" className="mt-3 w-full rounded-2xl border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-xs font-bold text-amber-100">
+                      {currentServiceStatsStatus.error}
+                    </div>
+                  ) : null}
                 </div>
               </section>
 
@@ -4068,11 +4257,19 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                     </button>
                   </div>
 
-                  <ProfessionalReputationSummary
-                    data-tutorial="reputacao"
-                    reputation={professionalReputation}
-                    className="mt-4"
-                  />
+                  {!currentServiceStatsStatus.loaded ? (
+                    <ListPanelSkeleton label="Carregando reputação" rows={2} showHeader={false} className="mt-4" />
+                  ) : currentServiceStatsStatus.error ? (
+                    <div role="alert" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+                      {currentServiceStatsStatus.error}
+                    </div>
+                  ) : (
+                    <ProfessionalReputationSummary
+                      data-tutorial="reputacao"
+                      reputation={professionalReputation}
+                      className="mt-4"
+                    />
+                  )}
 
                   {professionalProfileStep === "choice" && (
                     <div className="pt-8">
@@ -4507,13 +4704,17 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                           <label className={["grid h-9 cursor-pointer place-items-center rounded-xl border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 shadow-sm transition active:scale-[0.98]", portfolioPhotoUploading || portfolioDraftFotos.length >= 5 ? "pointer-events-none opacity-60" : ""].join(" ")}>
                             <input
                               type="file"
-                              accept="image/*"
+                              accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif"
                               multiple
                               disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
                               className="hidden"
                               onChange={alterarFotoPortfolio}
                             />
-                            {portfolioPhotoUploading ? "Enviando..." : "Fotos"}
+                            {portfolioPhotoStage === "optimizing"
+                              ? "Otimizando imagem..."
+                              : portfolioPhotoStage === "uploading"
+                                ? "Enviando..."
+                                : "Fotos"}
                           </label>
                         </div>
 
@@ -4531,6 +4732,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                                     <button
                                       type="button"
                                       onClick={() => removerFotoPortfolioDraft(foto)}
+                                      disabled={portfolioPhotoUploading}
                                       className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-slate-950/80 text-[10px] font-black text-white"
                                       aria-label="Remover foto"
                                     >
@@ -4554,9 +4756,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                         <button
                           type="button"
                         onClick={() => {
+                          if (portfolioPhotoUploading) return;
                           setPortfolioEditingId("");
                           setPortfolioDraft(createEmptyPortfolioDraft());
                         }}
+                          disabled={portfolioPhotoUploading}
                           className="h-10 rounded-xl border border-slate-200 bg-white px-5 text-xs font-black text-slate-600 transition active:scale-[0.98]"
                         >
                           Cancelar
@@ -4688,7 +4892,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
               {currentProfSection === "avaliacoes" && (
                 <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
-                  <ProfessionalReputationSummary reputation={professionalReputation} />
+                  {!currentServiceStatsStatus.loaded ? (
+                    <ListPanelSkeleton label="Carregando avaliações" rows={3} showHeader={false} />
+                  ) : currentServiceStatsStatus.error ? (
+                    <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+                      {currentServiceStatsStatus.error}
+                    </div>
+                  ) : (
+                    <ProfessionalReputationSummary reputation={professionalReputation} />
+                  )}
                   <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3 text-xs font-bold leading-relaxed text-slate-600">
                     As avaliações aparecem após serviços concluídos. Quanto mais histórico positivo, mais confiança o perfil transmite.
                   </div>
@@ -4806,6 +5018,61 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             {fotoSalvando ? "Salvando foto…" : salvando ? "Salvando…" : salvo ? "Salvo ✅" : "Salvar"}
           </button>
           )}
+
+          {logoutConfirmOpen ? (
+            <div
+              className="fixed inset-0 z-[100300] flex items-end justify-center bg-slate-950/65 p-3 backdrop-blur-sm sm:items-center sm:p-5"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget && !logoutSubmitting) setLogoutConfirmOpen(false);
+              }}
+            >
+              <motion.section
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="logout-confirm-title"
+                aria-describedby="logout-confirm-description"
+                className="w-full max-w-sm rounded-[26px] border border-white/80 bg-white p-5 text-slate-950 shadow-[0_28px_90px_rgba(2,6,23,0.42)] sm:p-6"
+              >
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-rose-50 text-rose-600" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 17l5-5-5-5" />
+                    <path d="M15 12H3" />
+                    <path d="M14 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                  </svg>
+                </div>
+                <h2 id="logout-confirm-title" className="mt-4 text-xl font-black text-blue-950">Sair da conta?</h2>
+                <p id="logout-confirm-description" className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
+                  Voc&ecirc; precisar&aacute; entrar novamente para acessar o Corre Aqui.
+                </p>
+                {logoutError ? (
+                  <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700" role="alert">
+                    {logoutError}
+                  </div>
+                ) : null}
+                <div className="mt-5 grid grid-cols-2 gap-2.5">
+                  <button
+                    ref={logoutCancelButtonRef}
+                    type="button"
+                    onClick={() => setLogoutConfirmOpen(false)}
+                    disabled={logoutSubmitting}
+                    className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sairDaConta}
+                    disabled={logoutSubmitting}
+                    className="min-h-11 rounded-2xl bg-rose-600 px-4 text-sm font-black text-white shadow-[0_12px_26px_rgba(225,29,72,0.22)] transition hover:bg-rose-500 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-200"
+                  >
+                    {logoutSubmitting ? "Saindo..." : "Sair"}
+                  </button>
+                </div>
+              </motion.section>
+            </div>
+          ) : null}
 
           <div className="h-8" />
 

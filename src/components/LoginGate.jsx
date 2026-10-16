@@ -11,11 +11,16 @@ import {
   mensagemErroAuthGoogle,
   signInWithGoogle,
 } from '@/lib/authGoogle'
+import {
+  AUTH_STARTUP_TIMEOUT_MS,
+  shouldFinishAuthStartup,
+} from '@/lib/authStartup'
 
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 import SplashScreen from '@/components/SplashScreen'
 import { perfilMinimoCompleto } from '@/lib/perfilCadastro'
-import { getUserOnlinePreference, startPresence } from '@/lib/presence'
+import { getUserOnlinePreference, startPresence, updateOwnPresence } from '@/lib/presence'
+import { buildBasicUserSyncPayload } from '@/lib/userProfileSync'
 
 let vinhetaJaRodouNoRuntime = false
 let googleRedirectPromise = null
@@ -80,6 +85,7 @@ function debugPresence(message, data = {}) {
 
 async function salvarUsuarioBasico(user) {
   if (!user?.uid) return {}
+  const sessionIsCurrent = () => auth.currentUser?.uid === user.uid
 
   try {
     debugPresence('uid atual', user.uid)
@@ -91,6 +97,7 @@ async function salvarUsuarioBasico(user) {
 
     const userRef = ref(database, `users/${user.uid}`)
     const snap = await Promise.race([get(userRef), esperar(USER_READ_TIMEOUT_MS)])
+    if (!sessionIsCurrent()) return {}
     const leituraConfirmada = typeof snap?.val === 'function'
     const atual = leituraConfirmada ? snap.val() || {} : {}
     const profileAtual = atual.profile || {}
@@ -130,11 +137,7 @@ async function salvarUsuarioBasico(user) {
     if (!atual.photoURL && fotoFallback) basePayload.photoURL = fotoFallback
     if (!atual.avatarEmoji && avatarEmojiSalvo) basePayload.avatarEmoji = avatarEmojiSalvo
 
-    const userPathPatch = Object.fromEntries(
-      Object.entries(basePayload)
-        .filter(([, value]) => value !== undefined)
-        .map(([key, value]) => [`users/${user.uid}/${key}`, value])
-    )
+    const safeUserPayload = buildBasicUserSyncPayload(basePayload)
 
     const agoraPresence = Date.now()
     const onlinePreference = getUserOnlinePreference()
@@ -158,14 +161,19 @@ async function salvarUsuarioBasico(user) {
       origem: 'LoginGate/salvarUsuarioBasico',
       path: `presence/${user.uid}`,
     })
-    const salvarPresencePromise = update(ref(database, `presence/${user.uid}`), presencePatch)
-      .then(() => debugPresence('salvou online com sucesso', { uid: user.uid, origem: 'LoginGate/salvarUsuarioBasico' }))
+    const salvarPresencePromise = updateOwnPresence(database, user.uid, presencePatch)
+      .then((written) => {
+        if (written) debugPresence('salvou online com sucesso', { uid: user.uid, origem: 'LoginGate/salvarUsuarioBasico' })
+      })
       .catch((error) => {
         console.error('[PRESENCE] erro ao salvar presença', error)
         throw error
       })
     await Promise.race([salvarPresencePromise, esperar(3500)]).catch(() => {})
-    Promise.race([update(ref(database), userPathPatch), esperar(1800)]).catch(() => {})
+    if (!sessionIsCurrent()) return {}
+    Promise.race([update(userRef, safeUserPayload), esperar(1800)]).catch((error) => {
+      if (sessionIsCurrent()) console.error('[AUTH_PROFILE_SYNC]', { operation: 'update_user', uid: user.uid, error: { code: error?.code || null } })
+    })
 
     const profilePayload = {
       atualizadoEm: serverTimestamp(),
@@ -178,16 +186,18 @@ async function salvarUsuarioBasico(user) {
     if (!profileAtual.photoURL && fotoFallback) profilePayload.photoURL = fotoFallback
     if (!profileAtual.avatarEmoji && avatarEmojiSalvo) profilePayload.avatarEmoji = avatarEmojiSalvo
 
-    if (Object.keys(profilePayload).length > 2) {
+    if (sessionIsCurrent() && Object.keys(profilePayload).length > 2) {
       Promise.race([
         update(ref(database, `users/${user.uid}/profile`), profilePayload),
         esperar(1800),
-      ]).catch(() => {})
+      ]).catch((error) => {
+        if (sessionIsCurrent()) console.error('[AUTH_PROFILE_SYNC]', { operation: 'update_profile', uid: user.uid, error: { code: error?.code || null } })
+      })
     }
 
     return {
       ...atual,
-      ...basePayload,
+      ...safeUserPayload,
       profile: {
         ...profileAtual,
         ...profilePayload,
@@ -204,6 +214,7 @@ export default function LoginGate({ children }) {
   const pularVinheta = String(pathname || '').startsWith('/chat/')
   const authResolvidoRef = useRef(false)
   const redirectResolvidoRef = useRef(false)
+  const authTimedOutRef = useRef(false)
   const syncUsuarioRef = useRef({ uid: '', promise: null })
   const authenticatedUidRef = useRef('')
   const [user, setUser] = useState(null)
@@ -247,8 +258,11 @@ export default function LoginGate({ children }) {
     let fotoURL = user.photoURL || ''
 
     try {
-      nome = localStorage.getItem('meuNome') || nome
-      fotoURL = localStorage.getItem('fotoURL') || fotoURL
+      const cacheBelongsToUser = localStorage.getItem('meuId') === user.uid
+      if (cacheBelongsToUser) {
+        nome = localStorage.getItem('meuNome') || nome
+        fotoURL = localStorage.getItem('fotoURL') || fotoURL
+      }
     } catch {}
 
     return startPresence(database, user, { nome, fotoURL })
@@ -305,6 +319,10 @@ export default function LoginGate({ children }) {
     setCadastroCompleto(true)
 
     try {
+      const cacheBelongsToUser = localStorage.getItem('meuId') === firebaseUser.uid
+      if (!cacheBelongsToUser) {
+        ;['fotoURL', 'fotoUrl', 'avatarURL', 'avatarEmoji', 'emoji'].forEach((key) => localStorage.removeItem(key))
+      }
       localStorage.setItem('meuNome', firebaseUser.displayName || 'Usuário')
       localStorage.setItem('meuId', firebaseUser.uid)
       if (firebaseUser.photoURL) localStorage.setItem('fotoURL', firebaseUser.photoURL)
@@ -320,6 +338,16 @@ export default function LoginGate({ children }) {
     }
 
     const data = await syncUsuarioRef.current.promise
+    if (
+      authenticatedUidRef.current !== firebaseUser.uid
+      || auth.currentUser?.uid !== firebaseUser.uid
+    ) {
+      debugAuth('perfil:sincronizacao-descartada', {
+        uid: firebaseUser.uid,
+        motivo: 'sessao alterada durante sincronizacao',
+      })
+      return
+    }
     setCadastroCompleto(localCompleto || perfilMinimoCompleto(data))
     setChecandoPerfil(false)
     debugAuth('perfil:sincronizado', {
@@ -348,8 +376,16 @@ export default function LoginGate({ children }) {
     try {
       localStorage.setItem('meuNome', nomeLocal)
       localStorage.setItem('meuId', firebaseUser.uid)
-      if (fotoCache) localStorage.setItem('fotoURL', fotoCache)
-      if (avatarCache) localStorage.setItem('avatarEmoji', avatarCache)
+      if (fotoCache) {
+        localStorage.setItem('fotoURL', fotoCache)
+      } else {
+        ;['fotoURL', 'fotoUrl', 'avatarURL'].forEach((key) => localStorage.removeItem(key))
+      }
+      if (avatarCache) {
+        localStorage.setItem('avatarEmoji', avatarCache)
+      } else {
+        ;['avatarEmoji', 'emoji'].forEach((key) => localStorage.removeItem(key))
+      }
     } catch {}
   }, [])
 
@@ -358,6 +394,7 @@ export default function LoginGate({ children }) {
 
     authResolvidoRef.current = false
     redirectResolvidoRef.current = false
+    authTimedOutRef.current = false
     debugAuth('authLoading:true', {
       host: typeof window !== 'undefined' ? window.location.hostname : '',
       path: typeof window !== 'undefined' ? window.location.pathname : '/',
@@ -365,16 +402,50 @@ export default function LoginGate({ children }) {
     })
     setAuthLoading(true)
 
+    let startupTimer = null
+
     const finalizarSePronto = () => {
       if (!active) return
-      if (authResolvidoRef.current && redirectResolvidoRef.current) {
+      if (shouldFinishAuthStartup({
+        authResolved: authResolvidoRef.current,
+        redirectResolved: redirectResolvidoRef.current,
+        timedOut: authTimedOutRef.current,
+      })) {
+        if (startupTimer !== null) window.clearTimeout(startupTimer)
         debugAuth('authLoading:false', {
-          motivo: 'auth e redirect finalizados sem user',
+          motivo: authTimedOutRef.current
+            ? 'watchdog de inicializacao liberou a interface'
+            : 'auth e redirect finalizados sem user',
           temUserAtual: Boolean(auth.currentUser?.uid),
         })
         setAuthLoading(false)
       }
     }
+
+    startupTimer = window.setTimeout(() => {
+      if (!active) return
+      if (shouldFinishAuthStartup({
+        authResolved: authResolvidoRef.current,
+        redirectResolved: redirectResolvidoRef.current,
+      })) return
+
+      authTimedOutRef.current = true
+      const currentUser = auth.currentUser
+      if (currentUser?.uid) {
+        authResolvidoRef.current = true
+        redirectResolvidoRef.current = true
+        void aplicarUsuario(currentUser)
+      } else {
+        setLoginError('A restauração da sessão demorou mais que o esperado. Você pode tentar entrar novamente.')
+      }
+      debugAuth('authLoading:timeout', {
+        authResolvido: authResolvidoRef.current,
+        redirectResolvido: redirectResolvidoRef.current,
+        temUserAtual: Boolean(currentUser?.uid),
+        tempoMs: AUTH_STARTUP_TIMEOUT_MS,
+      })
+      finalizarSePronto()
+    }, AUTH_STARTUP_TIMEOUT_MS)
 
     debugAuth('onAuthStateChanged:init', {
       currentUserUid: auth.currentUser?.uid || null,
@@ -420,6 +491,7 @@ export default function LoginGate({ children }) {
 
       if (firebaseUser?.uid) {
         redirectResolvidoRef.current = true
+        if (startupTimer !== null) window.clearTimeout(startupTimer)
         debugAuth('authLoading:false', {
           motivo: 'onAuthStateChanged recebeu user',
           uid: firebaseUser.uid,
@@ -446,6 +518,7 @@ export default function LoginGate({ children }) {
           authResolvidoRef.current = true
           await aplicarUsuario(userResolvido)
           if (!active) return
+          if (startupTimer !== null) window.clearTimeout(startupTimer)
           debugAuth('authLoading:false', {
             motivo: redirectUser?.uid ? 'getRedirectResult recebeu user' : 'auth.currentUser usado apos redirect',
             uid: userResolvido.uid,
@@ -471,6 +544,7 @@ export default function LoginGate({ children }) {
 
     return () => {
       active = false
+      if (startupTimer !== null) window.clearTimeout(startupTimer)
       off()
     }
   }, [aplicarUsuario])

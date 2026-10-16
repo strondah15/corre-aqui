@@ -1,3 +1,5 @@
+import { createChatHref, normalizeChatOrigin } from './chatNavigation.js'
+
 export const EVENT_NOTIFICATION_TYPES = Object.freeze({
   AGENDAMENTO_SOLICITADO: 'AGENDAMENTO_SOLICITADO',
   AGENDAMENTO_ACEITO: 'AGENDAMENTO_ACEITO',
@@ -41,7 +43,7 @@ export function getEventSourceId(notification = {}) {
   )
 }
 
-export function getEventPrimaryHref(notification = {}) {
+export function getEventPrimaryHref(notification = {}, { origin = 'cliente' } = {}) {
   const type = clean(notification.tipoEvento).toUpperCase()
   const id = encodeURIComponent(getEventSourceId(notification))
   if (!id) return '/'
@@ -51,13 +53,13 @@ export function getEventPrimaryHref(notification = {}) {
   }
 
   if (type === EVENT_NOTIFICATION_TYPES.AGENDAMENTO_ACEITO) {
-    return `/pedidos?pedidoId=${id}`
+    return createChatHref(getEventSourceId(notification), normalizeChatOrigin(origin))
   }
 
-  return `/chat/${id}?voltar=cliente`
+  return createChatHref(getEventSourceId(notification), normalizeChatOrigin(origin))
 }
 
-export function getEventSecondaryHref(notification = {}) {
+export function getEventSecondaryHref(notification = {}, { origin = 'cliente' } = {}) {
   const type = clean(notification.tipoEvento).toUpperCase()
   const id = encodeURIComponent(getEventSourceId(notification))
   if (!id) return '/'
@@ -67,10 +69,10 @@ export function getEventSecondaryHref(notification = {}) {
   }
 
   if (notification.privateRequest || notification.privateRequestId) {
-    return `/chat/${id}?voltar=cliente&detalhes=1`
+    return createChatHref(getEventSourceId(notification), normalizeChatOrigin(origin), { detalhes: true })
   }
 
-  return `/pedido/${id}?voltar=cliente`
+  return `/pedido/${id}?voltar=${normalizeChatOrigin(origin)}`
 }
 
 export function formatEventSchedule(data, hora) {

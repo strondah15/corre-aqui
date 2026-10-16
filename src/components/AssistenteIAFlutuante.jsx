@@ -38,6 +38,7 @@ export default function AssistenteIAFlutuante({
   const [sugestoes, setSugestoes] = useState([]) // chips clicáveis
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
+  const createOrderLockRef = useRef(false)
 
   const [draft, setDraft] = useState({
     titulo: '',
@@ -224,36 +225,39 @@ Confirma?`)
 
 
   const salvar = async () => {
-  try {
-    setErro('')
-    setLoading(true)
+    if (loading || createOrderLockRef.current) return
+    createOrderLockRef.current = true
+    try {
+      setErro('')
+      setLoading(true)
 
-    // 👉 chama o serviço: ele pega as coordenadas (centro do mapa → geolocalização),
-    // monta no formato correto (local:{lat,lng}) e grava em /pedidos.
-    await criarPedido({ draft, mapRef, meuId, meuNome })
-    showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoCriado, {
-      id: CONTEXTUAL_TIP_IDS.pedidoCriado,
-    })
+      // 👉 chama o serviço: ele pega as coordenadas (centro do mapa → geolocalização),
+      // monta no formato correto (local:{lat,lng}) e grava em /pedidos.
+      await criarPedido({ draft, mapRef, meuId, meuNome })
+      showCorreAquiTipOnce(CONTEXTUAL_TIP_IDS.pedidoCriado, {
+        id: CONTEXTUAL_TIP_IDS.pedidoCriado,
+      })
 
-    // feedback + fecha a Assistente
-    addMsg?.('ia', 'Pedido criado com sucesso! 🎉')
-    onFechar?.()
+      // feedback + fecha a Assistente
+      addMsg?.('ia', 'Pedido criado com sucesso! 🎉')
+      onFechar?.()
 
-    // limpa estados locais (ok mesmo fechando)
-    setModo?.('chat'); setPasso?.(0)
-    setDraft?.({ titulo:'', tipo:'', descricao:'', destino:'', valor:'', forma:'', urgencia:'normal' })
-    setChips?.([
-      { label: '📝 Criar outro pedido', value: 'criar pedido' },
-      { label: '👥 Listar online', value: 'listar online' },
-    ])
-  } catch (e) {
-    console.error('Erro ao salvar pedido:', e)
-    setErro('Falha ao salvar. Veja o console.')
-    addMsg('ia', '⚠️ Ocorreu um erro ao criar o pedido. Tente novamente.')
-  } finally {
-    setLoading(false)
+      // limpa estados locais (ok mesmo fechando)
+      setModo?.('chat'); setPasso?.(0)
+      setDraft?.({ titulo:'', tipo:'', descricao:'', destino:'', valor:'', forma:'', urgencia:'normal' })
+      setChips?.([
+        { label: '📝 Criar outro pedido', value: 'criar pedido' },
+        { label: '👥 Listar online', value: 'listar online' },
+      ])
+    } catch (e) {
+      console.error('Erro ao salvar pedido:', e)
+      setErro(e?.message || 'Falha ao salvar o pedido.')
+      addMsg('ia', `⚠️ ${e?.message || 'Ocorreu um erro ao criar o pedido. Tente novamente.'}`)
+    } finally {
+      createOrderLockRef.current = false
+      setLoading(false)
+    }
   }
-}
 
 
 
