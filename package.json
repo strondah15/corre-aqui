@@ -25,6 +25,7 @@
     "test:chat:legacy": "node scripts/test-legacy-chat-compatibility.mjs",
     "test:session:logout": "node scripts/test-session-logout.mjs",
     "test:account:legacy": "node scripts/test-legacy-account-compatibility.mjs",
+    "test:auth-startup": "node scripts/test-auth-startup.mjs",
     "test:login-profile-sync": "node scripts/test-login-profile-sync.mjs",
     "test:audit:orphans": "node scripts/test-public-request-orphan-audit.mjs",
     "test:audit:unpublished": "node scripts/test-unpublished-private-audit.mjs",

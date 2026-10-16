@@ -11,6 +11,10 @@ import {
   mensagemErroAuthGoogle,
   signInWithGoogle,
 } from '@/lib/authGoogle'
+import {
+  AUTH_STARTUP_TIMEOUT_MS,
+  shouldFinishAuthStartup,
+} from '@/lib/authStartup'
 
 import LogoCorreAqui from '@/components/LogoCorreAqui'
 import SplashScreen from '@/components/SplashScreen'
@@ -210,6 +214,7 @@ export default function LoginGate({ children }) {
   const pularVinheta = String(pathname || '').startsWith('/chat/')
   const authResolvidoRef = useRef(false)
   const redirectResolvidoRef = useRef(false)
+  const authTimedOutRef = useRef(false)
   const syncUsuarioRef = useRef({ uid: '', promise: null })
   const authenticatedUidRef = useRef('')
   const [user, setUser] = useState(null)
@@ -389,6 +394,7 @@ export default function LoginGate({ children }) {
 
     authResolvidoRef.current = false
     redirectResolvidoRef.current = false
+    authTimedOutRef.current = false
     debugAuth('authLoading:true', {
       host: typeof window !== 'undefined' ? window.location.hostname : '',
       path: typeof window !== 'undefined' ? window.location.pathname : '/',
@@ -396,16 +402,50 @@ export default function LoginGate({ children }) {
     })
     setAuthLoading(true)
 
+    let startupTimer = null
+
     const finalizarSePronto = () => {
       if (!active) return
-      if (authResolvidoRef.current && redirectResolvidoRef.current) {
+      if (shouldFinishAuthStartup({
+        authResolved: authResolvidoRef.current,
+        redirectResolved: redirectResolvidoRef.current,
+        timedOut: authTimedOutRef.current,
+      })) {
+        if (startupTimer !== null) window.clearTimeout(startupTimer)
         debugAuth('authLoading:false', {
-          motivo: 'auth e redirect finalizados sem user',
+          motivo: authTimedOutRef.current
+            ? 'watchdog de inicializacao liberou a interface'
+            : 'auth e redirect finalizados sem user',
           temUserAtual: Boolean(auth.currentUser?.uid),
         })
         setAuthLoading(false)
       }
     }
+
+    startupTimer = window.setTimeout(() => {
+      if (!active) return
+      if (shouldFinishAuthStartup({
+        authResolved: authResolvidoRef.current,
+        redirectResolved: redirectResolvidoRef.current,
+      })) return
+
+      authTimedOutRef.current = true
+      const currentUser = auth.currentUser
+      if (currentUser?.uid) {
+        authResolvidoRef.current = true
+        redirectResolvidoRef.current = true
+        void aplicarUsuario(currentUser)
+      } else {
+        setLoginError('A restauração da sessão demorou mais que o esperado. Você pode tentar entrar novamente.')
+      }
+      debugAuth('authLoading:timeout', {
+        authResolvido: authResolvidoRef.current,
+        redirectResolvido: redirectResolvidoRef.current,
+        temUserAtual: Boolean(currentUser?.uid),
+        tempoMs: AUTH_STARTUP_TIMEOUT_MS,
+      })
+      finalizarSePronto()
+    }, AUTH_STARTUP_TIMEOUT_MS)
 
     debugAuth('onAuthStateChanged:init', {
       currentUserUid: auth.currentUser?.uid || null,
@@ -451,6 +491,7 @@ export default function LoginGate({ children }) {
 
       if (firebaseUser?.uid) {
         redirectResolvidoRef.current = true
+        if (startupTimer !== null) window.clearTimeout(startupTimer)
         debugAuth('authLoading:false', {
           motivo: 'onAuthStateChanged recebeu user',
           uid: firebaseUser.uid,
@@ -477,6 +518,7 @@ export default function LoginGate({ children }) {
           authResolvidoRef.current = true
           await aplicarUsuario(userResolvido)
           if (!active) return
+          if (startupTimer !== null) window.clearTimeout(startupTimer)
           debugAuth('authLoading:false', {
             motivo: redirectUser?.uid ? 'getRedirectResult recebeu user' : 'auth.currentUser usado apos redirect',
             uid: userResolvido.uid,
@@ -502,6 +544,7 @@ export default function LoginGate({ children }) {
 
     return () => {
       active = false
+      if (startupTimer !== null) window.clearTimeout(startupTimer)
       off()
     }
   }, [aplicarUsuario])
