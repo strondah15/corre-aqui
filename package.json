@@ -20,6 +20,7 @@
     "test:rules:c6": "node scripts/test-c6-chat-rules.mjs",
     "test:security:service-contact": "node scripts/test-service-contact-security.mjs",
     "test:security:notifications": "node scripts/test-notification-security.mjs",
+    "test:push-registration": "node scripts/test-push-registration-control.mjs",
     "test:security:ai": "node scripts/test-ai-security.mjs",
     "test:rules:emulator": "firebase emulators:exec --only database --project demo-corre-aqui-security \"node scripts/test-security-rules-emulator.mjs\"",
     "test:chat:legacy": "node scripts/test-legacy-chat-compatibility.mjs",

@@ -2,7 +2,7 @@ import { getFirebaseAdminConfigurationStatus } from '@/lib/firebaseAdmin'
 import { assessFirebaseClientConfiguration } from '@/lib/firebaseClientConfig'
 
 export async function GET(request) {
-  const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || process.env.FIREBASE_VAPID_KEY || ''
+  const vapidKey = process.env.FIREBASE_VAPID_KEY || process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || ''
   const config = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
