@@ -40,6 +40,7 @@ const acceptedOrder = (id, status = 'aceito') => ({
   criador: actor(CLIENT, 'Cliente A'),
   aceite: { ...actor(WORKER, 'Profissional B'), aceitoEm: baseTime },
   criadoEm: baseTime - 1_000,
+  criadoEmServer: baseTime - 1_000,
   atualizadoEm: baseTime,
   atualizadoEmServer: baseTime,
 })
@@ -67,6 +68,7 @@ try {
           status: 'aberto',
           criador: actor(CLIENT, 'Cliente A'),
           criadoEm: baseTime - 1_000,
+          criadoEmServer: baseTime - 1_000,
           atualizadoEm: baseTime,
           atualizadoEmServer: baseTime,
         },
@@ -119,12 +121,88 @@ try {
           },
         },
       },
+      users: {
+        [WORKER]: {
+          nome: 'Profissional B',
+          online: false,
+          xp: 90,
+          moedas: 7,
+          servicosCorre: 4,
+          servicosProf: 2,
+          patenteCorre: 1,
+          patenteProf: 1,
+          patenteAtualizadaEm: baseTime,
+          missaoAtualizadaEm: baseTime,
+        },
+      },
+      missoes: {
+        [WORKER]: {
+          '2026-10-18': {
+            aceitou: 1,
+            entregou: 1,
+            boostou: 0,
+            xp: 10,
+            moedas: 4,
+            updatedAt: baseTime,
+          },
+        },
+      },
+      attendanceRewardGrants: {
+        'server-grant': {
+          version: 1,
+          pedidoId: 'server-grant',
+          beneficiaryUid: WORKER,
+          status: 'completed',
+        },
+      },
     })
   })
 
   const clientDb = testEnv.authenticatedContext(CLIENT).database()
   const workerDb = testEnv.authenticatedContext(WORKER).database()
   const outsiderDb = testEnv.authenticatedContext(OUTSIDER).database()
+
+  await assertSucceeds(update(ref(workerDb, `users/${WORKER}`), {
+    online: true,
+    lastSeen: Date.now(),
+  }), 'perfil preserva escrita legítima não relacionada a recompensas')
+  await assertFails(update(ref(workerDb, `users/${WORKER}`), { xp: 9_999 }))
+  await assertFails(update(ref(workerDb, `users/${WORKER}`), { moedas: 9_999 }))
+  await assertFails(update(ref(workerDb, `users/${WORKER}`), { servicosCorre: 999 }))
+  await assertFails(update(ref(workerDb, `users/${WORKER}`), { patente: 5 }))
+  await assertFails(update(ref(workerDb, `users/${WORKER}`), { patenteCorre: 5 }))
+  await assertFails(update(ref(workerDb, `users/${WORKER}`), { patenteProf: 5 }))
+  await assertFails(remove(ref(workerDb, `users/${WORKER}/xp`)), 'campo protegido não pode ser removido')
+  await assertFails(set(ref(workerDb, `users/${WORKER}/attendanceRewardClaims/order-forged`), {
+    version: 1,
+    pedidoId: 'order-forged',
+    mode: 'corre',
+  }))
+  await assertFails(update(ref(workerDb, `missoes/${WORKER}/2026-10-18`), {
+    entregou: 999,
+    xp: 9_999,
+    moedas: 9_999,
+  }))
+  await assertFails(set(ref(workerDb, `missoes/${WORKER}/2026-10-19`), {
+    entregou: 1,
+    xp: 10,
+    moedas: 4,
+  }))
+  await assertFails(set(
+    ref(workerDb, 'pedidos/order-final/atendimento/recompensasContabilizadas'),
+    true,
+  ))
+  await assertFails(set(
+    ref(workerDb, 'pedidos/order-final/atendimento/recompensasContabilizadasEm'),
+    Date.now(),
+  ))
+  await assertFails(update(ref(clientDb, 'pedidos/order-flow'), {
+    criadoEmServer: Date.now(),
+  }), 'cliente não altera o timestamp server-side de criação')
+  await assertFails(update(ref(workerDb, 'pedidos/order-flow'), {
+    criadoEmServer: Date.now(),
+  }), 'profissional não antecipa a elegibilidade alterando o timestamp server-side')
+  await assertFails(get(ref(workerDb, 'attendanceRewardGrants/server-grant')))
 
   await assertSucceeds(get(ref(clientDb, 'pedidos/order-flow')))
   await assertSucceeds(get(ref(workerDb, 'pedidos/order-flow')))
@@ -279,7 +357,7 @@ try {
 
   const finalSnapshot = await assertSucceeds(get(ref(clientDb, 'pedidos/order-flow/status')))
   assert.equal(finalSnapshot.val(), 'finalizado')
-  console.log('Firebase Emulator: matriz A/B/C, estados, chat e notificações OK')
+  console.log('Firebase Emulator: matriz A/B/C, estados, chat, notificações e recompensas OK')
 } finally {
   await testEnv.cleanup()
 }

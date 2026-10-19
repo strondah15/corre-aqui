@@ -1450,6 +1450,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const notificacoesInicializadasRef = useRef(false)
   const notificacoesVistasRef = useRef(new Set())
   const recompensasEmCursoRef = useRef(new Set())
+  const recompensasNaoElegiveisRef = useRef(new Set())
   const authoritativeAcceptLockRef = useRef('')
   const navigationLockRef = useRef('')
   const chatPrefetchesRef = useRef(new Set())
@@ -1530,13 +1531,20 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         normalizeAtendimentoStatus(pedido?.status) === ATENDIMENTO_STATUS.FINALIZADO
         && String(pedido?.aceite?.id || '') === String(meuId)
         && pedido?.atendimento?.recompensasContabilizadas !== true
+        && !recompensasNaoElegiveisRef.current.has(pedido?.id)
       ))
       .forEach((pedido) => {
         if (recompensasEmCursoRef.current.has(pedido.id)) return
         recompensasEmCursoRef.current.add(pedido.id)
 
-        contabilizarAtendimentoFinalizado({ database, pedido, uid: meuId })
-          .catch((error) => console.warn('Nao foi possivel contabilizar as recompensas:', error))
+        contabilizarAtendimentoFinalizado({ pedidoId: pedido.id, expectedUid: meuId })
+          .catch((error) => {
+            if (error?.code === 'reward_before_activation' || error?.code === 'reward_legacy_state_ambiguous') {
+              recompensasNaoElegiveisRef.current.add(pedido.id)
+              return
+            }
+            console.warn('Nao foi possivel contabilizar as recompensas:', error)
+          })
           .finally(() => recompensasEmCursoRef.current.delete(pedido.id))
       })
   }, [pedidosParticipantes, meuId])

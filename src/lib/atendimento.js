@@ -1,6 +1,6 @@
 'use client'
 
-import { get, ref, runTransaction, serverTimestamp, update } from './firebaseDebug'
+import { get, ref, serverTimestamp, update } from './firebaseDebug'
 import { auth } from './firebase'
 import { claimPedidoAuthority, synchronizePublicRequest } from './pedidoProjectionClient'
 import {
@@ -194,16 +194,4 @@ export async function transitionAtendimento({
   await synchronizePublicRequest(id)
 
   return savedPedido
-}
-
-export async function claimAtendimentoRewards({ database, pedidoId }) {
-  const id = String(pedidoId || '').trim()
-  if (!database || !id) return false
-
-  const result = await runTransaction(ref(database, `pedidos/${id}/atendimento/recompensasContabilizadas`), (current) => {
-    if (current === true) return
-    return true
-  })
-
-  return result.committed
 }

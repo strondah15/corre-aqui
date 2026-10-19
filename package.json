@@ -32,6 +32,7 @@
     "test:audit:unpublished": "node scripts/test-unpublished-private-audit.mjs",
     "test:claims:ui": "node scripts/test-public-request-list-state.mjs",
     "test:experience": "node scripts/test-attendance-experience.mjs",
+    "test:rewards": "node scripts/test-attendance-rewards.mjs",
     "test:commercial-config": "node scripts/test-commercial-runtime-config.mjs",
     "test:subscriptions": "node scripts/test-subscriptions.mjs",
     "test:portfolio-images": "node scripts/test-portfolio-image-optimization.mjs",
