@@ -1,16 +1,32 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { onValue, ref } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
 import { reconcilePrivateRequestInbox } from '@/lib/privateRequests'
 import { normalizePublicRequest } from '@/lib/publicRequests'
-import AgendaProfissional from '@/components/AgendaProfissional'
-import CentralNotificacoes from '@/components/CentralNotificacoes'
-import ListaConversas from '@/components/ListaConversas'
-import PainelProblemasDenuncias from '@/components/PainelProblemasDenuncias'
+import { createChatHref, normalizeChatOrigin, prefetchChatRoute } from '@/lib/chatNavigation'
+import { ListPanelSkeleton } from '@/components/LoadingSkeletons'
+
+function AgendaPanelLoading() {
+  return <ListPanelSkeleton label="Carregando agenda" rows={3} />
+}
+
+function InboxPanelLoading() {
+  return <ListPanelSkeleton label="Carregando conversas" dark rows={4} />
+}
+
+function LightPanelLoading() {
+  return <ListPanelSkeleton label="Carregando conteúdo" rows={3} />
+}
+
+const AgendaProfissional = dynamic(() => import('@/components/AgendaProfissional'), { loading: AgendaPanelLoading })
+const CentralNotificacoes = dynamic(() => import('@/components/CentralNotificacoes'), { loading: LightPanelLoading })
+const ListaConversas = dynamic(() => import('@/components/ListaConversas'), { loading: InboxPanelLoading })
+const PainelProblemasDenuncias = dynamic(() => import('@/components/PainelProblemasDenuncias'), { loading: LightPanelLoading })
 
 const META = {
   inbox: {
@@ -44,8 +60,22 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
   const [user, setUser] = useState(null)
   const [pedidos, setPedidos] = useState([])
   const [privateRequests, setPrivateRequests] = useState([])
+  const [privateRequestsStatus, setPrivateRequestsStatus] = useState({ contextKey: '', loading: false, error: '' })
+  const navigationLockRef = useRef('')
+  const chatPrefetchesRef = useRef(new Set())
   const uid = user?.uid || ''
   const focusRequestId = String(searchParams.get('requestId') || '').trim()
+  const privateRequestsContextKey = uid && tipo === 'agenda' ? `${uid}:agenda` : ''
+  const privateRequestsLoading = Boolean(privateRequestsContextKey)
+    && (privateRequestsStatus.contextKey !== privateRequestsContextKey || privateRequestsStatus.loading)
+  const privateRequestsError = privateRequestsStatus.contextKey === privateRequestsContextKey
+    ? privateRequestsStatus.error
+    : ''
+
+  useEffect(() => {
+    navigationLockRef.current = ''
+    chatPrefetchesRef.current.clear()
+  }, [uid])
 
   useEffect(() => {
     const off = onAuthStateChanged(auth, (authUser) => {
@@ -56,7 +86,7 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
   }, [])
 
   useEffect(() => {
-    if (!uid) {
+    if (!uid || (tipo !== 'inbox' && tipo !== 'seguranca')) {
       setPedidos([])
       return undefined
     }
@@ -68,40 +98,81 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
     })
 
     return () => off()
-  }, [uid])
+  }, [tipo, uid])
 
   useEffect(() => {
-    if (!uid) {
+    if (!privateRequestsContextKey) {
       setPrivateRequests([])
+      setPrivateRequestsStatus({ contextKey: '', loading: false, error: '' })
       return undefined
     }
 
     let cancelled = false
+    setPrivateRequestsStatus({ contextKey: privateRequestsContextKey, loading: true, error: '' })
     const off = onValue(ref(database, `privateRequestInbox/${uid}`), (snap) => {
       const raw = snap.val() || {}
       const lista = Object.entries(raw)
         .map(([id, value]) => ({ id, ...(value || {}) }))
         .sort((a, b) => Number(b?.atualizadoEm || b?.criadoEm || 0) - Number(a?.atualizadoEm || a?.criadoEm || 0))
 
-      void reconcilePrivateRequestInbox({ database, uid, entries: lista }).then(({ valid }) => {
-        if (!cancelled) setPrivateRequests(valid)
+      void reconcilePrivateRequestInbox({ database, uid, entries: lista })
+        .then(({ valid }) => {
+          if (cancelled) return
+          setPrivateRequests(valid)
+          setPrivateRequestsStatus({ contextKey: privateRequestsContextKey, loading: false, error: '' })
+        })
+        .catch((error) => {
+          if (cancelled) return
+          console.warn('[PRIVATE_REQUESTS] erro reconciliando inbox', error)
+          setPrivateRequests([])
+          setPrivateRequestsStatus({
+            contextKey: privateRequestsContextKey,
+            loading: false,
+            error: 'Não foi possível carregar os pedidos diretos agora.',
+          })
+        })
+    }, (error) => {
+      if (cancelled) return
+      console.warn('[PRIVATE_REQUESTS] erro lendo inbox', error)
+      setPrivateRequests([])
+      setPrivateRequestsStatus({
+        contextKey: privateRequestsContextKey,
+        loading: false,
+        error: 'Não foi possível carregar os pedidos diretos agora.',
       })
-    }, () => {
-      if (!cancelled) setPrivateRequests([])
     })
 
     return () => {
       cancelled = true
       off()
     }
-  }, [uid])
+  }, [privateRequestsContextKey, uid])
 
   const meusPedidos = uid ? pedidos.filter((p) => p?.criador?.id === uid || p?.aceite?.id === uid) : []
 
+  const navigateOnce = (href, { replace = false } = {}) => {
+    if (!href || navigationLockRef.current) return false
+    navigationLockRef.current = href
+    if (replace) router.replace(href)
+    else router.push(href)
+    window.setTimeout(() => {
+      if (navigationLockRef.current === href) navigationLockRef.current = ''
+    }, 1200)
+    return true
+  }
+
   const abrirChat = (pedido) => {
     const pedidoId = pedido?.id || pedido?.pedidoId
-    if (!pedidoId) return
-    router.push(`/chat/${encodeURIComponent(String(pedidoId))}?voltar=corre`)
+    if (!pedidoId) return false
+    const origin = normalizeChatOrigin(tipo, 'corre')
+    return navigateOnce(createChatHref(pedidoId, origin))
+  }
+
+  const preloadChat = (pedido) => {
+    const pedidoId = pedido?.id || pedido?.pedidoId || pedido?.privateRequestId
+    if (!pedidoId) return ''
+    const origin = normalizeChatOrigin(tipo, 'corre')
+    return prefetchChatRoute(router, chatPrefetchesRef.current, pedidoId, origin)
   }
 
   const abrirAcaoNotificacao = (screen, notificacao = {}) => {
@@ -114,24 +185,24 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
       return
     }
     if ((destino === 'abrir_pedido' || destino === 'pedido' || destino === 'pedidodetails' || destino === 'pedido_details') && id) {
-      router.push(`/pedido/${encodeURIComponent(String(id))}?voltar=corre`)
+      navigateOnce(`/pedido/${encodeURIComponent(String(id))}?voltar=${normalizeChatOrigin(tipo, 'corre')}`)
       return
     }
     if (destino === 'agenda' || destino === 'privaterequestdetails') {
-      router.replace(id ? `/corre/agenda?requestId=${encodeURIComponent(String(id))}` : '/corre/agenda')
+      navigateOnce(id ? `/corre/agenda?requestId=${encodeURIComponent(String(id))}` : '/corre/agenda', { replace: true })
       return
     }
     if (destino === 'myorders') {
-      router.replace('/cliente')
+      navigateOnce('/cliente', { replace: true })
       return
     }
     if (destino === 'portfolio') {
-      router.replace('/cliente')
+      navigateOnce('/cliente', { replace: true })
     }
   }
 
   const voltarCorre = () => {
-    router.replace('/corre')
+    navigateOnce('/corre', { replace: true })
   }
 
   return (
@@ -173,28 +244,38 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
           {tipo === 'inbox' ? (
             <div className="grid gap-3 md:gap-4">
               <CentralNotificacoes
+                key={`notifications:${uid}`}
                 meuId={uid}
                 corres={meusPedidos}
                 onAbrirChat={abrirChat}
                 onAbrirPedido={(pedido) => {
                   const id = pedido?.id || pedido?.pedidoId
-                  if (id) router.push(`/pedido/${encodeURIComponent(String(id))}?voltar=corre`)
+                  if (id) navigateOnce(`/pedido/${encodeURIComponent(String(id))}?voltar=inbox`)
                   else voltarCorre()
                 }}
                 onAction={abrirAcaoNotificacao}
               />
-              <ListaConversas meuId={uid} onAbrirChat={(pedidoId) => abrirChat({ id: pedidoId })} />
+              <ListaConversas
+                key={`conversations:${uid}`}
+                meuId={uid}
+                onAbrirChat={(pedidoId) => abrirChat({ id: pedidoId })}
+                onPreloadChat={(pedidoId) => preloadChat({ id: pedidoId })}
+              />
             </div>
           ) : null}
 
           {tipo === 'agenda' ? (
             <AgendaProfissional
+              key={`agenda:${uid}`}
               uid={uid}
               nome={user?.displayName || ''}
               fotoURL={user?.photoURL || ''}
               privateRequests={privateRequests}
+              privateRequestsLoading={privateRequestsLoading}
+              privateRequestsError={privateRequestsError}
               focusRequestId={focusRequestId}
               onAbrirChat={abrirChat}
+              onPreloadChat={preloadChat}
             />
           ) : null}
 

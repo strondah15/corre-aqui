@@ -6,13 +6,22 @@ import {
 } from '@/lib/firebaseAdmin'
 import {
   COMMERCIAL_CURRENCY,
-  COMMERCIAL_PRICE_CENTS,
   PROFESSIONAL_FEATURED_PLAN_ID,
   REQUEST_BOOST_PRODUCT_ID,
   getCommercialProduct,
 } from '@/lib/commercialProducts'
+import {
+  ANNUAL_PLAN_MONTHS,
+  CLIENT_ANNUAL_PRODUCT_ID,
+  PROFESSIONAL_ANNUAL_PRODUCT_ID,
+  addCalendarMonths,
+} from '@/lib/subscriptions'
+import { commercialAuditKey } from '@/lib/commercialAuditKey'
+import { verifyMercadoPagoHmacSignature } from '@/lib/mercadoPagoWebhookSignature'
+import { assessMercadoPagoCheckoutConfiguration } from '@/lib/commercialRuntimeConfig'
 
 export const COMMERCIAL_SOURCE = 'mercado_pago'
+const PAYMENT_EVENT_LEASE_MS = 5 * 60 * 1000
 
 export const safeText = (value) => String(value || '').trim()
 
@@ -87,9 +96,12 @@ export function isProduction() {
   return process.env.NODE_ENV === 'production'
 }
 
+export function getMercadoPagoCheckoutReadiness() {
+  return assessMercadoPagoCheckoutConfiguration(process.env)
+}
+
 export function isMercadoPagoCheckoutEnabled() {
-  return process.env.MERCADO_PAGO_CHECKOUT_ENABLED === 'true'
-    && !!process.env.MERCADO_PAGO_ACCESS_TOKEN
+  return getMercadoPagoCheckoutReadiness().ready
 }
 
 export function isCommercialHighlightsEnabled() {
@@ -239,10 +251,13 @@ export async function loadPublicProfile(database, uid) {
 }
 
 export async function writeCommercialAudit(database, event) {
-  const id = safeText(event?.eventId) || database.ref('commercialAuditLogs').push().key
+  const eventId = safeText(event?.eventId)
+  const id = eventId
+    ? commercialAuditKey(eventId)
+    : database.ref('commercialAuditLogs').push().key
   await database.ref(`commercialAuditLogs/${id}`).set(cleanFirebasePayload({
     ...event,
-    eventId: id,
+    eventId: eventId || id,
     createdAt: Date.now(),
     source: event?.source || COMMERCIAL_SOURCE,
   }))
@@ -265,7 +280,7 @@ export function parseExternalReference(externalReference) {
   return { productId, userId, targetId, attemptId }
 }
 
-export async function createCommercialCheckoutAttempt({
+async function createCommercialCheckoutAttempt({
   database,
   userId,
   product,
@@ -293,7 +308,7 @@ export async function createCommercialCheckoutAttempt({
     amountInCents: product.amountInCents,
     currency: product.currency,
     status: 'checkout_created',
-    checkoutStatus: isMercadoPagoCheckoutEnabled() ? 'provider_enabled' : 'provider_not_configured',
+    checkoutStatus: 'provider_enabled',
     provider: COMMERCIAL_SOURCE,
     externalReference,
     createdAt: now,
@@ -316,21 +331,27 @@ export async function createCommercialCheckoutAttempt({
   return attempt
 }
 
-export async function maybeCreateMercadoPagoPreference({ product, attempt, payerEmail = '' }) {
-  if (!isMercadoPagoCheckoutEnabled()) {
-    return {
-      checkoutAvailable: false,
-      checkoutUrl: '',
-      initPoint: '',
-      reason: 'mercado_pago_not_configured',
-    }
-  }
+function checkoutConfigurationError(readiness) {
+  const error = new Error('checkout_configuration_incomplete')
+  error.code = 'checkout_configuration_incomplete'
+  error.status = 503
+  error.configurationIssues = Array.from(readiness?.issues || [])
+  return error
+}
 
-  const siteUrl = safeText(process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL)
-  const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+async function createMercadoPagoPreference({
+  product,
+  attempt,
+  payerEmail = '',
+}) {
+  const readiness = getMercadoPagoCheckoutReadiness()
+  if (!readiness.ready) throw checkoutConfigurationError(readiness)
+
+  const siteUrl = readiness.siteOrigin
+  const response = await globalThis.fetch('https://api.mercadopago.com/checkout/preferences', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${safeText(process.env.MERCADO_PAGO_ACCESS_TOKEN)}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -343,13 +364,13 @@ export async function maybeCreateMercadoPagoPreference({ product, attempt, payer
       }],
       payer: payerEmail ? { email: payerEmail } : undefined,
       external_reference: attempt.externalReference,
-      notification_url: siteUrl ? `${siteUrl.replace(/\/$/, '')}/api/mercado-pago/webhook` : undefined,
-      back_urls: siteUrl ? {
-        success: `${siteUrl.replace(/\/$/, '')}/?checkout=success`,
-        pending: `${siteUrl.replace(/\/$/, '')}/?checkout=pending`,
-        failure: `${siteUrl.replace(/\/$/, '')}/?checkout=failure`,
-      } : undefined,
-      auto_return: siteUrl ? 'approved' : undefined,
+      notification_url: `${siteUrl}/api/mercado-pago/webhook`,
+      back_urls: {
+        success: `${siteUrl}/?checkout=success`,
+        pending: `${siteUrl}/?checkout=pending`,
+        failure: `${siteUrl}/?checkout=failure`,
+      },
+      auto_return: 'approved',
       metadata: {
         attempt_id: attempt.id,
         product_id: product.id,
@@ -362,49 +383,73 @@ export async function maybeCreateMercadoPagoPreference({ product, attempt, payer
   if (!response.ok) {
     const error = new Error(data?.message || `mercado_pago_${response.status}`)
     error.status = 502
-    error.details = data
+    throw error
+  }
+
+  const checkoutUrl = readiness.environment === 'staging'
+    ? safeText(data?.sandbox_init_point)
+    : safeText(data?.init_point)
+  if (!checkoutUrl) {
+    const error = new Error('mercado_pago_checkout_url_missing')
+    error.code = 'mercado_pago_checkout_url_missing'
+    error.status = 502
     throw error
   }
 
   return {
     checkoutAvailable: true,
-    checkoutUrl: data?.init_point || data?.sandbox_init_point || '',
-    initPoint: data?.init_point || data?.sandbox_init_point || '',
+    checkoutUrl,
+    initPoint: checkoutUrl,
     preferenceId: data?.id || '',
   }
 }
 
-export function verifyMercadoPagoSignature({ rawBody, body, headers }) {
-  const secret = safeText(process.env.MERCADO_PAGO_WEBHOOK_SECRET)
-  if (!secret) return { ok: false, reason: 'missing_webhook_secret' }
+export async function createMercadoPagoCheckout({
+  database,
+  userId,
+  product,
+  targetId = '',
+  targetType = '',
+  targetSummary = {},
+  payerEmail = '',
+}) {
+  const readiness = getMercadoPagoCheckoutReadiness()
+  if (!readiness.ready) throw checkoutConfigurationError(readiness)
 
-  const signatureHeader = safeText(headers.get('x-signature'))
-  const requestId = safeText(headers.get('x-request-id'))
-  if (!signatureHeader || !requestId) return { ok: false, reason: 'missing_signature_headers' }
+  const attempt = await createCommercialCheckoutAttempt({
+    database,
+    userId,
+    product,
+    targetId,
+    targetType,
+    targetSummary,
+  })
+  const checkout = await createMercadoPagoPreference({
+    product,
+    attempt,
+    payerEmail,
+  })
 
-  const parts = Object.fromEntries(
-    signatureHeader.split(',').map((part) => {
-      const [key, ...rest] = part.trim().split('=')
-      return [key, rest.join('=')]
-    })
-  )
-  const ts = safeText(parts.ts)
-  const received = safeText(parts.v1)
-  const dataId = safeText(body?.data?.id || body?.id || body?.resource)
-  if (!ts || !received || !dataId) return { ok: false, reason: 'invalid_signature_payload' }
+  await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update({
+    preferenceId: checkout.preferenceId || null,
+    checkoutUrl: checkout.checkoutUrl,
+    updatedAt: Date.now(),
+  })
 
-  const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`
-  const expected = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
-  try {
-    const receivedBuffer = Buffer.from(received, 'hex')
-    const expectedBuffer = Buffer.from(expected, 'hex')
-    if (receivedBuffer.length !== expectedBuffer.length) {
-      return { ok: false, reason: 'signature_mismatch' }
-    }
-    const ok = crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
-    return { ok, reason: ok ? '' : 'signature_mismatch', paymentId: dataId, rawBodyLength: rawBody.length }
-  } catch {
-    return { ok: false, reason: 'invalid_signature_format' }
+  return { attempt, checkout }
+}
+
+export function verifyMercadoPagoSignature({ rawBody, dataId, headers }) {
+  const verification = verifyMercadoPagoHmacSignature({
+    secret: process.env.MERCADO_PAGO_WEBHOOK_SECRET,
+    dataId,
+    headers,
+  })
+  if (!verification.ok) return verification
+
+  return {
+    ...verification,
+    rawBodyLength: rawBody.length,
   }
 }
 
@@ -527,12 +572,84 @@ async function activateRequestBoost({ database, attempt, payment }) {
   return { activated: true, expiresAt }
 }
 
+async function activateAnnualSubscription({ database, attempt, payment }) {
+  const kind = attempt.productId === CLIENT_ANNUAL_PRODUCT_ID ? 'client' : 'professional'
+  const subscriptionRef = database.ref(`users/${attempt.userId}/subscriptions/${kind}`)
+  const now = Date.now()
+  const paymentId = safeText(payment?.id)
+  let duplicatePayment = false
+  let expiresAt = addCalendarMonths(now, ANNUAL_PLAN_MONTHS)
+  const result = await subscriptionRef.transaction((current) => {
+    const plan = current && typeof current === 'object' ? current : {}
+    const currentExpiresAt = asTimestamp(plan.expiresAt)
+    if (paymentId && safeText(plan.paymentId) === paymentId) {
+      duplicatePayment = true
+      expiresAt = currentExpiresAt || expiresAt
+      return plan
+    }
+    const base = String(plan.status || '').toLowerCase() === 'active' && currentExpiresAt > now
+      ? currentExpiresAt
+      : now
+    expiresAt = addCalendarMonths(base, ANNUAL_PLAN_MONTHS)
+    return cleanFirebasePayload({
+      ...plan,
+      status: 'active',
+      plan: 'annual',
+      startedAt: now,
+      expiresAt,
+      updatedAt: now,
+      source: COMMERCIAL_SOURCE,
+      paymentReference: attempt.externalReference,
+      paymentId,
+    })
+  })
+
+  if (!result.committed) return { activated: false, reason: 'subscription_transaction_failed' }
+  await writeCommercialAudit(database, {
+    eventId: `${duplicatePayment ? 'annual_subscription_duplicate_ignored' : 'annual_subscription_activated'}_${attempt.id}`,
+    type: duplicatePayment ? 'annual_subscription_duplicate_ignored' : 'annual_subscription_activated',
+    userId: attempt.userId,
+    productId: attempt.productId,
+    paymentReference: attempt.externalReference,
+    statusAfter: 'active',
+  })
+  return { activated: true, expiresAt, subscriptionKind: kind, duplicate: duplicatePayment }
+}
+
 async function endCommercialEntitlement({ database, attempt, payment, status }) {
   const now = Date.now()
   const paymentId = safeText(payment?.id)
   const statusAfter = status === 'charged_back' ? 'chargeback' : 'refunded'
   const auditType = status === 'charged_back' ? 'chargeback_received' : 'refund_received'
   const product = getCommercialProduct(attempt.productId)
+
+  if (attempt.productId === CLIENT_ANNUAL_PRODUCT_ID || attempt.productId === PROFESSIONAL_ANNUAL_PRODUCT_ID) {
+    const kind = attempt.productId === CLIENT_ANNUAL_PRODUCT_ID ? 'client' : 'professional'
+    const subscriptionRef = database.ref(`users/${attempt.userId}/subscriptions/${kind}`)
+    const snapshot = await subscriptionRef.get()
+    const current = snapshot.val() || {}
+    const ownsCurrentSubscription =
+      safeText(current.paymentReference) === attempt.externalReference ||
+      safeText(current.paymentId) === paymentId
+    if (ownsCurrentSubscription) {
+      await subscriptionRef.update(cleanFirebasePayload({
+        status: 'expired',
+        endedAt: now,
+        endedReason: statusAfter,
+        updatedAt: now,
+      }))
+    }
+    await writeCommercialAudit(database, {
+      eventId: `${auditType}_${attempt.id}`,
+      type: auditType,
+      userId: attempt.userId,
+      productId: product?.id || attempt.productId,
+      paymentReference: attempt.externalReference,
+      statusBefore: current.status || null,
+      statusAfter: ownsCurrentSubscription ? 'expired' : current.status || statusAfter,
+    })
+    return { activated: false, ended: ownsCurrentSubscription, reason: statusAfter }
+  }
 
   if (attempt.productId === PROFESSIONAL_FEATURED_PLAN_ID) {
     const entitlementRef = database.ref(`featuredProfessionalEntitlements/${attempt.userId}`)
@@ -613,21 +730,29 @@ export async function processApprovedCommercialPayment({ database, payment }) {
   if (!parsed) return { ok: false, reason: 'invalid_external_reference' }
 
   const lockRef = database.ref(`processedPaymentEvents/${referenceKey(`${paymentId}:${status || 'unknown'}`)}`)
-  let duplicate = false
+  const processingToken = crypto.randomUUID()
+  const lockNow = Date.now()
   const transaction = await lockRef.transaction((current) => {
-    if (current) {
-      duplicate = true
-      return current
+    if (current && typeof current === 'object') {
+      const lockStatus = safeText(current.status).toLowerCase()
+      const lockUpdatedAt = asTimestamp(current.updatedAt || current.createdAt)
+      const retryable = lockStatus === 'failed'
+        || (lockStatus === 'processing' && lockUpdatedAt <= lockNow - PAYMENT_EVENT_LEASE_MS)
+      if (!retryable) return undefined
     }
     return {
+      ...(current && typeof current === 'object' ? current : {}),
       paymentId,
       externalReference,
       paymentStatus: status || null,
       status: 'processing',
-      createdAt: Date.now(),
+      processingToken,
+      retryCount: Number(current?.retryCount || 0) + (current ? 1 : 0),
+      createdAt: Number(current?.createdAt || 0) || lockNow,
+      updatedAt: lockNow,
     }
   })
-  if (!transaction.committed || duplicate) {
+  if (!transaction.committed || transaction.snapshot.val()?.processingToken !== processingToken) {
     await writeCommercialAudit(database, {
       eventId: `webhook_ignored_duplicate_${referenceKey(`${paymentId}:${status || 'unknown'}`)}`,
       type: 'webhook_ignored_duplicate',
@@ -637,18 +762,29 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     return { ok: true, duplicate: true, reason: 'webhook_ignored_duplicate' }
   }
 
-  const attemptSnapshot = await database.ref(`commercialCheckoutAttempts/${parsed.attemptId}`).get()
-  const attempt = attemptSnapshot.val()
-  if (!attempt || attempt.externalReference !== externalReference) {
-    await lockRef.update({ status: 'ignored', reason: 'attempt_not_found', updatedAt: Date.now() })
-    return { ok: false, reason: 'attempt_not_found' }
-  }
+  try {
+    const attemptSnapshot = await database.ref(`commercialCheckoutAttempts/${parsed.attemptId}`).get()
+    const attempt = attemptSnapshot.val()
+    if (!attempt || attempt.externalReference !== externalReference) {
+      await lockRef.update({ status: 'ignored', reason: 'attempt_not_found', updatedAt: Date.now() })
+      return { ok: false, reason: 'attempt_not_found' }
+    }
+
+    const attemptIdentityMatches =
+      safeText(attempt.id) === parsed.attemptId
+      && safeText(attempt.userId) === parsed.userId
+      && safeText(attempt.productId) === parsed.productId
+      && safeText(attempt.targetId || 'profile') === parsed.targetId
+    if (!attemptIdentityMatches) {
+      await lockRef.update({ status: 'ignored', reason: 'attempt_identity_mismatch', updatedAt: Date.now() })
+      return { ok: false, reason: 'attempt_identity_mismatch' }
+    }
 
   const product = getCommercialProduct(attempt.productId)
   const amountInCents = Math.round(Number(payment?.transaction_amount || 0) * 100)
   const currency = safeText(payment?.currency_id || payment?.currency)
 
-  if (!product || product.amountInCents !== COMMERCIAL_PRICE_CENTS || product.currency !== COMMERCIAL_CURRENCY) {
+  if (!product || product.currency !== COMMERCIAL_CURRENCY) {
     await lockRef.update({ status: 'ignored', reason: 'invalid_product', updatedAt: Date.now() })
     return { ok: false, reason: 'invalid_product' }
   }
@@ -681,9 +817,11 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     return { ok: true, activated: false, reason: 'payment_not_approved' }
   }
 
-  const activation = product.id === PROFESSIONAL_FEATURED_PLAN_ID
-    ? await activateProfessionalEntitlement({ database, attempt, payment })
-    : await activateRequestBoost({ database, attempt, payment })
+  const activation = product.id === CLIENT_ANNUAL_PRODUCT_ID || product.id === PROFESSIONAL_ANNUAL_PRODUCT_ID
+    ? await activateAnnualSubscription({ database, attempt, payment })
+    : product.id === PROFESSIONAL_FEATURED_PLAN_ID
+      ? await activateProfessionalEntitlement({ database, attempt, payment })
+      : await activateRequestBoost({ database, attempt, payment })
 
   await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update(cleanFirebasePayload({
     status: activation.activated ? 'entitlement_activated' : 'entitlement_blocked',
@@ -697,5 +835,14 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     updatedAt: Date.now(),
   }))
 
-  return { ok: true, ...activation }
+    return { ok: true, ...activation }
+  } catch (error) {
+    await lockRef.update({
+      status: 'failed',
+      reason: 'processing_error',
+      errorCode: safeText(error?.code || error?.message || 'unknown').slice(0, 160),
+      updatedAt: Date.now(),
+    }).catch(() => {})
+    throw error
+  }
 }

@@ -2,6 +2,7 @@
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
+import { assessFirebaseClientConfiguration } from "./firebaseClientConfig";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
@@ -13,80 +14,31 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
 };
 
-const EXPECTED_PROJECT_ID = "corre-aqui-3f9ec";
-const EXPECTED_DATABASE_URL = "https://corre-aqui-3f9ec-default-rtdb.firebaseio.com";
+const clientAssessment = assessFirebaseClientConfiguration(firebaseConfig, {
+  hostname: typeof window === "undefined" ? "" : window.location.hostname,
+});
 
-const getDatabaseHost = (databaseURL) => {
-  try {
-    return databaseURL ? new URL(databaseURL).host : "";
-  } catch {
-    return "";
-  }
-};
-
-const missingFirebaseEnv = Object.entries(firebaseConfig)
-  .filter(([, value]) => !value)
-  .map(([key]) => key);
-
-if (missingFirebaseEnv.length) {
-  console.warn("[Firebase] ENV faltando:", missingFirebaseEnv);
+if (!clientAssessment.valid) {
+  const error = new Error("Firebase Client bloqueado por configuracao inconsistente.");
+  error.code = "firebase_client_environment_invalid";
+  error.configurationIssues = Array.from(clientAssessment.issues);
+  throw error;
 }
 
-const databaseHost = getDatabaseHost(firebaseConfig.databaseURL);
-const databaseLooksLikeProject =
-  !firebaseConfig.projectId ||
-  !databaseHost ||
-  databaseHost.includes(firebaseConfig.projectId);
-
-if (!databaseLooksLikeProject) {
-  console.error("[Firebase] DATABASE_URL nao parece ser do mesmo projeto:", {
-    projectId: firebaseConfig.projectId,
-    databaseHost,
-  });
-}
-
-if (firebaseConfig.projectId && firebaseConfig.projectId !== EXPECTED_PROJECT_ID) {
-  console.error("[Firebase] PROJECT_ID inesperado:", {
-    projectId: firebaseConfig.projectId,
-    esperado: EXPECTED_PROJECT_ID,
-  });
-}
-
-if (firebaseConfig.databaseURL && firebaseConfig.databaseURL !== EXPECTED_DATABASE_URL) {
-  console.error("[Firebase] DATABASE_URL inesperado:", {
-    databaseURL: firebaseConfig.databaseURL,
-    esperado: EXPECTED_DATABASE_URL,
-  });
-}
-
-if (process.env.NODE_ENV !== "production") {
-  console.log("[FIREBASE CONFIG]", {
-    projectId: firebaseConfig.projectId,
-    databaseURL: firebaseConfig.databaseURL,
-    authDomain: firebaseConfig.authDomain,
-  });
-}
-
-const existingApp = getApps()[0];
-if (existingApp && process.env.NODE_ENV !== "production") {
+const existingApp = getApps().find((candidate) => candidate.name === "[DEFAULT]");
+if (existingApp) {
   const existingOptions = existingApp.options || {};
   if (
     existingOptions.projectId !== firebaseConfig.projectId ||
     existingOptions.databaseURL !== firebaseConfig.databaseURL ||
-    existingOptions.authDomain !== firebaseConfig.authDomain
+    existingOptions.authDomain !== firebaseConfig.authDomain ||
+    existingOptions.storageBucket !== firebaseConfig.storageBucket ||
+    existingOptions.messagingSenderId !== firebaseConfig.messagingSenderId ||
+    existingOptions.appId !== firebaseConfig.appId
   ) {
-    console.error("[Firebase] App DEFAULT ja estava inicializado com outra config. Reinicie o npm run dev.", {
-      existing: {
-        projectId: existingOptions.projectId,
-        databaseURL: existingOptions.databaseURL,
-        authDomain: existingOptions.authDomain,
-      },
-      expected: {
-        projectId: firebaseConfig.projectId,
-        databaseURL: firebaseConfig.databaseURL,
-        authDomain: firebaseConfig.authDomain,
-      },
-    });
+    const error = new Error("Firebase Client bloqueado porque o app DEFAULT usa outra configuracao.");
+    error.code = "firebase_client_existing_app_mismatch";
+    throw error;
   }
 }
 

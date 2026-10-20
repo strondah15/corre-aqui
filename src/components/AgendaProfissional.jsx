@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
 import { auth, database } from '@/lib/firebase'
 import { respondPrivateRequest } from '@/lib/privateRequests'
 import { respondLegacyAgendamento, subscribeParticipantAgendamentos } from '@/lib/agendamentos'
+import { ListPanelSkeleton } from '@/components/LoadingSkeletons'
 
 function getMs(value) {
   if (!value) return 0
@@ -27,32 +27,6 @@ function dateKey(ms) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function dateFromKey(key) {
-  const [year, month, day] = String(key || '').split('-').map(Number)
-  if (!year || !month || !day) return new Date()
-  return new Date(year, month - 1, day)
-}
-
-function addDays(key, amount) {
-  const d = dateFromKey(key)
-  d.setDate(d.getDate() + amount)
-  return dateKey(d.getTime())
-}
-
-function isSameWeek(ms, selectedKey) {
-  if (!ms) return false
-  const selected = dateFromKey(selectedKey)
-  const start = new Date(selected)
-  const day = start.getDay()
-  start.setDate(start.getDate() - day)
-  start.setHours(0, 0, 0, 0)
-
-  const end = new Date(start)
-  end.setDate(end.getDate() + 7)
-
-  return ms >= start.getTime() && ms < end.getTime()
-}
-
 function formatHora(item) {
   if (item?.hora) return item.hora
   const ms = getAgendaMs(item)
@@ -60,12 +34,10 @@ function formatHora(item) {
   return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatDataExtenso(key) {
-  return dateFromKey(key).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  })
+function formatDataCurta(item) {
+  const ms = getAgendaMs(item)
+  if (!ms) return 'Data a combinar'
+  return new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
 
 function formatEndereco(item) {
@@ -107,40 +79,86 @@ function safePhoto(url) {
 }
 
 const filtros = [
-  { id: 'hoje', label: 'Hoje', icon: 'calendar' },
-  { id: 'semana', label: 'Semana', icon: 'brief' },
-  { id: 'todos', label: 'Todos', icon: 'list' },
+  { id: 'pendentes', label: 'Pendentes' },
+  { id: 'agendados', label: 'Agendados' },
+  { id: 'historico', label: 'Histórico' },
 ]
+
+const statusEmAtendimento = new Set(['em_andamento', 'a_caminho', 'chegou', 'aguardando_confirmacao', 'em_atendimento'])
+const statusAgendados = new Set(['aceito', 'agendado', ...statusEmAtendimento])
+const statusHistorico = new Set(['finalizado', 'concluido', 'recusado', 'cancelado'])
+
+function agendaFilterForStatus(status) {
+  const key = String(status || 'pendente').toLowerCase()
+  if (key === 'pendente') return 'pendentes'
+  if (statusHistorico.has(key)) return 'historico'
+  return 'agendados'
+}
 
 const statusInfo = {
   pendente: {
     label: 'Pendente',
     actionLabel: 'Pendente',
-    chip: 'bg-amber-50 text-amber-600 ring-amber-100',
-    action: 'bg-amber-50 text-amber-600 ring-amber-100',
-    bar: 'bg-blue-600',
+    chip: 'border-amber-300/25 bg-amber-400/10 text-amber-200',
+    bar: 'bg-amber-400',
   },
   aceito: {
-    label: 'Confirmado',
-    actionLabel: 'Confirmado',
-    chip: 'bg-blue-50 text-blue-700 ring-blue-100',
-    action: 'bg-blue-50 text-blue-700 ring-blue-100',
-    bar: 'bg-blue-600',
+    label: 'Combinando',
+    actionLabel: 'Abrir atendimento',
+    chip: 'border-blue-300/25 bg-blue-400/10 text-blue-200',
+    bar: 'bg-blue-500',
+  },
+  agendado: {
+    label: 'Combinando',
+    actionLabel: 'Abrir atendimento',
+    chip: 'border-blue-300/25 bg-blue-400/10 text-blue-200',
+    bar: 'bg-blue-500',
+  },
+  em_atendimento: {
+    label: 'A caminho',
+    actionLabel: 'Abrir atendimento',
+    chip: 'border-emerald-300/25 bg-emerald-400/10 text-emerald-200',
+    bar: 'bg-emerald-400',
   },
   recusado: {
     label: 'Recusado',
     actionLabel: 'Recusado',
-    chip: 'bg-rose-50 text-rose-600 ring-rose-100',
-    action: 'bg-rose-50 text-rose-600 ring-rose-100',
+    chip: 'border-rose-300/25 bg-rose-400/10 text-rose-200',
     bar: 'bg-rose-500',
+  },
+  cancelado: {
+    label: 'Cancelado',
+    actionLabel: 'Cancelado',
+    chip: 'border-slate-300/20 bg-slate-400/10 text-slate-300',
+    bar: 'bg-slate-400',
   },
   concluido: {
     label: 'Concluído',
     actionLabel: 'Concluído',
-    chip: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
-    action: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    chip: 'border-cyan-300/25 bg-cyan-400/10 text-cyan-200',
     bar: 'bg-emerald-500',
   },
+}
+
+statusInfo.finalizado = statusInfo.concluido
+statusEmAtendimento.forEach((status) => {
+  statusInfo[status] = statusInfo.em_atendimento
+})
+statusInfo.em_andamento = {
+  ...statusInfo.em_atendimento,
+  label: 'Combinando',
+}
+statusInfo.a_caminho = {
+  ...statusInfo.em_atendimento,
+  label: 'A caminho',
+}
+statusInfo.chegou = {
+  ...statusInfo.em_atendimento,
+  label: 'Chegou',
+}
+statusInfo.aguardando_confirmacao = {
+  ...statusInfo.em_atendimento,
+  label: 'Aguardando cliente',
 }
 
 function Icon({ name, className = 'h-5 w-5' }) {
@@ -234,6 +252,15 @@ function Icon({ name, className = 'h-5 w-5' }) {
     )
   }
 
+  if (name === 'chat') {
+    return (
+      <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+        <path d="M5 5.8h14v9.4H9.2L5 19v-3.8H5V5.8Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.9" />
+        <path d="M8.2 9.2h7.6M8.2 12h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+      </svg>
+    )
+  }
+
   if (name === 'chevron') {
     return (
       <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
@@ -317,8 +344,8 @@ function StatusPill({ status, compact = false }) {
   const key = String(status || 'pendente').toLowerCase()
   const meta = statusInfo[key] || statusInfo.pendente
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.08em] ring-1 ${compact ? meta.action : meta.chip}`}>
-      {key === 'aceito' || key === 'concluido' ? <Icon name="check" className="h-3.5 w-3.5" /> : null}
+    <span className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.06em] md:px-3 md:py-1 md:text-[10px] ${meta.chip} ${compact ? 'max-w-full' : ''}`}>
+      {statusAgendados.has(key) || key === 'concluido' || key === 'finalizado' ? <Icon name="check" className="h-3 w-3" /> : null}
       {key === 'recusado' ? <Icon name="x" className="h-3.5 w-3.5" /> : null}
       {meta.actionLabel}
     </span>
@@ -329,81 +356,131 @@ function agendaDomId(id) {
   return `agenda-request-${String(id || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`
 }
 
-function AgendaItem({ item, uid, salvandoId, onResponder, focused = false }) {
+function AgendaItem({ item, uid, pendingAction, onResponder, onAbrirChat, onPreloadChat, focused = false }) {
+  const [expanded, setExpanded] = useState(false)
   const status = String(item.status || 'pendente').toLowerCase()
   const meta = statusInfo[status] || statusInfo.pendente
   const souProf = item.profissionalId === uid
-  const valor = formatMoney(item.valor, 'R$ 90,00')
+  const isSaving = pendingAction?.id === item.id
+  const anySaving = Boolean(pendingAction?.id)
+  const isAccepting = isSaving && pendingAction?.status === 'aceito'
+  const isRejecting = isSaving && pendingAction?.status === 'recusado'
+  const valor = formatMoney(item.valor, 'A combinar')
   const titulo = item.titulo || item.servico || item.categoriaNome || 'Serviço agendado'
+  const nomePessoa = souProf
+    ? item.clienteNome || item.criador?.nome || 'Cliente'
+    : item.profissionalNome || item.aceite?.nome || 'Profissional'
+  const descricao = String(item.descricao || item.observacao || item.servicoSnapshot?.descricao || '').trim()
+  const duracao = String(item.duracao || item.tempoEstimado || '').trim()
+  const categoria = item.categoria || item.categoriaNome || item.servico || 'Serviço'
+  const endereco = formatEndereco(item)
+  const detailsId = `${agendaDomId(item.id)}-details`
+  const conversationId = String(item.privateRequestId || item.pedidoId || '').trim()
+  const canOpenAttendance = souProf && statusAgendados.has(status) && Boolean(conversationId)
 
   return (
-    <motion.article
+    <article
       id={agendaDomId(item.id)}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className={`relative overflow-hidden rounded-[18px] border bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.05)] transition md:rounded-[20px] md:p-5 ${focused ? 'border-blue-500 ring-4 ring-blue-100 shadow-[0_18px_46px_rgba(37,99,235,0.18)]' : 'border-slate-200'}`}
+      aria-busy={isSaving}
+      className={`relative overflow-hidden rounded-2xl border bg-[#07111f] p-3 text-white shadow-sm md:rounded-[20px] md:p-4 ${focused ? 'border-blue-400 ring-4 ring-blue-100 shadow-[0_18px_46px_rgba(37,99,235,0.18)]' : 'border-white/10'}`}
     >
       <div className={`absolute inset-y-0 left-0 w-1.5 ${meta.bar}`} />
-      <div className="grid gap-4 md:grid-cols-[90px_minmax(0,1fr)_220px_24px] md:items-center">
-        <div className="flex items-center justify-between gap-3 md:block">
-          <div className="text-2xl font-black tabular-nums text-blue-700 md:text-2xl">{formatHora(item)}</div>
+      <div className="min-w-0 pl-1.5">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="line-clamp-1 text-sm font-black text-white md:text-base">{nomePessoa}</div>
+            <div className="mt-0.5 line-clamp-1 text-xs font-bold text-slate-300 md:text-sm">{titulo}</div>
+          </div>
           <StatusPill status={status} />
         </div>
 
-        <div className="min-w-0">
-          <div className="line-clamp-1 text-lg font-black text-blue-950">{titulo}</div>
-          <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-500">
-            <Icon name="pin" className="h-4 w-4 shrink-0 text-slate-500" />
-            <span className="line-clamp-1">{formatEndereco(item)}</span>
+        <div className="mt-2 flex min-w-0 items-center justify-between gap-2 text-xs font-bold text-slate-400">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Icon name="calendar" className="h-3.5 w-3.5 shrink-0 text-cyan-300" />
+            <span className="truncate tabular-nums">{formatDataCurta(item)} • {formatHora(item)}</span>
           </div>
-          <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-500">
-            <Icon name="brief" className="h-4 w-4 shrink-0 text-slate-500" />
-            <span className="line-clamp-1">{item.categoria || item.categoriaNome || item.servico || 'Serviço'}</span>
-          </div>
+          <button
+            type="button"
+            onClick={() => setExpanded((current) => !current)}
+            aria-expanded={expanded}
+            aria-controls={detailsId}
+            aria-label={`${expanded ? 'Ocultar detalhes' : 'Ver detalhes'} de ${nomePessoa}: ${titulo}`}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-black text-cyan-300 transition hover:bg-white/[0.06] active:scale-[0.98]"
+          >
+            {expanded ? 'Ocultar' : 'Ver detalhes'}
+            <Icon name="chevron" className={`h-3.5 w-3.5 transition ${expanded ? '-rotate-90' : 'rotate-90'}`} />
+          </button>
         </div>
 
-        <div className="flex flex-col gap-3 md:items-end">
-          <div className="md:text-right">
-            <div className="text-lg font-black text-blue-700 md:text-xl">{valor}</div>
-            <div className="text-xs font-semibold text-slate-500">Valor do serviço</div>
-          </div>
+        {descricao && !expanded ? (
+          <p className="line-clamp-1 text-xs font-semibold leading-relaxed text-slate-400 min-[390px]:line-clamp-2">{descricao}</p>
+        ) : null}
 
+        {expanded ? (
+          <div id={detailsId} className="mt-2 rounded-xl border border-white/10 bg-white/[0.045] p-2.5 text-xs text-slate-300">
+            {descricao ? <p className="whitespace-pre-wrap break-words leading-relaxed">{descricao}</p> : null}
+            <dl className={`grid grid-cols-2 gap-x-3 gap-y-2 ${descricao ? 'mt-2 border-t border-white/10 pt-2' : ''}`}>
+              <div className="min-w-0">
+                <dt className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-500">Duração</dt>
+                <dd className="mt-0.5 truncate font-bold text-white">{duracao || 'A combinar'}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-500">Valor</dt>
+                <dd className="mt-0.5 truncate font-bold text-white">{valor}</dd>
+              </div>
+              <div className="col-span-2 min-w-0">
+                <dt className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-500">Serviço</dt>
+                <dd className="mt-0.5 break-words font-bold text-white">{categoria}</dd>
+              </div>
+              <div className="col-span-2 min-w-0">
+                <dt className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-500">Local</dt>
+                <dd className="mt-0.5 break-words font-bold text-white">{endereco}</dd>
+              </div>
+            </dl>
+          </div>
+        ) : null}
+
+        <div className="mt-2">
           {souProf && status === 'pendente' ? (
-            <div className="grid w-full grid-cols-2 gap-2 md:w-[210px]">
+            <div className="grid w-full grid-cols-2 gap-2">
               <button
                 type="button"
-                disabled={salvandoId === item.id}
+                disabled={anySaving}
                 onClick={() => onResponder(item.id, 'recusado')}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 shadow-sm transition active:scale-[0.98] disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-3 text-sm font-black text-slate-200 transition active:scale-[0.98] disabled:opacity-50"
               >
                 <Icon name="x" className="h-4 w-4" />
-                Recusar
+                {isRejecting ? 'Recusando...' : 'Recusar'}
               </button>
               <button
                 type="button"
-                disabled={salvandoId === item.id}
+                disabled={anySaving}
                 onClick={() => onResponder(item.id, 'aceito')}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-700 px-3 text-sm font-black text-white shadow-[0_12px_24px_rgba(37,99,235,0.22)] transition active:scale-[0.98] disabled:opacity-60"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-black text-white shadow-[0_10px_22px_rgba(37,99,235,0.22)] transition active:scale-[0.98] disabled:opacity-50"
               >
                 <Icon name="check" className="h-4 w-4" />
-                Aceitar
+                {isAccepting ? 'Aceitando...' : 'Aceitar'}
               </button>
             </div>
-          ) : (
-            <StatusPill status={status} compact />
-          )}
+          ) : canOpenAttendance ? (
+            <button
+              type="button"
+              onClick={() => onAbrirChat?.({ ...item, id: conversationId })}
+              onPointerEnter={() => onPreloadChat?.({ ...item, id: conversationId })}
+              onPointerDown={() => onPreloadChat?.({ ...item, id: conversationId })}
+              onFocus={() => onPreloadChat?.({ ...item, id: conversationId })}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-[0_10px_22px_rgba(37,99,235,0.22)] transition active:scale-[0.98]"
+            >
+              <Icon name="chat" className="h-4 w-4" />
+              Abrir atendimento
+            </button>
+          ) : null}
         </div>
-
-        <button
-          type="button"
-          className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full text-slate-500 transition hover:bg-slate-50 md:static md:h-9 md:w-9"
-          aria-label="Mais opções"
-        >
-          <span className="text-xl leading-none">⋮</span>
-        </button>
       </div>
-    </motion.article>
+      <span className="sr-only" aria-live="polite">
+        {isAccepting ? 'Aceitando agendamento' : isRejecting ? 'Recusando agendamento' : ''}
+      </span>
+    </article>
   )
 }
 
@@ -413,28 +490,53 @@ export default function AgendaProfissional({
   nome = '',
   fotoURL = '',
   privateRequests = [],
+  privateRequestsLoading = false,
+  privateRequestsError = '',
   focusRequestId = '',
   notificacoesCount = 0,
   onAbrirPerfil,
   onAbrirNotificacoes,
-  onAbrirPedido,
   onAbrirChat,
+  onPreloadChat,
   onToast,
   showHeader = false,
   reserveFloatingControls = false,
 } = {}) {
   const [agendamentos, setAgendamentos] = useState([])
   const [loading, setLoading] = useState(true)
-  const [salvandoId, setSalvandoId] = useState(null)
+  const [pendingAction, setPendingAction] = useState(null)
   const [erro, setErro] = useState('')
-  const [filtro, setFiltro] = useState('hoje')
-  const [selectedKey, setSelectedKey] = useState(() => dateKey(Date.now()))
+  const [filtro, setFiltro] = useState('pendentes')
   const [hiddenPrivateRequestIds, setHiddenPrivateRequestIds] = useState(() => new Set())
   const lastFocusedRequestRef = useRef('')
+  const currentUidRef = useRef('')
+  const actionSequenceRef = useRef(0)
+  const authoritativeActionLockRef = useRef('')
+  const openAttendanceLockRef = useRef('')
+  currentUidRef.current = String(uid || '')
+
+  useEffect(() => () => {
+    currentUidRef.current = ''
+    actionSequenceRef.current += 1
+    authoritativeActionLockRef.current = ''
+    openAttendanceLockRef.current = ''
+  }, [])
 
   useEffect(() => {
-    if (!uid) {
-      setAgendamentos([])
+    const effectUid = String(uid || '')
+    let active = true
+    const isCurrentSession = () => active
+      && currentUidRef.current === effectUid
+      && auth.currentUser?.uid === effectUid
+    actionSequenceRef.current += 1
+    authoritativeActionLockRef.current = ''
+    openAttendanceLockRef.current = ''
+    setAgendamentos([])
+    setHiddenPrivateRequestIds(new Set())
+    setPendingAction(null)
+    setErro('')
+
+    if (!effectUid) {
       setLoading(false)
       return undefined
     }
@@ -442,29 +544,37 @@ export default function AgendaProfissional({
     setLoading(true)
     const off = subscribeParticipantAgendamentos({
       database,
-      uid,
+      uid: effectUid,
       onChange: (items) => {
-        const lista = items
-        .sort((a, b) => getAgendaMs(a) - getAgendaMs(b))
-
-      setAgendamentos(lista)
-      setLoading(false)
+        if (!isCurrentSession()) return
+        const lista = [...items].sort((a, b) => getAgendaMs(a) - getAgendaMs(b))
+        setAgendamentos(lista)
+        setLoading(false)
       },
       onError: () => {
+        if (!isCurrentSession()) return
         setAgendamentos([])
         setLoading(false)
       },
     })
 
-    return () => off()
+    return () => {
+      active = false
+      off()
+    }
   }, [uid])
 
   const agendaItems = useMemo(() => {
     const byId = new Map()
     agendamentos.forEach((item) => {
-      const id = item?.privateRequestId || item?.id
+      const privateRequestId = String(item?.privateRequestId || '').trim()
+      const id = privateRequestId || item?.id
       if (!id) return
-      byId.set(id, { ...item, id, privateRequestId: item?.privateRequestId || id })
+      byId.set(id, {
+        ...item,
+        id,
+        ...(privateRequestId ? { privateRequestId } : {}),
+      })
     })
 
     ;(Array.isArray(privateRequests) ? privateRequests : []).forEach((item) => {
@@ -479,7 +589,7 @@ export default function AgendaProfissional({
         id,
         privateRequestId: id,
         privateRequest: true,
-        status: status === 'agendado' ? 'aceito' : status,
+        status,
         titulo: item?.servicoTitulo || item?.titulo || current?.titulo || 'Serviço solicitado',
         servico: item?.servicoTitulo || current?.servico || 'Serviço',
       })
@@ -493,8 +603,9 @@ export default function AgendaProfissional({
   const resumo = useMemo(() => {
     const hoje = dateKey(Date.now())
     const pendentes = agendaItems.filter((item) => String(item.status || 'pendente').toLowerCase() === 'pendente')
-    const confirmados = agendaItems.filter((item) => String(item.status || '').toLowerCase() === 'aceito')
+    const confirmados = agendaItems.filter((item) => statusAgendados.has(String(item.status || '').toLowerCase()))
     const hojeLista = agendaItems.filter((item) => dateKey(getAgendaMs(item)) === hoje)
+    const historico = agendaItems.filter((item) => statusHistorico.has(String(item.status || '').toLowerCase()))
     const valorPrevisto = agendaItems
       .filter((item) => !['recusado', 'cancelado'].includes(String(item.status || 'pendente').toLowerCase()))
       .reduce((acc, item) => acc + moneyNumber(item.valor || item.preco || item.faixaPreco), 0)
@@ -503,25 +614,21 @@ export default function AgendaProfissional({
       hoje: hojeLista.length,
       pendentes: pendentes.length,
       confirmados: confirmados.length,
+      historico: historico.length,
       valorPrevisto,
     }
   }, [agendaItems])
 
   const listaFiltrada = useMemo(() => {
-    return agendaItems.filter((item) => {
-      const ms = getAgendaMs(item)
-      if (filtro === 'hoje') return dateKey(ms) === selectedKey
-      if (filtro === 'semana') return isSameWeek(ms, selectedKey)
-      return true
-    })
-  }, [agendaItems, filtro, selectedKey])
+    return agendaItems.filter((item) => agendaFilterForStatus(item?.status) === filtro)
+  }, [agendaItems, filtro])
 
-  const listaRender = compacto ? listaFiltrada.slice(0, 4) : listaFiltrada
-  const listaTitulo = filtro === 'hoje'
-    ? 'Serviços do dia'
-    : filtro === 'semana'
-      ? 'Serviços da semana'
-      : 'Todos os serviços'
+  const listaRender = listaFiltrada
+  const listaTitulo = filtro === 'pendentes'
+    ? 'Solicitações pendentes'
+    : filtro === 'agendados'
+      ? 'Próximos atendimentos'
+      : 'Histórico'
 
   useEffect(() => {
     const targetId = String(focusRequestId || '').trim()
@@ -533,44 +640,62 @@ export default function AgendaProfissional({
     const targetExists = agendaItems.some((item) => String(item?.id || item?.privateRequestId || '') === targetId)
     if (!targetExists) return undefined
 
-    if (filtro !== 'todos') {
-      setFiltro('todos')
+    const target = agendaItems.find((item) => String(item?.id || item?.privateRequestId || '') === targetId)
+    const targetFilter = agendaFilterForStatus(target?.status)
+    if (filtro !== targetFilter) {
+      setFiltro(targetFilter)
       return undefined
     }
 
     if (lastFocusedRequestRef.current === targetId) return undefined
+    const targetElement = document.getElementById(agendaDomId(targetId))
+    if (!targetElement) return undefined
     lastFocusedRequestRef.current = targetId
-    const timer = window.setTimeout(() => {
-      document.getElementById(agendaDomId(targetId))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 100)
-    return () => window.clearTimeout(timer)
+    const frame = window.requestAnimationFrame(() => {
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [agendaItems, filtro, focusRequestId, loading])
 
+  const abrirAtendimento = (item) => {
+    const conversationId = String(item?.id || item?.pedidoId || item?.privateRequestId || '').trim()
+    if (!conversationId || openAttendanceLockRef.current || typeof onAbrirChat !== 'function') return false
+    openAttendanceLockRef.current = conversationId
+    const navigationStarted = onAbrirChat({ ...item, id: conversationId })
+    if (navigationStarted === false) {
+      openAttendanceLockRef.current = ''
+      return false
+    }
+    window.setTimeout(() => {
+      if (openAttendanceLockRef.current === conversationId) openAttendanceLockRef.current = ''
+    }, 1200)
+    return true
+  }
+
   const responder = async (id, status) => {
-    if (!id || salvandoId) return
-    setSalvandoId(id)
-    setErro('')
+    const actionUid = String(uid || '')
+    const actionKey = `${String(id || '')}:${String(status || '')}`
+    if (!id || pendingAction || authoritativeActionLockRef.current || !actionUid || auth.currentUser?.uid !== actionUid) return
+    authoritativeActionLockRef.current = actionKey
+    const actionToken = ++actionSequenceRef.current
+    const isActionCurrent = () => (
+      currentUidRef.current === actionUid
+      && actionSequenceRef.current === actionToken
+      && auth.currentUser?.uid === actionUid
+    )
+    let navigatingToChat = false
+    setPendingAction({ id, status })
+    if (erro) setErro('')
     try {
       const item = agendaItems.find((entry) => String(entry?.id || entry?.privateRequestId || '') === String(id))
       if (item?.privateRequest || item?.privateRequestId) {
-        console.info('[AGENDA] responder solicitacao privada', {
-          authUid: auth.currentUser?.uid || uid || null,
-          id: String(item?.id || item?.privateRequestId || id),
-          criadorUid: item?.clienteId || null,
-          destinatarioUid: item?.profissionalId || uid || null,
-          caminho: `privateRequests/${String(item?.id || item?.privateRequestId || id)}`,
-          inboxCliente: `privateRequestInbox/${item?.clienteId || '<clienteUid>'}/${String(item?.id || item?.privateRequestId || id)}`,
-          inboxProfissional: `privateRequestInbox/${item?.profissionalId || uid || '<profissionalUid>'}/${String(item?.id || item?.privateRequestId || id)}`,
-          statusAtual: item?.status || 'pendente',
-          proximoStatus: status,
-          payload: item,
-        })
         const result = await respondPrivateRequest({
           database,
           request: item,
           profissional: { uid, nome, fotoURL },
           status,
         })
+        if (!isActionCurrent()) return
         if (result?.stale) {
           const hasConfirmedAgenda = agendamentos.some((agenda) => {
             const agendaId = String(agenda?.privateRequestId || agenda?.id || '')
@@ -588,31 +713,25 @@ export default function AgendaProfissional({
           return
         }
         if (status === 'aceito') {
-          const destino = { ...item, ...result, id: result?.id || item?.id || item?.privateRequestId }
-          if (typeof onAbrirPedido === 'function') onAbrirPedido(destino)
-          else if (typeof onAbrirChat === 'function') onAbrirChat(destino)
+          const requestId = String(item?.id || item?.privateRequestId || id)
+          if (result?.conversationReady !== true || String(result?.conversationId || '') !== requestId) {
+            throw new Error('A solicitação foi aceita, mas a conversa ainda não ficou disponível.')
+          }
+          const destino = { ...item, ...result, id: result.conversationId }
+          navigatingToChat = abrirAtendimento(destino)
         }
         return
       }
 
-      const agendamentoPath = `agendamentos/${id}`
-      console.info('[AGENDA] responder agendamento', {
-        authUid: auth.currentUser?.uid || uid || null,
-        id,
-        criadorUid: item?.clienteId || null,
-        destinatarioUid: item?.profissionalId || uid || null,
-        caminho: agendamentoPath,
-        statusAtual: item?.status || 'pendente',
-        proximoStatus: status,
-        payload: { status },
-      })
       await respondLegacyAgendamento({ database, agendamento: item, actorUid: uid, status })
+      if (!isActionCurrent()) return
       if (status === 'aceito') {
-        const destino = { ...item, id }
-        if (typeof onAbrirPedido === 'function') onAbrirPedido(destino)
-        else if (typeof onAbrirChat === 'function') onAbrirChat(destino)
+        const conversationId = String(item?.pedidoId || '').trim()
+        const destino = { ...item, id: conversationId }
+        if (conversationId) navigatingToChat = abrirAtendimento(destino)
       }
     } catch (error) {
+      if (!isActionCurrent()) return
       const message = error?.message || 'Nao foi possivel responder esse agendamento agora.'
       console.error('[AGENDA] erro ao responder agendamento:', error)
       setErro(message)
@@ -620,15 +739,13 @@ export default function AgendaProfissional({
         onToast({ type: 'error', title: 'Agenda', message })
       }
     } finally {
-      setSalvandoId(null)
+      if (!navigatingToChat && authoritativeActionLockRef.current === actionKey) authoritativeActionLockRef.current = ''
+      if (isActionCurrent() && !navigatingToChat) setPendingAction(null)
     }
   }
 
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.26, ease: 'easeOut' }}
+    <section
       className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white p-2.5 text-slate-950 shadow-[0_20px_64px_rgba(15,23,42,0.09)] md:h-auto md:rounded-[34px] md:p-5 md:shadow-[0_24px_80px_rgba(15,23,42,0.10)]"
     >
       {showHeader ? (
@@ -643,75 +760,59 @@ export default function AgendaProfissional({
 
       <div className={['flex min-h-0 flex-1 flex-col px-0.5 md:block md:px-2', showHeader ? 'pt-3 md:pt-5' : 'pt-0.5 md:pt-2'].join(' ')}>
         <div className="shrink-0">
-          <h2 className="text-[22px] font-black tracking-tight text-blue-950 md:text-3xl">Minha agenda</h2>
-          <p className="mt-0.5 text-xs font-semibold leading-snug text-slate-500 md:mt-1 md:text-sm">Veja e gerencie seus serviços agendados.</p>
+          <h2 className="text-xl font-black tracking-tight text-blue-950 md:text-3xl">Minha agenda</h2>
+          <p className="text-[11px] font-semibold leading-snug text-slate-500 md:mt-1 md:text-sm">Solicitações, atendimentos e histórico.</p>
         </div>
 
         {erro ? (
-          <div className="mt-4 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-black text-rose-700">
+          <div role="alert" className="mt-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs font-black text-rose-700 md:mt-4 md:rounded-2xl md:px-4 md:py-3 md:text-sm">
             {erro}
           </div>
         ) : null}
 
-        <div className="mt-3 grid shrink-0 grid-cols-2 gap-2 md:mt-5 md:gap-3 lg:grid-cols-4">
+        {privateRequestsError ? (
+          <div role="alert" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 md:mt-4 md:rounded-2xl md:px-4 md:py-3 md:text-sm">
+            {privateRequestsError}
+          </div>
+        ) : null}
+
+        <div className="mt-5 hidden shrink-0 grid-cols-2 gap-3 md:grid lg:grid-cols-4">
           <SummaryCard icon="calendar" label="Hoje" value={resumo.hoje} suffix={resumo.hoje === 1 ? 'serviço' : 'serviços'} />
           <SummaryCard icon="clock" label="Pendentes" value={resumo.pendentes} suffix={resumo.pendentes === 1 ? 'serviço' : 'serviços'} tone="blue" />
           <SummaryCard icon="check" label="Confirmados" value={resumo.confirmados} suffix={resumo.confirmados === 1 ? 'serviço' : 'serviços'} tone="emerald" />
           <SummaryCard icon="money" label="Valor previsto" value={formatMoney(resumo.valorPrevisto, 'R$ 0,00')} />
         </div>
 
-        <div className="mt-2.5 flex shrink-0 flex-col gap-1.5 rounded-[15px] border border-slate-200 bg-white p-1.5 shadow-[0_8px_22px_rgba(15,23,42,0.04)] md:mt-5 md:flex-row md:items-center md:justify-between md:gap-3 md:rounded-[16px] md:p-2">
-          <div className="flex gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {filtros.map((item) => {
-              const active = filtro === item.id
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setFiltro(item.id)}
-                  className={[
-                    'inline-flex h-8 min-w-0 flex-1 shrink-0 items-center justify-center gap-1.5 rounded-[10px] px-2.5 text-[11px] font-black transition md:h-10 md:flex-none md:gap-2 md:rounded-xl md:px-4 md:text-xs',
-                    active ? 'bg-blue-700 text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)]' : 'text-slate-600 hover:bg-slate-50 hover:text-blue-700',
-                  ].join(' ')}
-                >
-                  <Icon name={item.icon} className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                  {item.label}
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="flex items-center justify-between gap-1 border-t border-slate-100 pt-1.5 md:justify-end md:gap-2 md:border-t-0 md:pt-0">
-            <button
-              type="button"
-              onClick={() => setSelectedKey((key) => addDays(key, -1))}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] text-blue-950 transition hover:bg-blue-50 active:scale-[0.97] md:h-10 md:w-10 md:rounded-xl"
-              aria-label="Dia anterior"
-            >
-              <Icon name="chevron" className="h-4 w-4 rotate-180 md:h-5 md:w-5" />
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-slate-200 bg-white px-2 text-[11px] font-black text-blue-950 md:h-10 md:min-w-[260px] md:flex-none md:gap-2 md:rounded-xl md:px-3 md:text-xs"
-            >
-              <Icon name="calendar" className="h-3.5 w-3.5 text-blue-700 md:h-4 md:w-4" />
-              <span className="truncate">{formatDataExtenso(selectedKey)}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedKey((key) => addDays(key, 1))}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-[10px] text-blue-950 transition hover:bg-blue-50 active:scale-[0.97] md:h-10 md:w-10 md:rounded-xl"
-              aria-label="Próximo dia"
-            >
-              <Icon name="chevron" className="h-4 w-4 md:h-5 md:w-5" />
-            </button>
-          </div>
+        <div className="mt-2 grid h-12 shrink-0 grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-50 md:mt-5 md:rounded-2xl">
+          {filtros.map((item) => {
+            const active = filtro === item.id
+            const count = item.id === 'pendentes'
+              ? resumo.pendentes
+              : item.id === 'agendados'
+                ? resumo.confirmados
+                : resumo.historico
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setFiltro(item.id)}
+                aria-pressed={active}
+                className={[
+                  'inline-flex min-w-0 items-center justify-center gap-1 rounded-lg px-1 text-[10px] font-black transition active:scale-[0.98] min-[390px]:text-[11px] md:rounded-xl md:px-3 md:text-xs',
+                  active ? 'bg-blue-700 text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-blue-700',
+                ].join(' ')}
+              >
+                <span className="truncate">{item.label}</span>
+                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] ${active ? 'bg-white/15 text-white' : 'bg-white text-slate-500'}`}>{count}</span>
+              </button>
+            )
+          })}
         </div>
 
         <div className="mt-2 flex min-h-0 flex-1 flex-col md:mt-3 md:block">
           <div className="flex shrink-0 items-center justify-between gap-3 px-1 pb-1.5 md:pb-2">
             <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 md:text-xs">{listaTitulo}</h3>
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">{listaRender.length}</span>
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">{listaFiltrada.length}</span>
           </div>
 
           <div
@@ -720,41 +821,44 @@ export default function AgendaProfissional({
               reserveFloatingControls ? 'pb-[calc(9.25rem+env(safe-area-inset-bottom))] md:pb-0' : 'pb-1 md:pb-0',
             ].join(' ')}
           >
-            {loading ? (
-              <div className="space-y-2">
-                {[0, 1, 2].map((item) => (
-                  <div key={item} className="h-24 animate-pulse rounded-[18px] bg-slate-100 md:h-28" />
-                ))}
-              </div>
+            {(loading && listaRender.length === 0) || (privateRequestsLoading && listaRender.length === 0) ? (
+              <ListPanelSkeleton
+                label="Carregando agenda"
+                rows={3}
+                showHeader={false}
+                className="border-0 shadow-none"
+              />
             ) : listaRender.length === 0 ? (
               <div className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center md:py-10">
                 <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-blue-700 md:h-12 md:w-12">
                   <Icon name="calendar" className="h-5 w-5 md:h-6 md:w-6" />
                 </div>
-                <div className="mt-2 text-sm font-black text-blue-950 md:mt-3 md:text-base">Nenhum serviço nesta data.</div>
-                <p className="mt-0.5 text-xs font-semibold text-slate-500 md:mt-1 md:text-sm">Novos agendamentos aparecem aqui em tempo real.</p>
+                <div className="mt-2 text-sm font-black text-blue-950 md:mt-3 md:text-base">Nenhum item nesta seção.</div>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 md:mt-1 md:text-sm">As atualizações aparecem aqui em tempo real.</p>
               </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {listaRender.map((item) => (
                   <AgendaItem
-                    key={item.id}
+                    key={`${uid}:${item.id}`}
                     item={item}
                     uid={uid}
-                    salvandoId={salvandoId}
+                    pendingAction={pendingAction}
                     onResponder={responder}
+                    onAbrirChat={abrirAtendimento}
+                    onPreloadChat={onPreloadChat}
                     focused={String(item?.id || item?.privateRequestId || '') === String(focusRequestId || '')}
                   />
                 ))}
               </div>
             )}
 
-            <div className="mt-2 rounded-[12px] border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700 md:mt-3 md:rounded-[14px] md:px-4 md:py-3 md:text-xs">
+            <div className="mt-3 hidden rounded-[14px] border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700 md:block">
               <span className="font-black">Dica:</span> Mantenha sua agenda atualizada para não perder oportunidades de serviço.
             </div>
           </div>
         </div>
       </div>
-    </motion.section>
+    </section>
   )
 }
