@@ -1,22 +1,27 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import {
+  ATTENDANCE_REWARD_LEDGER_VERSION,
   ATTENDANCE_REWARD_MAX_CLOCK_SKEW_MS,
   AttendanceRewardError,
   attendanceRewardDayKey,
   grantAttendanceRewards as grantAttendanceRewardsImpl,
+  isAttendanceGamificationEnabled,
 } from '../src/lib/attendanceRewardsServer.js'
+import { buildProfessionalReputation } from '../src/lib/professionalReputation.js'
 
 const CLIENT = 'client-A'
 const WORKER = 'worker-B'
 const OUTSIDER = 'outsider-C'
-const BASE_TIME = Date.UTC(2026, 9, 18, 15, 30)
-const REWARDS_ENABLED_FROM = BASE_TIME - 100_000
+const BASE_TIME = Date.UTC(2026, 9, 21, 15, 30)
+const ACCOUNTING_ENABLED_FROM = BASE_TIME - 100_000
 
-function grantAttendanceRewards(options) {
+function countService(options) {
   return grantAttendanceRewardsImpl({
+    rewardsEnabledFrom: ACCOUNTING_ENABLED_FROM,
+    gamificationEnabled: false,
+    gamificationEnabledFrom: 0,
     ...options,
-    rewardsEnabledFrom: REWARDS_ENABLED_FROM,
   })
 }
 
@@ -99,17 +104,10 @@ function createMemoryDatabase(initial = {}, { failTransactions = {} } = {}) {
   }
 }
 
-function finalizedOrder(id, overrides = {}) {
-  const createdAtServer = BASE_TIME - 50_000
+function completionFields() {
   const requestedAt = BASE_TIME - 10_000
   const finalizedAt = BASE_TIME - 5_000
   return {
-    id,
-    status: 'finalizado',
-    modoPedido: 'geral',
-    criador: { id: CLIENT, nome: 'Cliente A' },
-    aceite: { id: WORKER, nome: 'Profissional B' },
-    criadoEmServer: createdAtServer,
     finalizacaoSolicitadaEm: requestedAt,
     finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
     finalizadoEm: finalizedAt,
@@ -120,6 +118,34 @@ function finalizedOrder(id, overrides = {}) {
       finalizadoEm: finalizedAt,
       finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
     },
+  }
+}
+
+function finalizedPublicOrder(id, overrides = {}) {
+  return {
+    id,
+    status: 'finalizado',
+    modoPedido: 'geral',
+    criador: { id: CLIENT, nome: 'Cliente A' },
+    aceite: { id: WORKER, nome: 'Profissional B' },
+    criadoEmServer: BASE_TIME - 50_000,
+    ...completionFields(),
+    ...overrides,
+  }
+}
+
+function finalizedPrivateRequest(id, tipo = 'agendamento', overrides = {}) {
+  return {
+    id,
+    tipo,
+    status: 'finalizado',
+    clienteId: CLIENT,
+    clienteNome: 'Cliente A',
+    profissionalId: WORKER,
+    profissionalNome: 'Profissional B',
+    criadoEm: BASE_TIME - 50_000,
+    criadoEmServer: BASE_TIME - 50_000,
+    ...completionFields(),
     ...overrides,
   }
 }
@@ -135,342 +161,406 @@ function workerAccount(overrides = {}) {
     servicosProf: 2,
     patenteCorre: 1,
     patenteProf: 1,
+    patenteAtualizadaEm: BASE_TIME - 1_000_000,
+    missaoAtualizadaEm: BASE_TIME - 1_000_000,
     subscriptions: { professional: { status: 'trial' } },
     ...overrides,
   }
 }
 
-function scenario(orderId, options = {}) {
+function publicProfile(overrides = {}) {
+  return {
+    uid: WORKER,
+    id: WORKER,
+    nome: 'Profissional B',
+    servicosCorre: 4,
+    servicosProf: 2,
+    servicosConcluidos: 6,
+    completedServices: 6,
+    rating: 4.8,
+    reviewCount: 5,
+    reputation: { rating: 4.8, reviewCount: 5, completedServices: 6 },
+    ...overrides,
+  }
+}
+
+function scenario(id, options = {}) {
+  const kind = options.kind || 'pedido'
+  const record = options.record || (kind === 'privateRequest'
+    ? finalizedPrivateRequest(id, options.tipo || 'agendamento')
+    : finalizedPublicOrder(id))
   return createMemoryDatabase({
-    pedidos: { [orderId]: finalizedOrder(orderId, options.order) },
+    ...(kind === 'privateRequest' ? { privateRequests: { [id]: record } } : { pedidos: { [id]: record } }),
     users: {
       [WORKER]: workerAccount(options.worker),
       [OUTSIDER]: { nome: 'Terceiro' },
     },
+    publicProfiles: { [WORKER]: publicProfile(options.profile) },
+    missoes: options.missoes || {
+      [WORKER]: {
+        [attendanceRewardDayKey(BASE_TIME)]: {
+          aceitou: 3,
+          entregou: 2,
+          boostou: 1,
+          xp: 20,
+          moedas: 8,
+        },
+      },
+    },
+    ...(options.extra || {}),
   }, options.database)
 }
 
-const onceDatabase = scenario('order-once')
-const firstGrant = await grantAttendanceRewards({
-  database: onceDatabase,
-  pedidoId: 'order-once',
-  actorUid: WORKER,
+function expectRewardError(code) {
+  return (error) => error instanceof AttendanceRewardError && error.code === code
+}
+
+assert.equal(isAttendanceGamificationEnabled('true'), true)
+for (const value of [undefined, null, '', 'false', 'TRUE', ' true', true, 1]) {
+  assert.equal(isAttendanceGamificationEnabled(value), false, `gamificação falha fechado para ${String(value)}`)
+}
+
+const publicDb = scenario('public-once')
+const userGamificationBefore = {
+  xp: publicDb.read(`users/${WORKER}/xp`),
+  moedas: publicDb.read(`users/${WORKER}/moedas`),
+  patenteCorre: publicDb.read(`users/${WORKER}/patenteCorre`),
+  patenteProf: publicDb.read(`users/${WORKER}/patenteProf`),
+  patenteAtualizadaEm: publicDb.read(`users/${WORKER}/patenteAtualizadaEm`),
+  missaoAtualizadaEm: publicDb.read(`users/${WORKER}/missaoAtualizadaEm`),
+}
+const missionBefore = publicDb.read(`missoes/${WORKER}`)
+const ratingBefore = publicDb.read(`publicProfiles/${WORKER}/reputation/rating`)
+
+const publicResult = await countService({
+  database: publicDb,
+  pedidoId: 'public-once',
+  actorUid: CLIENT,
   now: BASE_TIME,
 })
-assert.equal(firstGrant.contabilizado, true)
-assert.equal(firstGrant.alreadyGranted, false)
-assert.equal(onceDatabase.read(`users/${WORKER}/xp`), 100)
-assert.equal(onceDatabase.read(`users/${WORKER}/moedas`), 11)
-assert.equal(onceDatabase.read(`users/${WORKER}/servicosCorre`), 5)
-assert.equal(onceDatabase.read(`users/${WORKER}/patenteCorre`), 2)
-assert.equal(onceDatabase.read(`missoes/${WORKER}/${attendanceRewardDayKey(BASE_TIME)}/entregou`), 1)
-assert.equal(onceDatabase.read('pedidos/order-once/atendimento/recompensasContabilizadas'), true)
-assert.equal(onceDatabase.read('attendanceRewardGrants/order-once/status'), 'completed')
-assert.equal(
-  onceDatabase.read('attendanceRewardGrants/order-once/orderCreatedAtServer'),
-  BASE_TIME - 50_000,
-  'ledger preserva a prova server-side usada no cutoff',
-)
+assert.equal(publicResult.contabilizado, true)
+assert.equal(publicResult.serviceCounted, true)
+assert.equal(publicResult.alreadyGranted, false)
+assert.equal(publicResult.gamificationStatus, 'disabled')
+assert.equal(publicDb.read(`users/${WORKER}/servicosCorre`), 5)
+assert.equal(publicDb.read(`users/${WORKER}/serviçosCorre`), 5)
+assert.deepEqual({
+  xp: publicDb.read(`users/${WORKER}/xp`),
+  moedas: publicDb.read(`users/${WORKER}/moedas`),
+  patenteCorre: publicDb.read(`users/${WORKER}/patenteCorre`),
+  patenteProf: publicDb.read(`users/${WORKER}/patenteProf`),
+  patenteAtualizadaEm: publicDb.read(`users/${WORKER}/patenteAtualizadaEm`),
+  missaoAtualizadaEm: publicDb.read(`users/${WORKER}/missaoAtualizadaEm`),
+}, userGamificationBefore, 'gamificação histórica fica intacta')
+assert.deepEqual(publicDb.read(`missoes/${WORKER}`), missionBefore, 'missões não recebem nenhuma escrita')
+assert.equal(publicDb.read(`publicProfiles/${WORKER}/servicosCorre`), 5)
+assert.equal(publicDb.read(`publicProfiles/${WORKER}/servicosProf`), 2)
+assert.equal(publicDb.read(`publicProfiles/${WORKER}/completedServices`), 7)
+assert.equal(publicDb.read(`publicProfiles/${WORKER}/servicosConcluidos`), 7)
+assert.equal(publicDb.read(`publicProfiles/${WORKER}/reputation/completedServices`), 7)
+assert.equal(publicDb.read(`publicProfiles/${WORKER}/reputation/rating`), ratingBefore)
+assert.equal(buildProfessionalReputation(publicDb.read(`publicProfiles/${WORKER}`)).completedServices, 7)
+assert.equal(publicDb.read('attendanceRewardGrants/public-once/version'), ATTENDANCE_REWARD_LEDGER_VERSION)
+assert.equal(publicDb.read('attendanceRewardGrants/public-once/serviceAccountingStatus'), 'completed')
+assert.equal(publicDb.read('attendanceRewardGrants/public-once/gamificationStatus'), 'disabled')
+assert.equal(publicDb.read('attendanceRewardGrants/public-once/userGamificationApplied'), false)
+assert.equal(publicDb.read('pedidos/public-once/atendimento/recompensasContabilizadas'), true)
 
-const repeatedGrant = await grantAttendanceRewards({
-  database: onceDatabase,
-  pedidoId: 'order-once',
+const repeated = await countService({
+  database: publicDb,
+  pedidoId: 'public-once',
   actorUid: WORKER,
   now: BASE_TIME + 60_000,
 })
-assert.equal(repeatedGrant.alreadyGranted, true)
-assert.equal(onceDatabase.read(`users/${WORKER}/xp`), 100, 'repetição não duplica XP')
-assert.equal(onceDatabase.read(`users/${WORKER}/moedas`), 11, 'repetição não duplica moedas')
-assert.equal(onceDatabase.read(`users/${WORKER}/servicosCorre`), 5, 'repetição não duplica serviço')
+assert.equal(repeated.alreadyGranted, true)
+assert.equal(publicDb.read(`users/${WORKER}/servicosCorre`), 5, 'repetição não duplica serviço')
+assert.equal(publicDb.read(`users/${WORKER}/xp`), 90, 'repetição não concede XP')
 
-const concurrentDatabase = scenario('order-concurrent')
-const concurrentResults = await Promise.all(Array.from({ length: 8 }, () => grantAttendanceRewards({
-  database: concurrentDatabase,
-  pedidoId: 'order-concurrent',
-  actorUid: WORKER,
+const concurrentDb = scenario('public-concurrent')
+const concurrentResults = await Promise.all(Array.from({ length: 10 }, (_, index) => countService({
+  database: concurrentDb,
+  pedidoId: 'public-concurrent',
+  actorUid: index % 2 ? CLIENT : WORKER,
   now: BASE_TIME,
 })))
-assert.equal(concurrentResults.length, 8)
-assert.equal(concurrentDatabase.read(`users/${WORKER}/xp`), 100, 'concorrência concede XP uma vez')
-assert.equal(concurrentDatabase.read(`users/${WORKER}/moedas`), 11, 'concorrência concede moedas uma vez')
-assert.equal(concurrentDatabase.read(`missoes/${WORKER}/${attendanceRewardDayKey(BASE_TIME)}/entregou`), 1)
-assert.equal(concurrentDatabase.read('attendanceRewardGrants/order-concurrent/status'), 'completed')
+assert.equal(concurrentResults.length, 10)
+assert.equal(concurrentDb.read(`users/${WORKER}/servicosCorre`), 5)
+assert.equal(concurrentDb.read(`publicProfiles/${WORKER}/completedServices`), 7)
+assert.equal(concurrentDb.read(`users/${WORKER}/xp`), 90)
+assert.equal(concurrentDb.read(`missoes/${WORKER}/${attendanceRewardDayKey(BASE_TIME)}/entregou`), 2)
 
-const missionPath = `missoes/${WORKER}/${attendanceRewardDayKey(BASE_TIME)}`
-const partialDatabase = scenario('order-partial', {
-  database: { failTransactions: { [missionPath]: 1 } },
-})
-await assert.rejects(
-  grantAttendanceRewards({
-    database: partialDatabase,
-    pedidoId: 'order-partial',
-    actorUid: WORKER,
-    now: BASE_TIME,
-  }),
-  /injected_transaction_failure/,
-)
-assert.equal(partialDatabase.read(`users/${WORKER}/xp`), 100, 'etapa de usuário foi aplicada antes da falha')
-assert.equal(partialDatabase.read('pedidos/order-partial/atendimento/recompensasContabilizadas'), null)
-assert.equal(partialDatabase.read('attendanceRewardGrants/order-partial/status'), 'processing')
+for (const [id, tipo] of [['private-scheduled', 'agendamento'], ['private-direct', 'pedido_direto']]) {
+  const privateDb = scenario(id, { kind: 'privateRequest', tipo })
+  await countService({ database: privateDb, pedidoId: id, actorUid: CLIENT, now: BASE_TIME })
+  await countService({ database: privateDb, pedidoId: id, actorUid: WORKER, now: BASE_TIME + 1 })
+  assert.equal(privateDb.read(`users/${WORKER}/servicosCorre`), 4)
+  assert.equal(privateDb.read(`users/${WORKER}/servicosProf`), 3, `${tipo} conta exatamente um serviço Prof`)
+  assert.equal(privateDb.read(`publicProfiles/${WORKER}/servicosProf`), 3)
+  assert.equal(privateDb.read(`privateRequests/${id}/atendimento/recompensasContabilizadas`), true)
+  assert.equal(privateDb.read(`attendanceRewardGrants/${id}/recordKind`), 'privateRequest')
+  assert.equal(privateDb.read(`users/${WORKER}/xp`), 90)
+}
 
-await grantAttendanceRewards({
-  database: partialDatabase,
-  pedidoId: 'order-partial',
-  actorUid: WORKER,
-  now: BASE_TIME + 86_400_000,
+const legacyPrivateRecord = finalizedPrivateRequest('private-legacy-created-at')
+delete legacyPrivateRecord.criadoEmServer
+const legacyPrivateDb = scenario('private-legacy-created-at', {
+  kind: 'privateRequest',
+  record: legacyPrivateRecord,
 })
-assert.equal(partialDatabase.read(`users/${WORKER}/xp`), 100, 'retomada não repete a etapa de usuário')
-assert.equal(partialDatabase.read(`${missionPath}/entregou`), 1, 'retomada usa o dia fixado no ledger')
-assert.equal(partialDatabase.read('pedidos/order-partial/atendimento/recompensasContabilizadas'), true)
-
-const professionalDatabase = scenario('order-professional', {
-  order: { modoPedido: 'profissional' },
-})
-await grantAttendanceRewards({
-  database: professionalDatabase,
-  pedidoId: 'order-professional',
-  actorUid: WORKER,
+await countService({
+  database: legacyPrivateDb,
+  pedidoId: 'private-legacy-created-at',
+  actorUid: CLIENT,
   now: BASE_TIME,
 })
-assert.equal(professionalDatabase.read(`users/${WORKER}/servicosCorre`), 4)
-assert.equal(professionalDatabase.read(`users/${WORKER}/servicosProf`), 3)
+assert.equal(legacyPrivateDb.read('attendanceRewardGrants/private-legacy-created-at/orderCreatedAtSource'), 'legacyPrivateCriadoEm')
 
-const pendingDatabase = scenario('order-pending', {
-  order: { status: 'aguardando_confirmacao' },
+const profileFailurePath = `publicProfiles/${WORKER}`
+const partialDb = scenario('public-partial', {
+  database: { failTransactions: { [profileFailurePath]: 1 } },
 })
 await assert.rejects(
-  grantAttendanceRewards({
-    database: pendingDatabase,
-    pedidoId: 'order-pending',
-    actorUid: WORKER,
-    now: BASE_TIME,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_order_not_finalized',
+  countService({ database: partialDb, pedidoId: 'public-partial', actorUid: CLIENT, now: BASE_TIME }),
+  /injected_transaction_failure/,
 )
-assert.equal(pendingDatabase.read(`users/${WORKER}/xp`), 90)
-
-const beforeActivationDatabase = scenario('order-before-activation', {
-  order: {
-    criadoEmServer: BASE_TIME - 1,
-    finalizacaoSolicitadaEm: BASE_TIME + 1,
-    finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
-    finalizadoEm: BASE_TIME + 2,
-    finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
-    atendimento: {
-      finalizacaoSolicitadaEm: BASE_TIME + 1,
-      finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
-      finalizadoEm: BASE_TIME + 2,
-      finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
-    },
-  },
-})
-await assert.rejects(
-  grantAttendanceRewardsImpl({
-    database: beforeActivationDatabase,
-    pedidoId: 'order-before-activation',
-    actorUid: WORKER,
-    rewardsEnabledFrom: BASE_TIME,
-    now: BASE_TIME + 10_000,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_before_activation',
-  'pedido criado antes do corte não recebe recompensa mesmo com conclusão posterior manipulada',
-)
-assert.equal(beforeActivationDatabase.read(`users/${WORKER}/xp`), 90)
-
-const legacyWithoutServerTimestampDatabase = scenario('order-legacy-without-server-timestamp', {
-  order: { criadoEmServer: undefined },
-})
-await assert.rejects(
-  grantAttendanceRewards({
-    database: legacyWithoutServerTimestampDatabase,
-    pedidoId: 'order-legacy-without-server-timestamp',
-    actorUid: WORKER,
-    now: BASE_TIME,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_before_activation',
-  'pedido legado sem prova server-side de criação não recebe recompensa retroativa',
-)
-assert.equal(legacyWithoutServerTimestampDatabase.read(`users/${WORKER}/xp`), 90)
-
-const beforeCutoffCallDatabase = scenario('order-call-before-cutoff', {
-  order: {
-    criadoEmServer: BASE_TIME,
-    finalizacaoSolicitadaEm: BASE_TIME + 1,
-    finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
-    finalizadoEm: BASE_TIME + 2,
-    finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
-    atendimento: {
-      finalizacaoSolicitadaEm: BASE_TIME + 1,
-      finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
-      finalizadoEm: BASE_TIME + 2,
-      finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
-    },
-  },
-})
-await assert.rejects(
-  grantAttendanceRewardsImpl({
-    database: beforeCutoffCallDatabase,
-    pedidoId: 'order-call-before-cutoff',
-    actorUid: WORKER,
-    rewardsEnabledFrom: BASE_TIME,
-    now: BASE_TIME - 1,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_activation_pending',
-  'relógio do servidor bloqueia chamadas anteriores ao cutoff',
-)
-assert.equal(beforeCutoffCallDatabase.read(`users/${WORKER}/xp`), 90)
-
-const afterCutoffDatabase = scenario('order-call-after-cutoff', {
-  order: {
-    criadoEmServer: BASE_TIME,
-    finalizacaoSolicitadaEm: BASE_TIME + 1,
-    finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
-    finalizadoEm: BASE_TIME + 2,
-    finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
-    atendimento: {
-      finalizacaoSolicitadaEm: BASE_TIME + 1,
-      finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
-      finalizadoEm: BASE_TIME + 2,
-      finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
-    },
-  },
-})
-await grantAttendanceRewardsImpl({
-  database: afterCutoffDatabase,
-  pedidoId: 'order-call-after-cutoff',
+assert.equal(partialDb.read(`users/${WORKER}/servicosCorre`), 5, 'contador do usuário foi aplicado antes da falha')
+assert.equal(partialDb.read('attendanceRewardGrants/public-partial/serviceAccountingStatus'), 'user_applied')
+assert.equal(partialDb.read('pedidos/public-partial/atendimento/recompensasContabilizadas'), null)
+await countService({
+  database: partialDb,
+  pedidoId: 'public-partial',
   actorUid: WORKER,
-  rewardsEnabledFrom: BASE_TIME,
-  now: BASE_TIME + 3,
+  now: BASE_TIME + 1,
 })
-assert.equal(afterCutoffDatabase.read(`users/${WORKER}/xp`), 100, 'chamada posterior ao cutoff é permitida')
+assert.equal(partialDb.read(`users/${WORKER}/servicosCorre`), 5, 'retomada não repete o incremento já reivindicado')
+assert.equal(partialDb.read(`publicProfiles/${WORKER}/servicosCorre`), 5)
+assert.equal(partialDb.read('attendanceRewardGrants/public-partial/status'), 'completed')
+
+const monotonicDb = scenario('public-monotonic', {
+  profile: {
+    servicosCorre: 12,
+    servicosProf: 9,
+    servicosConcluidos: 25,
+    completedServices: 25,
+    reputation: { rating: 4.9, reviewCount: 20, completedServices: 25 },
+  },
+})
+await countService({ database: monotonicDb, pedidoId: 'public-monotonic', actorUid: CLIENT, now: BASE_TIME })
+assert.equal(monotonicDb.read(`publicProfiles/${WORKER}/servicosCorre`), 12, 'sincronização atrasada nunca reduz Corre')
+assert.equal(monotonicDb.read(`publicProfiles/${WORKER}/servicosProf`), 9, 'sincronização atrasada nunca reduz Prof')
+assert.equal(monotonicDb.read(`publicProfiles/${WORKER}/completedServices`), 25, 'total mais recente não é sobrescrito')
+assert.equal(monotonicDb.read(`publicProfiles/${WORKER}/reputation/rating`), 4.9, 'nota permanece intacta')
+
+const portugueseReputationDb = scenario('public-portuguese-reputation', {
+  profile: {
+    reputation: null,
+    reputacao: { rating: 4.7, reviewCount: 8, completedServices: 6 },
+  },
+})
+await countService({
+  database: portugueseReputationDb,
+  pedidoId: 'public-portuguese-reputation',
+  actorUid: CLIENT,
+  now: BASE_TIME,
+})
+assert.equal(portugueseReputationDb.read(`publicProfiles/${WORKER}/reputation`), null)
+assert.equal(portugueseReputationDb.read(`publicProfiles/${WORKER}/reputacao/rating`), 4.7)
+assert.equal(portugueseReputationDb.read(`publicProfiles/${WORKER}/reputacao/reviewCount`), 8)
+assert.equal(portugueseReputationDb.read(`publicProfiles/${WORKER}/reputacao/completedServices`), 7)
+assert.equal(buildProfessionalReputation(
+  portugueseReputationDb.read(`publicProfiles/${WORKER}`),
+).rating, 4.7, 'alias legado de reputação permanece visível')
+
+const legacyCompleteId = 'legacy-v1-complete'
+const legacyCompleteRecord = finalizedPublicOrder(legacyCompleteId)
+legacyCompleteRecord.atendimento.recompensasContabilizadas = true
+legacyCompleteRecord.atendimento.recompensasContabilizadasEm = BASE_TIME - 1
+const legacyCompleteDb = scenario(legacyCompleteId, {
+  record: legacyCompleteRecord,
+  extra: {
+    attendanceRewardGrants: {
+      [legacyCompleteId]: {
+        version: 1,
+        pedidoId: legacyCompleteId,
+        beneficiaryUid: WORKER,
+        clientUid: CLIENT,
+        mode: 'corre',
+        status: 'completed',
+        userApplied: true,
+        missionApplied: true,
+      },
+    },
+  },
+})
+const legacyCompleteResult = await countService({
+  database: legacyCompleteDb,
+  pedidoId: legacyCompleteId,
+  actorUid: CLIENT,
+  now: BASE_TIME,
+})
+assert.equal(legacyCompleteResult.alreadyGranted, true)
+assert.equal(legacyCompleteDb.read(`users/${WORKER}/servicosCorre`), 4, 'ledger v1 completo não é reprocessado')
+
+const legacyPartialId = 'legacy-v1-partial'
+const legacyPartialDb = scenario(legacyPartialId, {
+  extra: {
+    attendanceRewardGrants: {
+      [legacyPartialId]: {
+        version: 1,
+        pedidoId: legacyPartialId,
+        beneficiaryUid: WORKER,
+        clientUid: CLIENT,
+        mode: 'corre',
+        status: 'processing',
+        userApplied: true,
+        missionApplied: false,
+      },
+    },
+  },
+})
+await assert.rejects(
+  countService({ database: legacyPartialDb, pedidoId: legacyPartialId, actorUid: CLIENT, now: BASE_TIME }),
+  expectRewardError('reward_legacy_ledger_partial'),
+  'ledger v1 parcial falha fechado',
+)
+assert.equal(legacyPartialDb.read(`users/${WORKER}/servicosCorre`), 4)
+
+const unauthorizedDb = scenario('public-unauthorized')
+await assert.rejects(
+  countService({ database: unauthorizedDb, pedidoId: 'public-unauthorized', actorUid: OUTSIDER, now: BASE_TIME }),
+  expectRewardError('reward_actor_not_authorized'),
+)
+assert.equal(unauthorizedDb.read(`users/${WORKER}/servicosCorre`), 4)
+
+const pendingDb = scenario('public-pending', {
+  record: finalizedPublicOrder('public-pending', { status: 'aguardando_confirmacao' }),
+})
+await assert.rejects(
+  countService({ database: pendingDb, pedidoId: 'public-pending', actorUid: CLIENT, now: BASE_TIME }),
+  expectRewardError('reward_order_not_finalized'),
+)
+
+const oldOrderDb = scenario('public-before-cutoff', {
+  record: finalizedPublicOrder('public-before-cutoff', { criadoEmServer: ACCOUNTING_ENABLED_FROM - 1 }),
+})
+await assert.rejects(
+  countService({ database: oldOrderDb, pedidoId: 'public-before-cutoff', actorUid: CLIENT, now: BASE_TIME }),
+  expectRewardError('reward_before_activation'),
+)
+assert.equal(oldOrderDb.read(`users/${WORKER}/servicosCorre`), 4)
+
+const noTrustedTimestampDb = scenario('public-no-server-time', {
+  record: finalizedPublicOrder('public-no-server-time', { criadoEmServer: undefined, criadoEm: BASE_TIME }),
+})
+await assert.rejects(
+  countService({ database: noTrustedTimestampDb, pedidoId: 'public-no-server-time', actorUid: CLIENT, now: BASE_TIME }),
+  expectRewardError('reward_before_activation'),
+)
 
 const futureTimestamp = BASE_TIME + ATTENDANCE_REWARD_MAX_CLOCK_SKEW_MS + 1
-const futureTimestampDatabase = scenario('order-future-timestamp', {
-  order: {
-    criadoEmServer: BASE_TIME,
+const futureDb = scenario('public-future-time', {
+  record: finalizedPublicOrder('public-future-time', {
     finalizacaoSolicitadaEm: futureTimestamp - 1,
-    finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
     finalizadoEm: futureTimestamp,
-    finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
     atendimento: {
       finalizacaoSolicitadaEm: futureTimestamp - 1,
-      finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
+      finalizacaoSolicitadaPor: { id: WORKER },
       finalizadoEm: futureTimestamp,
-      finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
-    },
-  },
-})
-await assert.rejects(
-  grantAttendanceRewardsImpl({
-    database: futureTimestampDatabase,
-    pedidoId: 'order-future-timestamp',
-    actorUid: WORKER,
-    rewardsEnabledFrom: BASE_TIME,
-    now: BASE_TIME,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_timestamp_invalid',
-  'profissional e cliente não antecipam elegibilidade com timestamps futuros',
-)
-assert.equal(futureTimestampDatabase.read(`users/${WORKER}/xp`), 90)
-
-const oldTimestamp = BASE_TIME - ATTENDANCE_REWARD_MAX_CLOCK_SKEW_MS - 1
-const oldTimestampDatabase = scenario('order-old-timestamp', {
-  order: {
-    criadoEmServer: BASE_TIME,
-    finalizacaoSolicitadaEm: oldTimestamp,
-    finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
-    finalizadoEm: oldTimestamp + 1,
-    finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
-    atendimento: {
-      finalizacaoSolicitadaEm: oldTimestamp,
-      finalizacaoSolicitadaPor: { id: WORKER, nome: 'Profissional B' },
-      finalizadoEm: oldTimestamp + 1,
-      finalizadoPor: { id: CLIENT, nome: 'Cliente A' },
-    },
-  },
-})
-await assert.rejects(
-  grantAttendanceRewardsImpl({
-    database: oldTimestampDatabase,
-    pedidoId: 'order-old-timestamp',
-    actorUid: WORKER,
-    rewardsEnabledFrom: BASE_TIME,
-    now: BASE_TIME,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_timestamp_invalid',
-  'timestamps anteriores à criação server-side não são aceitos',
-)
-assert.equal(oldTimestampDatabase.read(`users/${WORKER}/xp`), 90)
-
-await assert.rejects(
-  grantAttendanceRewardsImpl({
-    database: scenario('order-no-config'),
-    pedidoId: 'order-no-config',
-    actorUid: WORKER,
-    now: BASE_TIME,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_configuration_invalid',
-  'ausência do corte de ativação falha fechado',
-)
-
-const unauthorizedDatabase = scenario('order-unauthorized')
-await assert.rejects(
-  grantAttendanceRewards({
-    database: unauthorizedDatabase,
-    pedidoId: 'order-unauthorized',
-    actorUid: OUTSIDER,
-    now: BASE_TIME,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_actor_not_authorized',
-)
-assert.equal(unauthorizedDatabase.read(`users/${WORKER}/xp`), 90)
-
-const unconfirmedDatabase = scenario('order-unconfirmed', {
-  order: {
-    atendimento: {
-      finalizacaoSolicitadaEm: BASE_TIME - 10_000,
-      finalizacaoSolicitadaPor: { id: WORKER },
-      finalizadoEm: BASE_TIME - 5_000,
-      finalizadoPor: { id: WORKER },
-    },
-  },
-})
-await assert.rejects(
-  grantAttendanceRewards({
-    database: unconfirmedDatabase,
-    pedidoId: 'order-unconfirmed',
-    actorUid: WORKER,
-    now: BASE_TIME,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_client_confirmation_unverified',
-)
-
-const legacyDatabase = scenario('order-legacy', {
-  order: {
-    atendimento: {
-      finalizacaoSolicitadaEm: BASE_TIME - 10_000,
-      finalizacaoSolicitadaPor: { id: WORKER },
-      finalizadoEm: BASE_TIME - 5_000,
       finalizadoPor: { id: CLIENT },
-      recompensasContabilizadas: true,
     },
-  },
+  }),
 })
 await assert.rejects(
-  grantAttendanceRewards({
-    database: legacyDatabase,
-    pedidoId: 'order-legacy',
-    actorUid: WORKER,
-    now: BASE_TIME,
-  }),
-  (error) => error instanceof AttendanceRewardError && error.code === 'reward_legacy_state_ambiguous',
-  'marcador legado sem ledger não gera crédito retroativo',
+  countService({ database: futureDb, pedidoId: 'public-future-time', actorUid: CLIENT, now: BASE_TIME }),
+  expectRewardError('reward_timestamp_invalid'),
 )
 
-const [routeSource, orderCreationRouteSource, clientSource, attendanceSource, rulesSource] = await Promise.all([
+await assert.rejects(
+  grantAttendanceRewardsImpl({
+    database: scenario('public-no-config'),
+    pedidoId: 'public-no-config',
+    actorUid: CLIENT,
+    now: BASE_TIME,
+  }),
+  expectRewardError('reward_configuration_invalid'),
+)
+await assert.rejects(
+  grantAttendanceRewardsImpl({
+    database: scenario('public-call-before-cutoff'),
+    pedidoId: 'public-call-before-cutoff',
+    actorUid: CLIENT,
+    rewardsEnabledFrom: BASE_TIME + 1,
+    now: BASE_TIME,
+  }),
+  expectRewardError('reward_activation_pending'),
+)
+
+const disabledPhaseDb = scenario('public-disabled-phase')
+await grantAttendanceRewardsImpl({
+  database: disabledPhaseDb,
+  pedidoId: 'public-disabled-phase',
+  actorUid: CLIENT,
+  rewardsEnabledFrom: ACCOUNTING_ENABLED_FROM,
+  gamificationEnabled: true,
+  gamificationEnabledFrom: BASE_TIME + 1,
+  now: BASE_TIME,
+})
+assert.equal(disabledPhaseDb.read('attendanceRewardGrants/public-disabled-phase/gamificationStatus'), 'disabled_before_activation')
+assert.equal(disabledPhaseDb.read(`users/${WORKER}/xp`), 90)
+await grantAttendanceRewardsImpl({
+  database: disabledPhaseDb,
+  pedidoId: 'public-disabled-phase',
+  actorUid: WORKER,
+  rewardsEnabledFrom: ACCOUNTING_ENABLED_FROM,
+  gamificationEnabled: true,
+  gamificationEnabledFrom: ACCOUNTING_ENABLED_FROM,
+  now: BASE_TIME + 60_000,
+})
+assert.equal(disabledPhaseDb.read(`users/${WORKER}/xp`), 90, 'ledger desativado não ganha XP após mudança futura da flag')
+assert.equal(disabledPhaseDb.read(`users/${WORKER}/moedas`), 7)
+
+const enabledDb = scenario('public-future-enabled')
+await grantAttendanceRewardsImpl({
+  database: enabledDb,
+  pedidoId: 'public-future-enabled',
+  actorUid: CLIENT,
+  rewardsEnabledFrom: ACCOUNTING_ENABLED_FROM,
+  gamificationEnabled: true,
+  gamificationEnabledFrom: BASE_TIME - 60_000,
+  now: BASE_TIME,
+})
+assert.equal(enabledDb.read(`users/${WORKER}/xp`), 100, 'gamificação futura exige flag e cutoff válidos')
+assert.equal(enabledDb.read(`users/${WORKER}/moedas`), 11)
+assert.equal(enabledDb.read(`missoes/${WORKER}/${attendanceRewardDayKey(BASE_TIME)}/entregou`), 3)
+
+const legacyMarkerDb = scenario('legacy-marker-only', {
+  record: (() => {
+    const record = finalizedPublicOrder('legacy-marker-only')
+    record.atendimento.recompensasContabilizadas = true
+    return record
+  })(),
+})
+await assert.rejects(
+  countService({ database: legacyMarkerDb, pedidoId: 'legacy-marker-only', actorUid: CLIENT, now: BASE_TIME }),
+  expectRewardError('reward_legacy_state_ambiguous'),
+)
+
+const [
+  routeSource,
+  publicCreateSource,
+  privateCreateSource,
+  privateTransitionSource,
+  clientSource,
+  chatSource,
+  attendanceSource,
+  rulesSource,
+] = await Promise.all([
   readFile(new URL('../src/app/api/atendimento/rewards/route.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/api/pedidos/create/route.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/api/private-requests/create/route.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/api/private-requests/transition/route.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/lib/atendimentoRewards.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/ChatMensagens.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/lib/atendimento.js', import.meta.url), 'utf8'),
   readFile(new URL('../database.rules.json', import.meta.url), 'utf8'),
 ])
@@ -478,32 +568,33 @@ const rules = JSON.parse(rulesSource).rules
 
 assert.ok(routeSource.indexOf('verifyIdToken(idToken)') < routeSource.indexOf('request.json()'))
 assert.match(routeSource, /bodyKeys\.length !== 1/)
-assert.match(routeSource, /grantAttendanceRewards/)
-assert.match(routeSource, /ATTENDANCE_REWARDS_ENABLED_FROM/)
-assert.match(orderCreationRouteSource, /criadoEmServer:\s*now/)
+assert.match(routeSource, /bodyKeys\[0\] !== 'pedidoId'/)
+assert.match(routeSource, /ATTENDANCE_GAMIFICATION_ENABLED/)
+assert.match(routeSource, /isAttendanceGamificationEnabled/)
+assert.match(routeSource, /ATTENDANCE_GAMIFICATION_ENABLED_FROM/)
+assert.doesNotMatch(routeSource, /body\?\.(?:gamification|xp|coins|moedas)/)
+assert.match(publicCreateSource, /criadoEmServer:\s*now/)
+assert.match(privateCreateSource, /criadoEmServer:\s*now/)
+assert.match(privateTransitionSource, /nextStatus === ATENDIMENTO_STATUS\.FINALIZADO[\s\S]*grantAttendanceRewards/)
 assert.match(clientSource, /body: JSON\.stringify\(\{ pedidoId: id \}\)/)
 assert.doesNotMatch(clientSource, /runTransaction|missoes\/|users\//)
+assert.match(chatSource, /contabilizarAtendimentoFinalizado/)
 assert.doesNotMatch(attendanceSource, /claimAtendimentoRewards/)
 assert.equal(rules.attendanceRewardGrants['.read'], false)
 assert.equal(rules.attendanceRewardGrants['.write'], false)
 assert.equal(rules.missoes.$uid['.write'], false)
 assert.equal(rules.pedidos.$pedidoId.atendimento.recompensasContabilizadas['.write'], false)
+assert.match(rules.privateRequests.$requestId['.write'], /data\.exists\(\) && !newData\.exists\(\)/)
 for (const field of [
-  'xp',
-  'moedas',
-  'servicosCorre',
-  'servicosProf',
-  'serviçosCorre',
-  'serviçosProf',
-  'patente',
-  'patenteCorre',
-  'patenteProf',
-  'patenteAtualizadaEm',
-  'missaoAtualizadaEm',
+  'xp', 'moedas', 'servicosCorre', 'servicosProf', 'serviçosCorre', 'serviçosProf',
+  'patente', 'patenteCorre', 'patenteProf', 'patenteAtualizadaEm', 'missaoAtualizadaEm',
   'attendanceRewardClaims',
 ]) {
   assert.equal(rules.users.$uid[field]['.validate'], 'newData.val() === data.val()', `${field} fica server-only`)
   assert.match(rules.users.$uid['.write'], new RegExp(`child\\('${field}'\\)`))
 }
+for (const field of ['reputation', 'servicosConcluidos', 'completedServices', 'servicosCorre', 'servicosProf']) {
+  assert.match(rules.publicProfiles.$uid['.validate'], new RegExp(`child\\('${field}'\\)`), `${field} público fica server-only`)
+}
 
-console.log('Recompensas: autenticação, elegibilidade, idempotência, concorrência, retomada e Rules server-only OK')
+console.log('Serviços concluídos: ledger v2, gamificação fail-closed, público/privado, concorrência, retomada, reputação e Rules OK')

@@ -135,6 +135,21 @@ try {
           missaoAtualizadaEm: baseTime,
         },
       },
+      publicProfiles: {
+        [WORKER]: {
+          uid: WORKER,
+          id: WORKER,
+          nome: 'Profissional B',
+          createdAt: baseTime - 10_000,
+          updatedAt: baseTime,
+          atualizadoEm: baseTime,
+          servicosCorre: 4,
+          servicosProf: 2,
+          servicosConcluidos: 6,
+          completedServices: 6,
+          reputation: { rating: 5, reviewCount: 1, completedServices: 6 },
+        },
+      },
       missoes: {
         [WORKER]: {
           '2026-10-18': {
@@ -153,6 +168,18 @@ try {
           pedidoId: 'server-grant',
           beneficiaryUid: WORKER,
           status: 'completed',
+        },
+      },
+      privateRequests: {
+        'private-final': {
+          id: 'private-final',
+          tipo: 'agendamento',
+          status: 'finalizado',
+          clienteId: CLIENT,
+          profissionalId: WORKER,
+          criadoEm: baseTime - 1_000,
+          criadoEmServer: baseTime - 1_000,
+          atendimento: {},
         },
       },
     })
@@ -178,6 +205,13 @@ try {
     pedidoId: 'order-forged',
     mode: 'corre',
   }))
+  await assertFails(update(ref(workerDb, `publicProfiles/${WORKER}`), {
+    servicosCorre: 999,
+    completedServices: 999,
+  }), 'cliente antigo não altera a contagem pública de serviços')
+  await assertFails(update(ref(workerDb, `publicProfiles/${WORKER}`), {
+    'reputation/completedServices': 999,
+  }), 'cliente antigo não altera a reputação pública')
   await assertFails(update(ref(workerDb, `missoes/${WORKER}/2026-10-18`), {
     entregou: 999,
     xp: 9_999,
@@ -196,6 +230,10 @@ try {
     ref(workerDb, 'pedidos/order-final/atendimento/recompensasContabilizadasEm'),
     Date.now(),
   ))
+  await assertFails(set(
+    ref(clientDb, 'privateRequests/private-final/atendimento/recompensasContabilizadas'),
+    true,
+  ), 'cliente não marca pedido privado como contabilizado')
   await assertFails(update(ref(clientDb, 'pedidos/order-flow'), {
     criadoEmServer: Date.now(),
   }), 'cliente não altera o timestamp server-side de criação')

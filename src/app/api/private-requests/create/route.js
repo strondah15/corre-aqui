@@ -162,6 +162,7 @@ export async function POST(request) {
       hora: limitedText(schedule?.hora, 32),
       duracao: limitedText(schedule?.duracao, 80),
       criadoEm: now,
+      criadoEmServer: now,
       atualizadoEm: now,
       atualizadoEmServer: now,
     })

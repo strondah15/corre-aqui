@@ -11,6 +11,11 @@ import {
   validateAttendanceCancellation,
 } from '@/lib/attendanceState'
 import { isValidConversationId, readConversationContext } from '@/lib/conversationActivityServer'
+import {
+  grantAttendanceRewards,
+  isAttendanceGamificationEnabled,
+  parseAttendanceRewardsEnabledFrom,
+} from '@/lib/attendanceRewardsServer'
 
 export const runtime = 'nodejs'
 
@@ -209,6 +214,40 @@ export async function POST(request) {
     [`conversas/${profissionalId}/${requestId}/pedidoStatus`]: nextStatus,
   })
 
+  let serviceAccounting = { attempted: false, completed: false }
+  if (nextStatus === ATENDIMENTO_STATUS.FINALIZADO) {
+    serviceAccounting = { attempted: true, completed: false }
+    try {
+      const accountingResult = await grantAttendanceRewards({
+        database,
+        pedidoId: requestId,
+        actorUid,
+        rewardsEnabledFrom: parseAttendanceRewardsEnabledFrom(
+          process.env.ATTENDANCE_REWARDS_ENABLED_FROM,
+        ),
+        gamificationEnabled: isAttendanceGamificationEnabled(
+          process.env.ATTENDANCE_GAMIFICATION_ENABLED,
+        ),
+        gamificationEnabledFrom: parseAttendanceRewardsEnabledFrom(
+          process.env.ATTENDANCE_GAMIFICATION_ENABLED_FROM,
+        ),
+      })
+      serviceAccounting = {
+        attempted: true,
+        completed: accountingResult?.contabilizado === true,
+        alreadyGranted: accountingResult?.alreadyGranted === true,
+      }
+    } catch (error) {
+      const reason = text(error?.code || 'reward_persistence_failed', 80)
+      serviceAccounting = { attempted: true, completed: false, reason }
+      console.warn('[PRIVATE_ATTENDANCE_ACCOUNTING]', {
+        event: 'service_accounting_deferred',
+        requestId,
+        reason,
+      })
+    }
+  }
+
   logTransition('success', { ...diagnostic, currentStatus, reason: 'success' })
   return NextResponse.json({
     ok: true,
@@ -216,5 +255,6 @@ export async function POST(request) {
     previousStatus: currentStatus,
     status: nextStatus,
     transitionConfirmed: true,
+    serviceAccounting,
   })
 }

@@ -11,16 +11,16 @@ export async function contabilizarAtendimentoFinalizado({ pedidoId, expectedUid 
   const id = validPedidoId(pedidoId)
   const currentUser = auth.currentUser
   if (!id || !currentUser?.uid || typeof currentUser.getIdToken !== 'function') {
-    throw new Error('Sessão indisponível para contabilizar as recompensas.')
+    throw new Error('Sessão indisponível para contabilizar o serviço concluído.')
   }
   if (expectedUid && String(expectedUid) !== currentUser.uid) {
-    throw new Error('A sessão mudou durante a contabilização das recompensas.')
+    throw new Error('A sessão mudou durante a contabilização do serviço.')
   }
 
   const authenticatedUid = currentUser.uid
   const idToken = await currentUser.getIdToken()
   if (auth.currentUser?.uid !== authenticatedUid) {
-    throw new Error('A sessão mudou durante a contabilização das recompensas.')
+    throw new Error('A sessão mudou durante a contabilização do serviço.')
   }
 
   const response = await fetch('/api/atendimento/rewards', {
@@ -33,7 +33,7 @@ export async function contabilizarAtendimentoFinalizado({ pedidoId, expectedUid 
   })
   const result = await response.json().catch(() => ({}))
   if (!response.ok || result?.ok !== true || result?.contabilizado !== true || result?.pedidoId !== id) {
-    const error = new Error(result?.error || 'Não foi possível contabilizar as recompensas agora.')
+    const error = new Error(result?.error || 'Não foi possível contabilizar o serviço agora.')
     error.code = result?.reason || 'reward_request_failed'
     throw error
   }

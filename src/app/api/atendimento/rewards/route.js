@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import {
   AttendanceRewardError,
   grantAttendanceRewards,
+  isAttendanceGamificationEnabled,
   normalizeAttendanceRewardOrderId,
   parseAttendanceRewardsEnabledFrom,
 } from '@/lib/attendanceRewardsServer'
@@ -19,29 +20,31 @@ function jsonError(message, status, reason) {
 
 function publicErrorFor(code) {
   if (code === 'reward_order_not_found') return 'Pedido não encontrado.'
-  if (code === 'reward_actor_not_authorized') return 'Você não pode contabilizar as recompensas deste pedido.'
+  if (code === 'reward_actor_not_authorized') return 'Você não pode contabilizar este serviço.'
   if (code === 'reward_order_not_finalized') return 'O atendimento ainda não foi finalizado.'
   if (code === 'reward_completion_request_unverified' || code === 'reward_client_confirmation_unverified') {
     return 'A conclusão do atendimento não pôde ser confirmada.'
   }
-  if (code === 'reward_legacy_state_ambiguous' || code === 'reward_state_inconsistent') {
-    return 'A situação anterior das recompensas precisa de verificação.'
+  if (code === 'reward_legacy_state_ambiguous'
+    || code === 'reward_legacy_ledger_partial'
+    || code === 'reward_state_inconsistent') {
+    return 'A contabilização anterior deste serviço precisa de verificação.'
   }
-  if (code === 'reward_before_activation') return 'Este atendimento é anterior à ativação segura das recompensas.'
-  if (code === 'reward_activation_pending') return 'As recompensas ainda não estão ativadas.'
+  if (code === 'reward_before_activation') return 'Este atendimento é anterior à ativação segura da contabilização.'
+  if (code === 'reward_activation_pending') return 'A contabilização de serviços ainda não está ativada.'
   if (code === 'reward_timestamp_invalid') return 'Os horários deste atendimento não puderam ser validados.'
-  if (code === 'reward_configuration_invalid') return 'Serviço de recompensas indisponível.'
+  if (code === 'reward_configuration_invalid') return 'Contabilização de serviços indisponível.'
   if (code === 'reward_professional_profile_required' || code === 'reward_order_mode_invalid') {
     return 'A modalidade deste atendimento não pôde ser validada.'
   }
   if (code === 'reward_request_invalid') return 'Pedido inválido.'
-  return 'Não foi possível contabilizar as recompensas agora.'
+  return 'Não foi possível contabilizar o serviço agora.'
 }
 
 export async function POST(request) {
   try {
     if (!isFirebaseAdminConfigured()) {
-      return jsonError('Serviço de recompensas indisponível.', 503, 'reward_service_unavailable')
+      return jsonError('Contabilização de serviços indisponível.', 503, 'reward_service_unavailable')
     }
 
     const authorization = request.headers.get('authorization') || ''
@@ -69,6 +72,12 @@ export async function POST(request) {
       rewardsEnabledFrom: parseAttendanceRewardsEnabledFrom(
         process.env.ATTENDANCE_REWARDS_ENABLED_FROM,
       ),
+      gamificationEnabled: isAttendanceGamificationEnabled(
+        process.env.ATTENDANCE_GAMIFICATION_ENABLED,
+      ),
+      gamificationEnabledFrom: parseAttendanceRewardsEnabledFrom(
+        process.env.ATTENDANCE_GAMIFICATION_ENABLED_FROM,
+      ),
     })
 
     return NextResponse.json({
@@ -77,6 +86,8 @@ export async function POST(request) {
       contabilizado: result.contabilizado,
       alreadyGranted: result.alreadyGranted,
       mode: result.mode,
+      serviceCounted: result.serviceCounted,
+      gamificationStatus: result.gamificationStatus,
     })
   } catch (error) {
     const knownError = error instanceof AttendanceRewardError

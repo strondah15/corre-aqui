@@ -1543,7 +1543,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               recompensasNaoElegiveisRef.current.add(pedido.id)
               return
             }
-            console.warn('Nao foi possivel contabilizar as recompensas:', error)
+            console.warn('Nao foi possivel contabilizar o servico concluido:', error?.code || 'reward_request_failed')
           })
           .finally(() => recompensasEmCursoRef.current.delete(pedido.id))
       })

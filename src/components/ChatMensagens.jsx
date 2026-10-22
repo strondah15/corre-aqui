@@ -18,6 +18,7 @@ import { saveCanonicalServiceRating, savePrivateRequestServiceRating } from '@/l
 import { normalizeAndMergeChatMessages } from '@/lib/chatMessageCompatibility'
 import { scheduleConversationActivity } from '@/lib/conversationActivity'
 import { transitionPrivateAttendance } from '@/lib/privateAttendance'
+import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
 import AttendanceProgress from '@/components/AttendanceProgress'
 
 const chatOpenTipSessionKeys = new Set()
@@ -475,6 +476,7 @@ export default function ChatMensagens({
   const closeNavigationLockRef = useRef(false)
   const overlayHistoryMarkerRef = useRef('')
   const overlayHistoryClosingRef = useRef(false)
+  const serviceAccountingAttemptRef = useRef('')
 
   const outroId = outroUser?.id || null
   const outroNome = safeName(outroUser?.nome)
@@ -490,7 +492,35 @@ export default function ChatMensagens({
   useEffect(() => {
     initialScrollDoneRef.current = false
     shouldStickToBottomRef.current = true
+    serviceAccountingAttemptRef.current = ''
   }, [pedidoId])
+
+  useEffect(() => {
+    if (!pedidoId || !meuId || !pedido) return
+    const normalizedStatus = normalizeServiceAttendanceStatus({
+      status: pedido.status,
+      kind: conversationContextKind,
+      type: pedido.tipo,
+      record: pedido,
+    })
+    const participantIds = [pedido?.criador?.id, pedido?.aceite?.id]
+      .map((value) => String(value || ''))
+      .filter(Boolean)
+    const attemptKey = `${meuId}:${pedidoId}`
+    if (normalizedStatus !== ATENDIMENTO_STATUS.FINALIZADO
+      || pedido?.atendimento?.recompensasContabilizadas === true
+      || !participantIds.includes(String(meuId))
+      || serviceAccountingAttemptRef.current === attemptKey) return
+
+    serviceAccountingAttemptRef.current = attemptKey
+    void contabilizarAtendimentoFinalizado({ pedidoId, expectedUid: meuId })
+      .catch((error) => {
+        debugChatWarning(
+          'Nao foi possivel contabilizar o servico concluido:',
+          error?.code || 'reward_request_failed',
+        )
+      })
+  }, [conversationContextKind, meuId, pedido, pedidoId])
 
   useEffect(() => {
     if (!pedidoId) return
