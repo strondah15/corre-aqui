@@ -18,6 +18,11 @@ function jsonError(message, status, reason) {
   return NextResponse.json({ ok: false, error: message, reason }, { status })
 }
 
+function sanitizedFailureStage(error) {
+  const stage = typeof error?.rewardStage === 'string' ? error.rewardStage : 'request'
+  return /^[a-z][a-z0-9_]{0,63}$/.test(stage) ? stage : 'request'
+}
+
 function publicErrorFor(code) {
   if (code === 'reward_order_not_found') return 'Pedido não encontrado.'
   if (code === 'reward_actor_not_authorized') return 'Você não pode contabilizar este serviço.'
@@ -93,9 +98,14 @@ export async function POST(request) {
     const knownError = error instanceof AttendanceRewardError
     const reason = knownError ? error.code : 'reward_persistence_failed'
     const status = knownError ? error.status : 500
-    if (!knownError) {
-      console.error('[ATTENDANCE_REWARD]', { event: 'reward_failed', reason })
+    const failure = {
+      event: 'reward_failed',
+      stage: sanitizedFailureStage(error),
+      code: reason,
+      category: knownError ? 'domain' : 'unexpected',
     }
+    if (status >= 500) console.error('[ATTENDANCE_REWARD]', failure)
+    else console.warn('[ATTENDANCE_REWARD]', failure)
     return jsonError(publicErrorFor(reason), status, reason)
   }
 }

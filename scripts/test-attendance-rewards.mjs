@@ -29,10 +29,16 @@ function clone(value) {
   return value === undefined ? undefined : structuredClone(value)
 }
 
-function createMemoryDatabase(initial = {}, { failTransactions = {} } = {}) {
+function createMemoryDatabase(initial = {}, {
+  failTransactions = {},
+  initialNullTransactions = {},
+  initialNullMutations = {},
+} = {}) {
   const state = clone(initial)
   const locks = new Map()
   const failures = new Map(Object.entries(failTransactions))
+  const initialNulls = new Map(Object.entries(initialNullTransactions))
+  const nullMutations = new Map(Object.entries(initialNullMutations))
   const partsFor = (path = '') => String(path).split('/').filter(Boolean)
 
   const read = (path = '') => {
@@ -91,7 +97,28 @@ function createMemoryDatabase(initial = {}, { failTransactions = {} } = {}) {
               throw new Error(`injected_transaction_failure:${basePath}`)
             }
             await new Promise((resolve) => setImmediate(resolve))
-            const current = read(basePath)
+            let current = read(basePath)
+            const remainingInitialNulls = Number(initialNulls.get(basePath) || 0)
+            if (remainingInitialNulls > 0) {
+              initialNulls.set(basePath, remainingInitialNulls - 1)
+              const initialProposal = updater(null)
+              if (initialProposal === undefined) {
+                return { committed: false, snapshot: snapshot(null) }
+              }
+
+              const mutateRemote = nullMutations.get(basePath)
+              if (typeof mutateRemote === 'function') {
+                nullMutations.delete(basePath)
+                const mutated = mutateRemote(read(basePath))
+                if (mutated !== undefined) write(basePath, mutated)
+              }
+
+              current = read(basePath)
+              if (current === null) {
+                write(basePath, initialProposal)
+                return { committed: true, snapshot: snapshot(initialProposal) }
+              }
+            }
             const next = updater(clone(current))
             if (next === undefined) return { committed: false, snapshot: snapshot(current) }
             write(basePath, next)
@@ -192,10 +219,10 @@ function scenario(id, options = {}) {
   return createMemoryDatabase({
     ...(kind === 'privateRequest' ? { privateRequests: { [id]: record } } : { pedidos: { [id]: record } }),
     users: {
-      [WORKER]: workerAccount(options.worker),
+      ...(options.missingWorker ? {} : { [WORKER]: workerAccount(options.worker) }),
       [OUTSIDER]: { nome: 'Terceiro' },
     },
-    publicProfiles: { [WORKER]: publicProfile(options.profile) },
+    publicProfiles: options.missingProfile ? {} : { [WORKER]: publicProfile(options.profile) },
     missoes: options.missoes || {
       [WORKER]: {
         [attendanceRewardDayKey(BASE_TIME)]: {
@@ -211,8 +238,9 @@ function scenario(id, options = {}) {
   }, options.database)
 }
 
-function expectRewardError(code) {
+function expectRewardError(code, stage = '') {
   return (error) => error instanceof AttendanceRewardError && error.code === code
+    && (!stage || error.rewardStage === stage)
 }
 
 assert.equal(isAttendanceGamificationEnabled('true'), true)
@@ -276,7 +304,102 @@ assert.equal(repeated.alreadyGranted, true)
 assert.equal(publicDb.read(`users/${WORKER}/servicosCorre`), 5, 'repetição não duplica serviço')
 assert.equal(publicDb.read(`users/${WORKER}/xp`), 90, 'repetição não concede XP')
 
-const concurrentDb = scenario('public-concurrent')
+const userPath = `users/${WORKER}`
+const publicProfilePath = `publicProfiles/${WORKER}`
+
+const coldStartDb = scenario('public-cold-start', {
+  database: {
+    initialNullTransactions: { [userPath]: 1, [publicProfilePath]: 1 },
+  },
+})
+await countService({
+  database: coldStartDb,
+  pedidoId: 'public-cold-start',
+  actorUid: CLIENT,
+  now: BASE_TIME,
+})
+assert.equal(coldStartDb.read(`${userPath}/servicosCorre`), 5, 'null inicial não aborta contador')
+assert.equal(coldStartDb.read(`${publicProfilePath}/servicosCorre`), 5, 'null inicial não aborta projeção')
+assert.equal(coldStartDb.read(`${userPath}/attendanceRewardClaims/public-cold-start/serviceApplied`), true)
+assert.equal(coldStartDb.read(`${userPath}/xp`), 90, 'null inicial não habilita gamificação')
+
+const concurrentChangeDb = scenario('public-concurrent-change', {
+  database: {
+    initialNullTransactions: { [userPath]: 1, [publicProfilePath]: 1 },
+    initialNullMutations: {
+      [userPath]: (current) => ({
+        ...current,
+        remoteRevision: 2,
+        servicosCorre: 20,
+        ['serviçosCorre']: 20,
+      }),
+      [publicProfilePath]: (current) => ({
+        ...current,
+        remoteRevision: 3,
+        servicosCorre: 25,
+        completedServices: 40,
+        servicosConcluidos: 40,
+        reputation: { ...current.reputation, rating: 4.95, completedServices: 40 },
+      }),
+    },
+  },
+})
+await countService({
+  database: concurrentChangeDb,
+  pedidoId: 'public-concurrent-change',
+  actorUid: CLIENT,
+  now: BASE_TIME,
+})
+assert.equal(concurrentChangeDb.read(`${userPath}/servicosCorre`), 21, 'transação usa contador remoto mais recente')
+assert.equal(concurrentChangeDb.read(`${userPath}/remoteRevision`), 2, 'alteração concorrente do usuário é preservada')
+assert.equal(concurrentChangeDb.read(`${publicProfilePath}/servicosCorre`), 25, 'projeção monotônica preserva contador maior')
+assert.equal(concurrentChangeDb.read(`${publicProfilePath}/completedServices`), 40)
+assert.equal(concurrentChangeDb.read(`${publicProfilePath}/reputation/rating`), 4.95)
+assert.equal(concurrentChangeDb.read(`${publicProfilePath}/remoteRevision`), 3, 'alteração concorrente do perfil é preservada')
+
+const deletedDuringTransactionDb = scenario('public-user-removed', {
+  database: {
+    initialNullTransactions: { [userPath]: 1 },
+    initialNullMutations: { [userPath]: () => null },
+  },
+})
+await assert.rejects(
+  countService({
+    database: deletedDuringTransactionDb,
+    pedidoId: 'public-user-removed',
+    actorUid: CLIENT,
+    now: BASE_TIME,
+  }),
+  expectRewardError('reward_beneficiary_not_found', 'service_counter'),
+  'registro removido após a leitura inicial falha fechado e não é recriado',
+)
+assert.equal(deletedDuringTransactionDb.read(userPath), null)
+assert.equal(deletedDuringTransactionDb.read('attendanceRewardGrants/public-user-removed/serviceAccountingStatus'), 'pending')
+assert.equal(deletedDuringTransactionDb.read(`${publicProfilePath}/servicosCorre`), 4)
+
+const missingProfileDb = scenario('public-profile-missing', {
+  missingProfile: true,
+  database: { initialNullTransactions: { [publicProfilePath]: 1 } },
+})
+await assert.rejects(
+  countService({
+    database: missingProfileDb,
+    pedidoId: 'public-profile-missing',
+    actorUid: CLIENT,
+    now: BASE_TIME,
+  }),
+  expectRewardError('reward_public_profile_missing', 'public_profile_projection'),
+  'perfil realmente inexistente falha fechado após confirmação transacional',
+)
+assert.equal(missingProfileDb.read(publicProfilePath), null)
+assert.equal(missingProfileDb.read(`${userPath}/servicosCorre`), 5)
+assert.equal(missingProfileDb.read('attendanceRewardGrants/public-profile-missing/serviceAccountingStatus'), 'user_applied')
+
+const concurrentDb = scenario('public-concurrent', {
+  database: {
+    initialNullTransactions: { [userPath]: 10, [publicProfilePath]: 10 },
+  },
+})
 const concurrentResults = await Promise.all(Array.from({ length: 10 }, (_, index) => countService({
   database: concurrentDb,
   pedidoId: 'public-concurrent',
@@ -290,7 +413,13 @@ assert.equal(concurrentDb.read(`users/${WORKER}/xp`), 90)
 assert.equal(concurrentDb.read(`missoes/${WORKER}/${attendanceRewardDayKey(BASE_TIME)}/entregou`), 2)
 
 for (const [id, tipo] of [['private-scheduled', 'agendamento'], ['private-direct', 'pedido_direto']]) {
-  const privateDb = scenario(id, { kind: 'privateRequest', tipo })
+  const privateDb = scenario(id, {
+    kind: 'privateRequest',
+    tipo,
+    database: {
+      initialNullTransactions: { [userPath]: 1, [publicProfilePath]: 1 },
+    },
+  })
   await countService({ database: privateDb, pedidoId: id, actorUid: CLIENT, now: BASE_TIME })
   await countService({ database: privateDb, pedidoId: id, actorUid: WORKER, now: BASE_TIME + 1 })
   assert.equal(privateDb.read(`users/${WORKER}/servicosCorre`), 4)
@@ -316,12 +445,34 @@ await countService({
 assert.equal(legacyPrivateDb.read('attendanceRewardGrants/private-legacy-created-at/orderCreatedAtSource'), 'legacyPrivateCriadoEm')
 
 const profileFailurePath = `publicProfiles/${WORKER}`
+const pendingLedgerDb = scenario('public-ledger-pending', {
+  database: { failTransactions: { [userPath]: 1 } },
+})
+await assert.rejects(
+  countService({ database: pendingLedgerDb, pedidoId: 'public-ledger-pending', actorUid: CLIENT, now: BASE_TIME }),
+  (error) => /injected_transaction_failure/.test(error?.message)
+    && error.rewardStage === 'service_counter',
+)
+assert.equal(pendingLedgerDb.read('attendanceRewardGrants/public-ledger-pending/status'), 'processing')
+assert.equal(pendingLedgerDb.read('attendanceRewardGrants/public-ledger-pending/serviceAccountingStatus'), 'pending')
+assert.equal(pendingLedgerDb.read(`${userPath}/attendanceRewardClaims/public-ledger-pending`), null)
+await countService({
+  database: pendingLedgerDb,
+  pedidoId: 'public-ledger-pending',
+  actorUid: WORKER,
+  now: BASE_TIME + 1,
+})
+assert.equal(pendingLedgerDb.read(`${userPath}/servicosCorre`), 5, 'ledger v2 pending é retomado uma vez')
+assert.equal(pendingLedgerDb.read(`${userPath}/attendanceRewardClaims/public-ledger-pending/serviceApplied`), true)
+assert.equal(pendingLedgerDb.read('attendanceRewardGrants/public-ledger-pending/status'), 'completed')
+
 const partialDb = scenario('public-partial', {
   database: { failTransactions: { [profileFailurePath]: 1 } },
 })
 await assert.rejects(
   countService({ database: partialDb, pedidoId: 'public-partial', actorUid: CLIENT, now: BASE_TIME }),
-  /injected_transaction_failure/,
+  (error) => /injected_transaction_failure/.test(error?.message)
+    && error.rewardStage === 'public_profile_projection',
 )
 assert.equal(partialDb.read(`users/${WORKER}/servicosCorre`), 5, 'contador do usuário foi aplicado antes da falha')
 assert.equal(partialDb.read('attendanceRewardGrants/public-partial/serviceAccountingStatus'), 'user_applied')
@@ -573,6 +724,10 @@ assert.match(routeSource, /ATTENDANCE_GAMIFICATION_ENABLED/)
 assert.match(routeSource, /isAttendanceGamificationEnabled/)
 assert.match(routeSource, /ATTENDANCE_GAMIFICATION_ENABLED_FROM/)
 assert.doesNotMatch(routeSource, /body\?\.(?:gamification|xp|coins|moedas)/)
+assert.match(routeSource, /stage:\s*sanitizedFailureStage\(error\)/)
+assert.match(routeSource, /code:\s*reason/)
+assert.match(routeSource, /category:\s*knownError\s*\?\s*'domain'\s*:\s*'unexpected'/)
+assert.doesNotMatch(routeSource, /error\?*\.(?:message|stack)/, 'logs não expõem mensagem nem stack')
 assert.match(publicCreateSource, /criadoEmServer:\s*now/)
 assert.match(privateCreateSource, /criadoEmServer:\s*now/)
 assert.match(privateTransitionSource, /nextStatus === ATENDIMENTO_STATUS\.FINALIZADO[\s\S]*grantAttendanceRewards/)

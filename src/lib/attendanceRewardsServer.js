@@ -25,8 +25,35 @@ export class AttendanceRewardError extends Error {
   }
 }
 
+function isObjectRecord(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
 function objectValue(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  return isObjectRecord(value) ? value : {}
+}
+
+function tagRewardStage(error, stage) {
+  if (!error || (typeof error !== 'object' && typeof error !== 'function')) return error
+  if (typeof error.rewardStage === 'string') return error
+  try {
+    Object.defineProperty(error, 'rewardStage', {
+      configurable: true,
+      enumerable: false,
+      value: stage,
+    })
+  } catch {
+    return error
+  }
+  return error
+}
+
+async function runRewardStage(stage, operation) {
+  try {
+    return await operation()
+  } catch (error) {
+    throw tagRewardStage(error, stage)
+  }
 }
 
 function actorId(value) {
@@ -255,7 +282,12 @@ function serviceClaimMatches(claim, ledger) {
 async function applyServiceCounter({ database, ledger, now }) {
   const userRef = database.ref(`users/${ledger.beneficiaryUid}`)
   const result = await userRef.transaction((current) => {
-    if (!current || typeof current !== 'object') return undefined
+    // RTDB transactions can start with an empty local cache even when the remote
+    // record exists. Returning null keeps the compare-and-swap active: the server
+    // either confirms that the record is absent or retries with its latest value.
+    // Never seed this transaction from a prior get(), which could restore stale data.
+    if (current === null || current === undefined) return null
+    if (!isObjectRecord(current)) return current
     const user = objectValue(current)
     const existingClaim = objectValue(user.attendanceRewardClaims)[ledger.pedidoId]
     if (existingClaim != null) return serviceClaimMatches(existingClaim, ledger) ? user : undefined
@@ -284,7 +316,11 @@ async function applyServiceCounter({ database, ledger, now }) {
     }
   })
   const savedUser = result.snapshot.val()
-  if (!savedUser || !serviceClaimMatches(savedUser?.attendanceRewardClaims?.[ledger.pedidoId], ledger)) {
+  if (!isObjectRecord(savedUser)) {
+    const missing = savedUser === null || savedUser === undefined
+    throw new AttendanceRewardError(missing ? 'reward_beneficiary_not_found' : 'reward_user_update_failed', missing ? 404 : 500)
+  }
+  if (!result.committed || !serviceClaimMatches(savedUser?.attendanceRewardClaims?.[ledger.pedidoId], ledger)) {
     throw new AttendanceRewardError('reward_user_update_failed', 500)
   }
   return savedUser
@@ -295,7 +331,8 @@ async function syncPublicProfileServiceCounts({ database, ledger, savedUser }) {
   const targetProf = maxCounter(savedUser?.servicosProf, savedUser?.['serviçosProf'])
   const publicProfileRef = database.ref(`publicProfiles/${ledger.beneficiaryUid}`)
   const result = await publicProfileRef.transaction((current) => {
-    if (!current || typeof current !== 'object') return undefined
+    if (current === null || current === undefined) return null
+    if (!isObjectRecord(current)) return current
     const profile = objectValue(current)
     const servicesCorre = Math.max(safeCounter(profile.servicosCorre), targetCorre)
     const servicesProf = Math.max(safeCounter(profile.servicosProf), targetProf)
@@ -324,8 +361,12 @@ async function syncPublicProfileServiceCounts({ database, ledger, savedUser }) {
     }
   })
   const profile = result.snapshot.val()
-  if (!result.committed || !profile || typeof profile !== 'object') {
-    throw new AttendanceRewardError('reward_public_profile_missing', 500)
+  if (!isObjectRecord(profile)) {
+    const missing = profile === null || profile === undefined
+    throw new AttendanceRewardError(missing ? 'reward_public_profile_missing' : 'reward_public_profile_update_failed', 500)
+  }
+  if (!result.committed) {
+    throw new AttendanceRewardError('reward_public_profile_update_failed', 500)
   }
   if (safeCounter(profile.servicosCorre) < targetCorre || safeCounter(profile.servicosProf) < targetProf
     || safeCounter(profile.completedServices) < targetCorre + targetProf) {
@@ -502,11 +543,17 @@ export async function grantAttendanceRewards({
   if (!serverNow) throw new AttendanceRewardError('reward_server_clock_invalid', 503)
   if (serverNow < activationTime) throw new AttendanceRewardError('reward_activation_pending', 503)
 
-  const { record, recordKind, existingLedger } = await readAttendanceRecord(database, id)
+  const { record, recordKind, existingLedger } = await runRewardStage(
+    'attendance_read',
+    () => readAttendanceRecord(database, id),
+  )
   const eligibility = assessAttendanceRewardEligibility({ pedido: record, actorUid: callerUid, recordKind })
   validateTimestamps({ eligibility, activationTime, serverNow })
-  const account = (await database.ref(`users/${eligibility.beneficiaryUid}`).get()).val()
-  if (!account || typeof account !== 'object') throw new AttendanceRewardError('reward_beneficiary_not_found', 404)
+  const account = (await runRewardStage(
+    'beneficiary_read',
+    () => database.ref(`users/${eligibility.beneficiaryUid}`).get(),
+  )).val()
+  if (!isObjectRecord(account)) throw new AttendanceRewardError('reward_beneficiary_not_found', 404)
 
   const markerWritten = markerWasWritten(record)
   if (markerWritten && existingLedger == null) throw new AttendanceRewardError('reward_legacy_state_ambiguous', 409)
@@ -531,7 +578,10 @@ export async function grantAttendanceRewards({
     if (existingState.completed) return completedResult(existingState.ledger, true)
   }
 
-  const { ledgerRef, ledger: initializedLedger } = await initializeLedger({ database, expectedLedger })
+  const { ledgerRef, ledger: initializedLedger } = await runRewardStage(
+    'ledger_initialize',
+    () => initializeLedger({ database, expectedLedger }),
+  )
   const initializedState = await refreshCompletedMarker({
     database,
     id,
@@ -543,21 +593,45 @@ export async function grantAttendanceRewards({
   if (initializedState.completed) return completedResult(initializedState.ledger, true)
   const ledger = initializedState.ledger
 
-  const savedUser = await applyServiceCounter({ database, ledger, now: serverNow })
-  await ledgerRef.update({ serviceApplied: true, serviceAccountingStatus: 'user_applied', updatedAt: serverNow })
-  await syncPublicProfileServiceCounts({ database, ledger, savedUser })
-  await ledgerRef.update({ publicProfileApplied: true, serviceAccountingStatus: 'completed', updatedAt: serverNow })
+  const savedUser = await runRewardStage(
+    'service_counter',
+    () => applyServiceCounter({ database, ledger, now: serverNow }),
+  )
+  await runRewardStage(
+    'ledger_user_applied',
+    () => ledgerRef.update({ serviceApplied: true, serviceAccountingStatus: 'user_applied', updatedAt: serverNow }),
+  )
+  await runRewardStage(
+    'public_profile_projection',
+    () => syncPublicProfileServiceCounts({ database, ledger, savedUser }),
+  )
+  await runRewardStage(
+    'ledger_profile_applied',
+    () => ledgerRef.update({ publicProfileApplied: true, serviceAccountingStatus: 'completed', updatedAt: serverNow }),
+  )
 
   if (ledger.gamificationEnabled === true) {
-    await applyUserGamification({ database, ledger, now: serverNow })
-    await ledgerRef.update({ userGamificationApplied: true, updatedAt: serverNow })
-    await applyMissionGamification({ database, ledger, now: serverNow })
-    await ledgerRef.update({ missionGamificationApplied: true, updatedAt: serverNow })
+    await runRewardStage(
+      'user_gamification',
+      () => applyUserGamification({ database, ledger, now: serverNow }),
+    )
+    await runRewardStage(
+      'ledger_user_gamification',
+      () => ledgerRef.update({ userGamificationApplied: true, updatedAt: serverNow }),
+    )
+    await runRewardStage(
+      'mission_gamification',
+      () => applyMissionGamification({ database, ledger, now: serverNow }),
+    )
+    await runRewardStage(
+      'ledger_mission_gamification',
+      () => ledgerRef.update({ missionGamificationApplied: true, updatedAt: serverNow }),
+    )
   }
 
   const recordRoot = recordKind === RECORD_KINDS.PRIVATE ? 'privateRequests' : 'pedidos'
   const finalGamificationStatus = ledger.gamificationEnabled === true ? 'completed' : ledger.gamificationStatus
-  await database.ref().update({
+  await runRewardStage('finalize', () => database.ref().update({
     [`attendanceRewardGrants/${id}/status`]: 'completed',
     [`attendanceRewardGrants/${id}/serviceAccountingStatus`]: 'completed',
     [`attendanceRewardGrants/${id}/serviceApplied`]: true,
@@ -569,7 +643,7 @@ export async function grantAttendanceRewards({
     [`attendanceRewardGrants/${id}/updatedAt`]: serverNow,
     [`${recordRoot}/${id}/atendimento/recompensasContabilizadas`]: true,
     [`${recordRoot}/${id}/atendimento/recompensasContabilizadasEm`]: serverNow,
-  })
+  }))
 
   return completedResult({
     ...ledger,
