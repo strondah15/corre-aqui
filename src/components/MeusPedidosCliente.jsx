@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus } from '@/lib/atendimento'
+import { ListPanelSkeleton } from '@/components/LoadingSkeletons'
 
 const CLIENTE_LIST_STATE_KEY = 'correAqui:listState:v2:cliente'
 const COMMERCIAL_HIGHLIGHTS_UI_ENABLED = false
@@ -95,6 +96,8 @@ function getStatusKey(pedido) {
     status === 'em_atendimento' ||
     status === 'agendado' ||
     status === 'em_andamento' ||
+    status === 'a_caminho' ||
+    status === 'chegou' ||
     status === 'andamento'
   ) return 'aceito'
   if (status === 'concluido' || status === 'finalizado' || status === 'feito') return 'concluido'
@@ -250,7 +253,12 @@ export default function MeusPedidosCliente({
   meuId,
   corres = [],
   privateRequests = [],
+  publicOrdersLoading = false,
+  publicOrdersError = '',
+  privateRequestsLoading = false,
+  privateRequestsError = '',
   onAbrirChat,
+  onPreloadChat,
   onVerMapa,
   onConfirmarServicoFeito,
   onProblemaServico,
@@ -259,7 +267,10 @@ export default function MeusPedidosCliente({
   onToast,
 }) {
   const router = useRouter()
+  const openRequestLockRef = useRef('')
   const [filtro, setFiltro] = useState('todos')
+  const sourcesLoading = Boolean(publicOrdersLoading || privateRequestsLoading)
+  const sourceError = publicOrdersError || privateRequestsError
 
   const meusPedidos = useMemo(() => {
     const pedidosPublicos = (corres || [])
@@ -335,7 +346,12 @@ export default function MeusPedidosCliente({
   }, [onToast])
 
   const abrirDetalhes = useCallback((pedido) => {
-    if (!pedido?.id) return
+    const requestId = String(pedido?.id || '').trim()
+    if (!requestId || openRequestLockRef.current) return
+    openRequestLockRef.current = requestId
+    window.setTimeout(() => {
+      if (openRequestLockRef.current === requestId) openRequestLockRef.current = ''
+    }, 1200)
     if (pedido?.privateRequest) {
       const statusKey = getStatusKey(pedido)
       if (statusKey === 'aceito' || statusKey === 'concluido') {
@@ -350,6 +366,10 @@ export default function MeusPedidosCliente({
       )
       return
     }
+    if (getStatusKey(pedido) !== 'aberto') {
+      onAbrirChat?.(pedido)
+      return
+    }
     try {
       if (process.env.NODE_ENV !== 'production') console.time('open-card')
       sessionStorage.setItem(
@@ -362,7 +382,7 @@ export default function MeusPedidosCliente({
         })
       )
     } catch {}
-    router.push(`/pedido/${encodeURIComponent(String(pedido.id))}?voltar=cliente`)
+    router.push(`/pedido/${encodeURIComponent(requestId)}?voltar=cliente`)
     if (process.env.NODE_ENV !== 'production') {
       window.requestAnimationFrame(() => console.timeEnd('open-card'))
     }
@@ -378,7 +398,7 @@ export default function MeusPedidosCliente({
           </div>
 
           <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-center shadow-sm">
-            <div className="text-2xl font-black leading-none text-blue-700">{totals.todos}</div>
+            <div className="text-2xl font-black leading-none text-blue-700">{sourcesLoading && !meusPedidos.length ? '…' : totals.todos}</div>
             <div className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">total</div>
           </div>
         </div>
@@ -405,12 +425,20 @@ export default function MeusPedidosCliente({
 
       <div className="space-y-4 p-4 md:p-6">
         <div className="grid gap-3 md:grid-cols-3">
-          <SummaryCard icon="folder" value={totals.abertos} title="Abertos" subtitle="Pedidos aguardando profissionais" tone="blue" />
-          <SummaryCard icon="clock" value={totals.andamento} title="Em andamento" subtitle="Profissional ja aceitou" tone="amber" />
-          <SummaryCard icon="check" value={totals.concluidos} title="Finalizados" subtitle="Servicos concluidos" tone="emerald" />
+          <SummaryCard icon="folder" value={sourcesLoading && !meusPedidos.length ? '…' : totals.abertos} title="Abertos" subtitle="Pedidos aguardando profissionais" tone="blue" />
+          <SummaryCard icon="clock" value={sourcesLoading && !meusPedidos.length ? '…' : totals.andamento} title="Em andamento" subtitle="Profissional ja aceitou" tone="amber" />
+          <SummaryCard icon="check" value={sourcesLoading && !meusPedidos.length ? '…' : totals.concluidos} title="Finalizados" subtitle="Servicos concluidos" tone="emerald" />
         </div>
 
-        {meusPedidos.length === 0 ? (
+        {sourceError ? (
+          <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+            {sourceError}
+          </div>
+        ) : null}
+
+        {sourcesLoading && pedidosFiltrados.length === 0 ? (
+          <ListPanelSkeleton label="Carregando seus pedidos" rows={3} showHeader={false} />
+        ) : meusPedidos.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">
             Voce ainda nao criou pedidos.
           </div>
@@ -480,6 +508,9 @@ export default function MeusPedidosCliente({
                     <button
                       type="button"
                       onClick={() => abrirDetalhes(pedido)}
+                      onPointerEnter={podeAbrirChat ? () => onPreloadChat?.(pedido) : undefined}
+                      onPointerDown={podeAbrirChat ? () => onPreloadChat?.(pedido) : undefined}
+                      onFocus={podeAbrirChat ? () => onPreloadChat?.(pedido) : undefined}
                       className="h-10 rounded-xl border border-blue-100 bg-blue-50/65 px-3 text-left text-xs font-black text-blue-700 transition hover:bg-blue-50 active:scale-[0.99] md:h-11"
                     >
                       Ver detalhes
@@ -491,6 +522,9 @@ export default function MeusPedidosCliente({
                         if (podeAbrirChat) onAbrirChat?.(pedido)
                         else avisarEmBreve('Chat liberado apos aceite', 'Quando alguem aceitar o pedido, a conversa aparece aqui.')
                       }}
+                      onPointerEnter={podeAbrirChat ? () => onPreloadChat?.(pedido) : undefined}
+                      onPointerDown={podeAbrirChat ? () => onPreloadChat?.(pedido) : undefined}
+                      onFocus={podeAbrirChat ? () => onPreloadChat?.(pedido) : undefined}
                       className={[
                         'grid h-10 place-items-center rounded-xl border transition active:scale-[0.97] md:h-11',
                         podeAbrirChat
@@ -519,9 +553,12 @@ export default function MeusPedidosCliente({
                         <button
                           type="button"
                           onClick={() => onConfirmarServicoFeito?.(pedido)}
+                          onPointerEnter={() => onPreloadChat?.(pedido)}
+                          onPointerDown={() => onPreloadChat?.(pedido)}
+                          onFocus={() => onPreloadChat?.(pedido)}
                           className="rounded-xl bg-emerald-600 px-3 py-2 text-[11px] font-black text-white transition active:scale-[0.98]"
                         >
-                          Concluir
+                          Confirmar no chat
                         </button>
                       ) : null}
 

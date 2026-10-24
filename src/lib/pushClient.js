@@ -3,12 +3,27 @@
 import app, { auth, database } from '@/lib/firebase'
 import { get, ref, serverTimestamp, update, remove } from './firebaseDebug'
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
+import { createPushRegistrationController } from './pushRegistrationControl'
 
 export const MESSAGING_SW_PATH = '/firebase-messaging-sw.js'
 const TOKEN_KEY_STORAGE = 'correAqui:pushTokenKey'
 let resolvedVapidConfig = null
 let resolvedVapidConfigPromise = null
 const removedTokenUids = new Set()
+const pushRegistration = createPushRegistrationController({
+  requestToken: (messaging, options) => getToken(messaging, options),
+  onFailure: (failure) => {
+    const details = failure.safeDetails || {}
+    console.warn('[PUSH REGISTRATION]', {
+      phase: details.phase || 'token_registration',
+      reason: details.reason || 'fcm_registration_failed',
+      code: details.code || 'push/registration-failed',
+      httpStatus: details.httpStatus || null,
+      message: details.message || 'Falha sem detalhes.',
+      retryAfterMs: failure.retryAfterMs || 0,
+    })
+  },
+})
 
 function tokenKey(token) {
   return String(token || '')
@@ -218,7 +233,7 @@ export async function ativarPushNotifications(uid) {
   const vapidKey = await getVapidKey()
   if (!vapidKey) throw new Error('Chave VAPID de notificacoes nao esta configurada no servidor.')
 
-  const token = await getToken(messaging, {
+  const token = await pushRegistration.request(messaging, {
     vapidKey,
     serviceWorkerRegistration: registration,
   })
@@ -249,7 +264,7 @@ export async function sincronizarPushNotifications(uid) {
   if (!vapidKey) return { synced: false, reason: 'missing_vapid' }
 
   const messaging = getMessaging(app)
-  const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
+  const token = await pushRegistration.request(messaging, { vapidKey, serviceWorkerRegistration: registration })
   if (!token) return { synced: false, reason: 'missing_token' }
 
   const previousKey = readLocalTokenKey(uid)
@@ -368,7 +383,9 @@ export async function removerPushTokenDoDispositivo(uid) {
     const vapidKey = await getVapidKey()
     if (vapidKey) {
       const registration = await getServiceWorkerRegistration().catch(() => null)
-      const token = registration ? await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration }).catch(() => '') : ''
+      const token = registration
+        ? await pushRegistration.request(messaging, { vapidKey, serviceWorkerRegistration: registration }).catch(() => '')
+        : ''
       key = tokenKey(token)
     }
   }

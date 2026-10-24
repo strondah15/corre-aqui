@@ -1,5 +1,6 @@
 import { database } from '@/lib/firebase'
 import { ref, serverTimestamp, update } from './firebaseDebug'
+import { resolveLegacyAccountState } from './legacyAccountState'
 
 export const TIPOS_CONTA = {
   cliente: {
@@ -33,10 +34,8 @@ export function perfilMinimoCompleto(userData = {}) {
 
 export function perfilInicialFromAuth(userData = {}, authUser = null) {
   const profile = userData.profile || {}
-  const tipoSalvo =
-    profile.tipoContaInicial ||
-    userData.tipoContaInicial ||
-    (userData.isProfissional || profile.isProfissional ? 'profissional' : userData.isCorre || profile.isCorre ? 'corre' : 'cliente')
+  const accountState = resolveLegacyAccountState({ uid: authUser?.uid, sources: [userData] })
+  const tipoSalvo = accountState.isProfissional ? 'profissional' : accountState.isCorre ? 'corre' : 'cliente'
 
   return {
     nome: profile.nome || userData.nome || authUser?.displayName || '',

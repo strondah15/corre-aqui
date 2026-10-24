@@ -9,6 +9,7 @@ import { startPresence } from '@/lib/presence'
 import { ATENDIMENTO_STATUS, transitionAtendimento } from '@/lib/atendimento'
 import { notifyPublicRequestAccepted } from '@/lib/privateRequests'
 import { normalizePublicRequest } from '@/lib/publicRequests'
+import { createChatHref } from '@/lib/chatNavigation'
 
 export default function ListaPedidos() {
   const router = useRouter()
@@ -70,6 +71,7 @@ export default function ListaPedidos() {
     if (!pedidoId || acceptingIdsRef.current.has(pedidoId)) return
 
     acceptingIdsRef.current.add(pedidoId)
+    let navigatingToChat = false
 
     try {
       const agora = Date.now()
@@ -102,11 +104,12 @@ export default function ListaPedidos() {
       })
 
       setMensagem('Pedido aceito com sucesso.')
-      router.replace(`/pedido/${encodeURIComponent(pedidoId)}?voltar=corre&aceito=1`)
+      router.push(createChatHref(pedidoId, 'corre'))
+      navigatingToChat = true
     } catch (error) {
       setMensagem(error?.message || 'Não foi possível aceitar o pedido agora.')
     } finally {
-      acceptingIdsRef.current.delete(pedidoId)
+      if (!navigatingToChat) acceptingIdsRef.current.delete(pedidoId)
     }
   }
 

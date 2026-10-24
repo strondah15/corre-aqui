@@ -26,6 +26,8 @@ import {
   projectPublicProfileForWrite,
   safePublicText,
 } from '@/lib/publicWorkProfile'
+import { resolveLegacyAccountState } from '@/lib/legacyAccountState'
+import { activateProfessionalTrial } from '@/lib/subscriptionClient'
 
 const modes = {
   cliente: {
@@ -213,6 +215,10 @@ function pickProfessionFromSources(publicProfile = {}, accountData = {}) {
 
 function getInitialWorkForm(accountData = {}, authUser = null, publicProfile = {}) {
   const profile = accountData?.profile || {}
+  const accountState = resolveLegacyAccountState({
+    uid: authUser?.uid,
+    sources: [accountData, publicProfile],
+  })
   const profession = pickProfessionFromSources(publicProfile, accountData)
   const categoria =
     findProfessionById(profession.professionId)?.categoryId ||
@@ -226,11 +232,9 @@ function getInitialWorkForm(accountData = {}, authUser = null, publicProfile = {
 
   return {
     nome: safePublicText(publicProfile?.nome || accountData?.nome || profile?.nome || authUser?.displayName),
-    profileType:
-      publicProfile?.profileType === PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL ||
-      publicProfile?.isProfissional === true
-        ? PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
-        : PUBLIC_WORK_PROFILE_TYPES.CORRE,
+    profileType: accountState.isProfissional
+      ? PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
+      : PUBLIC_WORK_PROFILE_TYPES.CORRE,
     categoriaId: safePublicText(categoria),
     professionId: profession.professionId,
     professionName: profession.professionName,
@@ -926,6 +930,9 @@ export default function ModoGate() {
 
   useEffect(() => {
     if (stage !== 'app' || selectedMode !== 'corre' || typeof window === 'undefined') return
+    activateProfessionalTrial().catch((error) => {
+      console.warn('[ASSINATURA] não foi possível iniciar/verificar o período profissional:', error?.message || error)
+    })
     window.dispatchEvent(new CustomEvent('correaqui:push-context', {
       detail: { context: 'modo_trabalhar' },
     }))

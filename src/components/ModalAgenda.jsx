@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { database } from '@/lib/firebase'
 import { auth } from '@/lib/firebase'
@@ -114,6 +114,8 @@ export default function ModalAgenda({ open, onClose, profissional, servico = nul
   const [descricao, setDescricao] = useState('')
   const [valor, setValor] = useState('')
   const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState('')
+  const submitLockRef = useRef(false)
 
   if (!open || !profissional) return null
 
@@ -154,9 +156,11 @@ export default function ModalAgenda({ open, onClose, profissional, servico = nul
   const descricaoLength = descricao.length
 
   async function enviar() {
-    if (!profissionalId || salvando) return
+    if (!profissionalId || salvando || submitLockRef.current) return
+    submitLockRef.current = true
 
     setSalvando(true)
+    setErro('')
 
     try {
       const authUser = auth.currentUser
@@ -194,7 +198,10 @@ export default function ModalAgenda({ open, onClose, profissional, servico = nul
       })
 
       onClose?.()
+    } catch (error) {
+      setErro(error?.message || 'Não foi possível enviar a solicitação. Tente novamente.')
     } finally {
+      submitLockRef.current = false
       setSalvando(false)
     }
   }
@@ -203,7 +210,7 @@ export default function ModalAgenda({ open, onClose, profissional, servico = nul
     <div
       className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-950/82 px-3 py-3 text-slate-950 backdrop-blur-md md:px-4 md:py-6"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose?.()
+        if (!submitLockRef.current && !salvando && event.target === event.currentTarget) onClose?.()
       }}
     >
       <motion.div
@@ -215,7 +222,10 @@ export default function ModalAgenda({ open, onClose, profissional, servico = nul
         <div className="flex items-center justify-between px-4 pb-2 pt-4 md:px-5 md:pt-5">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              if (!submitLockRef.current && !salvando) onClose?.()
+            }}
+            disabled={salvando}
             className="grid h-9 w-9 place-items-center rounded-full text-xl font-black text-slate-900 transition hover:bg-slate-100 active:scale-95"
             aria-label="Voltar"
           >
@@ -224,7 +234,10 @@ export default function ModalAgenda({ open, onClose, profissional, servico = nul
           <h2 className="text-sm font-black text-slate-950 md:text-base">Agendar serviço</h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              if (!submitLockRef.current && !salvando) onClose?.()
+            }}
+            disabled={salvando}
             className="grid h-9 w-9 place-items-center rounded-full text-xl font-black text-slate-900 transition hover:bg-slate-100 active:scale-95"
             aria-label="Fechar agenda"
           >
@@ -401,6 +414,12 @@ export default function ModalAgenda({ open, onClose, profissional, servico = nul
             </span>
             O profissional receberá sua solicitação e poderá aceitar ou combinar outro horário.
           </div>
+
+          {erro ? (
+            <div role="alert" className="mt-3 rounded-[14px] border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-700">
+              {erro}
+            </div>
+          ) : null}
 
           <motion.button
             type="button"
