@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getAuthenticatedUid, getCommercialDatabase } from '@/lib/commercialServer'
 import {
   ensureProfessionalTrial,
-  readSubscriptionSummary,
+  readSubscriptionAccessSummary,
 } from '@/lib/subscriptionServer'
 
 export const runtime = 'nodejs'
@@ -17,8 +17,12 @@ export async function POST(request) {
     if (body?.activateProfessionalTrial === true) {
       await ensureProfessionalTrial(database, uid)
     }
-    const subscriptions = await readSubscriptionSummary(database, uid)
-    return NextResponse.json({ ok: true, subscriptions }, { headers })
+    const summary = await readSubscriptionAccessSummary(database, uid)
+    return NextResponse.json({
+      ok: true,
+      subscriptions: summary.subscriptions,
+      capabilities: summary.capabilities,
+    }, { headers })
   } catch (error) {
     return NextResponse.json({
       ok: false,

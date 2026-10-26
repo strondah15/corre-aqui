@@ -658,6 +658,10 @@
       ".write": false,
       ".indexOn": ["createdAt", "type", "userId", "pedidoId", "productId"]
     },
+    "stagingSubscriptionFixtures": {
+      ".read": false,
+      ".write": false
+    },
     "processedPaymentEvents": {
       ".read": false,
       ".write": false

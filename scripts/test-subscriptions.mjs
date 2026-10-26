@@ -980,7 +980,8 @@ assert.ok(
   'pagamento pendente ou rejeitado nao chega a ativacao',
 )
 assert.match(commercialSource, /activateAnnualSubscription\(\{ database, attempt, payment \}\)/, 'aprovado ativa somente pelo backend')
-assert.match(statusRouteSource, /readSubscriptionSummary\(database, uid\)/, 'frontend confirma pelo status backend')
+assert.match(statusRouteSource, /readSubscriptionAccessSummary\(database, uid\)/, 'frontend confirma pelo status backend')
+assert.match(statusRouteSource, /capabilities: summary\.capabilities/, 'status expõe somente a capacidade limitada da fixture')
 assert.match(
   orderCreateRouteSource,
   /const updates = \{[\s\S]*?pedidos\/\$\{id\}[\s\S]*?publicRequests\/\$\{id\}[\s\S]*?users\/\$\{uid\}\/clientFreeOrderUsed[\s\S]*?\}[\s\S]*?await database\.ref\(\)\.update\(updates\)/,
@@ -1051,6 +1052,7 @@ assert.match(subscriptionClientSource, /isSubscriptionSessionCurrent\(checkoutUi
 assert.match(subscriptionClientSource, /\/api\/subscriptions\/status/)
 assert.match(subscriptionClientSource, /signal: options\.signal/, 'consulta de status suporta cancelamento')
 assert.match(subscriptionClientSource, /ensureClientDirectRequestAccess/)
+assert.match(subscriptionClientSource, /capabilities\?\.clientDirectRequests === true/, 'preflight aceita a capacidade validada pelo backend')
 assert.doesNotMatch(subscriptionClientSource, /update\([^\n]*subscriptions/)
 
 const privateCreateRouteSource = await readFile(new URL('../src/app/api/private-requests/create/route.js', import.meta.url), 'utf8')
@@ -1081,6 +1083,8 @@ assert.match(mapSource, /abrirAgendaCliente[\s\S]*confirmarAcessoContratacaoDire
 const rules = JSON.parse(await readFile(new URL('../database.rules.json', import.meta.url), 'utf8')).rules
 assert.match(rules.users.$uid['.write'], /newData\.child\('subscriptions'\)\.exists\(\) === data\.child\('subscriptions'\)\.exists\(\)/)
 assert.equal(rules.users.$uid.subscriptions['.validate'], false)
+assert.equal(rules.stagingSubscriptionFixtures['.read'], false)
+assert.equal(rules.stagingSubscriptionFixtures['.write'], false)
 assert.match(rules.users.$uid['.write'], /newData\.child\('clientFreeOrderUsed'\)\.val\(\) === data\.child\('clientFreeOrderUsed'\)\.val\(\)/)
 assert.doesNotMatch(rules.pedidos.$pedidoId['.write'], /!data\.exists\(\) && newData\.exists\(\)/)
 assert.equal(rules.privateRequests.$requestId.status['.write'], false)

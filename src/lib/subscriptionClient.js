@@ -54,7 +54,10 @@ export function activateProfessionalTrial() {
 
 export async function ensureClientDirectRequestAccess() {
   const result = await getSubscriptionStatus()
-  if (result?.subscriptions?.client?.active === true) return true
+  if (
+    result?.subscriptions?.client?.active === true
+    || result?.capabilities?.clientDirectRequests === true
+  ) return true
   announceSubscriptionRequired({
     kind: 'client',
     reason: 'client_direct_subscription_required',

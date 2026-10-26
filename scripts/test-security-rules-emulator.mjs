@@ -170,6 +170,27 @@ try {
           status: 'completed',
         },
       },
+      stagingSubscriptionFixtures: {
+        [CLIENT]: {
+          client: {
+            version: 1,
+            kind: 'client',
+            source: 'staging_subscription_fixture_v1',
+            accountType: 'dedicated_test',
+            subjectUid: CLIENT,
+            testAccountId: 'test-client-a',
+            status: 'active',
+            issuedAt: baseTime,
+            expiresAt: baseTime + 60_000,
+            updatedAt: baseTime,
+            revision: 1,
+            lastOperationId: 'operation-seed-01',
+            operations: {
+              'operation-seed-01': { type: 'grant' },
+            },
+          },
+        },
+      },
       privateRequests: {
         'private-final': {
           id: 'private-final',
@@ -188,6 +209,7 @@ try {
   const clientDb = testEnv.authenticatedContext(CLIENT).database()
   const workerDb = testEnv.authenticatedContext(WORKER).database()
   const outsiderDb = testEnv.authenticatedContext(OUTSIDER).database()
+  const anonymousDb = testEnv.unauthenticatedContext().database()
 
   await assertSucceeds(update(ref(workerDb, `users/${WORKER}`), {
     online: true,
@@ -241,6 +263,14 @@ try {
     criadoEmServer: Date.now(),
   }), 'profissional não antecipa a elegibilidade alterando o timestamp server-side')
   await assertFails(get(ref(workerDb, 'attendanceRewardGrants/server-grant')))
+  await assertFails(get(ref(clientDb, `stagingSubscriptionFixtures/${CLIENT}/client`)))
+  await assertFails(get(ref(workerDb, `stagingSubscriptionFixtures/${CLIENT}/client`)))
+  await assertFails(get(ref(anonymousDb, `stagingSubscriptionFixtures/${CLIENT}/client`)))
+  await assertFails(set(ref(clientDb, `stagingSubscriptionFixtures/${CLIENT}/client/status`), 'active'))
+  await assertFails(set(ref(workerDb, `stagingSubscriptionFixtures/${WORKER}/client`), {
+    status: 'active',
+    expiresAt: Date.now() + 60_000,
+  }))
 
   await assertSucceeds(get(ref(clientDb, 'pedidos/order-flow')))
   await assertSucceeds(get(ref(workerDb, 'pedidos/order-flow')))

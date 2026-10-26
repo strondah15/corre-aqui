@@ -47,4 +47,7 @@ assert.match(publicProfiles.$uid['.validate'], /!newData\.child\('telefone'\)\.e
 assert.match(publicProfiles.$uid['.validate'], /!newData\.child\('cpf'\)\.exists\(\)/)
 assert.match(publicProfiles.$uid['.validate'], /!newData\.child\('documento'\)\.exists\(\)/)
 
+assert.equal(rules.stagingSubscriptionFixtures['.read'], false)
+assert.equal(rules.stagingSubscriptionFixtures['.write'], false)
+
 console.log('C1 Rules: cenarios A/B/C e invariantes estruturais OK')

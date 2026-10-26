@@ -5,7 +5,59 @@ import {
   getClientSubscriptionStatus,
   getProfessionalSubscriptionStatus,
   subscriptionTimestamp,
-} from '@/lib/subscriptions'
+} from './subscriptions.js'
+import {
+  assessStagingSubscriptionFixtureRuntime,
+  resolveClientDirectRequestAccessWithFixture,
+} from './stagingSubscriptionFixtures.js'
+
+async function resolveClientDirectRequestAccess(database, account, uid, now, env = process.env) {
+  const commercialAccess = canCreateClientDirectRequest(account, { now })
+  if (commercialAccess.allowed) {
+    return resolveClientDirectRequestAccessWithFixture({
+      commercialAccess,
+      uid,
+      now,
+      env,
+    })
+  }
+
+  const runtime = assessStagingSubscriptionFixtureRuntime(env)
+  if (!runtime.enabled) {
+    return resolveClientDirectRequestAccessWithFixture({
+      commercialAccess,
+      fixture: null,
+      uid,
+      now,
+      env,
+      runtime,
+    })
+  }
+
+  let fixture = null
+  try {
+    const fixtureSnapshot = await database.ref(`stagingSubscriptionFixtures/${uid}/client`).get()
+    fixture = fixtureSnapshot.val()
+  } catch {
+    fixture = null
+  }
+
+  return resolveClientDirectRequestAccessWithFixture({
+    commercialAccess,
+    fixture,
+    uid,
+    now,
+    env,
+    runtime,
+  })
+}
+
+function clientDirectSubscriptionError(subscription) {
+  const error = new Error('client_direct_subscription_required')
+  error.status = 402
+  error.subscription = subscription
+  return error
+}
 
 export function defaultClientSubscription(current = {}) {
   return {
@@ -56,17 +108,22 @@ export async function ensureProfessionalFeatureAccess(database, uid, now = Date.
   return status
 }
 
-export async function ensureClientDirectRequestAccess(database, uid, now = Date.now()) {
+export async function ensureClientDirectRequestAccess(database, uid, now = Date.now(), env = process.env) {
   const snapshot = await database.ref(`users/${uid}`).get()
   const account = snapshot.val() || {}
-  const access = canCreateClientDirectRequest(account, { now })
-  if (!access.allowed) {
-    const error = new Error('client_direct_subscription_required')
-    error.status = 402
-    error.subscription = access.subscription
-    throw error
+  if (!snapshot.exists()) {
+    const commercialAccess = canCreateClientDirectRequest(account, { now })
+    throw clientDirectSubscriptionError(commercialAccess.subscription)
   }
-  return { account, subscription: access.subscription }
+  const access = await resolveClientDirectRequestAccess(database, account, uid, now, env)
+  if (!access.allowed) {
+    throw clientDirectSubscriptionError(access.subscription)
+  }
+  return {
+    account,
+    subscription: access.subscription,
+    accessSource: access.accessSource,
+  }
 }
 
 export async function readSubscriptionSummary(database, uid, now = Date.now()) {
@@ -75,5 +132,22 @@ export async function readSubscriptionSummary(database, uid, now = Date.now()) {
   return {
     client: getClientSubscriptionStatus(user, now),
     professional: getProfessionalSubscriptionStatus(user, now),
+  }
+}
+
+export async function readSubscriptionAccessSummary(database, uid, now = Date.now(), env = process.env) {
+  const snapshot = await database.ref(`users/${uid}`).get()
+  const user = snapshot.val() || {}
+  const client = getClientSubscriptionStatus(user, now)
+  const professional = getProfessionalSubscriptionStatus(user, now)
+  const access = snapshot.exists()
+    ? await resolveClientDirectRequestAccess(database, user, uid, now, env)
+    : { allowed: false }
+
+  return {
+    subscriptions: { client, professional },
+    capabilities: {
+      clientDirectRequests: access.allowed === true,
+    },
   }
 }
