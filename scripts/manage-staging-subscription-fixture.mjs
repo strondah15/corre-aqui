@@ -193,6 +193,42 @@ function sanitizedResult(command, operation, record) {
   }
 }
 
+function isStoredFixture(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+export function createStagingSubscriptionFixtureTransactionUpdater({ preloadedFixture, input }) {
+  const waitForAuthoritativeValue = isStoredFixture(preloadedFixture)
+  let outcome = null
+
+  return {
+    update(remoteCurrent) {
+      if (remoteCurrent == null && waitForAuthoritativeValue) {
+        outcome = null
+        return null
+      }
+
+      outcome = applyStagingClientSubscriptionFixtureOperation(remoteCurrent, input)
+      return outcome.ok ? outcome.record : undefined
+    },
+    getOutcome() {
+      return outcome
+    },
+  }
+}
+
+export function isStagingSubscriptionFixtureTransactionResultValid({ transaction, outcome, command }) {
+  const persisted = transaction?.snapshot?.val?.()
+  return Boolean(
+    transaction?.committed
+    && outcome?.ok
+    && isStoredFixture(persisted)
+    && persisted.subjectUid === command.uid
+    && persisted.testAccountId === command.testAccountId
+    && Number(persisted.revision) === Number(outcome.record?.revision)
+  )
+}
+
 export async function runStagingSubscriptionFixtureCli({
   argv = process.argv.slice(2),
   env = process.env,
@@ -262,14 +298,18 @@ export async function runStagingSubscriptionFixtureCli({
     }
 
     const fixtureRef = database.ref(`stagingSubscriptionFixtures/${command.uid}/client`)
-    let transactionOutcome = null
-    const transaction = await fixtureRef.transaction((remoteCurrent) => {
-      transactionOutcome = applyStagingClientSubscriptionFixtureOperation(remoteCurrent, input)
-      if (!transactionOutcome.ok) return undefined
-      return transactionOutcome.record
-    }, undefined, false)
+    const transactionUpdater = createStagingSubscriptionFixtureTransactionUpdater({
+      preloadedFixture: currentFixture,
+      input,
+    })
+    const transaction = await fixtureRef.transaction(transactionUpdater.update, undefined, false)
+    const transactionOutcome = transactionUpdater.getOutcome()
 
-    if (!transaction.committed || !transactionOutcome?.ok) {
+    if (!isStagingSubscriptionFixtureTransactionResultValid({
+      transaction,
+      outcome: transactionOutcome,
+      command,
+    })) {
       throw new Error(transactionOutcome?.reason || 'fixture_transaction_not_committed')
     }
 

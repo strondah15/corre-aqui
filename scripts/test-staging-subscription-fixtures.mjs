@@ -16,6 +16,8 @@ import {
   canCreateClientOrder,
 } from '../src/lib/subscriptions.js'
 import {
+  createStagingSubscriptionFixtureTransactionUpdater,
+  isStagingSubscriptionFixtureTransactionResultValid,
   parseStagingSubscriptionFixtureCliArguments,
   validateStagingSubscriptionFixtureCliCommand,
 } from './manage-staging-subscription-fixture.mjs'
@@ -209,6 +211,55 @@ const concurrentGrant = applyStagingClientSubscriptionFixtureOperation(
 )
 assert.equal(concurrentGrant.ok, false)
 assert.equal(concurrentGrant.reason, 'stale_revision', 'Duas operações concorrentes não podem confirmar a mesma revisão')
+
+const revokeTransactionInput = operation('revoke', 'operation-revoke-null-01', {
+  expectedRevision: 1,
+  now: now + 500,
+})
+const initialNullUpdater = createStagingSubscriptionFixtureTransactionUpdater({
+  preloadedFixture: granted.record,
+  input: revokeTransactionInput,
+})
+assert.equal(
+  initialNullUpdater.update(null),
+  null,
+  'Callback inicial null aguarda o valor autoritativo sem recriar ou sobrescrever a fixture',
+)
+assert.equal(initialNullUpdater.getOutcome(), null)
+const authoritativeUpdate = initialNullUpdater.update(granted.record)
+assert.equal(authoritativeUpdate.status, 'revoked')
+assert.equal(authoritativeUpdate.revision, 2)
+assert.equal(initialNullUpdater.getOutcome().ok, true)
+assert.equal(
+  isStagingSubscriptionFixtureTransactionResultValid({
+    transaction: { committed: true, snapshot: { val: () => authoritativeUpdate } },
+    outcome: initialNullUpdater.getOutcome(),
+    command: { uid, testAccountId },
+  }),
+  true,
+  'Resultado autoritativo correspondente pode ser confirmado',
+)
+assert.equal(
+  isStagingSubscriptionFixtureTransactionResultValid({
+    transaction: { committed: true, snapshot: { val: () => null } },
+    outcome: initialNullUpdater.getOutcome(),
+    command: { uid, testAccountId },
+  }),
+  false,
+  'Registro realmente inexistente nunca é aceito como resultado da transação',
+)
+
+const revisionConflictUpdater = createStagingSubscriptionFixtureTransactionUpdater({
+  preloadedFixture: granted.record,
+  input: revokeTransactionInput,
+})
+assert.equal(
+  revisionConflictUpdater.update({ ...granted.record, revision: 2 }),
+  undefined,
+  'Revisão autoritativa diferente aborta sem sobrescrever o registro remoto',
+)
+assert.equal(revisionConflictUpdater.getOutcome().ok, false)
+assert.equal(revisionConflictUpdater.getOutcome().reason, 'stale_revision')
 
 const renewed = applyStagingClientSubscriptionFixtureOperation(
   granted.record,
