@@ -11,6 +11,8 @@ import {
 import { getClientSubscriptionStatus } from '../src/lib/subscriptions.js'
 
 const APPLY_CONFIRMATION = 'APPLY_STAGING_SUBSCRIPTION_FIXTURE'
+const FIREBASE_SERVER_TIME_TIMEOUT_MS = 10_000
+const MAX_SERVER_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000
 const ALLOWED_ARGUMENTS = new Set([
   'apply',
   'confirm-apply',
@@ -71,6 +73,55 @@ function readCredentials(env) {
     clientEmail: clean(env.FIREBASE_ADMIN_CLIENT_EMAIL),
     privateKey: String(env.FIREBASE_ADMIN_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
   }
+}
+
+async function readTrustedFirebaseServerNow({ credential, databaseURL, uid }) {
+  let endpoint
+  try {
+    endpoint = new URL(clean(databaseURL))
+  } catch {
+    throw new Error('firebase_server_time_unavailable')
+  }
+  if (endpoint.protocol !== 'https:') throw new Error('firebase_server_time_unavailable')
+
+  endpoint.pathname = `/stagingSubscriptionFixtures/${encodeURIComponent(uid)}/client.json`
+  endpoint.search = '?shallow=true'
+
+  const tokenResult = await credential.getAccessToken().catch(() => null)
+  const accessToken = clean(tokenResult?.access_token)
+  if (!accessToken) throw new Error('firebase_server_time_unavailable')
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), FIREBASE_SERVER_TIME_TIMEOUT_MS)
+  let response
+  try {
+    response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'Cache-Control': 'no-cache, no-store',
+        Pragma: 'no-cache',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+  } catch {
+    throw new Error('firebase_server_time_unavailable')
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  const serverDate = response.headers.get('date')
+  await response.body?.cancel().catch(() => {})
+  if (!response.ok || !serverDate) throw new Error('firebase_server_time_unavailable')
+
+  const serverNow = Date.parse(serverDate)
+  const localNow = Date.now()
+  if (!Number.isFinite(serverNow) || Math.abs(serverNow - localNow) > MAX_SERVER_CLOCK_SKEW_MS) {
+    throw new Error('firebase_server_time_unavailable')
+  }
+  return Math.round(serverNow)
 }
 
 function required(values, name) {
@@ -155,8 +206,9 @@ export async function runStagingSubscriptionFixtureCli({
     || !credentials.privateKey
   ) throw new Error('firebase_admin_credentials_environment_mismatch')
 
+  const credential = cert(credentials)
   const app = initializeApp({
-    credential: cert(credentials),
+    credential,
     projectId: command.projectId,
     databaseURL: clean(env.FIREBASE_ADMIN_DATABASE_URL),
   }, `staging-subscription-fixture-${Date.now()}`)
@@ -166,18 +218,18 @@ export async function runStagingSubscriptionFixtureCli({
     if (authRecord.disabled) throw new Error('test_account_disabled')
 
     const database = getDatabase(app)
-    const [accountSnapshot, fixtureSnapshot, serverTimeOffsetSnapshot] = await Promise.all([
+    // The Admin SDK rejects reads from .info/serverTimeOffset in this execution path.
+    // Use the authenticated RTDB HTTPS response date instead; the local clock is only a skew guard.
+    const [accountSnapshot, fixtureSnapshot, serverNow] = await Promise.all([
       database.ref(`users/${command.uid}`).get(),
       database.ref(`stagingSubscriptionFixtures/${command.uid}/client`).get(),
-      database.ref('.info/serverTimeOffset').get(),
+      readTrustedFirebaseServerNow({
+        credential,
+        databaseURL: env.FIREBASE_ADMIN_DATABASE_URL,
+        uid: command.uid,
+      }),
     ])
     if (!accountSnapshot.exists()) throw new Error('test_account_profile_missing')
-
-    const serverTimeOffset = Number(serverTimeOffsetSnapshot.val())
-    if (!Number.isFinite(serverTimeOffset) || Math.abs(serverTimeOffset) > 24 * 60 * 60 * 1000) {
-      throw new Error('firebase_server_time_unavailable')
-    }
-    const serverNow = Math.round(Date.now() + serverTimeOffset)
 
     const account = accountSnapshot.val() || {}
     const commercialSubscription = getClientSubscriptionStatus(account, serverNow)
