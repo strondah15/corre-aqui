@@ -1216,6 +1216,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
   const [portfolioPhotoStage, setPortfolioPhotoStage] = useState("");
   const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
+  const [portfolioPhotoSuccess, setPortfolioPhotoSuccess] = useState("");
   const [addresses, setAddresses] = useState([]);
   const [addressesStatus, setAddressesStatus] = useState({ uid: "", loaded: false, error: "" });
   const [addressDraft, setAddressDraft] = useState(createEmptyAddressDraft);
@@ -1330,6 +1331,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     settingsLoadedRef.current = false;
     configSnapshotRef.current = "";
     configLastSavedRef.current = null;
+    setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
     if (configSaveTimerRef.current) {
       window.clearTimeout(configSaveTimerRef.current);
       configSaveTimerRef.current = null;
@@ -1981,6 +1984,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       : normalizePortfolioFotos(portfolioDraft);
 
     setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
 
     if (!currentUid) {
       setPortfolioPhotoError("Entre novamente para anexar a foto.");
@@ -2049,6 +2053,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         };
       });
       window.setTimeout(() => revokePortfolioPreviewUrl(previewUrl), 0);
+      setPortfolioPhotoSuccess("Foto pronta. Salve o serviço para vinculá-la ao portfólio.");
       return true;
     } catch (error) {
       const code = String(error?.code || error?.message || "");
@@ -2062,12 +2067,18 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       setPortfolioPhotoError(
         error?.message === "portfolio_upload_timeout"
           ? "A foto demorou para enviar. Tente novamente."
+          : code === "imgbb_config_missing"
+            ? "O envio de fotos ainda não está configurado neste ambiente."
+          : code === "firebase_admin_not_configured"
+            ? "O envio seguro de fotos está temporariamente indisponível."
           : code === "portfolio_source_too_large" || code === "portfolio_dimensions_too_large" || code === "portfolio_original_too_large" || code === "foto_grande"
             ? "A imagem é muito grande. Escolha uma foto menor."
             : code === "tipo_invalido"
               ? "Escolha uma imagem JPEG, PNG, WebP, GIF, HEIC ou HEIF."
             : code.toLowerCase().includes("permission") || code.toLowerCase().includes("auth")
               ? "Entre novamente para anexar a foto."
+            : code === "imgbb_upload_failed" || code === "imgbb_url_missing"
+              ? "O serviço de imagens não concluiu o envio. Tente novamente."
               : "Nao foi possivel anexar a foto.",
       );
       return false;
@@ -2096,6 +2107,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     portfolioPhotoUploadLockRef.current = true;
     setPortfolioPhotoUploading(true);
     setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
     try {
       for (const file of files.slice(0, vagas)) {
         const uploaded = await handlePortfolioPhotoUpload(file);
@@ -2120,72 +2132,77 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     });
     revokePortfolioPreviewUrl(fotoURL);
     setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
   }
 
-  const salvar = async () => {
+  const salvar = async (profileOverride = null) => {
     if (!uid) return;
+
+    const profileToSave = profileOverride && typeof profileOverride === "object" && !profileOverride.nativeEvent
+      ? profileOverride
+      : profile;
 
     setSalvando(true);
     setSalvo(false);
 
     try {
-      const profPortfolio = normalizePortfolio(profile.profPortfolio);
+      const profPortfolio = normalizePortfolio(profileToSave.profPortfolio);
       const portfolioMap = portfolioListToMap(profPortfolio);
 
       const corre = {
-        ativo: !!profile.isCorre,
-        titulo: profile.correTitulo || "Corre rápido",
-        bio: profile.correBio || "",
-        transporte: profile.correTransporte || "",
-        regiao: profile.correRegiao || profile.cidade || "",
-        disponibilidade: profile.correDisponibilidade || "",
-        experiencia: profile.correExperiencia || "",
+        ativo: !!profileToSave.isCorre,
+        titulo: profileToSave.correTitulo || "Corre rápido",
+        bio: profileToSave.correBio || "",
+        transporte: profileToSave.correTransporte || "",
+        regiao: profileToSave.correRegiao || profileToSave.cidade || "",
+        disponibilidade: profileToSave.correDisponibilidade || "",
+        experiencia: profileToSave.correExperiencia || "",
       };
 
       const profissional = {
-        ativo: !!profile.isProfissional,
-        titulo: profile.titulo || "",
-        descricao: profile.descricao || "",
-        preco: profile.preco || "",
-        whatsapp: profile.whatsapp || "",
-        regiao: profile.profRegiao || profile.cidade || "",
-        experiencia: profile.profExperiencia || "",
-        statusProfissional: profile.statusProfissional || "disponivel",
-        ocupadoAte: profile.ocupadoAte || "",
-        agendaAberta: profile.agendaAberta !== false,
+        ativo: !!profileToSave.isProfissional,
+        titulo: profileToSave.titulo || "",
+        descricao: profileToSave.descricao || "",
+        preco: profileToSave.preco || "",
+        whatsapp: profileToSave.whatsapp || "",
+        regiao: profileToSave.profRegiao || profileToSave.cidade || "",
+        experiencia: profileToSave.profExperiencia || "",
+        statusProfissional: profileToSave.statusProfissional || "disponivel",
+        ocupadoAte: profileToSave.ocupadoAte || "",
+        agendaAberta: profileToSave.agendaAberta !== false,
         portfolio: portfolioMap,
         profPortfolio,
       };
 
       const mapSettings = {
-        mostrarOnline: !!profile.mapMostrarOnline,
-        aoVivo: !!profile.mapAoVivo,
-        limiteOnline: Math.max(5, Math.min(80, Number(profile.mapLimiteOnline || 30))),
+        mostrarOnline: !!profileToSave.mapMostrarOnline,
+        aoVivo: !!profileToSave.mapAoVivo,
+        limiteOnline: Math.max(5, Math.min(80, Number(profileToSave.mapLimiteOnline || 30))),
         atualizadoEm: serverTimestamp(),
       };
 
       const uiSettings = {
-        animacoes: profile.animacoes !== false,
-        modoEconomico: profile.modoEconomico === true,
-        aparencia: profile.aparencia || "sistema",
-        notificationPreferences: normalizeNotificationPreferences(profile.notificationPreferences),
+        animacoes: profileToSave.animacoes !== false,
+        modoEconomico: profileToSave.modoEconomico === true,
+        aparencia: profileToSave.aparencia || "sistema",
+        notificationPreferences: normalizeNotificationPreferences(profileToSave.notificationPreferences),
         atualizadoEm: serverTimestamp(),
       };
-      const privacySettings = normalizePrivacy(profile.privacy);
+      const privacySettings = normalizePrivacy(profileToSave.privacy);
       const privacyPayload = {
         ...privacySettings,
         atualizadoEm: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
-      const fotoPrincipal = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
+      const fotoPrincipal = pickFoto(profileToSave.fotoURL, profileToSave.photoURL, profileToSave.avatar);
       const publicProfileSnap = await get(ref(database, `publicProfiles/${uid}`)).catch(() => null);
       const shouldSyncPublicWorkProfile = !!(publicProfileSnap?.exists?.() && publicProfileSnap.val());
       const publicPortfolioMap = privacySettings.profileVisible
-        ? portfolioListToPublicMap(profPortfolio, profile, uid, fotoPrincipal)
+        ? portfolioListToPublicMap(profPortfolio, profileToSave, uid, fotoPrincipal)
         : {};
-      const publicProfilePayload = profileToPublicProfile(profile, uid, fotoPrincipal, privacySettings, profPortfolio);
-      const profilePublic = { ...profile };
+      const publicProfilePayload = profileToPublicProfile(profileToSave, uid, fotoPrincipal, privacySettings, profPortfolio);
+      const profilePublic = { ...profileToSave };
       delete profilePublic.privacy;
       delete profilePublic.cpf;
       delete profilePublic.cpfDigits;
@@ -2211,7 +2228,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         documentoVerificacao: null,
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
-        avatar: fotoPrincipal || profile.avatarEmoji || "",
+        avatar: fotoPrincipal || profileToSave.avatarEmoji || "",
         profPortfolio,
         portfolio: portfolioMap,
         corre: {
@@ -2250,7 +2267,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       await update(ref(database, `${userBasePath}/settings/ui`), uiSettings);
 
       await update(ref(database, `${userBasePath}`), {
-        nome: profile.nome,
+        nome: profileToSave.nome,
         cpf: null,
         cpfDigits: null,
         cpfMasked: null,
@@ -2260,42 +2277,42 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         documentoVerificacao: null,
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
-        avatar: fotoPrincipal || profile.avatarEmoji || "",
-        avatarEmoji: profile.avatarEmoji || "",
+        avatar: fotoPrincipal || profileToSave.avatarEmoji || "",
+        avatarEmoji: profileToSave.avatarEmoji || "",
         profPortfolio,
         portfolio: portfolioMap,
-        cidade: profile.cidade || "",
-        bairro: profile.bairro || "",
-        telefone: profile.telefone || "",
-        phone: profile.telefone || "",
-        email: profile.email || auth.currentUser?.email || "",
-        dataNascimento: profile.dataNascimento || "",
-        bio: profile.bio || "",
-        visivel: profile.visivel !== false,
-        notificacoes: profile.notificacoes !== false,
+        cidade: profileToSave.cidade || "",
+        bairro: profileToSave.bairro || "",
+        telefone: profileToSave.telefone || "",
+        phone: profileToSave.telefone || "",
+        email: profileToSave.email || auth.currentUser?.email || "",
+        dataNascimento: profileToSave.dataNascimento || "",
+        bio: profileToSave.bio || "",
+        visivel: profileToSave.visivel !== false,
+        notificacoes: profileToSave.notificacoes !== false,
         privacy: privacyPayload,
-        isCorre: !!profile.isCorre,
+        isCorre: !!profileToSave.isCorre,
         corre: {
           ...corre,
           fotoURL: fotoPrincipal || null,
           photoURL: fotoPrincipal || null,
         },
-        isProfissional: !!profile.isProfissional,
-        profissional: profile.isProfissional
+        isProfissional: !!profileToSave.isProfissional,
+        profissional: profileToSave.isProfissional
           ? {
               ...profissional,
               fotoURL: fotoPrincipal || null,
               photoURL: fotoPrincipal || null,
             }
           : null,
-        plano: profile.plano || "Free",
-        statusProfissional: profile.statusProfissional || "disponivel",
-        ocupadoAte: profile.ocupadoAte || "",
-        agendaAberta: profile.agendaAberta !== false,
+        plano: profileToSave.plano || "Free",
+        statusProfissional: profileToSave.statusProfissional || "disponivel",
+        ocupadoAte: profileToSave.ocupadoAte || "",
+        agendaAberta: profileToSave.agendaAberta !== false,
         showOnlineStatus: privacySettings.showOnlineStatus,
         allowPublicContact: privacySettings.allowPublicContact,
         assinatura: {
-          plano: profile.plano || "Free",
+          plano: profileToSave.plano || "Free",
           origem: "perfil",
           atualizadoEm: serverTimestamp(),
         },
@@ -2331,30 +2348,30 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         origem: "PerfilDrawer",
       });
       await update(ref(database, `usuariosOnline/${uid}`), {
-        nome: profile.nome || "",
+        nome: profileToSave.nome || "",
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
-        avatar: fotoPrincipal || profile.avatarEmoji || "",
-        avatarEmoji: profile.avatarEmoji || "",
-        cidade: profile.cidade || "",
-        isCorre: !!profile.isCorre,
-        isProfissional: !!profile.isProfissional,
-        visivel: profile.visivel !== false,
+        avatar: fotoPrincipal || profileToSave.avatarEmoji || "",
+        avatarEmoji: profileToSave.avatarEmoji || "",
+        cidade: profileToSave.cidade || "",
+        isCorre: !!profileToSave.isCorre,
+        isProfissional: !!profileToSave.isProfissional,
+        visivel: profileToSave.visivel !== false,
         profileVisible: privacySettings.profileVisible,
         profileVisibilityExplicit: privacySettings.profileVisibilityExplicit === true,
         showOnlineStatus: privacySettings.showOnlineStatus,
         allowPublicContact: privacySettings.allowPublicContact,
-        plano: profile.plano || "Free",
-        statusProfissional: profile.statusProfissional || "disponivel",
-        ocupadoAte: profile.ocupadoAte || "",
-        agendaAberta: profile.agendaAberta !== false,
+        plano: profileToSave.plano || "Free",
+        statusProfissional: profileToSave.statusProfissional || "disponivel",
+        ocupadoAte: profileToSave.ocupadoAte || "",
+        agendaAberta: profileToSave.agendaAberta !== false,
         atualizadoEm: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
       try {
         if (fotoPrincipal) window.localStorage.setItem("fotoURL", fotoPrincipal);
-        if (profile.avatarEmoji) window.localStorage.setItem("avatarEmoji", profile.avatarEmoji);
+        if (profileToSave.avatarEmoji) window.localStorage.setItem("avatarEmoji", profileToSave.avatarEmoji);
       } catch {}
 
       setSalvo(true);
@@ -2607,9 +2624,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const drawerPage = drawerPages[tab] || drawerPages.config;
   const updatePortfolioDraft = (field, value) => {
     setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
     setPortfolioDraft((prev) => ({ ...prev, [field]: value }));
   };
-  const adicionarPortfolioItem = () => {
+  const adicionarPortfolioItem = async () => {
     if (portfolioSavingRef.current) return;
 
     portfolioSavingRef.current = true;
@@ -2651,20 +2669,31 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       return;
     }
 
-    setProfile((prev) => ({
-      ...prev,
+    const nextProfile = {
+      ...profile,
       profPortfolio: [
-        ...normalizePortfolio(prev.profPortfolio).filter((current) => current.id !== id),
+        ...normalizePortfolio(profile.profPortfolio).filter((current) => current.id !== id),
         item,
       ].slice(0, 12),
-    }));
-    setPortfolioDraft(createEmptyPortfolioDraft());
-    setPortfolioEditingId("");
+    };
+
+    setProfile(nextProfile);
+    setPortfolioDraft((prev) => ({ ...prev, id, createdAt: item.createdAt }));
     setPortfolioPhotoError("");
-    window.setTimeout(() => {
+    setPortfolioPhotoSuccess("");
+
+    try {
+      await salvar(nextProfile);
+      setPortfolioDraft(createEmptyPortfolioDraft());
+      setPortfolioEditingId("");
+      setPortfolioPhotoSuccess("Serviço e fotos salvos no portfólio.");
+    } catch (error) {
+      console.error("[PORTFOLIO] falha ao salvar serviço", error?.code || error?.message || "portfolio_save_failed");
+      setPortfolioPhotoError("Não foi possível salvar o serviço. Seus dados continuam na tela para tentar novamente.");
+    } finally {
       portfolioSavingRef.current = false;
       setPortfolioSaving(false);
-    }, 300);
+    }
   };
   const editarPortfolioItem = (item) => {
     const normalized = normalizePortfolio([item])[0] || item;
@@ -2681,6 +2710,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     });
     setPortfolioEditingId(normalized.id || "");
     setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
   };
   const removerPortfolioItem = (id) => {
     setProfile((prev) => ({
@@ -3155,7 +3185,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
                 <button
                   type="button"
-                  onClick={salvar}
+                  onClick={() => void salvar()}
                   disabled={salvando || fotoSalvando}
                   className="mt-6 h-14 w-full rounded-2xl bg-blue-700 text-base font-black text-white shadow-[0_18px_42px_rgba(37,99,235,0.26)] transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] md:h-16 md:rounded-[24px]"
                 >
@@ -4701,24 +4731,27 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                             <div className="text-xs font-black text-blue-950">Fotos do serviço (até 5)</div>
                             <div className="text-[11px] font-semibold text-slate-500">Mostre fotos reais dos seus trabalhos</div>
                           </div>
-                          <label className={["grid h-9 cursor-pointer place-items-center rounded-xl border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 shadow-sm transition active:scale-[0.98]", portfolioPhotoUploading || portfolioDraftFotos.length >= 5 ? "pointer-events-none opacity-60" : ""].join(" ")}>
+                          <label className={["inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 shadow-sm transition active:scale-[0.98]", portfolioPhotoUploading || portfolioDraftFotos.length >= 5 ? "pointer-events-none opacity-60" : ""].join(" ")}>
                             <input
                               type="file"
-                              accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif"
+                              accept="image/*,.heic,.heif"
                               multiple
                               disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
                               className="hidden"
                               onChange={alterarFotoPortfolio}
                             />
+                            {portfolioPhotoUploading ? (
+                              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" aria-hidden="true" />
+                            ) : null}
                             {portfolioPhotoStage === "optimizing"
                               ? "Otimizando imagem..."
                               : portfolioPhotoStage === "uploading"
                                 ? "Enviando..."
-                                : "Fotos"}
+                                : "Escolher fotos"}
                           </label>
                         </div>
 
-                        <div className="mt-3 grid grid-cols-5 gap-2">
+                        <div className="mt-3 grid grid-cols-3 gap-2 min-[420px]:grid-cols-5">
                           {Array.from({ length: 5 }).map((_, index) => {
                             const foto = portfolioDraftFotos[index];
                             return (
@@ -4733,7 +4766,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                                       type="button"
                                       onClick={() => removerFotoPortfolioDraft(foto)}
                                       disabled={portfolioPhotoUploading}
-                                      className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-slate-950/80 text-[10px] font-black text-white"
+                                      className="absolute right-1 top-1 grid h-8 w-8 place-items-center rounded-full bg-slate-950/80 text-sm font-black text-white shadow-lg transition hover:bg-rose-600 disabled:opacity-50"
                                       aria-label="Remover foto"
                                     >
                                       ×
@@ -4746,9 +4779,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                             );
                           })}
                         </div>
-                        {portfolioPhotoError ? (
-                          <div className="mt-2 text-xs font-black text-rose-600">{portfolioPhotoError}</div>
-                        ) : null}
+                        <div className="mt-2 min-h-4" aria-live="polite" aria-atomic="true">
+                          {portfolioPhotoError ? (
+                            <div className="text-xs font-black text-rose-600">{portfolioPhotoError}</div>
+                          ) : portfolioPhotoSuccess ? (
+                            <div className="text-xs font-black text-emerald-700">{portfolioPhotoSuccess}</div>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                     <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -4759,6 +4796,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                           if (portfolioPhotoUploading) return;
                           setPortfolioEditingId("");
                           setPortfolioDraft(createEmptyPortfolioDraft());
+                          setPortfolioPhotoError("");
+                          setPortfolioPhotoSuccess("");
                         }}
                           disabled={portfolioPhotoUploading}
                           className="h-10 rounded-xl border border-slate-200 bg-white px-5 text-xs font-black text-slate-600 transition active:scale-[0.98]"
@@ -4768,7 +4807,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                       ) : null}
                       <button
                         type="button"
-                        onClick={adicionarPortfolioItem}
+                        onClick={() => void adicionarPortfolioItem()}
                         disabled={portfolioSaving || portfolioPhotoUploading}
                         className={[
                           "h-10 rounded-xl bg-blue-700 px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]",
@@ -5003,7 +5042,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
           {tab !== "dados" && tab !== "config" && (!professionalMode || (currentProfSection && currentProfSection !== "perfilProfissional")) && (
           <button
-            onClick={salvar}
+            onClick={() => void salvar()}
             disabled={salvando || fotoSalvando}
             className="
               w-full mt-3 py-3 md:mt-5 md:py-4 rounded-2xl md:rounded-3xl

@@ -239,6 +239,15 @@ assert.match(componentSource, /revokePortfolioPreviewUrl\(fotoURL\)/, 'remoção
 assert.match(componentSource, /portfolioPreviewUrlsRef\.current\.forEach\(\(url\) => URL\.revokeObjectURL\(url\)\)/, 'unmount revoga previews restantes')
 assert.match(componentSource, /disabled=\{portfolioPhotoUploading\}/, 'remoção fica bloqueada durante processamento/upload')
 assert.match(componentSource, /uploadProfilePhotoToImgBB\(file, \{/, 'foto de perfil continua no pipeline anterior')
+assert.match(componentSource, /accept="image\/\*,\.heic,\.heif"/, 'seletor móvel permite abrir a galeria sem forçar câmera')
+assert.match(componentSource, /code === "imgbb_config_missing"[\s\S]*envio de fotos ainda não está configurado/, 'configuração ausente recebe erro claro e seguro')
+assert.match(componentSource, /aria-live="polite"/, 'resultado do upload é anunciado de forma acessível')
+
+const addBody = componentSource.slice(componentSource.indexOf('const adicionarPortfolioItem'), componentSource.indexOf('const editarPortfolioItem'))
+assert.match(addBody, /const nextProfile = \{[\s\S]*profPortfolio:/, 'item usa o portfólio completo que será persistido')
+assert.match(addBody, /await salvar\(nextProfile\)/, 'Adicionar persiste o serviço e as fotos imediatamente')
+assert.match(addBody, /setPortfolioDraft\(\(prev\) => \(\{ \.\.\.prev, id, createdAt: item\.createdAt \}\)\)/, 'retentativa reutiliza o mesmo item após falha parcial')
+assert.match(addBody, /Seus dados continuam na tela para tentar novamente/, 'falha de persistência preserva o rascunho')
 
 const editBody = componentSource.slice(componentSource.indexOf('const editarPortfolioItem'), componentSource.indexOf('const removerPortfolioItem'))
 const removeBody = componentSource.slice(componentSource.indexOf('const removerPortfolioItem'), componentSource.indexOf('const updateAddressDraft'))

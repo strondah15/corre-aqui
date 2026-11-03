@@ -294,16 +294,6 @@ function IconSend(props) {
   )
 }
 
-function IconSmile(props) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
-      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="2" />
-      <path d="M8.7 10h.1M15.2 10h.1" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-      <path d="M8.8 14.2c1.8 1.7 4.6 1.7 6.4 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 function IconCamera(props) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
@@ -457,6 +447,11 @@ export default function ChatMensagens({
   const [avaliacaoComentario, setAvaliacaoComentario] = useState('')
   const [salvandoAvaliacao, setSalvandoAvaliacao] = useState(false)
   const [agradecimentoAvaliacao, setAgradecimentoAvaliacao] = useState(false)
+  const [visualViewportState, setVisualViewportState] = useState({
+    height: 0,
+    offsetTop: 0,
+    keyboardOpen: false,
+  })
 
   const mediaRef = useRef(null)
   const mediaStreamRef = useRef(null)
@@ -477,6 +472,8 @@ export default function ChatMensagens({
   const overlayHistoryMarkerRef = useRef('')
   const overlayHistoryClosingRef = useRef(false)
   const serviceAccountingAttemptRef = useRef('')
+  const viewportBaselineHeightRef = useRef(0)
+  const viewportWidthRef = useRef(0)
 
   const outroId = outroUser?.id || null
   const outroNome = safeName(outroUser?.nome)
@@ -494,6 +491,55 @@ export default function ChatMensagens({
     shouldStickToBottomRef.current = true
     serviceAccountingAttemptRef.current = ''
   }, [pedidoId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return undefined
+
+    const viewport = window.visualViewport
+    const updateViewport = () => {
+      const height = Math.max(320, Math.round(viewport.height || window.innerHeight || 0))
+      const offsetTop = Math.max(0, Math.round(viewport.offsetTop || 0))
+      const width = Math.round(viewport.width || window.innerWidth || 0)
+      const layoutHeight = Math.max(
+        height + offsetTop,
+        Number(window.innerHeight || 0),
+        Number(document.documentElement?.clientHeight || 0),
+      )
+
+      if (viewportWidthRef.current && Math.abs(viewportWidthRef.current - width) > 80) {
+        viewportBaselineHeightRef.current = layoutHeight
+      } else {
+        viewportBaselineHeightRef.current = Math.max(viewportBaselineHeightRef.current, layoutHeight)
+      }
+      viewportWidthRef.current = width
+
+      const keyboardInset = Math.max(0, viewportBaselineHeightRef.current - height - offsetTop)
+      const keyboardOpen = keyboardInset > 120
+      setVisualViewportState((current) => (
+        current.height === height
+        && current.offsetTop === offsetTop
+        && current.keyboardOpen === keyboardOpen
+          ? current
+          : { height, offsetTop, keyboardOpen }
+      ))
+
+      if (keyboardOpen) {
+        requestAnimationFrame(() => {
+          if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+        })
+      }
+    }
+
+    updateViewport()
+    viewport.addEventListener('resize', updateViewport)
+    viewport.addEventListener('scroll', updateViewport)
+    window.addEventListener('orientationchange', updateViewport)
+    return () => {
+      viewport.removeEventListener('resize', updateViewport)
+      viewport.removeEventListener('scroll', updateViewport)
+      window.removeEventListener('orientationchange', updateViewport)
+    }
+  }, [])
 
   useEffect(() => {
     if (!pedidoId || !meuId || !pedido) return
@@ -1526,9 +1572,15 @@ export default function ChatMensagens({
     ? `${distanciaRelacionada.toFixed(1).replace('.', ',')} km`
     : String(distanciaRelacionada || '').trim()
   const tempoRelacionada = atendimento?.tempoEstimado || atendimento?.duracaoEstimada || ''
+  const keyboardOpen = visualViewportState.keyboardOpen
   const containerClass = modoPagina
-    ? 'fixed inset-y-0 left-1/2 z-[100000] flex h-[100svh] min-h-0 w-full max-w-[900px] -translate-x-1/2 flex-col overflow-hidden border-x border-white/[0.06] bg-[#030b15] text-white shadow-[0_0_90px_rgba(0,0,0,0.42)] supports-[height:100dvh]:h-[100dvh]'
+    ? 'fixed left-1/2 top-0 z-[100000] flex h-[100svh] min-h-0 w-full max-w-[900px] -translate-x-1/2 flex-col overflow-hidden border-x border-white/[0.06] bg-[#030b15] text-white shadow-[0_0_90px_rgba(0,0,0,0.42)] supports-[height:100dvh]:h-[100dvh]'
     : 'relative z-[9999] flex h-[min(92dvh,820px)] max-h-[calc(100dvh-0.75rem)] w-full max-w-[440px] flex-col overflow-hidden rounded-[24px] border border-emerald-400/15 bg-[#030b15] text-white shadow-[0_30px_100px_rgba(0,0,0,0.6)] sm:max-w-[560px] sm:rounded-[28px]'
+  const containerStyle = visualViewportState.height
+    ? modoPagina
+      ? { height: visualViewportState.height, top: visualViewportState.offsetTop }
+      : { maxHeight: Math.max(320, visualViewportState.height - 12) }
+    : undefined
   const nomeServicoCurto = pedidoTituloChat.length > 46 ? `${pedidoTituloChat.slice(0, 46).trim()}...` : pedidoTituloChat
   const acionarEtapaAtendimento = (action) => {
     if (!action || etapaProcessando || enviando || anexando || gravando || attendanceActionLockRef.current || sendActionLockRef.current) return
@@ -1545,7 +1597,12 @@ export default function ChatMensagens({
     void finalizarAtendimento()
   }
   return (
-    <div className={containerClass} data-tutorial="chat">
+    <div
+      className={containerClass}
+      style={containerStyle}
+      data-tutorial="chat"
+      data-keyboard-open={keyboardOpen ? 'true' : 'false'}
+    >
       <div className="shrink-0 border-b border-white/[0.06] bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_38%),linear-gradient(180deg,#071625,#030b15)] px-3 pb-2 pt-[max(0.4rem,env(safe-area-inset-top))] sm:px-5 sm:pb-3 sm:pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex h-12 items-center gap-2 sm:h-16 sm:gap-3">
           <button
@@ -1674,6 +1731,7 @@ export default function ChatMensagens({
         </div>
       ) : null}
 
+      {!keyboardOpen ? (
       <div className="shrink-0 bg-[#030b15] px-3 pb-1 pt-2 sm:px-5 sm:pb-2 sm:pt-3">
         <div className="overflow-hidden rounded-[20px] border border-emerald-400/20 bg-[linear-gradient(145deg,#0a1b2a,#07111f)] shadow-[0_12px_30px_rgba(0,0,0,0.24)]">
           <div className="flex min-h-[66px] items-center gap-2.5 p-2.5 sm:min-h-[74px] sm:gap-3 sm:p-3">
@@ -1730,8 +1788,9 @@ export default function ChatMensagens({
           ) : null}
         </div>
       </div>
+      ) : null}
 
-      <AttendanceProgress
+      {!keyboardOpen ? <AttendanceProgress
         status={pedidoStatus}
         action={acaoAtendimento}
         loadingActionId={etapaProcessando}
@@ -1740,7 +1799,7 @@ export default function ChatMensagens({
         rating={avaliacaoEfetiva}
         onAction={acionarEtapaAtendimento}
         onRate={() => acionarEtapaAtendimento(acaoAtendimento)}
-      />
+      /> : null}
 
       <div
         ref={chatRef}
@@ -1748,7 +1807,7 @@ export default function ChatMensagens({
           const element = event.currentTarget
           shouldStickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 96
         }}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[radial-gradient(circle_at_100%_8%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_0%_78%,rgba(16,185,129,0.07),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.012)_25%,transparent_25%)_0_0/28px_28px,#030b15] px-3 py-2 sm:px-5 sm:py-4"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain scroll-smooth bg-[radial-gradient(circle_at_100%_8%,rgba(14,165,233,0.08),transparent_28%),radial-gradient(circle_at_0%_78%,rgba(16,185,129,0.07),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.012)_25%,transparent_25%)_0_0/28px_28px,#030b15] px-3 py-3 [scrollbar-gutter:stable] sm:px-5 sm:py-4"
       >
         {avisoAtendimentoVisivel ? (
           <div className="mb-2 flex justify-center sm:mb-3">
@@ -1841,7 +1900,7 @@ export default function ChatMensagens({
                     initial={reduzirMovimento ? false : { opacity: 0, y: 10, scale: 0.98 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={reduzirMovimento ? { duration: 0 } : { duration: 0.22, delay: Math.min(index * 0.018, 0.14), ease: 'easeOut' }}
-                    className={`flex items-end gap-2 ${index === 0 || mostrarDivisorDia ? '' : mesmoAutorAnterior ? 'mt-1' : 'mt-2.5'} ${minha ? 'justify-end' : 'justify-start'}`}
+                    className={`flex items-end gap-2 ${index === 0 || mostrarDivisorDia ? '' : mesmoAutorAnterior ? 'mt-1.5' : 'mt-3'} ${minha ? 'justify-end' : 'justify-start'}`}
                   >
                   {!minha && !mesmoAutorProximo ? (
                     <div className="mb-1 grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-gradient-to-br from-blue-500 to-emerald-400 text-[10px] font-black text-white sm:h-8 sm:w-8 sm:text-xs">
@@ -1850,20 +1909,22 @@ export default function ChatMensagens({
                       ) : outroInicial}
                     </div>
                   ) : !minha ? <div className="h-7 w-7 shrink-0 sm:h-8 sm:w-8" aria-hidden="true" /> : null}
-                  <div className={`min-w-0 max-w-[82%] sm:max-w-[70%] ${minha ? 'text-right' : 'text-left'}`}>
-                    <div className="hidden mb-0.5 px-1 text-[9px] font-bold uppercase tracking-wide text-slate-500 sm:mb-1 sm:text-[10px]">
-                      {minha ? 'Você' : safeName(msg.autor, outroNome)}
-                    </div>
+                  <div className={`min-w-0 max-w-[84%] sm:max-w-[70%] ${minha ? 'text-right' : 'text-left'}`}>
+                    {!mesmoAutorAnterior ? (
+                      <div className={`mb-1 px-1 text-[10px] font-black uppercase tracking-[0.08em] ${minha ? 'text-emerald-300/80' : 'text-cyan-200/75'}`}>
+                        {minha ? 'Você' : safeName(msg.autor, outroNome)}
+                      </div>
+                    ) : null}
                     <div
                       className={[
-                        'rounded-[17px] px-3 py-2 shadow-[0_10px_24px_rgba(0,0,0,0.2)] sm:rounded-[20px] sm:px-4 sm:py-2.5',
+                        'rounded-[18px] px-3.5 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.2)] sm:rounded-[20px] sm:px-4 sm:py-3',
                          minha
-                          ? `${mesmoAutorAnterior ? 'rounded-tr-[9px]' : ''} ${mesmoAutorProximo ? 'rounded-br-[9px]' : 'rounded-br-[5px]'} border border-emerald-400/25 bg-[linear-gradient(135deg,rgba(6,95,70,0.96),rgba(4,120,87,0.78))] text-white`
-                          : `${mesmoAutorAnterior ? 'rounded-tl-[9px]' : ''} ${mesmoAutorProximo ? 'rounded-bl-[9px]' : 'rounded-bl-[5px]'} border border-cyan-300/[0.09] bg-[linear-gradient(135deg,#142235,#101a29)] text-white`,
+                          ? `${mesmoAutorAnterior ? 'rounded-tr-[9px]' : ''} ${mesmoAutorProximo ? 'rounded-br-[9px]' : 'rounded-br-[5px]'} border border-emerald-300/30 bg-[linear-gradient(135deg,rgba(6,95,70,0.98),rgba(4,120,87,0.82))] text-white`
+                          : `${mesmoAutorAnterior ? 'rounded-tl-[9px]' : ''} ${mesmoAutorProximo ? 'rounded-bl-[9px]' : 'rounded-bl-[5px]'} border border-cyan-200/15 bg-[linear-gradient(135deg,#172b42,#101d2e)] text-slate-50`,
                       ].join(' ')}
                     >
                       {msg.texto ? (
-                        <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[14px] leading-snug sm:text-base">{msg.texto}</div>
+                        <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[14px] leading-relaxed sm:text-base">{msg.texto}</div>
                       ) : null}
 
                       <MensagemAnexo anexo={msg.anexo} audioLegacy={msg.audio} duracao={msg.duracao} />
@@ -1882,7 +1943,10 @@ export default function ChatMensagens({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-emerald-400/10 bg-[#030b15]/96 px-2.5 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:px-5 sm:py-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div
+        className="relative z-20 shrink-0 border-t border-emerald-400/10 bg-[#030b15]/96 px-2.5 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:px-5 sm:py-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        data-chat-composer="true"
+      >
         {chatSomenteLeitura ? (
           <div className="rounded-2xl border border-red-400/15 bg-red-500/[0.07] px-3 py-2 text-center text-xs font-bold text-slate-300">
             Conversa encerrada após o cancelamento. O histórico continua disponível.
@@ -1904,7 +1968,7 @@ export default function ChatMensagens({
           onChange={(e) => selecionarArquivo(e)}
         />
 
-        {!pedido && !chatSomenteLeitura ? (
+        {!keyboardOpen && !pedido && !chatSomenteLeitura ? (
           <div className="mb-1.5 flex touch-pan-x gap-1.5 overflow-x-auto overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mb-2 sm:gap-2">
             <button
               type="button"
@@ -1936,7 +2000,7 @@ export default function ChatMensagens({
           </div>
         ) : null}
 
-        {!gravando && !chatSomenteLeitura ? (
+        {!keyboardOpen && !gravando && !chatSomenteLeitura ? (
           <div className="relative mb-1.5 sm:mb-2">
             <div className="flex touch-pan-x snap-x gap-1.5 overflow-x-auto overscroll-x-contain pr-7 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {sugestoesVisiveis.map((sugestao) => (
@@ -1990,13 +2054,13 @@ export default function ChatMensagens({
           </div>
         ) : null}
 
-        <div className={chatSomenteLeitura ? 'hidden' : 'flex items-center gap-1.5 sm:gap-2'}>
+        <div className={chatSomenteLeitura ? 'hidden' : 'flex items-end gap-2'}>
           <button
             type="button"
             onClick={() => arquivoInputRef.current?.click()}
             disabled={!pedidoId || enviando || anexando || gravando}
             className={[
-              'grid h-10 w-10 shrink-0 place-items-center rounded-full border text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-11 sm:w-11',
+              'grid h-11 w-11 shrink-0 place-items-center rounded-full border text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50',
               gravando
                 ? 'border-red-400/40 bg-red-500/20 text-red-100'
                 : 'border-white/10 bg-white/[0.07] hover:bg-white/[0.12]',
@@ -2045,25 +2109,20 @@ export default function ChatMensagens({
                   requestAnimationFrame(() => {
                     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
                   })
+                  window.setTimeout(() => {
+                    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
+                  }, 180)
                 }}
-                className="min-h-10 w-full max-h-20 resize-none overflow-y-auto rounded-[20px] border border-white/10 bg-white/[0.065] px-3 py-2.5 text-sm leading-tight text-white outline-none [field-sizing:content] placeholder:text-slate-500 focus:border-emerald-400/30 focus:ring-2 focus:ring-emerald-500/15 sm:min-h-11 sm:max-h-24 sm:rounded-[22px] sm:px-4 sm:py-3 sm:text-sm"
+                className="min-h-11 w-full max-h-24 resize-none overflow-y-auto rounded-[22px] border border-white/10 bg-white/[0.07] px-3.5 py-3 text-sm leading-snug text-white outline-none [field-sizing:content] placeholder:text-slate-500 focus:border-emerald-400/40 focus:ring-2 focus:ring-emerald-500/15 sm:px-4 sm:text-sm"
               />
             )}
           </div>
 
           <button
             type="button"
-            className="hidden h-9 w-9 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/[0.07] min-[400px]:grid sm:h-10 sm:w-10"
-            aria-label="Emoji"
-          >
-            <IconSmile className="h-5 w-5" />
-          </button>
-
-          <button
-            type="button"
             onClick={gravando ? solicitarParadaGravacao : iniciarGravacao}
             disabled={!pedidoId || enviando || anexando}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-white/[0.07] disabled:opacity-50 sm:h-10 sm:w-10"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.08] disabled:opacity-50"
             aria-label={gravando ? 'Parar audio' : 'Gravar audio'}
           >
             {gravando ? <IconStop className="h-5 w-5 text-red-300" /> : <IconMic className="h-5 w-5" />}
@@ -2073,7 +2132,7 @@ export default function ChatMensagens({
             type="button"
             onClick={() => enviar()}
             disabled={enviando || anexando || (!texto.trim() && !anexoSelecionado) || gravando}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-[0_10px_24px_rgba(34,197,94,0.26)] transition hover:bg-emerald-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:h-11 sm:w-11 [&_span]:hidden"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-[0_10px_24px_rgba(34,197,94,0.26)] transition hover:bg-emerald-400 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 [&_span]:hidden"
           >
             {enviando || anexando ? (
               '...'
