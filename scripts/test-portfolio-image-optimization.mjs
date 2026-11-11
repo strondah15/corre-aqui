@@ -16,10 +16,11 @@ function makeFile(bytes, name, type) {
   return new File([new Uint8Array(bytes)], name, { type, lastModified: 1 })
 }
 
-function installFakeBrowser({ width, height, hasTransparency = false, webpSupported = true, encodedBytes = 512, encodeFails = false } = {}) {
+function installFakeBrowser({ width, height, hasTransparency = false, webpSupported = true, encodedBytes = 512, encodeFails = false, bitmapFails = false, imageElementFails = false } = {}) {
   const previous = {
     createImageBitmap: globalThis.createImageBitmap,
     document: globalThis.document,
+    Image: globalThis.Image,
   }
   const state = {
     bitmapClosed: 0,
@@ -28,15 +29,36 @@ function installFakeBrowser({ width, height, hasTransparency = false, webpSuppor
     encodeRequests: [],
     canvas: null,
     orientation: '',
+    imageElementDecodeCalls: 0,
   }
 
   globalThis.createImageBitmap = async (_file, options = {}) => {
     state.decodeCalls += 1
     state.orientation = options.imageOrientation
+    if (bitmapFails) throw new Error('bitmap_decode_failed')
     return {
       width,
       height,
       close: () => { state.bitmapClosed += 1 },
+    }
+  }
+  globalThis.Image = class FakeImage {
+    constructor() {
+      this.naturalWidth = width
+      this.naturalHeight = height
+      this.width = width
+      this.height = height
+      this.onload = null
+      this.onerror = null
+    }
+
+    set src(value) {
+      if (!value) return
+      state.imageElementDecodeCalls += 1
+      queueMicrotask(() => {
+        if (imageElementFails) this.onerror?.(new Error('image_element_decode_failed'))
+        else this.onload?.()
+      })
     }
   }
   globalThis.document = {
@@ -75,6 +97,8 @@ function installFakeBrowser({ width, height, hasTransparency = false, webpSuppor
       else globalThis.createImageBitmap = previous.createImageBitmap
       if (previous.document === undefined) delete globalThis.document
       else globalThis.document = previous.document
+      if (previous.Image === undefined) delete globalThis.Image
+      else globalThis.Image = previous.Image
     },
   }
 }
@@ -204,10 +228,33 @@ await withFakeBrowser({ width: 2000, height: 1400, encodedBytes: 700 }, async (s
 await withFakeBrowser({ width: 2000, height: 1400, encodedBytes: 700 }, async (state) => {
   const heic = makeFile(5000, 'camera.heic', '')
   const result = await optimizePortfolioPhoto(heic)
-  assert.equal(result.file.name, 'camera.heic')
-  assert.equal(result.file.type, 'image/heic')
-  assert.equal(result.file.size, heic.size)
-  assert.equal(state.decodeCalls, 0)
+  assert.equal(result.file.type, 'image/webp', 'HEIC decodificável é convertido antes do upload')
+  assert.match(result.file.name, /camera\.webp$/)
+  assert.equal(state.decodeCalls, 1)
+  assert.equal(result.metrics.metadataRemoved, true)
+})
+
+await withFakeBrowser({ width: 2000, height: 1400, encodedBytes: 700, bitmapFails: true }, async (state) => {
+  const result = await optimizePortfolioPhoto(makeFile(5000, 'fallback-decoder.jpg', 'image/jpeg'))
+  assert.equal(result.file.type, 'image/webp')
+  assert.equal(state.decodeCalls, 1, 'createImageBitmap foi tentado uma vez')
+  assert.equal(state.imageElementDecodeCalls, 1, 'elemento img assume quando createImageBitmap falha')
+})
+
+await withFakeBrowser({ width: 2000, height: 1400, bitmapFails: true, imageElementFails: true }, async () => {
+  const smallHeic = makeFile(5000, 'camera-original.heic', 'image/heic')
+  const result = await optimizePortfolioPhoto(smallHeic)
+  assert.equal(result.file, smallHeic, 'HEIC pequeno mantém compatibilidade quando o navegador não decodifica')
+  assert.equal(result.metrics.reason, 'optimization_failed')
+})
+
+await withFakeBrowser({ width: 2000, height: 1400, bitmapFails: true, imageElementFails: true }, async () => {
+  const largeHeic = makeFile(PORTFOLIO_IMAGE_LIMITS.maxUploadBytes + 1, 'camera-grande.heic', 'image/heic')
+  await assert.rejects(
+    () => optimizePortfolioPhoto(largeHeic),
+    /portfolio_format_not_supported/,
+    'HEIC grande não é enviado cru quando o navegador não consegue convertê-lo',
+  )
 })
 
 await withFakeBrowser({ width: 4000, height: 3000, encodedBytes: 700 }, async (state) => {
@@ -240,14 +287,25 @@ assert.match(componentSource, /portfolioPreviewUrlsRef\.current\.forEach\(\(url\
 assert.match(componentSource, /disabled=\{portfolioPhotoUploading\}/, 'remoção fica bloqueada durante processamento/upload')
 assert.match(componentSource, /uploadProfilePhotoToImgBB\(file, \{/, 'foto de perfil continua no pipeline anterior')
 assert.match(componentSource, /accept="image\/\*,\.heic,\.heif"/, 'seletor móvel permite abrir a galeria sem forçar câmera')
+assert.match(componentSource, /ref=\{portfolioPhotoInputRef\}/, 'seletor móvel possui referência estável')
+assert.match(componentSource, /portfolioPhotoInputRef\.current\?\.click\(\)/, 'botão abre a galeria diretamente no gesto do usuário')
+const portfolioUploadBody = componentSource.slice(componentSource.indexOf('async function handlePortfolioPhotoUpload'), componentSource.indexOf('async function alterarFotoPortfolio'))
+assert.match(portfolioUploadBody, /currentUser\.getIdToken\(\)/, 'upload usa renovação normal do SDK sem forçar refresh em toda foto')
+assert.doesNotMatch(portfolioUploadBody, /currentUser\.getIdToken\(true\)/, 'upload móvel não força refresh de token desnecessário')
 assert.match(componentSource, /code === "imgbb_config_missing"[\s\S]*envio de fotos ainda não está configurado/, 'configuração ausente recebe erro claro e seguro')
 assert.match(componentSource, /aria-live="polite"/, 'resultado do upload é anunciado de forma acessível')
 
 const addBody = componentSource.slice(componentSource.indexOf('const adicionarPortfolioItem'), componentSource.indexOf('const editarPortfolioItem'))
 assert.match(addBody, /const nextProfile = \{[\s\S]*profPortfolio:/, 'item usa o portfólio completo que será persistido')
-assert.match(addBody, /await salvar\(nextProfile\)/, 'Adicionar persiste o serviço e as fotos imediatamente')
+assert.match(addBody, /await salvarPortfolio\(nextProfile\)/, 'Adicionar usa persistência dedicada do portfólio')
+assert.doesNotMatch(addBody, /await salvar\(nextProfile\)/, 'Adicionar não dispara escritas acessórias de todo o perfil')
 assert.match(addBody, /setPortfolioDraft\(\(prev\) => \(\{ \.\.\.prev, id, createdAt: item\.createdAt \}\)\)/, 'retentativa reutiliza o mesmo item após falha parcial')
 assert.match(addBody, /Seus dados continuam na tela para tentar novamente/, 'falha de persistência preserva o rascunho')
+
+const portfolioSaveBody = componentSource.slice(componentSource.indexOf('async function salvarPortfolio'), componentSource.indexOf('const salvar = async'))
+assert.match(portfolioSaveBody, /update\(ref\(database, userBasePath\), \{[\s\S]*profPortfolio,[\s\S]*portfolio: portfolioMap,[\s\S]*"profile\/profPortfolio": profPortfolio,[\s\S]*"profile\/portfolio": portfolioMap/, 'persistência privada atualiza caminhos canônicos e legados em uma operação')
+assert.match(portfolioSaveBody, /auth\.currentUser\?\.uid[\s\S]*currentUid !== String\(uid\)/, 'persistência confirma a identidade antes da escrita')
+assert.doesNotMatch(portfolioSaveBody, /settings\/mapa|settings\/ui|usuariosOnline|subscriptions|assinatura/, 'persistência do portfólio não toca em configurações ou comércio')
 
 const editBody = componentSource.slice(componentSource.indexOf('const editarPortfolioItem'), componentSource.indexOf('const removerPortfolioItem'))
 const removeBody = componentSource.slice(componentSource.indexOf('const removerPortfolioItem'), componentSource.indexOf('const updateAddressDraft'))
@@ -257,6 +315,9 @@ assert.doesNotMatch(chatSource, /optimizePortfolioPhoto|uploadPortfolioPhotoToIm
 assert.match(uploadRouteSource, /verifyIdToken\(idToken\)/, 'endpoint continua autenticado')
 assert.match(uploadRouteSource, /decoded\.uid[^\n]+!== uid/, 'endpoint mantém ownership do UID')
 assert.match(uploadRouteSource, /api\.imgbb\.com\/1\/upload/, 'provider permanece ImgBB')
+assert.match(uploadRouteSource, /AbortController/, 'endpoint limita espera do provider')
+assert.match(uploadRouteSource, /imgbb_unavailable/, 'falha de rede do provider recebe erro sanitizado')
+assert.doesNotMatch(uploadRouteSource, /data\?\.error\?\.message\s*\|\|/, 'mensagem bruta do provider não é devolvida ao navegador')
 assert.doesNotMatch(uploadRouteSource, /firebase\/storage|uploadBytes|getDownloadURL/, 'path não migrou para Firebase Storage')
 
 const fixtureSpecs = [

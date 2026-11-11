@@ -4,6 +4,7 @@ import { getFirebaseAdminAuth, isFirebaseAdminConfigured } from '@/lib/firebaseA
 export const runtime = 'nodejs'
 
 const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
+const IMGBB_REQUEST_TIMEOUT_MS = 20_000
 
 function jsonError(reason, status = 400, message = '') {
   return NextResponse.json({ ok: false, reason, message: message || reason }, { status })
@@ -64,15 +65,33 @@ export async function POST(request) {
   imgbbForm.append('image', image, image.name || 'avatar.jpg')
   imgbbForm.append('name', safeImageName(uid))
 
-  const response = await fetch(`https://api.imgbb.com/1/upload?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    body: imgbbForm,
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), IMGBB_REQUEST_TIMEOUT_MS)
+  let response
+  try {
+    response = await fetch(`https://api.imgbb.com/1/upload?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      body: imgbbForm,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    console.warn('[IMGBB_UPLOAD] provider request failed', {
+      stage: 'provider_request',
+      code: error?.name === 'AbortError' ? 'timeout' : 'network_error',
+    })
+    return jsonError('imgbb_unavailable', 502, 'O servico de imagens esta temporariamente indisponivel.')
+  } finally {
+    clearTimeout(timeout)
+  }
 
   const data = await response.json().catch(() => ({}))
   if (!response.ok || !data?.success) {
-    const message = data?.error?.message || data?.error?.code || `imgbb_http_${response.status}`
-    return jsonError('imgbb_upload_failed', 502, String(message))
+    console.warn('[IMGBB_UPLOAD] provider rejected upload', {
+      stage: 'provider_response',
+      status: response.status,
+      code: String(data?.error?.code || 'provider_error').slice(0, 80),
+    })
+    return jsonError('imgbb_upload_failed', 502, 'O servico de imagens nao concluiu o envio.')
   }
 
   const uploaded = data.data || {}

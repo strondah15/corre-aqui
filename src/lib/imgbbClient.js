@@ -13,7 +13,8 @@ export const PORTFOLIO_IMAGE_LIMITS = Object.freeze({
 })
 
 const PORTFOLIO_COMMON_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
-const PORTFOLIO_PRESERVE_TYPES = new Set(['image/gif', 'image/heic', 'image/heif'])
+const PORTFOLIO_HEIF_TYPES = new Set(['image/heic', 'image/heif'])
+const PORTFOLIO_PRESERVE_TYPES = new Set(['image/gif'])
 
 function imageError(code) {
   const error = new Error(code)
@@ -119,9 +120,7 @@ async function decodePortfolioImage(file) {
         height: Number(bitmap.height || 0),
         release: () => bitmap.close?.(),
       }
-    } catch {
-      throw imageError('portfolio_image_decode_failed')
-    }
+    } catch {}
   }
 
   return loadPortfolioImageElement(file)
@@ -200,7 +199,7 @@ function originalPortfolioResult(file, info, reason) {
 
 export async function optimizePortfolioPhoto(file) {
   const type = portfolioMime(file)
-  if (!file || (!PORTFOLIO_COMMON_TYPES.has(type) && !PORTFOLIO_PRESERVE_TYPES.has(type))) {
+  if (!file || (!PORTFOLIO_COMMON_TYPES.has(type) && !PORTFOLIO_HEIF_TYPES.has(type) && !PORTFOLIO_PRESERVE_TYPES.has(type))) {
     throw imageError('tipo_invalido')
   }
   if (Number(file.size || 0) > PORTFOLIO_IMAGE_LIMITS.maxSourceBytes) {
@@ -209,9 +208,7 @@ export async function optimizePortfolioPhoto(file) {
 
   const info = { type, width: 0, height: 0 }
 
-  if (PORTFOLIO_PRESERVE_TYPES.has(type)) {
-    return originalPortfolioResult(file, info, type === 'image/gif' ? 'animated_original' : 'unsupported_original')
-  }
+  if (PORTFOLIO_PRESERVE_TYPES.has(type)) return originalPortfolioResult(file, info, 'animated_original')
 
   if (typeof document === 'undefined') return originalPortfolioResult(file, info, 'browser_canvas_unavailable')
 
@@ -274,6 +271,9 @@ export async function optimizePortfolioPhoto(file) {
     }
   } catch (error) {
     if (String(error?.code || error?.message || '').includes('too_large')) throw error
+    if (PORTFOLIO_HEIF_TYPES.has(type) && Number(file?.size || 0) > PORTFOLIO_IMAGE_LIMITS.maxUploadBytes) {
+      throw imageError('portfolio_format_not_supported')
+    }
     return originalPortfolioResult(file, info, 'optimization_failed')
   } finally {
     decoded?.release?.()

@@ -1278,6 +1278,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const portfolioFirstInputRef = useRef(null);
   const portfolioSavingRef = useRef(false);
   const portfolioPhotoUploadLockRef = useRef(false);
+  const portfolioPhotoInputRef = useRef(null);
   const portfolioPreviewUrlsRef = useRef(new Set());
   const portfolioPreviewOwnerRef = useRef(String(uid || ""));
   const configSaveTimerRef = useRef(null);
@@ -2012,7 +2013,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     }
 
     let previewUrl = "";
+    let failureStage = "validation";
     try {
+      failureStage = "optimization";
       setPortfolioPhotoStage("optimizing");
       const prepared = await optimizePortfolioPhoto(file);
       if (process.env.NODE_ENV !== "production") {
@@ -2026,8 +2029,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         return { ...prev, fotoURL: prev.fotoURL || previewUrl, fotos };
       });
 
+      failureStage = "authentication";
+      const idToken = await currentUser.getIdToken();
+      failureStage = "upload";
       setPortfolioPhotoStage("uploading");
-      const idToken = await currentUser.getIdToken(true);
       const uploaded = await promiseComTimeout(
         uploadPortfolioPhotoToImgBB(prepared.file, {
           uid: currentUid,
@@ -2057,6 +2062,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       return true;
     } catch (error) {
       const code = String(error?.code || error?.message || "");
+      console.warn("[PORTFOLIO_IMAGE] falha controlada", {
+        stage: failureStage,
+        code: String(error?.code || "portfolio_upload_failed").slice(0, 80),
+      });
       if (previewUrl) {
         setPortfolioDraft((prev) => {
           const fotos = (Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)).filter((foto) => foto !== previewUrl);
@@ -2071,13 +2080,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             ? "O envio de fotos ainda não está configurado neste ambiente."
           : code === "firebase_admin_not_configured"
             ? "O envio seguro de fotos está temporariamente indisponível."
+          : code === "portfolio_format_not_supported" || code === "portfolio_image_decode_failed"
+            ? "Este formato não pôde ser lido neste aparelho. Escolha JPEG, PNG ou WebP."
           : code === "portfolio_source_too_large" || code === "portfolio_dimensions_too_large" || code === "portfolio_original_too_large" || code === "foto_grande"
             ? "A imagem é muito grande. Escolha uma foto menor."
             : code === "tipo_invalido"
               ? "Escolha uma imagem JPEG, PNG, WebP, GIF, HEIC ou HEIF."
             : code.toLowerCase().includes("permission") || code.toLowerCase().includes("auth")
               ? "Entre novamente para anexar a foto."
-            : code === "imgbb_upload_failed" || code === "imgbb_url_missing"
+            : code === "imgbb_upload_failed" || code === "imgbb_unavailable" || code === "imgbb_url_missing"
               ? "O serviço de imagens não concluiu o envio. Tente novamente."
               : "Nao foi possivel anexar a foto.",
       );
@@ -2120,6 +2131,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     }
   }
 
+  function abrirGaleriaPortfolio() {
+    if (portfolioPhotoUploadLockRef.current || portfolioDraftFotos.length >= 5) return;
+    setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
+    portfolioPhotoInputRef.current?.click();
+  }
+
   function removerFotoPortfolioDraft(fotoURL) {
     if (portfolioPhotoUploadLockRef.current) return;
     setPortfolioDraft((prev) => {
@@ -2133,6 +2151,77 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     revokePortfolioPreviewUrl(fotoURL);
     setPortfolioPhotoError("");
     setPortfolioPhotoSuccess("");
+  }
+
+  async function salvarPortfolio(profileToSave) {
+    const currentUid = String(auth.currentUser?.uid || "");
+    if (!uid || currentUid !== String(uid)) {
+      const error = new Error("portfolio_auth_mismatch");
+      error.code = "portfolio_auth_mismatch";
+      throw error;
+    }
+
+    const profPortfolio = normalizePortfolio(profileToSave.profPortfolio);
+    const portfolioMap = portfolioListToMap(profPortfolio);
+
+    await update(ref(database, userBasePath), {
+      profPortfolio,
+      portfolio: portfolioMap,
+      "profile/profPortfolio": profPortfolio,
+      "profile/portfolio": portfolioMap,
+    });
+
+    try {
+      const publicProfileSnap = await get(ref(database, `publicProfiles/${uid}`));
+      if (!publicProfileSnap.exists() || !publicProfileSnap.val()) {
+        return { publicSynced: false };
+      }
+
+      const privacySettings = normalizePrivacy(profileToSave.privacy);
+      const fotoPrincipal = pickFoto(profileToSave.fotoURL, profileToSave.photoURL, profileToSave.avatar);
+      const publicPortfolioMap = privacySettings.profileVisible
+        ? portfolioListToPublicMap(profPortfolio, profileToSave, uid, fotoPrincipal)
+        : {};
+      const publicProfilePayload = profileToPublicProfile(
+        profileToSave,
+        uid,
+        fotoPrincipal,
+        privacySettings,
+        profPortfolio,
+      );
+
+      await set(
+        ref(database, `publicPortfolio/${uid}`),
+        Object.keys(publicPortfolioMap).length ? publicPortfolioMap : null,
+      );
+      await runTransaction(ref(database, `publicProfiles/${uid}`), (current) => {
+        const currentStatus = normalizeProfileStatus(current || {});
+        if (blockedPublicProfileStatuses.has(currentStatus)) return current;
+
+        return projectPublicProfileForWrite({
+          current,
+          payload: {
+            ...publicProfilePayload,
+            uid,
+            id: uid,
+            createdAt: current?.createdAt || publicProfilePayload.createdAt || serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            atualizadoEm: serverTimestamp(),
+          },
+        });
+      });
+
+      return { publicSynced: true };
+    } catch (error) {
+      console.warn("[PORTFOLIO] falha na projeção pública", {
+        stage: "public_sync",
+        code: String(error?.code || "portfolio_public_sync_failed").slice(0, 80),
+      });
+      const publicSyncError = new Error("portfolio_public_sync_failed");
+      publicSyncError.code = "portfolio_public_sync_failed";
+      publicSyncError.portfolioStored = true;
+      throw publicSyncError;
+    }
   }
 
   const salvar = async (profileOverride = null) => {
@@ -2683,13 +2772,20 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setPortfolioPhotoSuccess("");
 
     try {
-      await salvar(nextProfile);
+      await salvarPortfolio(nextProfile);
       setPortfolioDraft(createEmptyPortfolioDraft());
       setPortfolioEditingId("");
       setPortfolioPhotoSuccess("Serviço e fotos salvos no portfólio.");
     } catch (error) {
-      console.error("[PORTFOLIO] falha ao salvar serviço", error?.code || error?.message || "portfolio_save_failed");
-      setPortfolioPhotoError("Não foi possível salvar o serviço. Seus dados continuam na tela para tentar novamente.");
+      console.error("[PORTFOLIO] falha ao salvar serviço", error?.code || "portfolio_save_failed");
+      if (error?.portfolioStored) {
+        setPortfolioPhotoSuccess("Serviço e fotos salvos no perfil.");
+        setPortfolioPhotoError("A vitrine pública não foi atualizada. Tente salvar novamente.");
+      } else if (error?.code === "portfolio_auth_mismatch") {
+        setPortfolioPhotoError("A sessão não corresponde ao perfil aberto. Entre novamente.");
+      } else {
+        setPortfolioPhotoError("Não foi possível salvar o serviço. Seus dados continuam na tela para tentar novamente.");
+      }
     } finally {
       portfolioSavingRef.current = false;
       setPortfolioSaving(false);
@@ -4731,15 +4827,25 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                             <div className="text-xs font-black text-blue-950">Fotos do serviço (até 5)</div>
                             <div className="text-[11px] font-semibold text-slate-500">Mostre fotos reais dos seus trabalhos</div>
                           </div>
-                          <label className={["inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 shadow-sm transition active:scale-[0.98]", portfolioPhotoUploading || portfolioDraftFotos.length >= 5 ? "pointer-events-none opacity-60" : ""].join(" ")}>
+                          <div>
                             <input
+                              ref={portfolioPhotoInputRef}
                               type="file"
                               accept="image/*,.heic,.heif"
                               multiple
                               disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
-                              className="hidden"
+                              className="sr-only"
+                              tabIndex={-1}
+                              onClick={(event) => { event.currentTarget.value = ""; }}
                               onChange={alterarFotoPortfolio}
                             />
+                            <button
+                              type="button"
+                              onClick={abrirGaleriaPortfolio}
+                              disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
+                              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                              aria-controls="portfolio-photo-status"
+                            >
                             {portfolioPhotoUploading ? (
                               <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" aria-hidden="true" />
                             ) : null}
@@ -4748,7 +4854,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                               : portfolioPhotoStage === "uploading"
                                 ? "Enviando..."
                                 : "Escolher fotos"}
-                          </label>
+                            </button>
+                          </div>
                         </div>
 
                         <div className="mt-3 grid grid-cols-3 gap-2 min-[420px]:grid-cols-5">
@@ -4779,7 +4886,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                             );
                           })}
                         </div>
-                        <div className="mt-2 min-h-4" aria-live="polite" aria-atomic="true">
+                        <div id="portfolio-photo-status" className="mt-2 min-h-4" aria-live="polite" aria-atomic="true">
                           {portfolioPhotoError ? (
                             <div className="text-xs font-black text-rose-600">{portfolioPhotoError}</div>
                           ) : portfolioPhotoSuccess ? (
