@@ -6,7 +6,15 @@ import {
   PORTFOLIO_IMAGE_LIMITS,
   getPortfolioTargetDimensions,
   optimizePortfolioPhoto,
+  uploadProfilePhotoToImgBB,
 } from '../src/lib/imgbbClient.js'
+import {
+  getPortfolioPhotoStatus,
+  getPortfolioSaveBlocker,
+  isLocalPortfolioPreview,
+  PORTFOLIO_PHOTO_STATUS,
+  withoutLocalPortfolioPreviews,
+} from '../src/lib/portfolioDraftState.js'
 
 const componentSource = await readFile(new URL('../src/components/PerfilDrawer.jsx', import.meta.url), 'utf8')
 const chatSource = await readFile(new URL('../src/components/ChatMensagens.jsx', import.meta.url), 'utf8')
@@ -112,6 +120,50 @@ async function withFakeBrowser(options, callback) {
   }
 }
 
+async function withFakeXhr(callback) {
+  const previous = globalThis.XMLHttpRequest
+  const instances = []
+
+  class FakeXMLHttpRequest {
+    constructor() {
+      this.readyState = 1
+      this.status = 0
+      this.responseText = ''
+      this.timeout = 0
+      this.upload = {}
+      this.abortCalls = 0
+      instances.push(this)
+    }
+
+    open(method, url) {
+      this.method = method
+      this.url = url
+    }
+
+    setRequestHeader(name, value) {
+      this.headers = { ...(this.headers || {}), [name]: value }
+    }
+
+    send(form) {
+      this.form = form
+    }
+
+    abort() {
+      this.abortCalls += 1
+      this.readyState = 4
+      this.onabort?.()
+    }
+  }
+
+  globalThis.XMLHttpRequest = FakeXMLHttpRequest
+  try {
+    await callback(instances)
+  } finally {
+    if (previous === undefined) delete globalThis.XMLHttpRequest
+    else globalThis.XMLHttpRequest = previous
+  }
+}
+
 async function createFixture({ name, width, height, format, transparent = false, orientation = 1 }) {
   const background = transparent
     ? { r: 34, g: 128, b: 210, alpha: 0.42 }
@@ -155,6 +207,84 @@ async function referenceOptimize(fixture) {
 assert.deepEqual(getPortfolioTargetDimensions(4000, 3000), { width: 1280, height: 960, scale: 0.32 })
 assert.deepEqual(getPortfolioTargetDimensions(3000, 4000), { width: 960, height: 1280, scale: 0.32 })
 assert.deepEqual(getPortfolioTargetDimensions(640, 480), { width: 640, height: 480, scale: 1 })
+
+assert.equal(isLocalPortfolioPreview('blob:https://preview/1'), true)
+assert.equal(getPortfolioPhotoStatus('https://i.ibb.co/foto.webp'), PORTFOLIO_PHOTO_STATUS.UPLOADED, 'URL legada continua pronta sem metadado novo')
+assert.equal(
+  getPortfolioSaveBlocker({ name: 'Reparo', photos: ['blob:https://preview/1'] }),
+  'portfolio_photo_uploading',
+  'prévia local nunca pode ser persistida',
+)
+assert.equal(
+  getPortfolioSaveBlocker({
+    name: 'Reparo',
+    photos: ['blob:https://preview/1'],
+    photoStates: { 'blob:https://preview/1': { status: PORTFOLIO_PHOTO_STATUS.FAILED } },
+  }),
+  'portfolio_photo_failed',
+  'falha de upload exige retry ou remoção',
+)
+assert.equal(
+  getPortfolioSaveBlocker({ name: 'Reparo', photos: [], uploadInProgress: true }),
+  'portfolio_photo_uploading',
+  'upload lento bloqueia salvamento',
+)
+assert.equal(
+  getPortfolioSaveBlocker({ name: '  ', photos: ['https://i.ibb.co/foto.webp'] }),
+  'portfolio_name_required',
+  'nome vazio falha fechado',
+)
+assert.equal(
+  getPortfolioSaveBlocker({ name: 'Reparo', photos: ['https://i.ibb.co/foto.webp'] }),
+  '',
+  'URL existente e nome válido mantêm compatibilidade',
+)
+assert.deepEqual(
+  withoutLocalPortfolioPreviews(['blob:https://preview/1', 'https://i.ibb.co/foto.webp', 'https://i.ibb.co/foto.webp']),
+  ['https://i.ibb.co/foto.webp'],
+  'serialização remove blob e preserva URLs existentes',
+)
+
+await withFakeXhr(async (instances) => {
+  const pending = uploadProfilePhotoToImgBB(makeFile(128, 'lenta.jpg', 'image/jpeg'), {
+    uid: 'uid-test',
+    idToken: 'token-test',
+    skipCompression: true,
+  })
+  let settled = false
+  pending.then(() => { settled = true }, () => { settled = true })
+  await Promise.resolve()
+  assert.equal(settled, false, 'upload lento permanece pendente até resposta real')
+  assert.equal(instances[0].timeout, 28_000, 'XHR encerra antes do timeout externo antigo')
+  instances[0].status = 200
+  instances[0].responseText = JSON.stringify({ ok: true, url: 'https://i.ibb.co/foto.webp' })
+  instances[0].readyState = 4
+  instances[0].onload()
+  assert.equal((await pending).url, 'https://i.ibb.co/foto.webp')
+})
+
+await withFakeXhr(async (instances) => {
+  const pending = uploadProfilePhotoToImgBB(makeFile(128, 'timeout.jpg', 'image/jpeg'), {
+    uid: 'uid-test',
+    idToken: 'token-test',
+    skipCompression: true,
+  })
+  instances[0].ontimeout()
+  await assert.rejects(pending, /imgbb_request_timeout/, 'timeout encerra a requisição pendente')
+})
+
+await withFakeXhr(async (instances) => {
+  const controller = new AbortController()
+  const pending = uploadProfilePhotoToImgBB(makeFile(128, 'cancelada.jpg', 'image/jpeg'), {
+    uid: 'uid-test',
+    idToken: 'token-test',
+    skipCompression: true,
+    signal: controller.signal,
+  })
+  controller.abort()
+  await assert.rejects(pending, /imgbb_request_aborted/, 'AbortSignal cancela o XHR real')
+  assert.equal(instances[0].abortCalls, 1)
+})
 
 await withFakeBrowser({ width: 4000, height: 3000, encodedBytes: 700 }, async (state) => {
   const result = await optimizePortfolioPhoto(makeFile(5000, 'horizontal.jpg', 'image/jpeg'))
@@ -276,7 +406,7 @@ await withFakeBrowser({ width: 1600, height: 1000, encodeFails: true }, async ()
 })
 
 assert.match(componentSource, /portfolioPhotoUploadLockRef\.current/, 'duplo envio bloqueado por ref síncrona')
-assert.match(componentSource, /Otimizando imagem\.\.\./, 'feedback de otimização visível')
+assert.match(componentSource, /Enviando foto\.\.\./, 'feedback único permanece visível durante preparação e upload')
 assert.match(componentSource, /URL\.createObjectURL\(prepared\.file\)/, 'preview usa exatamente o arquivo preparado')
 assert.match(componentSource, /uploadPortfolioPhotoToImgBB\(prepared\.file/, 'upload recebe exatamente o arquivo preparado')
 assert.match(componentSource, /portfolioPreviewOwnerRef/, 'preview pertence ao UID que iniciou o fluxo')
@@ -294,6 +424,12 @@ assert.match(portfolioUploadBody, /currentUser\.getIdToken\(\)/, 'upload usa ren
 assert.doesNotMatch(portfolioUploadBody, /currentUser\.getIdToken\(true\)/, 'upload móvel não força refresh de token desnecessário')
 assert.match(componentSource, /code === "imgbb_config_missing"[\s\S]*envio de fotos ainda não está configurado/, 'configuração ausente recebe erro claro e seguro')
 assert.match(componentSource, /aria-live="polite"/, 'resultado do upload é anunciado de forma acessível')
+assert.match(componentSource, /Aguarde o envio da foto\.\.\./, 'botão explica por que salvar está bloqueado')
+assert.match(componentSource, /tentarNovamenteFotoPortfolio/, 'falha de upload oferece retry explícito')
+assert.match(componentSource, /PORTFOLIO_PHOTO_STATUS\.PREVIEW/, 'foto entra no estado preview')
+assert.match(componentSource, /PORTFOLIO_PHOTO_STATUS\.UPLOADING/, 'foto entra no estado uploading')
+assert.match(componentSource, /PORTFOLIO_PHOTO_STATUS\.UPLOADED/, 'foto entra no estado uploaded')
+assert.match(componentSource, /PORTFOLIO_PHOTO_STATUS\.FAILED/, 'foto entra no estado failed')
 
 const addBody = componentSource.slice(componentSource.indexOf('const adicionarPortfolioItem'), componentSource.indexOf('const editarPortfolioItem'))
 assert.match(addBody, /const nextProfile = \{[\s\S]*profPortfolio:/, 'item usa o portfólio completo que será persistido')
@@ -301,6 +437,13 @@ assert.match(addBody, /await salvarPortfolio\(nextProfile\)/, 'Adicionar usa per
 assert.doesNotMatch(addBody, /await salvar\(nextProfile\)/, 'Adicionar não dispara escritas acessórias de todo o perfil')
 assert.match(addBody, /setPortfolioDraft\(\(prev\) => \(\{ \.\.\.prev, id, createdAt: item\.createdAt \}\)\)/, 'retentativa reutiliza o mesmo item após falha parcial')
 assert.match(addBody, /Seus dados continuam na tela para tentar novamente/, 'falha de persistência preserva o rascunho')
+assert.match(addBody, /portfolio_name_required[\s\S]*Preencha o nome do serviço/, 'nome vazio recebe erro explícito')
+assert.match(addBody, /withoutLocalPortfolioPreviews\(draftFotos\)/, 'blob local não entra no item persistido')
+const persistenceCallIndex = addBody.indexOf('await salvarPortfolio(nextProfile)')
+const confirmedProfileIndex = addBody.indexOf('setProfile(nextProfile)')
+assert.ok(persistenceCallIndex >= 0 && confirmedProfileIndex > persistenceCallIndex, 'estado local só confirma depois da escrita privada')
+assert.match(addBody, /result\.publicSynced === false[\s\S]*vitrine pública não foi atualizada/, 'falha parcial é distinguida de falha privada')
+assert.match(addBody, /setPortfolioPhotoSuccess\("Serviço e fotos salvos no portfólio\."\)/, 'sucesso integral depende do retorno da persistência')
 
 const portfolioSaveBody = componentSource.slice(componentSource.indexOf('async function salvarPortfolio'), componentSource.indexOf('const salvar = async'))
 assert.match(portfolioSaveBody, /update\(ref\(database, userBasePath\), \{[\s\S]*profPortfolio,[\s\S]*portfolio: portfolioMap,[\s\S]*"profile\/profPortfolio": profPortfolio,[\s\S]*"profile\/portfolio": portfolioMap/, 'persistência privada atualiza caminhos canônicos e legados em uma operação')
@@ -319,6 +462,9 @@ assert.match(uploadRouteSource, /AbortController/, 'endpoint limita espera do pr
 assert.match(uploadRouteSource, /imgbb_unavailable/, 'falha de rede do provider recebe erro sanitizado')
 assert.doesNotMatch(uploadRouteSource, /data\?\.error\?\.message\s*\|\|/, 'mensagem bruta do provider não é devolvida ao navegador')
 assert.doesNotMatch(uploadRouteSource, /firebase\/storage|uploadBytes|getDownloadURL/, 'path não migrou para Firebase Storage')
+assert.match(componentSource, /portfolioPhotoAbortControllerRef\.current\?\.abort\(\)/, 'fechamento do perfil cancela upload pendente')
+assert.match(componentSource, /withoutLocalPortfolioPreviews\(normalizePortfolioFotos\(item\)\)/, 'defesa adicional remove blob antes do Firebase')
+assert.match(componentSource, /code === "imgbb_request_timeout"[\s\S]*foto demorou para enviar/, 'timeout novo mantém mensagem clara na foto de perfil')
 
 const fixtureSpecs = [
   { name: 'jpeg-horizontal-4000x3000', width: 4000, height: 3000, format: 'jpeg' },

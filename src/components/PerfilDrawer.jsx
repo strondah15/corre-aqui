@@ -10,6 +10,12 @@ import {
   uploadProfilePhotoToImgBB,
 } from "@/lib/imgbbClient";
 import {
+  getPortfolioPhotoStatus,
+  getPortfolioSaveBlocker,
+  PORTFOLIO_PHOTO_STATUS,
+  withoutLocalPortfolioPreviews,
+} from "@/lib/portfolioDraftState";
+import {
   ativarPushNotifications,
   desativarPushNotifications,
   getPushCapabilities,
@@ -1012,6 +1018,8 @@ function toPortfolioFirebaseItem(item = {}) {
   const preco = String(item.preco || "").trim();
   const faixaPreco = String(item.faixaPreco || item.valor || preco || "").trim();
 
+  const fotos = withoutLocalPortfolioPreviews(normalizePortfolioFotos(item));
+
   return {
     id,
     nome,
@@ -1024,8 +1032,8 @@ function toPortfolioFirebaseItem(item = {}) {
     valor: faixaPreco || preco,
     descricao: String(item.descricao || "").trim(),
     tempoMedio: String(item.tempoMedio || "").trim(),
-    fotos: normalizePortfolioFotos(item),
-    fotoURL: normalizePortfolioFotos(item)[0] || "",
+    fotos,
+    fotoURL: fotos[0] || "",
     regiao: String(item.regiao || "").trim(),
     atendeDomicilio: item.atendeDomicilio !== false,
     urgente: item.urgente === true,
@@ -1215,6 +1223,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [portfolioSaving, setPortfolioSaving] = useState(false);
   const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
   const [portfolioPhotoStage, setPortfolioPhotoStage] = useState("");
+  const [portfolioPhotoStates, setPortfolioPhotoStates] = useState({});
   const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
   const [portfolioPhotoSuccess, setPortfolioPhotoSuccess] = useState("");
   const [addresses, setAddresses] = useState([]);
@@ -1279,6 +1288,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const portfolioSavingRef = useRef(false);
   const portfolioPhotoUploadLockRef = useRef(false);
   const portfolioPhotoInputRef = useRef(null);
+  const portfolioPhotoAbortControllerRef = useRef(null);
+  const portfolioPhotoRetryFilesRef = useRef(new Map());
   const portfolioPreviewUrlsRef = useRef(new Set());
   const portfolioPreviewOwnerRef = useRef(String(uid || ""));
   const configSaveTimerRef = useRef(null);
@@ -1301,6 +1312,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   };
 
   useEffect(() => () => {
+    portfolioPhotoAbortControllerRef.current?.abort();
+    portfolioPhotoAbortControllerRef.current = null;
+    portfolioPhotoRetryFilesRef.current.clear();
     portfolioPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     portfolioPreviewUrlsRef.current.clear();
     portfolioPhotoUploadLockRef.current = false;
@@ -1313,6 +1327,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     if (open && !ownerChanged) return;
 
     const localUrls = new Set(portfolioPreviewUrlsRef.current);
+    portfolioPhotoAbortControllerRef.current?.abort();
+    portfolioPhotoAbortControllerRef.current = null;
+    portfolioPhotoRetryFilesRef.current.clear();
+    setPortfolioPhotoStates({});
     if (!localUrls.size) return;
     localUrls.forEach((url) => URL.revokeObjectURL(url));
     portfolioPreviewUrlsRef.current.clear();
@@ -1936,8 +1954,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       console.warn("[PerfilDrawer] upload foto:", error?.code || error?.message || error);
       const code = String(error?.code || error?.message || "");
       const msg =
-        error?.message === "foto_upload_timeout"
+        error?.message === "foto_upload_timeout" || code === "imgbb_request_timeout"
           ? "A foto demorou para enviar. Tente novamente em uma rede melhor."
+          : code === "imgbb_request_aborted"
+            ? "O envio da foto foi interrompido. Tente novamente."
           : error?.message === "foto_grande"
             ? "Escolha uma imagem de ate 2 MB."
             : error?.message === "tipo_invalido"
@@ -1977,7 +1997,39 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     await handleProfilePhotoUpload(file);
   }
 
-  async function handlePortfolioPhotoUpload(file) {
+  function setPortfolioPhotoStatus(url, status, errorCode = "") {
+    if (!url) return;
+    setPortfolioPhotoStates((current) => ({
+      ...current,
+      [url]: { status, errorCode },
+    }));
+  }
+
+  function portfolioUploadMessage(error) {
+    const code = String(error?.code || error?.message || "");
+    if (code === "imgbb_request_timeout" || code === "portfolio_upload_timeout") {
+      return "A foto demorou para enviar. Tente novamente.";
+    }
+    if (code === "imgbb_request_aborted") return "O envio da foto foi interrompido. Tente novamente.";
+    if (code === "imgbb_config_missing") return "O envio de fotos ainda não está configurado neste ambiente.";
+    if (code === "firebase_admin_not_configured") return "O envio seguro de fotos está temporariamente indisponível.";
+    if (code === "portfolio_format_not_supported" || code === "portfolio_image_decode_failed") {
+      return "Este formato não pôde ser lido neste aparelho. Escolha JPEG, PNG ou WebP.";
+    }
+    if (code === "portfolio_source_too_large" || code === "portfolio_dimensions_too_large" || code === "portfolio_original_too_large" || code === "foto_grande") {
+      return "A imagem é muito grande. Escolha uma foto menor.";
+    }
+    if (code === "tipo_invalido") return "Escolha uma imagem JPEG, PNG, WebP, GIF, HEIC ou HEIF.";
+    if (code.toLowerCase().includes("permission") || code.toLowerCase().includes("auth")) {
+      return "Entre novamente para anexar a foto.";
+    }
+    if (code === "imgbb_upload_failed" || code === "imgbb_unavailable" || code === "imgbb_url_missing") {
+      return "O serviço de imagens não concluiu o envio. Tente novamente.";
+    }
+    return "Não foi possível anexar a foto. Tente novamente.";
+  }
+
+  async function handlePortfolioPhotoUpload(file, { preparedFile = null, existingPreviewUrl = "" } = {}) {
     const currentUser = auth.currentUser;
     const currentUid = currentUser?.uid || "";
     const currentFotos = Array.isArray(portfolioDraft.fotos)
@@ -2007,7 +2059,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       return false;
     }
 
-    if (currentFotos.length >= 5) {
+    if (!existingPreviewUrl && currentFotos.length >= 5) {
       setPortfolioPhotoError("Voce pode anexar ate 5 fotos por trabalho.");
       return false;
     }
@@ -2017,30 +2069,41 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     try {
       failureStage = "optimization";
       setPortfolioPhotoStage("optimizing");
-      const prepared = await optimizePortfolioPhoto(file);
+      const prepared = preparedFile
+        ? { file: preparedFile, metrics: { reason: "retry_prepared" } }
+        : await optimizePortfolioPhoto(file);
       if (process.env.NODE_ENV !== "production") {
         console.info("[PORTFOLIO_IMAGE] otimização", prepared.metrics);
       }
 
-      previewUrl = URL.createObjectURL(prepared.file);
-      portfolioPreviewUrlsRef.current.add(previewUrl);
-      setPortfolioDraft((prev) => {
-        const fotos = [...new Set([...(Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)), previewUrl])].slice(0, 5);
-        return { ...prev, fotoURL: prev.fotoURL || previewUrl, fotos };
-      });
+      previewUrl = existingPreviewUrl || URL.createObjectURL(prepared.file);
+      if (!existingPreviewUrl) {
+        portfolioPreviewUrlsRef.current.add(previewUrl);
+        setPortfolioDraft((prev) => {
+          const fotos = [...new Set([...(Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)), previewUrl])].slice(0, 5);
+          return { ...prev, fotoURL: prev.fotoURL || previewUrl, fotos };
+        });
+      }
+      portfolioPhotoRetryFilesRef.current.set(previewUrl, prepared.file);
+      setPortfolioPhotoStatus(previewUrl, PORTFOLIO_PHOTO_STATUS.PREVIEW);
 
       failureStage = "authentication";
+      setPortfolioPhotoStatus(previewUrl, PORTFOLIO_PHOTO_STATUS.UPLOADING);
       const idToken = await currentUser.getIdToken();
+      if (auth.currentUser?.uid !== currentUid || !portfolioPreviewUrlsRef.current.has(previewUrl)) {
+        const error = new Error("portfolio_auth_changed");
+        error.code = "portfolio_auth_changed";
+        throw error;
+      }
       failureStage = "upload";
       setPortfolioPhotoStage("uploading");
-      const uploaded = await promiseComTimeout(
-        uploadPortfolioPhotoToImgBB(prepared.file, {
-          uid: currentUid,
-          idToken,
-        }),
-        30000,
-        "portfolio_upload_timeout",
-      );
+      const abortController = new AbortController();
+      portfolioPhotoAbortControllerRef.current = abortController;
+      const uploaded = await uploadPortfolioPhotoToImgBB(prepared.file, {
+        uid: currentUid,
+        idToken,
+        signal: abortController.signal,
+      });
 
       if (auth.currentUser?.uid !== currentUid || !portfolioPreviewUrlsRef.current.has(previewUrl)) {
         revokePortfolioPreviewUrl(previewUrl);
@@ -2057,6 +2120,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           fotoImgBbId: uploaded.imageId || "",
         };
       });
+      portfolioPhotoRetryFilesRef.current.delete(previewUrl);
+      setPortfolioPhotoStates((current) => {
+        const next = { ...current };
+        delete next[previewUrl];
+        next[uploaded.url] = { status: PORTFOLIO_PHOTO_STATUS.UPLOADED, errorCode: "" };
+        return next;
+      });
       window.setTimeout(() => revokePortfolioPreviewUrl(previewUrl), 0);
       setPortfolioPhotoSuccess("Foto pronta. Salve o serviço para vinculá-la ao portfólio.");
       return true;
@@ -2066,33 +2136,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         stage: failureStage,
         code: String(error?.code || "portfolio_upload_failed").slice(0, 80),
       });
-      if (previewUrl) {
-        setPortfolioDraft((prev) => {
-          const fotos = (Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)).filter((foto) => foto !== previewUrl);
-          return { ...prev, fotoURL: prev.fotoURL === previewUrl ? fotos[0] || "" : prev.fotoURL, fotos };
-        });
-        window.setTimeout(() => revokePortfolioPreviewUrl(previewUrl), 0);
+      if (previewUrl && portfolioPreviewUrlsRef.current.has(previewUrl)) {
+        setPortfolioPhotoStatus(previewUrl, PORTFOLIO_PHOTO_STATUS.FAILED, code);
       }
-      setPortfolioPhotoError(
-        error?.message === "portfolio_upload_timeout"
-          ? "A foto demorou para enviar. Tente novamente."
-          : code === "imgbb_config_missing"
-            ? "O envio de fotos ainda não está configurado neste ambiente."
-          : code === "firebase_admin_not_configured"
-            ? "O envio seguro de fotos está temporariamente indisponível."
-          : code === "portfolio_format_not_supported" || code === "portfolio_image_decode_failed"
-            ? "Este formato não pôde ser lido neste aparelho. Escolha JPEG, PNG ou WebP."
-          : code === "portfolio_source_too_large" || code === "portfolio_dimensions_too_large" || code === "portfolio_original_too_large" || code === "foto_grande"
-            ? "A imagem é muito grande. Escolha uma foto menor."
-            : code === "tipo_invalido"
-              ? "Escolha uma imagem JPEG, PNG, WebP, GIF, HEIC ou HEIF."
-            : code.toLowerCase().includes("permission") || code.toLowerCase().includes("auth")
-              ? "Entre novamente para anexar a foto."
-            : code === "imgbb_upload_failed" || code === "imgbb_unavailable" || code === "imgbb_url_missing"
-              ? "O serviço de imagens não concluiu o envio. Tente novamente."
-              : "Nao foi possivel anexar a foto.",
-      );
+      setPortfolioPhotoError(portfolioUploadMessage(error));
       return false;
+    } finally {
+      portfolioPhotoAbortControllerRef.current = null;
     }
   }
 
@@ -2131,6 +2181,27 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     }
   }
 
+  async function tentarNovamenteFotoPortfolio(fotoURL) {
+    if (portfolioPhotoUploadLockRef.current) return;
+    const preparedFile = portfolioPhotoRetryFilesRef.current.get(fotoURL);
+    if (!preparedFile) {
+      setPortfolioPhotoError("Selecione a foto novamente para tentar outro envio.");
+      return;
+    }
+
+    portfolioPhotoUploadLockRef.current = true;
+    setPortfolioPhotoUploading(true);
+    setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
+    try {
+      await handlePortfolioPhotoUpload(preparedFile, { preparedFile, existingPreviewUrl: fotoURL });
+    } finally {
+      portfolioPhotoUploadLockRef.current = false;
+      setPortfolioPhotoStage("");
+      setPortfolioPhotoUploading(false);
+    }
+  }
+
   function abrirGaleriaPortfolio() {
     if (portfolioPhotoUploadLockRef.current || portfolioDraftFotos.length >= 5) return;
     setPortfolioPhotoError("");
@@ -2149,6 +2220,12 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       };
     });
     revokePortfolioPreviewUrl(fotoURL);
+    portfolioPhotoRetryFilesRef.current.delete(fotoURL);
+    setPortfolioPhotoStates((current) => {
+      const next = { ...current };
+      delete next[fotoURL];
+      return next;
+    });
     setPortfolioPhotoError("");
     setPortfolioPhotoSuccess("");
   }
@@ -2719,10 +2796,31 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const adicionarPortfolioItem = async () => {
     if (portfolioSavingRef.current) return;
 
+    const draftFotos = normalizePortfolioFotos(portfolioDraft);
+    const saveBlocker = getPortfolioSaveBlocker({
+      name: portfolioDraft.nome || portfolioDraft.titulo,
+      photos: draftFotos,
+      photoStates: portfolioPhotoStates,
+      uploadInProgress: portfolioPhotoUploadLockRef.current || portfolioPhotoUploading,
+    });
+    if (saveBlocker === "portfolio_name_required") {
+      setPortfolioPhotoError("Preencha o nome do serviço para adicionar.");
+      portfolioFirstInputRef.current?.focus();
+      return;
+    }
+    if (saveBlocker === "portfolio_photo_failed") {
+      setPortfolioPhotoError("A foto não foi enviada. Tente novamente ou remova a foto antes de salvar.");
+      return;
+    }
+    if (saveBlocker) {
+      setPortfolioPhotoError("Aguarde o envio da foto antes de salvar o serviço.");
+      return;
+    }
+
     portfolioSavingRef.current = true;
     setPortfolioSaving(true);
 
-    const fotos = normalizePortfolioFotos(portfolioDraft);
+    const fotos = withoutLocalPortfolioPreviews(draftFotos);
     const categoriaMeta = getCategoryById(portfolioDraft.categoriaId || portfolioDraft.categoria);
     const categoriaId = String(portfolioDraft.categoriaId || categoriaMeta?.id || "").trim();
     const categoriaNome = String(portfolioDraft.categoriaNome || categoriaMeta?.label || portfolioDraft.categoria || "").trim();
@@ -2750,14 +2848,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       updatedAt: Date.now(),
     };
 
-    if (!item.nome && !item.descricao && !item.valor && !item.categoria && !item.fotos.length) {
-      setPortfolioPhotoError("Preencha pelo menos o nome do serviço para adicionar.");
-      portfolioFirstInputRef.current?.focus();
-      portfolioSavingRef.current = false;
-      setPortfolioSaving(false);
-      return;
-    }
-
     const nextProfile = {
       ...profile,
       profPortfolio: [
@@ -2766,21 +2856,27 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       ].slice(0, 12),
     };
 
-    setProfile(nextProfile);
     setPortfolioDraft((prev) => ({ ...prev, id, createdAt: item.createdAt }));
     setPortfolioPhotoError("");
     setPortfolioPhotoSuccess("");
 
     try {
-      await salvarPortfolio(nextProfile);
-      setPortfolioDraft(createEmptyPortfolioDraft());
-      setPortfolioEditingId("");
-      setPortfolioPhotoSuccess("Serviço e fotos salvos no portfólio.");
+      const result = await salvarPortfolio(nextProfile);
+      setProfile(nextProfile);
+      if (result.publicSynced === false) {
+        setPortfolioPhotoError("Serviço salvo no perfil, mas a vitrine pública não foi atualizada. Tente salvar novamente.");
+      } else {
+        setPortfolioDraft(createEmptyPortfolioDraft());
+        setPortfolioEditingId("");
+        setPortfolioPhotoStates({});
+        portfolioPhotoRetryFilesRef.current.clear();
+        setPortfolioPhotoSuccess("Serviço e fotos salvos no portfólio.");
+      }
     } catch (error) {
       console.error("[PORTFOLIO] falha ao salvar serviço", error?.code || "portfolio_save_failed");
       if (error?.portfolioStored) {
-        setPortfolioPhotoSuccess("Serviço e fotos salvos no perfil.");
-        setPortfolioPhotoError("A vitrine pública não foi atualizada. Tente salvar novamente.");
+        setProfile(nextProfile);
+        setPortfolioPhotoError("Serviço salvo no perfil, mas a vitrine pública não foi atualizada. Tente salvar novamente.");
       } else if (error?.code === "portfolio_auth_mismatch") {
         setPortfolioPhotoError("A sessão não corresponde ao perfil aberto. Entre novamente.");
       } else {
@@ -2805,6 +2901,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       fotos: normalizePortfolioFotos(normalized),
     });
     setPortfolioEditingId(normalized.id || "");
+    setPortfolioPhotoStates({});
+    portfolioPhotoRetryFilesRef.current.clear();
     setPortfolioPhotoError("");
     setPortfolioPhotoSuccess("");
   };
@@ -4849,11 +4947,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                             {portfolioPhotoUploading ? (
                               <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" aria-hidden="true" />
                             ) : null}
-                            {portfolioPhotoStage === "optimizing"
-                              ? "Otimizando imagem..."
-                              : portfolioPhotoStage === "uploading"
-                                ? "Enviando..."
-                                : "Escolher fotos"}
+                            {portfolioPhotoUploading ? "Enviando foto..." : "Escolher fotos"}
                             </button>
                           </div>
                         </div>
@@ -4861,6 +4955,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                         <div className="mt-3 grid grid-cols-3 gap-2 min-[420px]:grid-cols-5">
                           {Array.from({ length: 5 }).map((_, index) => {
                             const foto = portfolioDraftFotos[index];
+                            const photoStatus = foto ? getPortfolioPhotoStatus(foto, portfolioPhotoStates) : "";
                             return (
                               <div key={foto || index} className={["relative grid aspect-square place-items-center overflow-hidden rounded-[14px] border text-[10px] font-black", foto ? "border-slate-200 bg-slate-100" : "border-dashed border-blue-200 bg-white text-blue-600"].join(" ")}>
                                 {foto ? (
@@ -4869,6 +4964,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                                       className="h-full w-full bg-cover bg-center"
                                       style={{ backgroundImage: `url(${foto})` }}
                                     />
+                                    <span className={["absolute left-1 top-1 rounded-full px-2 py-1 text-[9px] font-black text-white", photoStatus === PORTFOLIO_PHOTO_STATUS.FAILED ? "bg-rose-600" : photoStatus === PORTFOLIO_PHOTO_STATUS.UPLOADED ? "bg-emerald-600" : "bg-blue-700"].join(" ")}>
+                                      {photoStatus === PORTFOLIO_PHOTO_STATUS.FAILED
+                                        ? "Falhou"
+                                        : photoStatus === PORTFOLIO_PHOTO_STATUS.UPLOADED
+                                          ? "Enviada"
+                                          : photoStatus === PORTFOLIO_PHOTO_STATUS.UPLOADING
+                                            ? "Enviando"
+                                            : "Prévia"}
+                                    </span>
                                     <button
                                       type="button"
                                       onClick={() => removerFotoPortfolioDraft(foto)}
@@ -4878,6 +4982,16 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                                     >
                                       ×
                                     </button>
+                                    {photoStatus === PORTFOLIO_PHOTO_STATUS.FAILED ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => void tentarNovamenteFotoPortfolio(foto)}
+                                        disabled={portfolioPhotoUploading}
+                                        className="absolute bottom-1 left-1 right-1 min-h-8 rounded-lg bg-rose-600 px-2 text-[9px] font-black text-white shadow-lg disabled:opacity-50"
+                                      >
+                                        Tentar novamente
+                                      </button>
+                                    ) : null}
                                   </>
                                 ) : (
                                   index === 0 ? "+ Foto" : "▧"
@@ -4887,7 +5001,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                           })}
                         </div>
                         <div id="portfolio-photo-status" className="mt-2 min-h-4" aria-live="polite" aria-atomic="true">
-                          {portfolioPhotoError ? (
+                          {portfolioPhotoUploading ? (
+                            <div className="text-xs font-black text-blue-700">
+                              {portfolioPhotoStage === "optimizing" ? "Enviando foto... preparando imagem." : "Enviando foto..."}
+                            </div>
+                          ) : portfolioPhotoError ? (
                             <div className="text-xs font-black text-rose-600">{portfolioPhotoError}</div>
                           ) : portfolioPhotoSuccess ? (
                             <div className="text-xs font-black text-emerald-700">{portfolioPhotoSuccess}</div>
@@ -4901,6 +5019,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                           type="button"
                         onClick={() => {
                           if (portfolioPhotoUploading) return;
+                          const localUrls = new Set(portfolioPreviewUrlsRef.current);
+                          localUrls.forEach((url) => URL.revokeObjectURL(url));
+                          portfolioPreviewUrlsRef.current.clear();
+                          portfolioPhotoRetryFilesRef.current.clear();
+                          setPortfolioPhotoStates({});
                           setPortfolioEditingId("");
                           setPortfolioDraft(createEmptyPortfolioDraft());
                           setPortfolioPhotoError("");
@@ -4921,7 +5044,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                           portfolioSaving || portfolioPhotoUploading ? "cursor-not-allowed opacity-60" : "",
                         ].join(" ")}
                       >
-                        {portfolioSaving ? "Salvando..." : portfolioEditingId ? "Salvar serviço" : "Adicionar"}
+                        {portfolioPhotoUploading
+                          ? "Aguarde o envio da foto..."
+                          : portfolioSaving
+                            ? "Salvando..."
+                            : portfolioEditingId
+                              ? "Salvar serviço"
+                              : "Adicionar"}
                       </button>
                     </div>
                   </div>

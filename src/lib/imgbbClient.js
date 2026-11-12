@@ -2,6 +2,7 @@ const IMGBB_MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
 const IMGBB_MAX_SOURCE_PHOTO_BYTES = 8 * 1024 * 1024
 const PROFILE_PHOTO_MAX_SIDE = 1280
 const PROFILE_PHOTO_QUALITY = 0.82
+const IMGBB_CLIENT_REQUEST_TIMEOUT_MS = 28_000
 
 export const PORTFOLIO_IMAGE_LIMITS = Object.freeze({
   maxSourceBytes: 8 * 1024 * 1024,
@@ -333,12 +334,42 @@ function normalizeUploadResponse(data, status = 200) {
   }
 }
 
-function uploadWithProgress(form, { idToken, onProgress }) {
+function uploadError(code) {
+  const error = new Error(code)
+  error.code = code
+  return error
+}
+
+function uploadWithProgress(form, {
+  idToken,
+  onProgress,
+  signal,
+  timeoutMs = IMGBB_CLIENT_REQUEST_TIMEOUT_MS,
+}) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
+    let settled = false
+
+    const cleanup = () => signal?.removeEventListener?.('abort', abortRequest)
+    const finish = (callback, value) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      callback(value)
+    }
+    const abortRequest = () => {
+      if (xhr.readyState !== 4) xhr.abort()
+    }
 
     xhr.open('POST', '/api/upload/profile-photo')
     xhr.setRequestHeader('Authorization', `Bearer ${idToken}`)
+    xhr.timeout = Math.max(1, Number(timeoutMs) || IMGBB_CLIENT_REQUEST_TIMEOUT_MS)
+
+    if (signal?.aborted) {
+      finish(reject, uploadError('imgbb_request_aborted'))
+      return
+    }
+    signal?.addEventListener?.('abort', abortRequest, { once: true })
 
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable) return
@@ -355,30 +386,40 @@ function uploadWithProgress(form, { idToken, onProgress }) {
       if (xhr.status < 200 || xhr.status >= 300 || data?.ok === false) {
         const error = new Error(data?.message || data?.reason || `imgbb_http_${xhr.status}`)
         error.code = data?.reason || 'imgbb_upload_failed'
-        reject(error)
+        finish(reject, error)
         return
       }
 
       try {
         onProgress?.(88)
-        resolve(normalizeUploadResponse(data, xhr.status))
+        finish(resolve, normalizeUploadResponse(data, xhr.status))
       } catch (error) {
-        reject(error)
+        finish(reject, error)
       }
     }
 
     xhr.onerror = () => {
       const error = new Error('imgbb_network_error')
       error.code = 'imgbb_upload_failed'
-      reject(error)
+      finish(reject, error)
     }
+
+    xhr.ontimeout = () => finish(reject, uploadError('imgbb_request_timeout'))
+    xhr.onabort = () => finish(reject, uploadError('imgbb_request_aborted'))
 
     onProgress?.(8)
     xhr.send(form)
   })
 }
 
-export async function uploadProfilePhotoToImgBB(file, { uid, idToken, onProgress, skipCompression = false } = {}) {
+export async function uploadProfilePhotoToImgBB(file, {
+  uid,
+  idToken,
+  onProgress,
+  skipCompression = false,
+  signal,
+  timeoutMs = IMGBB_CLIENT_REQUEST_TIMEOUT_MS,
+} = {}) {
   if (!uid) throw new Error('auth_missing')
   if (!idToken) throw new Error('auth_missing')
   if (!file?.type?.startsWith('image/')) throw new Error('tipo_invalido')
@@ -393,7 +434,7 @@ export async function uploadProfilePhotoToImgBB(file, { uid, idToken, onProgress
   form.append('image', uploadFile)
 
   if (typeof XMLHttpRequest !== 'undefined') {
-    return uploadWithProgress(form, { idToken, onProgress })
+    return uploadWithProgress(form, { idToken, onProgress, signal, timeoutMs })
   }
 
   onProgress?.(12)
@@ -403,6 +444,7 @@ export async function uploadProfilePhotoToImgBB(file, { uid, idToken, onProgress
       Authorization: `Bearer ${idToken}`,
     },
     body: form,
+    signal,
   })
 
   const data = await response.json().catch(() => ({}))
