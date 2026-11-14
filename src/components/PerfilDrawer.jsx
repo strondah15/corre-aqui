@@ -16,6 +16,15 @@ import {
   withoutLocalPortfolioPreviews,
 } from "@/lib/portfolioDraftState";
 import {
+  applyPortfolioMutation,
+  createPortfolioOperationQueue,
+  getPortfolioReadErrorMessage,
+  mergePortfolioSources,
+  resolveUserPortfolioMap,
+  sanitizePortfolioErrorCode,
+  withoutPortfolioFields,
+} from "@/lib/portfolioPersistence";
+import {
   ativarPushNotifications,
   desativarPushNotifications,
   getPushCapabilities,
@@ -1226,6 +1235,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [portfolioPhotoStates, setPortfolioPhotoStates] = useState({});
   const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
   const [portfolioPhotoSuccess, setPortfolioPhotoSuccess] = useState("");
+  const [portfolioReadStatus, setPortfolioReadStatus] = useState({ uid: "", loaded: false, error: "" });
   const [addresses, setAddresses] = useState([]);
   const [addressesStatus, setAddressesStatus] = useState({ uid: "", loaded: false, error: "" });
   const [addressDraft, setAddressDraft] = useState(createEmptyAddressDraft);
@@ -1286,6 +1296,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const portfolioFormRef = useRef(null);
   const portfolioFirstInputRef = useRef(null);
   const portfolioSavingRef = useRef(false);
+  const portfolioOperationQueueRef = useRef(null);
   const portfolioPhotoUploadLockRef = useRef(false);
   const portfolioPhotoInputRef = useRef(null);
   const portfolioPhotoAbortControllerRef = useRef(null);
@@ -1297,12 +1308,19 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const configLastSavedRef = useRef(null);
   const logoutCancelButtonRef = useRef(null);
 
+  if (!portfolioOperationQueueRef.current) {
+    portfolioOperationQueueRef.current = createPortfolioOperationQueue();
+  }
+
   const userBasePath = useMemo(() => (uid ? `users/${uid}` : ""), [uid]);
   const currentAddressesStatus = addressesStatus.uid === String(uid || "")
     ? addressesStatus
     : { uid: String(uid || ""), loaded: false, error: "" };
   const currentServiceStatsStatus = serviceStatsStatus.uid === String(uid || "")
     ? serviceStatsStatus
+    : { uid: String(uid || ""), loaded: false, error: "" };
+  const currentPortfolioReadStatus = portfolioReadStatus.uid === String(uid || "")
+    ? portfolioReadStatus
     : { uid: String(uid || ""), loaded: false, error: "" };
 
   const revokePortfolioPreviewUrl = (url) => {
@@ -1386,6 +1404,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   useEffect(() => {
     if (!open || !uid) return;
 
+    const effectUid = String(uid);
+    setPortfolioReadStatus({ uid: effectUid, loaded: false, error: "" });
     const userRef = ref(database, userBasePath);
     return onValue(userRef, (snap) => {
       const data = snap.val() || {};
@@ -1398,14 +1418,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       const mapVisible = data.visivel ?? data.profile?.visivel ?? true;
 
       const profileData = data.profile || {};
-      const portfolioSalvo = normalizePortfolio(
-        profileData.profPortfolio ||
-          data.profPortfolio ||
-          profileData.portfolio ||
-          data.portfolio ||
-          profileData.profissional?.portfolio ||
-          data.profissional?.portfolio,
-      );
+      const portfolioSalvo = normalizePortfolio(resolveUserPortfolioMap(data));
       const fotoPrincipal = pickFoto(
         data.fotoURL,
         profileData.fotoURL,
@@ -1435,7 +1448,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         photoURL: prev.photoURL || fotoPrincipal,
         avatar: prev.avatar || fotoPrincipal || avatarEmoji || "",
         avatarEmoji: prev.avatarEmoji || avatarEmoji,
-        profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
+        profPortfolio: portfolioSalvo,
         visivel: mapVisible,
         notificacoes: data.notificacoes ?? profileData.notificacoes ?? prev.notificacoes,
         notificationPreferences: normalizeNotificationPreferences(
@@ -1446,6 +1459,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         aparencia: settingsUi.aparencia ?? profileData.aparencia ?? prev.aparencia,
         privacy: privacyData,
       }));
+      setPortfolioReadStatus({ uid: effectUid, loaded: true, error: "" });
 
       if (!settingsLoadedRef.current) {
         setProfile((prev) => ({
@@ -1466,6 +1480,17 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         }));
         settingsLoadedRef.current = true;
       }
+    }, (error) => {
+      const code = sanitizePortfolioErrorCode(error, "portfolio_private_read_failed");
+      console.warn("[PORTFOLIO] operação não concluída", {
+        stage: "private_read",
+        code,
+      });
+      setPortfolioReadStatus({
+        uid: effectUid,
+        loaded: false,
+        error: getPortfolioReadErrorMessage(error),
+      });
     });
   }, [open, uid, userBasePath]);
 
@@ -1478,14 +1503,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       if (snap.exists()) {
         setProfile((prev) => {
           const data = snap.val() || {};
-          const corre = data.corre || {};
-          const profissional = data.profissional || {};
-          const portfolioSalvo = normalizePortfolio(
-            data.profPortfolio ||
-              data.portfolio ||
-              profissional.portfolio ||
-              profissional.profPortfolio,
-          );
+          const dataWithoutPortfolio = withoutPortfolioFields(data);
+          const corre = dataWithoutPortfolio.corre || {};
+          const profissional = dataWithoutPortfolio.profissional || {};
           const fotoPrincipal = pickFoto(
             data.fotoURL,
             data.avatar,
@@ -1497,7 +1517,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
           return {
             ...prev,
-            ...data,
+            ...dataWithoutPortfolio,
             bairro: data.bairro || prev.bairro || "",
             telefone: data.telefone || data.phone || prev.telefone || "",
             email: data.email || prev.email || auth.currentUser?.email || "",
@@ -1534,11 +1554,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             statusProfissional: data.statusProfissional || data.profissional?.statusProfissional || prev.statusProfissional || "disponivel",
             ocupadoAte: data.ocupadoAte || data.profissional?.ocupadoAte || prev.ocupadoAte || "",
             agendaAberta: data.agendaAberta ?? data.profissional?.agendaAberta ?? prev.agendaAberta ?? true,
-            profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
             privacy: prev.privacy || defaultPrivacy,
           };
         });
       }
+    }, (error) => {
+      console.warn("[PORTFOLIO] operação não concluída", {
+        stage: "legacy_profile_read",
+        code: sanitizePortfolioErrorCode(error, "portfolio_legacy_read_failed"),
+      });
     });
   }, [open, uid, userBasePath]);
 
@@ -2230,75 +2254,128 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setPortfolioPhotoSuccess("");
   }
 
-  async function salvarPortfolio(profileToSave) {
-    const currentUid = String(auth.currentUser?.uid || "");
-    if (!uid || currentUid !== String(uid)) {
-      const error = new Error("portfolio_auth_mismatch");
-      error.code = "portfolio_auth_mismatch";
-      throw error;
-    }
+  function portfolioOperationError(code) {
+    const error = new Error(code);
+    error.code = code;
+    return error;
+  }
 
-    const profPortfolio = normalizePortfolio(profileToSave.profPortfolio);
-    const portfolioMap = portfolioListToMap(profPortfolio);
-
-    await update(ref(database, userBasePath), {
-      profPortfolio,
-      portfolio: portfolioMap,
-      "profile/profPortfolio": profPortfolio,
-      "profile/portfolio": portfolioMap,
+  function logPortfolioOperationFailure(stage, error, fallback) {
+    console.warn("[PORTFOLIO] operação não concluída", {
+      stage,
+      code: sanitizePortfolioErrorCode(error, fallback),
     });
+  }
+
+  async function validatePortfolioIdentity(expectedUid) {
+    const currentUser = auth.currentUser;
+    if (!expectedUid || String(currentUser?.uid || "") !== expectedUid) {
+      throw portfolioOperationError("portfolio_auth_mismatch");
+    }
 
     try {
-      const publicProfileSnap = await get(ref(database, `publicProfiles/${uid}`));
-      if (!publicProfileSnap.exists() || !publicProfileSnap.val()) {
-        return { publicSynced: false };
-      }
-
-      const privacySettings = normalizePrivacy(profileToSave.privacy);
-      const fotoPrincipal = pickFoto(profileToSave.fotoURL, profileToSave.photoURL, profileToSave.avatar);
-      const publicPortfolioMap = privacySettings.profileVisible
-        ? portfolioListToPublicMap(profPortfolio, profileToSave, uid, fotoPrincipal)
-        : {};
-      const publicProfilePayload = profileToPublicProfile(
-        profileToSave,
-        uid,
-        fotoPrincipal,
-        privacySettings,
-        profPortfolio,
-      );
-
-      await set(
-        ref(database, `publicPortfolio/${uid}`),
-        Object.keys(publicPortfolioMap).length ? publicPortfolioMap : null,
-      );
-      await runTransaction(ref(database, `publicProfiles/${uid}`), (current) => {
-        const currentStatus = normalizeProfileStatus(current || {});
-        if (blockedPublicProfileStatuses.has(currentStatus)) return current;
-
-        return projectPublicProfileForWrite({
-          current,
-          payload: {
-            ...publicProfilePayload,
-            uid,
-            id: uid,
-            createdAt: current?.createdAt || publicProfilePayload.createdAt || serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            atualizadoEm: serverTimestamp(),
-          },
-        });
-      });
-
-      return { publicSynced: true };
-    } catch (error) {
-      console.warn("[PORTFOLIO] falha na projeção pública", {
-        stage: "public_sync",
-        code: String(error?.code || "portfolio_public_sync_failed").slice(0, 80),
-      });
-      const publicSyncError = new Error("portfolio_public_sync_failed");
-      publicSyncError.code = "portfolio_public_sync_failed";
-      publicSyncError.portfolioStored = true;
-      throw publicSyncError;
+      await currentUser.getIdToken();
+    } catch {
+      throw portfolioOperationError("portfolio_auth_refresh_failed");
     }
+
+    if (String(auth.currentUser?.uid || "") !== expectedUid) {
+      throw portfolioOperationError("portfolio_auth_mismatch");
+    }
+  }
+
+  async function syncPortfolioPublicMutation({ expectedUid, mutation, profileToSave }) {
+    const publicProfileRef = ref(database, `publicProfiles/${expectedUid}`);
+    const publicProfileSnap = await get(publicProfileRef);
+    if (!publicProfileSnap.exists() || !publicProfileSnap.val()) return false;
+    if (blockedPublicProfileStatuses.has(normalizeProfileStatus(publicProfileSnap.val()))) return false;
+
+    const privacySettings = normalizePrivacy(profileToSave.privacy);
+    const fotoPrincipal = pickFoto(profileToSave.fotoURL, profileToSave.photoURL, profileToSave.avatar);
+    const publicMutationMap = mutation.type === "upsert" && privacySettings.profileVisible
+      ? portfolioListToPublicMap([mutation.item], profileToSave, expectedUid, fotoPrincipal)
+      : {};
+    const publicItem = publicMutationMap[mutation.id] || null;
+
+    const publicProfileResult = await runTransaction(publicProfileRef, (current) => {
+      if (!current || blockedPublicProfileStatuses.has(normalizeProfileStatus(current))) return undefined;
+      const currentPortfolio = mergePortfolioSources(current.portfolio);
+      const nextPortfolio = publicItem
+        ? applyPortfolioMutation(currentPortfolio, { type: "upsert", id: mutation.id, item: publicItem })
+        : applyPortfolioMutation(currentPortfolio, { type: "remove", id: mutation.id });
+
+      return projectPublicProfileForWrite({
+        current,
+        payload: {
+          portfolio: Object.keys(nextPortfolio).length ? nextPortfolio : null,
+          updatedAt: serverTimestamp(),
+          atualizadoEm: serverTimestamp(),
+        },
+      });
+    }, { applyLocally: false });
+
+    if (!publicProfileResult.committed) return false;
+    await set(ref(database, `publicPortfolio/${expectedUid}/${mutation.id}`), publicItem);
+    return true;
+  }
+
+  async function salvarPortfolio(mutation, profileToSave) {
+    const expectedUid = String(uid || "");
+    return portfolioOperationQueueRef.current.run(async () => {
+      let stage = "authentication";
+      let portfolioStored = false;
+      let confirmedPortfolio = [];
+
+      try {
+        await validatePortfolioIdentity(expectedUid);
+        stage = "private_read";
+        const userSnap = await get(ref(database, userBasePath));
+        if (!userSnap.exists() || !userSnap.val()) throw portfolioOperationError("portfolio_user_missing");
+        const legacyBaseline = resolveUserPortfolioMap(userSnap.val());
+
+        stage = "private_write";
+        const canonicalRef = ref(database, `${userBasePath}/portfolio`);
+        const transactionResult = await runTransaction(canonicalRef, (current) => {
+          const currentPortfolio = current === null
+            ? legacyBaseline
+            : mergePortfolioSources(current);
+          const nextPortfolio = applyPortfolioMutation(currentPortfolio, mutation);
+          return Object.keys(nextPortfolio).length ? nextPortfolio : null;
+        }, { applyLocally: false });
+
+        if (!transactionResult.committed) throw portfolioOperationError("portfolio_transaction_not_committed");
+        portfolioStored = true;
+        const confirmedMap = mergePortfolioSources(transactionResult.snapshot.val());
+        confirmedPortfolio = normalizePortfolio(confirmedMap);
+
+        stage = "legacy_sync";
+        await validatePortfolioIdentity(expectedUid);
+        await update(ref(database, userBasePath), {
+          profPortfolio: confirmedPortfolio.length ? confirmedPortfolio : null,
+          "profile/profPortfolio": confirmedPortfolio.length ? confirmedPortfolio : null,
+          "profile/portfolio": Object.keys(confirmedMap).length ? confirmedMap : null,
+          portfolioCanonicalVersion: 1,
+          portfolioCanonicalUpdatedAt: serverTimestamp(),
+        });
+
+        stage = "public_sync";
+        await validatePortfolioIdentity(expectedUid);
+        const publicSynced = await syncPortfolioPublicMutation({ expectedUid, mutation, profileToSave });
+        const latestCanonicalSnap = await get(ref(database, `${userBasePath}/portfolio`));
+        confirmedPortfolio = normalizePortfolio(mergePortfolioSources(latestCanonicalSnap.val()));
+        return { publicSynced, profPortfolio: confirmedPortfolio };
+      } catch (error) {
+        logPortfolioOperationFailure(stage, error, "portfolio_operation_failed");
+        if (!portfolioStored) throw error;
+
+        const partialError = portfolioOperationError(
+          stage === "public_sync" ? "portfolio_public_sync_failed" : "portfolio_compat_sync_failed",
+        );
+        partialError.portfolioStored = true;
+        partialError.confirmedPortfolio = confirmedPortfolio;
+        throw partialError;
+      }
+    });
   }
 
   const salvar = async (profileOverride = null) => {
@@ -2312,9 +2389,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setSalvo(false);
 
     try {
-      const profPortfolio = normalizePortfolio(profileToSave.profPortfolio);
-      const portfolioMap = portfolioListToMap(profPortfolio);
-
       const corre = {
         ativo: !!profileToSave.isCorre,
         titulo: profileToSave.correTitulo || "Corre rápido",
@@ -2336,8 +2410,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         statusProfissional: profileToSave.statusProfissional || "disponivel",
         ocupadoAte: profileToSave.ocupadoAte || "",
         agendaAberta: profileToSave.agendaAberta !== false,
-        portfolio: portfolioMap,
-        profPortfolio,
       };
 
       const mapSettings = {
@@ -2364,11 +2436,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       const fotoPrincipal = pickFoto(profileToSave.fotoURL, profileToSave.photoURL, profileToSave.avatar);
       const publicProfileSnap = await get(ref(database, `publicProfiles/${uid}`)).catch(() => null);
       const shouldSyncPublicWorkProfile = !!(publicProfileSnap?.exists?.() && publicProfileSnap.val());
-      const publicPortfolioMap = privacySettings.profileVisible
-        ? portfolioListToPublicMap(profPortfolio, profileToSave, uid, fotoPrincipal)
-        : {};
-      const publicProfilePayload = profileToPublicProfile(profileToSave, uid, fotoPrincipal, privacySettings, profPortfolio);
-      const profilePublic = { ...profileToSave };
+      const publicProfilePayload = profileToPublicProfile(profileToSave, uid, fotoPrincipal, privacySettings, []);
+      delete publicProfilePayload.portfolio;
+      const profilePublic = withoutPortfolioFields(profileToSave);
       delete profilePublic.privacy;
       delete profilePublic.cpf;
       delete profilePublic.cpfDigits;
@@ -2395,8 +2465,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
         avatar: fotoPrincipal || profileToSave.avatarEmoji || "",
-        profPortfolio,
-        portfolio: portfolioMap,
         corre: {
           ...corre,
           fotoURL: fotoPrincipal || null,
@@ -2445,8 +2513,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         photoURL: fotoPrincipal || null,
         avatar: fotoPrincipal || profileToSave.avatarEmoji || "",
         avatarEmoji: profileToSave.avatarEmoji || "",
-        profPortfolio,
-        portfolio: portfolioMap,
         cidade: profileToSave.cidade || "",
         bairro: profileToSave.bairro || "",
         telefone: profileToSave.telefone || "",
@@ -2487,10 +2553,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       });
 
       if (shouldSyncPublicWorkProfile) {
-        await set(
-          ref(database, `publicPortfolio/${uid}`),
-          Object.keys(publicPortfolioMap).length ? publicPortfolioMap : null
-        );
         await runTransaction(ref(database, `publicProfiles/${uid}`), (current) => {
           const currentStatus = normalizeProfileStatus(current || {});
           if (blockedPublicProfileStatuses.has(currentStatus)) return current;
@@ -2861,8 +2923,8 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setPortfolioPhotoSuccess("");
 
     try {
-      const result = await salvarPortfolio(nextProfile);
-      setProfile(nextProfile);
+      const result = await salvarPortfolio({ type: "upsert", id, item }, nextProfile);
+      setProfile((prev) => ({ ...prev, profPortfolio: result.profPortfolio }));
       if (result.publicSynced === false) {
         setPortfolioPhotoError("Serviço salvo no perfil, mas a vitrine pública não foi atualizada. Tente salvar novamente.");
       } else {
@@ -2873,12 +2935,16 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         setPortfolioPhotoSuccess("Serviço e fotos salvos no portfólio.");
       }
     } catch (error) {
-      console.error("[PORTFOLIO] falha ao salvar serviço", error?.code || "portfolio_save_failed");
       if (error?.portfolioStored) {
-        setProfile(nextProfile);
+        setProfile((prev) => ({
+          ...prev,
+          profPortfolio: normalizePortfolio(error.confirmedPortfolio),
+        }));
         setPortfolioPhotoError("Serviço salvo no perfil, mas a vitrine pública não foi atualizada. Tente salvar novamente.");
       } else if (error?.code === "portfolio_auth_mismatch") {
         setPortfolioPhotoError("A sessão não corresponde ao perfil aberto. Entre novamente.");
+      } else if (error?.code === "portfolio_auth_refresh_failed") {
+        setPortfolioPhotoError("Não foi possível renovar sua sessão. Entre novamente e tente salvar.");
       } else {
         setPortfolioPhotoError("Não foi possível salvar o serviço. Seus dados continuam na tela para tentar novamente.");
       }
@@ -2906,14 +2972,40 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setPortfolioPhotoError("");
     setPortfolioPhotoSuccess("");
   };
-  const removerPortfolioItem = (id) => {
-    setProfile((prev) => ({
-      ...prev,
-      profPortfolio: normalizePortfolio(prev.profPortfolio).filter((item) => item.id !== id),
-    }));
-    if (portfolioEditingId === id) {
-      setPortfolioEditingId("");
-      setPortfolioDraft(createEmptyPortfolioDraft());
+  const removerPortfolioItem = async (id) => {
+    if (portfolioSavingRef.current || !id) return;
+    portfolioSavingRef.current = true;
+    setPortfolioSaving(true);
+    setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
+
+    try {
+      const result = await salvarPortfolio({ type: "remove", id }, profile);
+      setProfile((prev) => ({ ...prev, profPortfolio: result.profPortfolio }));
+      if (portfolioEditingId === id) {
+        setPortfolioEditingId("");
+        setPortfolioDraft(createEmptyPortfolioDraft());
+      }
+      if (result.publicSynced === false) {
+        setPortfolioPhotoError("Serviço removido do perfil, mas a vitrine pública não foi atualizada.");
+      } else {
+        setPortfolioPhotoSuccess("Serviço removido do portfólio.");
+      }
+    } catch (error) {
+      if (error?.portfolioStored) {
+        setProfile((prev) => ({
+          ...prev,
+          profPortfolio: normalizePortfolio(error.confirmedPortfolio),
+        }));
+        setPortfolioPhotoError("Serviço removido do perfil, mas a vitrine pública não foi atualizada.");
+      } else if (error?.code === "portfolio_auth_mismatch" || error?.code === "portfolio_auth_refresh_failed") {
+        setPortfolioPhotoError("Sua sessão mudou. Entre novamente antes de remover o serviço.");
+      } else {
+        setPortfolioPhotoError("Não foi possível remover o serviço. Tente novamente.");
+      }
+    } finally {
+      portfolioSavingRef.current = false;
+      setPortfolioSaving(false);
     }
   };
 
@@ -5055,7 +5147,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                     </div>
                   </div>
 
-                  {!portfolioItems.length ? (
+                  {currentPortfolioReadStatus.error ? (
+                    <div role="alert" className="mt-4 rounded-[18px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+                      {currentPortfolioReadStatus.error}
+                    </div>
+                  ) : !currentPortfolioReadStatus.loaded ? (
+                    <div className="mt-4 rounded-[18px] border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
+                      Carregando seus serviços...
+                    </div>
+                  ) : !portfolioItems.length ? (
                     <div className="mt-4 flex flex-col gap-4 rounded-[22px] border border-slate-100 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.07)] md:flex-row md:items-center md:px-8">
                       <div className="relative grid h-32 w-44 shrink-0 place-items-center">
                         <ServiceToolboxIllustration className="h-32 w-44" />
@@ -5073,7 +5173,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2">
                         <div className="text-sm font-black text-blue-950">Seus serviços cadastrados</div>
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">{portfolioItems.length} serviços</span>
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
+                          {currentPortfolioReadStatus.error || !currentPortfolioReadStatus.loaded
+                            ? "— serviços"
+                            : `${portfolioItems.length} serviços`}
+                        </span>
                       </div>
                       <button type="button" className="h-8 w-fit rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-500">
                         Mais recentes
@@ -5129,8 +5233,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => removerPortfolioItem(item.id)}
-                                    className="h-9 rounded-xl border border-rose-100 bg-rose-50 text-xs font-black text-rose-600"
+                                    onClick={() => void removerPortfolioItem(item.id)}
+                                    disabled={portfolioSaving}
+                                    className="h-9 rounded-xl border border-rose-100 bg-rose-50 text-xs font-black text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
                                     Remover
                                   </button>
@@ -5140,11 +5245,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                           );
                         })}
                       </div>
-                    ) : (
+                    ) : currentPortfolioReadStatus.loaded && !currentPortfolioReadStatus.error ? (
                       <div className="mt-3 rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500">
                         Nenhum serviço cadastrado ainda.
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
                   <div className="mt-4 flex flex-col gap-2 rounded-[18px] border border-yellow-200 bg-yellow-50 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -5276,7 +5381,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             </div>
           )}
 
-          {tab !== "dados" && tab !== "config" && (!professionalMode || (currentProfSection && currentProfSection !== "perfilProfissional")) && (
+          {tab !== "dados" && tab !== "config" && (!professionalMode || (currentProfSection && currentProfSection !== "perfilProfissional" && currentProfSection !== "portfolio")) && (
           <button
             onClick={() => void salvar()}
             disabled={salvando || fotoSalvando}
