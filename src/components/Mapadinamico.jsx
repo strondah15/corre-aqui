@@ -36,7 +36,13 @@ import { normalizePublicRequest } from '@/lib/publicRequests'
 import { createClaimUiCheck, removePublicRequestCard, replacePublicRequestCards } from '@/lib/publicRequestClaimUi'
 import { deletePublicRequest, synchronizePublicRequest } from '@/lib/pedidoProjectionClient'
 import { subscribeParticipantAgendamentos } from '@/lib/agendamentos'
-import { createPrivateRequest, notifyPublicRequestAccepted, reconcilePrivateRequestInbox } from '@/lib/privateRequests'
+import {
+  createPrivateRequest,
+  notifyPublicRequestAccepted,
+  reconcilePrivateRequestInbox,
+  resolveContractableService,
+} from '@/lib/privateRequests'
+import { listPublicProfessionalServiceCatalog } from '@/lib/professionalServicesClient'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus, normalizeServiceAttendanceStatus, transitionAtendimento } from '@/lib/atendimento'
 import { contabilizarAtendimentoFinalizado } from '@/lib/atendimentoRewards'
 import { TUTORIAL_ACTIONS, TUTORIAL_EVENTS } from '@/lib/tutorial/tutorialConfig'
@@ -1428,6 +1434,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   const [usersObj, setUsersObj] = useState({})
   const [publicAvailabilityStatus, setPublicAvailabilityStatus] = useState({ loaded: false, error: '' })
   const [publicPortfolioObj, setPublicPortfolioObj] = useState({})
+  const [publicPortfolioMetaObj, setPublicPortfolioMetaObj] = useState({})
   const [publicPortfolioStatus, setPublicPortfolioStatus] = useState({ loaded: false, error: '' })
   const [registeredUsersObj, setRegisteredUsersObj] = useState({})
   const [registeredUsersStatus, setRegisteredUsersStatus] = useState({ loaded: false, error: '' })
@@ -2695,26 +2702,69 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   useEffect(() => {
     if (!meuId || modoApp !== 'cliente') {
       setPublicPortfolioObj({})
+      setPublicPortfolioMetaObj({})
       setPublicPortfolioStatus({ loaded: false, error: '' })
-      return
+      return undefined
     }
 
-    setPublicPortfolioStatus({ loaded: false, error: '' })
-    const off = onValue(
-      ref(database, 'publicPortfolio'),
-      (snap) => {
-        setPublicPortfolioObj(snap.val() || {})
-        setPublicPortfolioStatus({ loaded: true, error: '' })
-      },
-      (error) => {
-        console.warn('[PORTFOLIO] erro lendo publicPortfolio', error)
-        setPublicPortfolioObj({})
-        setPublicPortfolioStatus({ loaded: true, error: 'Não foi possível carregar os portfólios agora.' })
-      }
-    )
+    if (!registeredUsersStatus.loaded) return undefined
+    const currentUser = auth.currentUser
+    if (!currentUser || currentUser.uid !== meuId) {
+      setPublicPortfolioObj({})
+      setPublicPortfolioMetaObj({})
+      setPublicPortfolioStatus({ loaded: true, error: 'Entre novamente para carregar os portfólios.' })
+      return undefined
+    }
 
-    return () => off()
-  }, [meuId, modoApp])
+    const professionalIds = Object.entries(registeredUsersObj || {})
+      .filter(([, profile]) => (
+        profile
+        && typeof profile === 'object'
+        && profile.profileVisible !== false
+        && profile.visivel !== false
+        && (profile.isProfissional === true || profile.isCorre === true)
+      ))
+      .map(([uid]) => uid)
+      .slice(0, 300)
+    if (!professionalIds.length) {
+      setPublicPortfolioObj({})
+      setPublicPortfolioMetaObj({})
+      setPublicPortfolioStatus({ loaded: true, error: '' })
+      return undefined
+    }
+
+    const controller = new AbortController()
+    setPublicPortfolioStatus({ loaded: false, error: '' })
+    void listPublicProfessionalServiceCatalog({
+      user: currentUser,
+      expectedUid: meuId,
+      professionalIds,
+      signal: controller.signal,
+    }).then((result) => {
+      if (controller.signal.aborted) return
+      const portfolio = {}
+      const metadata = {}
+      Object.entries(result?.catalogs || {}).forEach(([uid, entry]) => {
+        portfolio[uid] = Array.isArray(entry?.services) ? entry.services : []
+        metadata[uid] = {
+          resolved: true,
+          source: String(entry?.source || 'none'),
+          portfolioSchemaVersion: Number(entry?.portfolioSchemaVersion || 0),
+        }
+      })
+      setPublicPortfolioObj(portfolio)
+      setPublicPortfolioMetaObj(metadata)
+      setPublicPortfolioStatus({ loaded: true, error: '' })
+    }).catch((error) => {
+      if (controller.signal.aborted) return
+      console.warn('[PORTFOLIO] catálogo público indisponível', { code: error?.code || 'unknown' })
+      setPublicPortfolioObj({})
+      setPublicPortfolioMetaObj({})
+      setPublicPortfolioStatus({ loaded: true, error: 'Não foi possível carregar os portfólios agora.' })
+    })
+
+    return () => controller.abort()
+  }, [meuId, modoApp, registeredUsersObj, registeredUsersStatus.loaded])
 
   useEffect(() => {
     if (!meuId) {
@@ -3870,6 +3920,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             if (currentUid && currentUid !== uidPerfil) return current
 
             const profile = full.profile || {}
+            const catalogMetadata = publicPortfolioMetaObj?.[uidPerfil]
+            const catalogResolved = catalogMetadata?.resolved === true || u?.portfolioCatalogResolved === true
+            const portfolioSchemaVersion = Number(
+              catalogMetadata?.portfolioSchemaVersion
+              || u?.portfolioSchemaVersion
+              || full?.portfolioSchemaVersion
+              || profile?.portfolioSchemaVersion
+              || 0
+            )
             return {
               ...u,
               ...full,
@@ -3881,8 +3940,17 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               local: u?.local ?? full?.local,
               latitude: u?.latitude ?? full?.latitude,
               longitude: u?.longitude ?? full?.longitude,
-              portfolio: full?.portfolio || profile?.portfolio || u?.portfolio,
-              profPortfolio: full?.profPortfolio || profile?.profPortfolio || u?.profPortfolio,
+              portfolio: catalogResolved
+                ? (publicPortfolioObj?.[uidPerfil] || u?.portfolio || [])
+                : portfolioSchemaVersion === 2
+                  ? []
+                  : (full?.portfolio || profile?.portfolio || u?.portfolio),
+              profPortfolio: portfolioSchemaVersion === 2
+                ? []
+                : (full?.profPortfolio || profile?.profPortfolio || u?.profPortfolio),
+              portfolioCatalogResolved: catalogResolved,
+              portfolioSchemaVersion,
+              portfolioSource: catalogMetadata?.source || u?.portfolioSource || (portfolioSchemaVersion === 2 ? 'canonical' : 'legacy'),
             }
           })
         })
@@ -3901,7 +3969,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         u?.profile?.descricao ||
         'Ficha selecionada.',
     })
-  }, [showToast])
+  }, [publicPortfolioMetaObj, publicPortfolioObj, showToast])
 
   const confirmarAcessoContratacaoDireta = useCallback(async () => {
     try {
@@ -3931,6 +3999,15 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       return
     }
 
+    const contractableService = resolveContractableService(u, servico)
+    if (!contractableService) {
+      showToast({
+        type: 'info',
+        title: 'Serviço indisponível',
+        message: 'Este perfil ainda não possui um serviço ativo para contratação.',
+      })
+      return
+    }
     if (!await confirmarAcessoContratacaoDireta()) return
 
     try {
@@ -3947,12 +4024,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           uid: profissionalId,
           id: profissionalId,
         },
-        servico: servico || {
-          id: profissionalId,
-          titulo: u?.profTitulo || u?.correTitulo || u?.nome || 'Serviço solicitado',
-          descricao: u?.profResumo || u?.correResumo || '',
-          valor: u?.profPrecoBase || '',
-        },
+        servico: contractableService,
         tipo: 'pedido_direto',
       })
 
@@ -3975,11 +4047,20 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
   }, [avatarEmoji, confirmarAcessoContratacaoDireta, fotoURL, meuId, meuNome, showToast])
 
   const abrirAgendaCliente = useCallback(async (u, servico = null) => {
+    const contractableService = resolveContractableService(u, servico)
+    if (!contractableService) {
+      showToast({
+        type: 'info',
+        title: 'Agenda indisponível',
+        message: 'Este perfil ainda não possui um serviço ativo para agendamento.',
+      })
+      return false
+    }
     if (!await confirmarAcessoContratacaoDireta()) return false
-    setAgendaClienteService(servico || null)
+    setAgendaClienteService(contractableService)
     setAgendaClienteUser(u)
     return true
-  }, [confirmarAcessoContratacaoDireta])
+  }, [confirmarAcessoContratacaoDireta, showToast])
 
   const glassCard = 'bg-white/10  border border-white/10 shadow-xl shadow-black/30'
 
@@ -4660,6 +4741,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
               profilesLoading={!registeredUsersStatus.loaded}
               profilesError={registeredUsersStatus.error}
               publicPortfolio={publicPortfolioObj}
+              publicPortfolioMeta={publicPortfolioMetaObj}
               portfolioLoading={!publicPortfolioStatus.loaded || !registeredUsersStatus.loaded}
               portfolioError={publicPortfolioStatus.error || registeredUsersStatus.error}
               viewerLocation={meuUserProfile?.local || meuUserProfile?.location || meuUserProfile?.profile?.local || null}
@@ -5409,6 +5491,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       {usuarioSelecionado && (
         <PerfilPublico
           user={usuarioSelecionado}
+          viewerUser={auth.currentUser}
           onClose={() => setUsuarioSelecionado(null)}
           onPedirServico={(u, servico) => {
             criarPedidoDiretoPortfolio(u, servico)

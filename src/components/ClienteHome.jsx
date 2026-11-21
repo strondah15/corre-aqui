@@ -28,11 +28,17 @@ const safeUrl = (v) => {
   return ''
 }
 
+const photoValues = (value) => {
+  if (Array.isArray(value)) return value
+  if (value && typeof value === 'object') return Object.values(value)
+  return []
+}
+
 const normalizePortfolioFotos = (item = {}) => {
   const raw = [
-    ...(Array.isArray(item.fotos) ? item.fotos : []),
-    ...(Array.isArray(item.photos) ? item.photos : []),
-    ...(Array.isArray(item.imagens) ? item.imagens : []),
+    ...photoValues(item.fotos),
+    ...photoValues(item.photos),
+    ...photoValues(item.imagens),
     item.fotoURL,
     item.imageURL,
     item.imagemURL,
@@ -169,6 +175,30 @@ const isActivePortfolioService = (service) => {
 }
 
 const providerHasPortfolio = (item) => normalizePortfolioEntries(item?.portfolio).some(isActivePortfolioService)
+
+const applyPublicPortfolioCatalog = (provider, publicPortfolio, publicPortfolioMeta) => {
+  if (!provider) return provider
+  const uid = safeStr(provider.uid || provider.id)
+  const metadata = publicPortfolioMeta?.[uid]
+  if (!uid || metadata?.resolved !== true) {
+    return Number(provider.portfolioSchemaVersion) === 2
+      ? { ...provider, portfolio: [], portfolioSource: 'canonical' }
+      : provider
+  }
+  const portfolio = normalizePortfolioEntries(publicPortfolio?.[uid]).filter(isActivePortfolioService)
+  const categories = Array.from(new Set([
+    ...(provider.profCategorias || []),
+    ...portfolio.map((service) => safeStr(service.categoriaId)).filter(Boolean),
+  ]))
+  return {
+    ...provider,
+    portfolio,
+    profCategorias: categories,
+    portfolioCatalogResolved: true,
+    portfolioSource: safeStr(metadata.source || 'none'),
+    portfolioSchemaVersion: Number(metadata.portfolioSchemaVersion || 0),
+  }
+}
 
 function ClienteMapBackdrop() {
   return (
@@ -574,16 +604,19 @@ const normalizeProvider = (u) => {
   const correTransporte = safeStr(u?.correTransporte || corre?.transporte || '')
   const correDisponibilidade = safeStr(u?.correDisponibilidade || corre?.disponibilidade || '')
   const profExperiencia = safeStr(u?.profExperiencia || u?.profissional?.profExperiencia || u?.profissional?.experiencia || '')
-  const portfolio = normalizePortfolioEntries(
-    u?.portfolio,
-    u?.profPortfolio,
-    profile?.portfolio,
-    profile?.profPortfolio,
-    u?.profissional?.portfolio,
-    u?.profissional?.profPortfolio,
-    profile?.profissional?.portfolio,
-    profile?.profissional?.profPortfolio
-  ).filter(isActivePortfolioService)
+  const portfolioSchemaVersion = Number(u?.portfolioSchemaVersion || profile?.portfolioSchemaVersion || 0)
+  const portfolio = portfolioSchemaVersion === 2
+    ? []
+    : normalizePortfolioEntries(
+        u?.portfolio,
+        u?.profPortfolio,
+        profile?.portfolio,
+        profile?.profPortfolio,
+        u?.profissional?.portfolio,
+        u?.profissional?.profPortfolio,
+        profile?.profissional?.portfolio,
+        profile?.profissional?.profPortfolio
+      ).filter(isActivePortfolioService)
 
   return {
     uid,
@@ -617,6 +650,8 @@ const normalizeProvider = (u) => {
     correTransporte,
     correDisponibilidade,
     portfolio,
+    portfolioSchemaVersion,
+    portfolioSource: portfolioSchemaVersion === 2 ? 'canonical' : 'legacy',
     regiao: correRegiao || profCidadeAtende,
     local: okLoc ? { lat, lng } : null,
     reputation: buildProfessionalReputation(u),
@@ -907,6 +942,7 @@ export default function ClienteHome({
   profilesLoading = false,
   profilesError = '',
   publicPortfolio = {},
+  publicPortfolioMeta = {},
   portfolioLoading = false,
   portfolioError = '',
   onAbrirPerfil,
@@ -934,16 +970,24 @@ export default function ClienteHome({
   const onlineProviders = useMemo(() => {
     const list = Array.isArray(onlineUsers) ? onlineUsers : []
     return list
-      .map((item) => normalizeProvider({ ...item, online: true }))
+      .map((item) => applyPublicPortfolioCatalog(
+        normalizeProvider({ ...item, online: true }),
+        publicPortfolio,
+        publicPortfolioMeta,
+      ))
       .filter((provider) => provider && canAppearInPublicDirectory(provider))
-  }, [onlineUsers])
+  }, [onlineUsers, publicPortfolio, publicPortfolioMeta])
 
   const registeredProviders = useMemo(() => {
     const list = Array.isArray(registeredUsers) ? registeredUsers : []
     return list
-      .map((item) => normalizeProvider({ ...item, online: false }))
+      .map((item) => applyPublicPortfolioCatalog(
+        normalizeProvider({ ...item, online: false }),
+        publicPortfolio,
+        publicPortfolioMeta,
+      ))
       .filter((provider) => provider && canAppearInPublicDirectory(provider))
-  }, [registeredUsers])
+  }, [registeredUsers, publicPortfolio, publicPortfolioMeta])
 
   const publicProviderBaseByUid = useMemo(() => {
     const byUid = new Map()
@@ -983,9 +1027,9 @@ export default function ClienteHome({
       })
     })
     return Array.from(byUid.values())
-      .map(normalizeProvider)
+      .map((provider) => applyPublicPortfolioCatalog(provider, publicPortfolio, publicPortfolioMeta))
       .filter((provider) => provider && canAppearInPublicDirectory(provider))
-  }, [publicPortfolio, publicProviderBaseByUid])
+  }, [publicPortfolio, publicPortfolioMeta, publicProviderBaseByUid])
 
   const providers = useMemo(() => {
     const byUid = new Map()
@@ -1011,8 +1055,10 @@ export default function ClienteHome({
       })
     })
 
-    return Array.from(byUid.values()).filter((provider) => canAppearInPublicDirectory(provider))
-  }, [onlineProviders, registeredProviders, portfolioProviders])
+    return Array.from(byUid.values())
+      .map((provider) => applyPublicPortfolioCatalog(provider, publicPortfolio, publicPortfolioMeta))
+      .filter((provider) => canAppearInPublicDirectory(provider))
+  }, [onlineProviders, portfolioProviders, publicPortfolio, publicPortfolioMeta, registeredProviders])
 
   const allFilteredProviders = useMemo(() => {
     const t = normalizeProfessionSearchText(busca)

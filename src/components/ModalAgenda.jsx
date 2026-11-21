@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { database } from '@/lib/firebase'
 import { auth } from '@/lib/firebase'
-import { createPrivateRequest } from '@/lib/privateRequests'
+import { createPrivateRequest, resolveContractableService } from '@/lib/privateRequests'
 
 function tomorrow() {
   const d = new Date()
@@ -166,6 +166,10 @@ export default function ModalAgenda({ open, onClose, profissional, servico = nul
       const authUser = auth.currentUser
       const clienteId = authUser?.uid || localStorage.getItem('meuId') || ''
       const clienteNome = localStorage.getItem('meuNome') || authUser?.displayName || 'Cliente'
+      const contractableService = resolveContractableService(profissional, servico)
+      if (!contractableService) {
+        throw new Error('Este perfil ainda não possui um serviço ativo para agendamento.')
+      }
 
       await createPrivateRequest({
         database,
@@ -180,13 +184,7 @@ export default function ModalAgenda({ open, onClose, profissional, servico = nul
           id: profissionalId,
           nome: profissionalNome,
         },
-        servico: servico || {
-          id: profissionalId,
-          titulo: profissao,
-          nome: profissao,
-          descricao,
-          valor,
-        },
+        servico: contractableService,
         tipo: 'agendamento',
         agendamento: {
           data,

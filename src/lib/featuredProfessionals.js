@@ -64,6 +64,11 @@ const providerCategories = (provider) => Array.from(new Set([
 ].map(safeText).filter(Boolean)))
 
 const hasActivePortfolioService = (provider) => {
+  if (
+    Number(provider?.portfolioSchemaVersion) === 2
+    && provider?.portfolioSource !== 'canonical'
+    && provider?.portfolioCatalogResolved !== true
+  ) return false
   const portfolio = Array.isArray(provider?.portfolio)
     ? provider.portfolio
     : provider?.portfolio && typeof provider.portfolio === 'object'

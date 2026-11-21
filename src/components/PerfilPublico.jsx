@@ -6,6 +6,7 @@ import { getProfessionDisplayName, normalizeProfessionSearchText } from '@/const
 import { buildProfessionalReputation } from '@/lib/professionalReputation'
 import ProfessionalReputationSummary from './ProfessionalReputationSummary'
 import ModalAgenda from './ModalAgenda'
+import usePublicProfessionalServices from '@/hooks/usePublicProfessionalServices'
 
 function pickText(...values) {
   return values.map((v) => String(v || '').trim()).find(Boolean) || ''
@@ -24,10 +25,15 @@ function safeUrl(value) {
 }
 
 function normalizePortfolioFotos(item = {}) {
+  const values = (value) => {
+    if (Array.isArray(value)) return value
+    if (value && typeof value === 'object') return Object.values(value)
+    return []
+  }
   const raw = [
-    ...(Array.isArray(item.fotos) ? item.fotos : []),
-    ...(Array.isArray(item.photos) ? item.photos : []),
-    ...(Array.isArray(item.imagens) ? item.imagens : []),
+    ...values(item.fotos),
+    ...values(item.photos),
+    ...values(item.imagens),
     item.fotoURL,
     item.imageURL,
     item.imagemURL,
@@ -224,9 +230,15 @@ function ServiceOfferCard({ item, user, dados, onPedirServico, abrirAgenda }) {
   )
 }
 
-export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar }) {
+export default function PerfilPublico({ user, viewerUser, onClose, onPedirServico, onAgendar }) {
   const [openAgenda, setOpenAgenda] = useState(false)
   const [agendaService, setAgendaService] = useState(null)
+  const targetUid = user?.uid || user?.id || user?.profissionalId || ''
+  const publicPortfolio = usePublicProfessionalServices({
+    user: viewerUser,
+    targetUid,
+    enabled: Boolean(user && targetUid),
+  })
 
   const dados = useMemo(() => {
     if (!user) return null
@@ -298,14 +310,19 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       ? profCategoriasRaw.filter(Boolean).join(', ')
       : String(profCategoriasRaw || '').trim()
 
-    const portfolioRaw = normalizeList(
-      user.profPortfolio,
-      profile.profPortfolio,
-      user.portfolio,
-      profile.portfolio,
-      prof.portfolio,
-      prof.profPortfolio
+    const preloadedCatalog = user.portfolioCatalogResolved === true
+    const schemaVersion = Number(
+      publicPortfolio.portfolioSchemaVersion
+      || user.portfolioSchemaVersion
+      || profile.portfolioSchemaVersion
+      || 0
     )
+    const portfolioSources = publicPortfolio.status === 'loaded'
+      ? [publicPortfolio.services]
+      : preloadedCatalog
+        ? [user.portfolio]
+        : []
+    const portfolioRaw = normalizeList(...portfolioSources)
       .map((item, index) => {
         const categoriaId = pickText(item?.categoriaId, item?.categoryId)
         const categoriaMeta = getCategoryById(categoriaId)
@@ -411,22 +428,28 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
       profExperiencia,
       profCategorias,
       portfolio,
+      portfolioSchemaVersion: schemaVersion,
       correTitulo,
       correTransporte,
       correDisponibilidade,
       correExperiencia,
       categorias,
     }
-  }, [user])
+  }, [publicPortfolio.portfolioSchemaVersion, publicPortfolio.services, publicPortfolio.status, user])
 
   if (!user || !dados) return null
 
+  const hasPreloadedCatalog = user.portfolioCatalogResolved === true
+  const portfolioLoading = publicPortfolio.status === 'loading' && !hasPreloadedCatalog
+  const portfolioReadFailed = ['error', 'auth_error'].includes(publicPortfolio.status)
+
   const abrirAgenda = (service = null) => {
+    const selectedService = service || dados.portfolio[0] || null
     if (onAgendar) {
-      onAgendar(user, service)
+      onAgendar(user, selectedService)
       return
     }
-    setAgendaService(service || null)
+    setAgendaService(selectedService)
     setOpenAgenda(true)
   }
 
@@ -582,12 +605,25 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
             </button>
             <div className="text-sm font-black text-slate-950">Serviços oferecidos</div>
             <span className="grid h-8 min-w-8 place-items-center rounded-full bg-[#ffd91a] px-2 text-xs font-black text-blue-950">
-              {dados.portfolio.length}
+              {portfolioLoading ? '…' : dados.portfolio.length}
             </span>
           </div>
 
           <div className="mt-4 space-y-3">
-            {dados.portfolio.length ? (
+            {portfolioReadFailed && dados.portfolio.length ? (
+              <div role="alert" className="rounded-[18px] border border-amber-200 bg-amber-50 p-3 text-center text-xs font-bold text-amber-800">
+                Não foi possível atualizar os serviços agora. Exibindo a última lista confirmada.
+              </div>
+            ) : null}
+            {portfolioLoading ? (
+              <div className="rounded-[18px] border border-blue-100 bg-blue-50 p-4 text-center text-xs font-bold text-blue-700">
+                Carregando serviços ativos…
+              </div>
+            ) : portfolioReadFailed && !dados.portfolio.length ? (
+              <div role="alert" className="rounded-[18px] border border-amber-200 bg-amber-50 p-4 text-center text-xs font-bold text-amber-800">
+                {publicPortfolio.errorMessage || 'Não foi possível consultar os serviços deste perfil agora.'}
+              </div>
+            ) : dados.portfolio.length ? (
               dados.portfolio.map((item) => (
                 <ServiceOfferCard
                   key={item.id}
@@ -598,16 +634,20 @@ export default function PerfilPublico({ user, onClose, onPedirServico, onAgendar
                   abrirAgenda={abrirAgenda}
                 />
               ))
-            ) : (
+            ) : publicPortfolio.status === 'loaded' || hasPreloadedCatalog ? (
               <div className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs font-bold text-slate-500">
                 Este perfil ainda não publicou serviços no portfólio.
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="mt-4 space-y-2">
             <div className="text-xs font-black text-slate-950">Ações</div>
-            <ActionLine icon="🧾" label="Criar pedido para este perfil" onClick={() => onPedirServico?.(user)} />
+            <ActionLine
+              icon="🧾"
+              label="Criar pedido para este perfil"
+              onClick={() => onPedirServico?.(user, dados.portfolio[0] || null)}
+            />
             <ActionLine icon="📅" label="Solicitar agendamento" onClick={abrirAgenda} disabled={!dados.agendaAberta} />
             <ActionLine icon="☘" label="Chamar no WhatsApp" href={whatsappHref} disabled={!whatsappHref} />
           </div>

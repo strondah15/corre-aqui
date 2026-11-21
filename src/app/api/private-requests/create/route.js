@@ -6,6 +6,10 @@ import {
   safeText,
 } from '@/lib/commercialServer'
 import { ensureClientDirectRequestAccess } from '@/lib/subscriptionServer'
+import {
+  buildProfessionalServiceContractSnapshot,
+  resolveAuthoritativeProfessionalService,
+} from '@/lib/professionalServiceCatalog'
 
 export const runtime = 'nodejs'
 
@@ -23,11 +27,6 @@ function validId(value) {
     && !/[.#$\[\]/]/.test(value)
 }
 
-function safeId(value, fallback) {
-  const id = limitedText(value, 128).replace(/[.#$\[\]/]/g, '_')
-  return id || fallback
-}
-
 function accountName(account = {}) {
   return limitedText(account?.profile?.nome || account?.nome || account?.displayName || 'Cliente', 120) || 'Cliente'
 }
@@ -42,30 +41,6 @@ function profileName(profile = {}) {
 
 function profilePhoto(profile = {}) {
   return limitedText(profile?.fotoURL || profile?.profile?.fotoURL || profile?.photoURL, 2_000)
-}
-
-function normalizeService(input = {}, profile = {}, now = Date.now()) {
-  const fallbackId = `service_${now}`
-  const titulo = limitedText(
-    input?.titulo || input?.nome || input?.title || profile?.profTitulo || profile?.correTitulo || 'Serviço solicitado',
-    160,
-  ) || 'Serviço solicitado'
-  const valor = limitedText(input?.valor || input?.faixaPreco || input?.preco || input?.priceRange || input?.price, 80)
-  return cleanFirebasePayload({
-    id: safeId(input?.id || input?.serviceId || input?.key, fallbackId),
-    titulo,
-    nome: titulo,
-    categoriaId: safeId(input?.categoriaId || input?.categoryId || 'servicos_gerais', 'servicos_gerais'),
-    categoriaNome: limitedText(input?.categoriaNome || input?.categoryName || input?.categoria || input?.category, 120),
-    descricao: limitedText(input?.descricao || input?.description, 1_000),
-    valor,
-    faixaPreco: limitedText(input?.faixaPreco || valor, 80),
-    tempoMedio: limitedText(input?.tempoMedio || input?.tempo || input?.duration, 80),
-    regiao: limitedText(input?.regiao || input?.region || profile?.profCidadeAtende || profile?.correRegiao || profile?.cidade, 160),
-    fotos: Array.isArray(input?.fotos)
-      ? input.fotos.map((value) => limitedText(value, 2_000)).filter(Boolean).slice(0, 5)
-      : [],
-  })
 }
 
 function requestSummary(record) {
@@ -136,7 +111,24 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: 'professional_agenda_closed' }, { status: 409, headers })
     }
 
-    const service = normalizeService(body?.servico, profile, now)
+    const claimedService = body?.servico && typeof body.servico === 'object' ? body.servico : {}
+    const serviceId = limitedText(
+      claimedService.serviceId || claimedService.id || body?.serviceId,
+      128,
+    )
+    if (!validId(serviceId)) {
+      return NextResponse.json({ ok: false, error: 'professional_service_required' }, { status: 400, headers })
+    }
+    const authoritativeService = await resolveAuthoritativeProfessionalService({
+      database,
+      professionalId: profissionalId,
+      serviceId,
+      now,
+    })
+    const service = buildProfessionalServiceContractSnapshot(authoritativeService, {
+      professionalId: profissionalId,
+      capturedAt: now,
+    })
     const schedule = body?.agendamento && typeof body.agendamento === 'object' ? body.agendamento : {}
     const requestId = database.ref('privateRequests').push().key
     if (!validId(requestId)) throw Object.assign(new Error('private_request_id_failed'), { status: 500 })
@@ -156,11 +148,12 @@ export async function POST(request) {
       servicoId: service.id,
       servicoTitulo: service.titulo,
       servicoSnapshot: service,
-      descricao: limitedText(schedule?.descricao || body?.servico?.descricao || service.descricao, 1_000),
-      valor: limitedText(schedule?.valor || service.valor, 80),
+      descricao: limitedText(schedule?.descricao || service.descricao, 1_000),
+      valor: limitedText(service.valor, 120),
+      valorSolicitado: limitedText(schedule?.valor, 80),
       data: limitedText(schedule?.data, 32),
       hora: limitedText(schedule?.hora, 32),
-      duracao: limitedText(schedule?.duracao, 80),
+      duracao: limitedText(schedule?.duracao || service.tempoMedio, 80),
       criadoEm: now,
       criadoEmServer: now,
       atualizadoEm: now,

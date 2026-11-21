@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 const rules = JSON.parse(await readFile(new URL('../database.rules.json', import.meta.url), 'utf8')).rules
 const profile = rules.publicProfiles.$uid
 const publicPortfolio = rules.publicPortfolio.$uid
+const professionalService = rules.professionalServices.$uid.$serviceId
 
 function wildcardKeys(node) {
   return Object.keys(node || {}).filter((key) => key.startsWith('$'))
@@ -42,6 +43,9 @@ assertSingleValidatedWildcard(profile.portfolio.$serviceId.fotos, '$photoIndex',
 assertSingleValidatedWildcard(publicPortfolio, '$serviceId', 'publicPortfolio/$uid')
 assertClosedObject(publicPortfolio.$serviceId, 'item de publicPortfolio')
 assertSingleValidatedWildcard(publicPortfolio.$serviceId.fotos, '$photoIndex', 'fotos em publicPortfolio')
+
+assertClosedObject(professionalService, 'professionalServices/$uid/$serviceId')
+assertSingleValidatedWildcard(professionalService.fotos, '$photoIndex', 'fotos em professionalServices')
 
 assert.equal(/^[0-4]$/.test('0'), true)
 assert.equal(/^[0-4]$/.test('4'), true)

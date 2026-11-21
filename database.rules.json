@@ -6,7 +6,7 @@
       ".indexOn": ["online", "lastSeen", "isCorre", "isProfissional"],
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid && (!newData.child('admin').exists() || newData.child('admin').val() === data.child('admin').val()) && (!newData.child('role').exists() || newData.child('role').val() === data.child('role').val()) && (!newData.child('profile/admin').exists() || newData.child('profile/admin').val() === data.child('profile/admin').val()) && (!newData.child('profile/role').exists() || newData.child('profile/role').val() === data.child('profile/role').val()) && (!newData.child('cpf').exists() || newData.child('cpf').val() === data.child('cpf').val()) && (!newData.child('cpfDigits').exists() || newData.child('cpfDigits').val() === data.child('cpfDigits').val()) && (!newData.child('cpfMasked').exists() || newData.child('cpfMasked').val() === data.child('cpfMasked').val()) && (!newData.child('cpfStatus').exists() || newData.child('cpfStatus').val() === data.child('cpfStatus').val()) && (!newData.child('cpfVerificacao').exists() || newData.child('cpfVerificacao').val() === data.child('cpfVerificacao').val()) && (!newData.child('documento').exists() || newData.child('documento').val() === data.child('documento').val()) && (!newData.child('documentoVerificacao').exists() || newData.child('documentoVerificacao').val() === data.child('documentoVerificacao').val()) && (!newData.child('profile/cpf').exists() || newData.child('profile/cpf').val() === data.child('profile/cpf').val()) && (!newData.child('profile/cpfDigits').exists() || newData.child('profile/cpfDigits').val() === data.child('profile/cpfDigits').val()) && (!newData.child('profile/cpfMasked').exists() || newData.child('profile/cpfMasked').val() === data.child('profile/cpfMasked').val()) && (!newData.child('profile/cpfStatus').exists() || newData.child('profile/cpfStatus').val() === data.child('profile/cpfStatus').val()) && (!newData.child('profile/cpfVerificacao').exists() || newData.child('profile/cpfVerificacao').val() === data.child('profile/cpfVerificacao').val()) && (!newData.child('profile/documento').exists() || newData.child('profile/documento').val() === data.child('profile/documento').val()) && (!newData.child('profile/documentoVerificacao').exists() || newData.child('profile/documentoVerificacao').val() === data.child('profile/documentoVerificacao').val()) && newData.child('subscriptions').exists() === data.child('subscriptions').exists() && newData.child('clientFreeOrderUsed').val() === data.child('clientFreeOrderUsed').val() && newData.child('xp').val() === data.child('xp').val() && newData.child('moedas').val() === data.child('moedas').val() && newData.child('servicosCorre').val() === data.child('servicosCorre').val() && newData.child('servicosProf').val() === data.child('servicosProf').val() && newData.child('serviçosCorre').val() === data.child('serviçosCorre').val() && newData.child('serviçosProf').val() === data.child('serviçosProf').val() && newData.child('patente').val() === data.child('patente').val() && newData.child('patenteCorre').val() === data.child('patenteCorre').val() && newData.child('patenteProf').val() === data.child('patenteProf').val() && newData.child('patenteAtualizadaEm').val() === data.child('patenteAtualizadaEm').val() && newData.child('missaoAtualizadaEm').val() === data.child('missaoAtualizadaEm').val() && newData.child('attendanceRewardClaims').val() === data.child('attendanceRewardClaims').val()",
+        ".write": "auth != null && auth.uid === $uid && (!newData.child('admin').exists() || newData.child('admin').val() === data.child('admin').val()) && (!newData.child('role').exists() || newData.child('role').val() === data.child('role').val()) && (!newData.child('profile/admin').exists() || newData.child('profile/admin').val() === data.child('profile/admin').val()) && (!newData.child('profile/role').exists() || newData.child('profile/role').val() === data.child('profile/role').val()) && (!newData.child('cpf').exists() || newData.child('cpf').val() === data.child('cpf').val()) && (!newData.child('cpfDigits').exists() || newData.child('cpfDigits').val() === data.child('cpfDigits').val()) && (!newData.child('cpfMasked').exists() || newData.child('cpfMasked').val() === data.child('cpfMasked').val()) && (!newData.child('cpfStatus').exists() || newData.child('cpfStatus').val() === data.child('cpfStatus').val()) && (!newData.child('cpfVerificacao').exists() || newData.child('cpfVerificacao').val() === data.child('cpfVerificacao').val()) && (!newData.child('documento').exists() || newData.child('documento').val() === data.child('documento').val()) && (!newData.child('documentoVerificacao').exists() || newData.child('documentoVerificacao').val() === data.child('documentoVerificacao').val()) && (!newData.child('profile/cpf').exists() || newData.child('profile/cpf').val() === data.child('profile/cpf').val()) && (!newData.child('profile/cpfDigits').exists() || newData.child('profile/cpfDigits').val() === data.child('profile/cpfDigits').val()) && (!newData.child('profile/cpfMasked').exists() || newData.child('profile/cpfMasked').val() === data.child('profile/cpfMasked').val()) && (!newData.child('profile/cpfStatus').exists() || newData.child('profile/cpfStatus').val() === data.child('profile/cpfStatus').val()) && (!newData.child('profile/cpfVerificacao').exists() || newData.child('profile/cpfVerificacao').val() === data.child('profile/cpfVerificacao').val()) && (!newData.child('profile/documento').exists() || newData.child('profile/documento').val() === data.child('profile/documento').val()) && (!newData.child('profile/documentoVerificacao').exists() || newData.child('profile/documentoVerificacao').val() === data.child('profile/documentoVerificacao').val()) && newData.child('subscriptions').exists() === data.child('subscriptions').exists() && newData.child('clientFreeOrderUsed').val() === data.child('clientFreeOrderUsed').val() && newData.child('portfolioSchemaVersion').val() === data.child('portfolioSchemaVersion').val() && newData.child('xp').val() === data.child('xp').val() && newData.child('moedas').val() === data.child('moedas').val() && newData.child('servicosCorre').val() === data.child('servicosCorre').val() && newData.child('servicosProf').val() === data.child('servicosProf').val() && newData.child('serviçosCorre').val() === data.child('serviçosCorre').val() && newData.child('serviçosProf').val() === data.child('serviçosProf').val() && newData.child('patente').val() === data.child('patente').val() && newData.child('patenteCorre').val() === data.child('patenteCorre').val() && newData.child('patenteProf').val() === data.child('patenteProf').val() && newData.child('patenteAtualizadaEm').val() === data.child('patenteAtualizadaEm').val() && newData.child('missaoAtualizadaEm').val() === data.child('missaoAtualizadaEm').val() && newData.child('attendanceRewardClaims').val() === data.child('attendanceRewardClaims').val()",
         "privacy": {
           ".read": "auth != null && auth.uid === $uid",
           ".write": "auth != null && auth.uid === $uid",
@@ -31,6 +31,7 @@
         "documentoVerificacao": { ".validate": "newData.val() === data.val()" },
         "subscriptions": { ".validate": false },
         "clientFreeOrderUsed": { ".validate": "newData.val() === data.val()" },
+        "portfolioSchemaVersion": { ".validate": "newData.val() === data.val()" },
         "xp": { ".validate": "newData.val() === data.val()" },
         "moedas": { ".validate": "newData.val() === data.val()" },
         "servicosCorre": { ".validate": "newData.val() === data.val()" },
@@ -162,6 +163,80 @@
             }
           }
         }
+      },
+      "professionalServices": {
+        "$uid": {
+          ".write": false,
+          ".indexOn": [
+            "ativo",
+            "updatedAt",
+            "categoriaId"
+          ],
+          ".read": "auth != null && (auth.uid === $uid || (query.orderByChild === 'ativo' && query.equalTo === true && ((query.limitToFirst != null && query.limitToFirst <= 12 && query.limitToLast == null) || (query.limitToLast != null && query.limitToLast <= 12 && query.limitToFirst == null))))",
+          "$serviceId": {
+            ".read": "auth != null && (auth.uid === $uid || data.child('ativo').val() === true)",
+            ".write": false,
+            ".validate": "!newData.exists() || ($serviceId.matches(/^[A-Za-z0-9_-]{1,120}$/) && newData.hasChildren(['schemaVersion', 'id', 'nome', 'descricao', 'categoriaId', 'categoriaNome', 'faixaPreco', 'tempoMedio', 'regiao', 'atendeDomicilio', 'urgente', 'ativo', 'createdAt', 'updatedAt', 'revision']) && newData.child('schemaVersion').val() === 2 && newData.child('id').val() === $serviceId && (!data.exists() ? (newData.child('revision').val() === 1 && newData.child('createdAt').val() === now) : (data.child('revision').isNumber() && newData.child('revision').val() === data.child('revision').val() + 1 && newData.child('createdAt').val() === data.child('createdAt').val())) && newData.child('updatedAt').val() === now && newData.child('updatedAt').val() >= newData.child('createdAt').val())",
+            "schemaVersion": {
+              ".validate": "newData.val() === 2"
+            },
+            "id": {
+              ".validate": "newData.isString() && newData.val() === $serviceId && newData.val().matches(/^[A-Za-z0-9_-]{1,120}$/)"
+            },
+            "nome": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 140 && newData.val().matches(/.*[^ ].*/)"
+            },
+            "descricao": {
+              ".validate": "newData.isString() && newData.val().length <= 2000"
+            },
+            "categoriaId": {
+              ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9_]{1,64}$/)"
+            },
+            "categoriaNome": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120 && newData.val().matches(/.*[^ ].*/)"
+            },
+            "faixaPreco": {
+              ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120 && newData.val().matches(/.*[^ ].*/)"
+            },
+            "tempoMedio": {
+              ".validate": "newData.isString() && newData.val().length <= 120"
+            },
+            "regiao": {
+              ".validate": "newData.isString() && newData.val().length <= 160"
+            },
+            "atendeDomicilio": {
+              ".validate": "newData.isBoolean()"
+            },
+            "urgente": {
+              ".validate": "newData.isBoolean()"
+            },
+            "ativo": {
+              ".validate": "newData.isBoolean()"
+            },
+            "fotos": {
+              ".validate": "!newData.exists() || (newData.hasChildren() && (!newData.child('1').exists() || newData.child('0').exists()) && (!newData.child('2').exists() || newData.child('1').exists()) && (!newData.child('3').exists() || newData.child('2').exists()) && (!newData.child('4').exists() || newData.child('3').exists()))",
+              "$photoIndex": {
+                ".validate": "$photoIndex.matches(/^[0-4]$/) && newData.isString() && newData.val().length > 0 && newData.val().length <= 2048 && newData.val().matches(/^https:\\/\\/[A-Za-z0-9.-]+([\\/?#][^ ]*)?$/) && !newData.val().matches(/^https:\\/\\/(localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0|10\\.[0-9.]+|192\\.168\\.[0-9.]+|172\\.(1[6-9]|2[0-9]|3[0-1])\\.[0-9.]+|169\\.254\\.[0-9.]+|host\\.docker\\.internal)([:\\/?#].*)?$/) && !newData.val().matches(/^https:\\/\\/\\[::1\\]([:\\/?#].*)?$/) && !newData.val().matches(/^https:\\/\\/[^\\/]*\\.local([:\\/?#].*)?$/)"
+              }
+            },
+            "createdAt": {
+              ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 4102444800000 && (!data.exists() ? newData.val() === now : newData.val() === data.val())"
+            },
+            "updatedAt": {
+              ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 4102444800000 && newData.val() === now && (!data.exists() || newData.val() >= data.val())"
+            },
+            "revision": {
+              ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 1 && (!data.exists() ? newData.val() === 1 : newData.val() === data.val() + 1)"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      },
+      "professionalServiceOperations": {
+        ".read": false,
+        ".write": false
       },
       "publicProfiles": {
         ".read": "auth != null",
@@ -323,6 +398,9 @@
           },
           "profExperiencia": {
             ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 2000)"
+          },
+          "portfolioSchemaVersion": {
+            ".validate": "newData.val() === data.val()"
           },
           "corre": {
             ".validate": "!newData.exists() || newData.hasChildren(['ativo', 'titulo', 'bio', 'transporte', 'regiao', 'disponibilidade', 'experiencia'])",

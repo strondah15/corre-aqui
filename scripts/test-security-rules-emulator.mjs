@@ -5,7 +5,34 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing'
-import { get, ref, remove, set, update } from 'firebase/database'
+import {
+  equalTo,
+  get,
+  limitToFirst,
+  limitToLast,
+  orderByChild,
+  query,
+  ref,
+  remove,
+  serverTimestamp,
+  set,
+  update,
+} from 'firebase/database'
+import { deleteApp as deleteAdminApp, initializeApp as initializeAdminApp } from 'firebase-admin/app'
+import { getDatabase as getAdminDatabase } from 'firebase-admin/database'
+import {
+  ProfessionalServiceServerError,
+  createProfessionalService,
+  deleteProfessionalService,
+  editProfessionalService,
+  getProfessionalService,
+  listProfessionalServices,
+} from '../src/lib/professionalServicesServer.js'
+import {
+  buildProfessionalServiceContractSnapshot,
+  listPublicProfessionalServices,
+  resolveAuthoritativeProfessionalService,
+} from '../src/lib/professionalServiceCatalog.js'
 
 const PROJECT_ID = 'demo-corre-aqui-security'
 const rawHost = String(process.env.FIREBASE_DATABASE_EMULATOR_HOST || '')
@@ -26,10 +53,18 @@ const testEnv = await initializeTestEnvironment({
     rules,
   },
 })
+const adminApp = initializeAdminApp({
+  projectId: PROJECT_ID,
+  databaseURL: `http://${hostMatch[1]}:${hostMatch[2]}?ns=${PROJECT_ID}`,
+}, 'professional-services-emulator-tests')
+const adminDatabase = getAdminDatabase(adminApp)
 
 const CLIENT = 'client-A'
 const WORKER = 'worker-B'
 const OUTSIDER = 'outsider-C'
+const LIMIT_OWNER = 'limit-owner'
+const LEGACY_OWNER = 'legacy-owner'
+const V2_EMPTY_OWNER = 'v2-empty-owner'
 const baseTime = Date.now() - 10_000
 const actor = (id, nome) => ({ id, nome })
 const acceptedOrder = (id, status = 'aceito') => ({
@@ -54,6 +89,61 @@ const message = (uid, name, now = Date.now()) => ({
   criadoEm: now,
   criadoEmServer: now,
 })
+const professionalService = (id, overrides = {}) => ({
+  schemaVersion: 2,
+  id,
+  nome: 'Reparos residenciais',
+  descricao: 'Serviço canônico para teste local.',
+  categoriaId: 'reparos',
+  categoriaNome: 'Reparos',
+  faixaPreco: 'A partir de R$ 80',
+  tempoMedio: '1 hora',
+  regiao: 'São Paulo',
+  atendeDomicilio: true,
+  urgente: false,
+  ativo: true,
+  fotos: { 0: `https://images.example.test/${id}.webp` },
+  createdAt: baseTime - 1_000,
+  updatedAt: baseTime,
+  revision: 1,
+  ...overrides,
+})
+const newProfessionalService = (id, overrides = {}) => professionalService(id, {
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+  ...overrides,
+})
+const professionalServiceInput = (overrides = {}) => ({
+  nome: 'Reparos residenciais',
+  descricao: 'Serviço criado exclusivamente no Emulator local.',
+  categoriaId: 'reparos',
+  categoriaNome: 'Reparos',
+  faixaPreco: 'A partir de R$ 80',
+  tempoMedio: '1 hora',
+  regiao: 'São Paulo',
+  atendeDomicilio: true,
+  urgente: false,
+  ativo: true,
+  fotos: { 0: 'https://images.example.test/service.webp' },
+  ...overrides,
+})
+const seededLimitServices = Object.fromEntries(
+  Array.from({ length: 11 }, (_, index) => {
+    const id = `limit-service-${String(index + 1).padStart(2, '0')}`
+    return [id, professionalService(id)]
+  })
+)
+
+async function expectProfessionalServiceError(operation, expectedCode) {
+  try {
+    await operation
+    assert.fail(`esperava erro ${expectedCode}`)
+  } catch (error) {
+    assert.ok(error instanceof ProfessionalServiceServerError, `erro inesperado: ${error?.message}`)
+    assert.equal(error.code, expectedCode)
+    return error
+  }
+}
 
 try {
   await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -133,7 +223,56 @@ try {
           patenteProf: 1,
           patenteAtualizadaEm: baseTime,
           missaoAtualizadaEm: baseTime,
+          portfolio: {
+            'legacy-private': {
+              id: 'legacy-private',
+              nome: 'Serviço legado preservado',
+              ativo: true,
+              descricao: 'Formato anterior ainda acessível ao proprietário.',
+            },
+          },
         },
+        'repeat-owner': {
+          nome: 'Profissional de repetição',
+          online: false,
+        },
+        [LIMIT_OWNER]: {
+          nome: 'Profissional no limite',
+          online: false,
+        },
+        [LEGACY_OWNER]: {
+          nome: 'Profissional legado',
+          online: false,
+          portfolio: {
+            'legacy-service': {
+              id: 'legacy-service',
+              nome: 'Serviço legado ativo',
+              categoriaId: 'reparos',
+              categoriaNome: 'Reparos',
+              faixaPreco: 'R$ 70',
+              ativo: true,
+            },
+          },
+        },
+        [V2_EMPTY_OWNER]: {
+          nome: 'Profissional v2 vazio',
+          online: false,
+          portfolioSchemaVersion: 2,
+          portfolio: {
+            resurrected: {
+              id: 'resurrected',
+              nome: 'Não pode ressuscitar',
+              ativo: true,
+            },
+          },
+        },
+      },
+      professionalServices: {
+        [WORKER]: {
+          'service-active': professionalService('service-active'),
+          'service-inactive': professionalService('service-inactive', { ativo: false }),
+        },
+        [LIMIT_OWNER]: seededLimitServices,
       },
       publicProfiles: {
         [WORKER]: {
@@ -148,6 +287,69 @@ try {
           servicosConcluidos: 6,
           completedServices: 6,
           reputation: { rating: 5, reviewCount: 1, completedServices: 6 },
+        },
+        [LEGACY_OWNER]: {
+          uid: LEGACY_OWNER,
+          id: LEGACY_OWNER,
+          nome: 'Profissional legado',
+          isProfissional: true,
+          profTitulo: 'Reparos legados',
+          profCategorias: ['reparos'],
+          createdAt: baseTime - 10_000,
+          updatedAt: baseTime,
+          atualizadoEm: baseTime,
+        },
+        [V2_EMPTY_OWNER]: {
+          uid: V2_EMPTY_OWNER,
+          id: V2_EMPTY_OWNER,
+          nome: 'Profissional v2 vazio',
+          isProfissional: true,
+          portfolioSchemaVersion: 2,
+          profTitulo: 'Não ressuscitar legado',
+          profCategorias: ['reparos'],
+          portfolio: {
+            resurrected: {
+              id: 'resurrected',
+              nome: 'Não pode ressuscitar',
+              ativo: true,
+            },
+          },
+          createdAt: baseTime - 10_000,
+          updatedAt: baseTime,
+          atualizadoEm: baseTime,
+        },
+      },
+      publicPortfolio: {
+        [LEGACY_OWNER]: {
+          'legacy-service': {
+            id: 'legacy-service',
+            nome: 'Serviço legado ativo',
+            titulo: 'Serviço legado ativo',
+            descricao: 'Compatibilidade sem gravação duplicada.',
+            categoriaId: 'reparos',
+            categoriaNome: 'Reparos',
+            categoria: 'Reparos',
+            preco: 'R$ 70',
+            faixaPreco: 'R$ 70',
+            valor: 'R$ 70',
+            tempoMedio: '1 hora',
+            fotoURL: '',
+            regiao: 'São Paulo',
+            atendeDomicilio: true,
+            urgente: false,
+            ativo: true,
+            createdAt: baseTime - 2_000,
+            updatedAt: baseTime,
+            profissionalId: LEGACY_OWNER,
+            uid: LEGACY_OWNER,
+            profissionalNome: 'Profissional legado',
+            providerName: 'Profissional legado',
+            profissionalFotoURL: '',
+            providerFotoURL: '',
+            cidade: 'São Paulo',
+            isCorre: false,
+            isProfissional: true,
+          },
         },
       },
       missoes: {
@@ -209,7 +411,436 @@ try {
   const clientDb = testEnv.authenticatedContext(CLIENT).database()
   const workerDb = testEnv.authenticatedContext(WORKER).database()
   const outsiderDb = testEnv.authenticatedContext(OUTSIDER).database()
+  const limitOwnerDb = testEnv.authenticatedContext(LIMIT_OWNER).database()
   const anonymousDb = testEnv.unauthenticatedContext().database()
+
+  const ownerServices = await assertSucceeds(get(ref(workerDb, `professionalServices/${WORKER}`)))
+  assert.deepEqual(
+    Object.keys(ownerServices.val() || {}).sort(),
+    ['service-active', 'service-inactive'],
+    'proprietário lista serviços ativos e inativos sem query pública',
+  )
+  await assertFails(get(ref(outsiderDb, `professionalServices/${WORKER}`)), 'terceiro não enumera serviços sem filtro')
+  await assertFails(get(ref(anonymousDb, `professionalServices/${WORKER}`)), 'anônimo não enumera serviços')
+  await assertFails(get(ref(outsiderDb, 'professionalServices')), 'raiz global não pode ser enumerada')
+  await assertSucceeds(get(ref(outsiderDb, `professionalServices/${WORKER}/service-active`)))
+  await assertFails(get(ref(outsiderDb, `professionalServices/${WORKER}/service-inactive`)))
+  await assertFails(get(ref(anonymousDb, `professionalServices/${WORKER}/service-active`)))
+
+  const activeQuery = query(
+    ref(outsiderDb, `professionalServices/${WORKER}`),
+    orderByChild('ativo'),
+    equalTo(true),
+    limitToFirst(12),
+  )
+  const activeQuerySnapshot = await assertSucceeds(get(activeQuery))
+  assert.deepEqual(Object.keys(activeQuerySnapshot.val() || {}), ['service-active'])
+  await assertSucceeds(get(query(
+    ref(outsiderDb, `professionalServices/${WORKER}`),
+    orderByChild('ativo'),
+    equalTo(true),
+    limitToLast(12),
+  )))
+  await assertFails(get(query(
+    ref(outsiderDb, `professionalServices/${WORKER}`),
+    orderByChild('ativo'),
+    equalTo(true),
+  )), 'consulta pública sem limite é negada')
+  await assertFails(get(query(
+    ref(outsiderDb, `professionalServices/${WORKER}`),
+    orderByChild('ativo'),
+    equalTo(true),
+    limitToFirst(13),
+  )), 'consulta pública acima do limite é negada')
+  await assertFails(get(query(
+    ref(outsiderDb, `professionalServices/${WORKER}`),
+    orderByChild('ativo'),
+    equalTo(false),
+    limitToFirst(12),
+  )), 'terceiro não consulta serviços inativos')
+  await assertFails(get(query(
+    ref(anonymousDb, `professionalServices/${WORKER}`),
+    orderByChild('ativo'),
+    equalTo(true),
+    limitToFirst(12),
+  )), 'anônimo não usa nem a consulta pública limitada')
+
+  const catalogBeforeMarker = await listPublicProfessionalServices({
+    database: adminDatabase,
+    professionalId: WORKER,
+    now: baseTime + 20_000,
+  })
+  assert.equal(catalogBeforeMarker.source, 'none')
+  assert.equal(catalogBeforeMarker.portfolioSchemaVersion, 1)
+  assert.deepEqual(catalogBeforeMarker.services, [], 'coleção v2 sem marcador não ativa o catálogo')
+  const legacyCatalog = await listPublicProfessionalServices({
+    database: adminDatabase,
+    professionalId: LEGACY_OWNER,
+    now: baseTime + 20_000,
+  })
+  assert.equal(legacyCatalog.source, 'legacy')
+  assert.deepEqual(legacyCatalog.services.map(({ id }) => id), ['legacy-service'])
+  const legacyResolved = await resolveAuthoritativeProfessionalService({
+    database: adminDatabase,
+    professionalId: LEGACY_OWNER,
+    serviceId: 'legacy-service',
+    now: baseTime + 20_000,
+  })
+  assert.equal(legacyResolved.source, 'legacy')
+  const emptyV2Catalog = await listPublicProfessionalServices({
+    database: adminDatabase,
+    professionalId: V2_EMPTY_OWNER,
+    now: baseTime + 20_000,
+  })
+  assert.equal(emptyV2Catalog.source, 'canonical')
+  assert.deepEqual(emptyV2Catalog.services, [], 'marcador v2 impede ressurreição do array legado')
+  await assert.rejects(
+    resolveAuthoritativeProfessionalService({
+      database: adminDatabase,
+      professionalId: V2_EMPTY_OWNER,
+      serviceId: 'resurrected',
+      now: baseTime + 20_000,
+    }),
+    (error) => error?.code === 'professional_service_not_found',
+  )
+
+  await assertSucceeds(get(ref(workerDb, `users/${WORKER}/portfolio/legacy-private`)))
+  await assertSucceeds(update(ref(workerDb, `users/${WORKER}/portfolio/legacy-private`), {
+    descricao: 'Legado continua compatível enquanto o v2 é aditivo.',
+  }))
+  await assertFails(set(
+    ref(workerDb, `professionalServices/${WORKER}/legacy-shape`),
+    { id: 'legacy-shape', nome: 'Formato incompleto', ativo: true },
+  ), 'shape legado incompleto não é aceito na raiz v2')
+
+  const blockedClientPath = `professionalServices/${WORKER}/service-client-bypass`
+  await assertFails(set(ref(workerDb, blockedClientPath), newProfessionalService('service-client-bypass')))
+  await assertFails(update(ref(workerDb, `professionalServices/${WORKER}/service-active`), {
+    descricao: 'Tentativa direta do proprietário.',
+    updatedAt: serverTimestamp(),
+    revision: 2,
+  }))
+  await assertFails(remove(ref(workerDb, `professionalServices/${WORKER}/service-active`)))
+  await assertFails(set(ref(outsiderDb, `professionalServices/${WORKER}/service-forged`), newProfessionalService('service-forged')))
+  await assertFails(set(ref(anonymousDb, `professionalServices/${WORKER}/service-anonymous`), newProfessionalService('service-anonymous')))
+  await assertFails(set(ref(workerDb, `professionalServices/${OUTSIDER}/service-cross-uid`), newProfessionalService('service-cross-uid')))
+  await assertFails(get(ref(workerDb, `professionalServiceOperations/${WORKER}`)))
+  await assertFails(set(ref(workerDb, `professionalServiceOperations/${WORKER}/forged-operation`), {
+    status: 'completed',
+  }))
+
+  const backendNow = Date.now()
+  const createResult = await createProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    operationId: 'backend-create-0001',
+    input: professionalServiceInput(),
+    now: backendNow,
+  })
+  assert.equal(createResult.revision, 1)
+  assert.equal(createResult.service.createdAt, backendNow)
+  assert.equal(createResult.service.updatedAt, backendNow)
+  assert.equal(createResult.idempotent, false)
+  assert.equal((await adminDatabase.ref(`users/${WORKER}/portfolioSchemaVersion`).get()).val(), 2)
+  assert.equal((await adminDatabase.ref(`publicProfiles/${WORKER}/portfolioSchemaVersion`).get()).val(), 2)
+  const canonicalCatalog = await listPublicProfessionalServices({
+    database: adminDatabase,
+    professionalId: WORKER,
+    now: backendNow + 1,
+  })
+  assert.equal(canonicalCatalog.source, 'canonical')
+  assert.equal(canonicalCatalog.portfolioSchemaVersion, 2)
+  assert.ok(canonicalCatalog.services.some(({ id }) => id === 'service-active'))
+  assert.ok(canonicalCatalog.services.some(({ id }) => id === createResult.serviceId))
+  assert.equal(canonicalCatalog.services.some(({ id }) => id === 'service-inactive'), false)
+  await assertFails(set(ref(workerDb, `users/${WORKER}/portfolioSchemaVersion`), 1))
+  await assertFails(remove(ref(workerDb, `users/${WORKER}/portfolioSchemaVersion`)))
+  await assertFails(set(ref(workerDb, `publicProfiles/${WORKER}/portfolioSchemaVersion`), 1))
+  await assertFails(remove(ref(workerDb, `publicProfiles/${WORKER}/portfolioSchemaVersion`)))
+
+  const duplicateCreate = await createProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    operationId: 'backend-create-0001',
+    input: professionalServiceInput(),
+    now: backendNow + 1,
+  })
+  assert.equal(duplicateCreate.serviceId, createResult.serviceId)
+  assert.equal(duplicateCreate.revision, 1)
+  assert.equal(duplicateCreate.idempotent, true)
+  assert.deepEqual(duplicateCreate.service.fotos, { 0: 'https://images.example.test/service.webp' })
+  await expectProfessionalServiceError(createProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    operationId: 'backend-create-0001',
+    input: professionalServiceInput({ nome: 'Outro conteúdo' }),
+    now: backendNow + 2,
+  }), 'professional_service_idempotency_conflict')
+
+  await adminDatabase.ref(`professionalServiceOperations/${WORKER}/backend-create-0001`).remove()
+  const recoveredCreate = await createProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    operationId: 'backend-create-0001',
+    input: professionalServiceInput(),
+    now: backendNow + 3,
+  })
+  assert.equal(recoveredCreate.serviceId, createResult.serviceId)
+  assert.equal(recoveredCreate.idempotent, true, 'retry recupera criação confirmada antes do ledger')
+
+  const simultaneousRetries = await Promise.all([
+    createProfessionalService({
+      database: adminDatabase,
+      uid: 'repeat-owner',
+      operationId: 'backend-same-operation',
+      input: professionalServiceInput({ nome: 'Repetição simultânea' }),
+      now: backendNow + 3,
+    }),
+    createProfessionalService({
+      database: adminDatabase,
+      uid: 'repeat-owner',
+      operationId: 'backend-same-operation',
+      input: professionalServiceInput({ nome: 'Repetição simultânea' }),
+      now: backendNow + 3,
+    }),
+  ])
+  assert.equal(simultaneousRetries[0].serviceId, simultaneousRetries[1].serviceId)
+  assert.equal(Object.keys((await adminDatabase.ref('professionalServices/repeat-owner').get()).val() || {}).length, 1)
+
+  await expectProfessionalServiceError(createProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    operationId: 'backend-invalid-url-01',
+    input: professionalServiceInput({ fotos: { 0: 'blob:https://app.example.test/preview' } }),
+    now: backendNow + 4,
+  }), 'professional_service_validation_failed')
+  await expectProfessionalServiceError(createProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    operationId: 'backend-client-time-01',
+    input: { ...professionalServiceInput(), createdAt: 1 },
+    now: backendNow + 5,
+  }), 'professional_service_managed_or_unknown_field')
+
+  const edited = await editProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    serviceId: createResult.serviceId,
+    operationId: 'backend-edit-0001',
+    expectedRevision: 1,
+    input: { descricao: 'Descrição editada pelo backend.' },
+    now: backendNow + 10,
+  })
+  assert.equal(edited.revision, 2)
+  assert.equal(edited.service.createdAt, backendNow)
+  const contractSnapshot = buildProfessionalServiceContractSnapshot(createResult.service, {
+    professionalId: WORKER,
+    capturedAt: backendNow + 9,
+  })
+  assert.equal(contractSnapshot.sourceRevision, 1)
+  assert.equal(contractSnapshot.descricao, createResult.service.descricao)
+  assert.notEqual(contractSnapshot.descricao, edited.service.descricao, 'snapshot histórico não acompanha edição posterior')
+  await adminDatabase.ref(`professionalServiceOperations/${WORKER}/backend-edit-0001`).update({
+    status: 'processing',
+    result: null,
+    completedAt: null,
+    updatedAt: backendNow + 10,
+  })
+  const duplicateEdit = await editProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    serviceId: createResult.serviceId,
+    operationId: 'backend-edit-0001',
+    expectedRevision: 1,
+    input: { descricao: 'Descrição editada pelo backend.' },
+    now: backendNow + 11,
+  })
+  assert.equal(duplicateEdit.revision, 2)
+  assert.equal(duplicateEdit.idempotent, true)
+  await expectProfessionalServiceError(editProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    serviceId: createResult.serviceId,
+    operationId: 'backend-edit-new-operation',
+    expectedRevision: 1,
+    input: { descricao: 'Descrição editada pelo backend.' },
+    now: backendNow + 12,
+  }), 'professional_service_stale_revision')
+
+  const concurrentEdits = await Promise.allSettled([
+    editProfessionalService({
+      database: adminDatabase,
+      uid: WORKER,
+      serviceId: createResult.serviceId,
+      operationId: 'backend-edit-race-a',
+      expectedRevision: 2,
+      input: { descricao: 'Atualização concorrente A' },
+      now: backendNow + 20,
+    }),
+    editProfessionalService({
+      database: adminDatabase,
+      uid: WORKER,
+      serviceId: createResult.serviceId,
+      operationId: 'backend-edit-race-b',
+      expectedRevision: 2,
+      input: { descricao: 'Atualização concorrente B' },
+      now: backendNow + 21,
+    }),
+  ])
+  assert.equal(concurrentEdits.filter(({ status }) => status === 'fulfilled').length, 1)
+  assert.equal(concurrentEdits.filter(({ status }) => status === 'rejected').length, 1)
+  const rejectedEdit = concurrentEdits.find(({ status }) => status === 'rejected')
+  assert.equal(rejectedEdit.reason.code, 'professional_service_stale_revision')
+
+  const afterRace = await getProfessionalService({
+    database: adminDatabase,
+    actorUid: WORKER,
+    targetUid: WORKER,
+    serviceId: createResult.serviceId,
+    now: backendNow + 30,
+  })
+  assert.equal(afterRace.service.revision, 3)
+  await expectProfessionalServiceError(deleteProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    serviceId: createResult.serviceId,
+    operationId: 'backend-delete-stale',
+    expectedRevision: 2,
+    now: backendNow + 31,
+  }), 'professional_service_stale_revision')
+
+  const deleted = await deleteProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    serviceId: createResult.serviceId,
+    operationId: 'backend-delete-0001',
+    expectedRevision: 3,
+    now: backendNow + 32,
+  })
+  assert.equal(deleted.deleted, true)
+  await adminDatabase.ref(`professionalServiceOperations/${WORKER}/backend-delete-0001`).update({
+    status: 'processing',
+    result: null,
+    completedAt: null,
+    updatedAt: backendNow + 32,
+  })
+  const duplicateDelete = await deleteProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    serviceId: createResult.serviceId,
+    operationId: 'backend-delete-0001',
+    expectedRevision: 3,
+    now: backendNow + 33,
+  })
+  assert.equal(duplicateDelete.deleted, true)
+  assert.equal(duplicateDelete.idempotent, true)
+
+  const deleteRaceService = await createProfessionalService({
+    database: adminDatabase,
+    uid: WORKER,
+    operationId: 'backend-delete-race-create',
+    input: professionalServiceInput({ nome: 'Serviço para exclusão concorrente' }),
+    now: backendNow + 34,
+  })
+  const concurrentDeletes = await Promise.allSettled([
+    deleteProfessionalService({
+      database: adminDatabase,
+      uid: WORKER,
+      serviceId: deleteRaceService.serviceId,
+      operationId: 'backend-delete-race-a',
+      expectedRevision: 1,
+      now: backendNow + 35,
+    }),
+    deleteProfessionalService({
+      database: adminDatabase,
+      uid: WORKER,
+      serviceId: deleteRaceService.serviceId,
+      operationId: 'backend-delete-race-b',
+      expectedRevision: 1,
+      now: backendNow + 36,
+    }),
+  ])
+  assert.equal(concurrentDeletes.filter(({ status }) => status === 'fulfilled').length, 1)
+  assert.equal(concurrentDeletes.filter(({ status }) => status === 'rejected').length, 1)
+  assert.equal(concurrentDeletes.find(({ status }) => status === 'rejected').reason.code, 'professional_service_stale_revision')
+
+  const ownerList = await listProfessionalServices({
+    database: adminDatabase,
+    actorUid: WORKER,
+    targetUid: WORKER,
+    now: backendNow + 40,
+  })
+  assert.equal(ownerList.owner, true)
+  assert.equal(ownerList.services.some(({ ativo }) => ativo === false), true)
+  const publicList = await listProfessionalServices({
+    database: adminDatabase,
+    actorUid: OUTSIDER,
+    targetUid: WORKER,
+    now: backendNow + 40,
+  })
+  assert.equal(publicList.owner, false)
+  assert.equal(publicList.services.every(({ ativo }) => ativo === true), true)
+  await expectProfessionalServiceError(getProfessionalService({
+    database: adminDatabase,
+    actorUid: OUTSIDER,
+    targetUid: WORKER,
+    serviceId: 'service-inactive',
+    now: backendNow + 40,
+  }), 'professional_service_not_found')
+
+  await assertFails(set(
+    ref(limitOwnerDb, `professionalServices/${LIMIT_OWNER}/client-bypass`),
+    newProfessionalService('client-bypass'),
+  ))
+  const limitResults = await Promise.allSettled([
+    createProfessionalService({
+      database: adminDatabase,
+      uid: LIMIT_OWNER,
+      operationId: 'backend-limit-race-a',
+      input: professionalServiceInput({ nome: 'Décimo segundo A' }),
+      now: backendNow + 50,
+    }),
+    createProfessionalService({
+      database: adminDatabase,
+      uid: LIMIT_OWNER,
+      operationId: 'backend-limit-race-b',
+      input: professionalServiceInput({ nome: 'Décimo segundo B' }),
+      now: backendNow + 51,
+    }),
+  ])
+  assert.equal(
+    limitResults.filter(({ status }) => status === 'fulfilled').length,
+    1,
+    'somente uma criação concorrente ocupa a 12ª vaga',
+  )
+  assert.equal(
+    limitResults.filter(({ status }) => status === 'rejected').length,
+    1,
+    'a outra criação concorrente é rejeitada pelo limite autoritativo',
+  )
+  const limitRejection = limitResults.find(({ status }) => status === 'rejected')
+  assert.equal(limitRejection.reason.code, 'professional_service_limit_reached')
+  const limitedCollection = (await adminDatabase.ref(`professionalServices/${LIMIT_OWNER}`).get()).val()
+  assert.equal(Object.keys(limitedCollection || {}).length, 12, 'duas criações simultâneas nunca ultrapassam 12')
+  const limitWinner = limitResults.find(({ status }) => status === 'fulfilled').value
+  const duplicateLimitWinner = await createProfessionalService({
+    database: adminDatabase,
+    uid: LIMIT_OWNER,
+    operationId: limitWinner.service.nome.endsWith('A') ? 'backend-limit-race-a' : 'backend-limit-race-b',
+    input: professionalServiceInput({ nome: limitWinner.service.nome }),
+    now: backendNow + 52,
+  })
+  assert.equal(duplicateLimitWinner.serviceId, limitWinner.serviceId)
+  assert.equal(Object.keys((await adminDatabase.ref(`professionalServices/${LIMIT_OWNER}`).get()).val() || {}).length, 12)
+  const loserIndex = limitResults.findIndex(({ status }) => status === 'rejected')
+  await expectProfessionalServiceError(createProfessionalService({
+    database: adminDatabase,
+    uid: LIMIT_OWNER,
+    operationId: loserIndex === 0 ? 'backend-limit-race-a' : 'backend-limit-race-b',
+    input: professionalServiceInput({ nome: loserIndex === 0 ? 'Décimo segundo A' : 'Décimo segundo B' }),
+    now: backendNow + 53,
+  }), 'professional_service_limit_reached')
+  assert.equal(Object.keys((await adminDatabase.ref(`professionalServices/${LIMIT_OWNER}`).get()).val() || {}).length, 12)
 
   await assertSucceeds(update(ref(workerDb, `users/${WORKER}`), {
     online: true,
@@ -425,7 +1056,8 @@ try {
 
   const finalSnapshot = await assertSucceeds(get(ref(clientDb, 'pedidos/order-flow/status')))
   assert.equal(finalSnapshot.val(), 'finalizado')
-  console.log('Firebase Emulator: matriz A/B/C, estados, chat, notificações e recompensas OK')
+  console.log('Firebase Emulator: matriz A/B/C, estados, chat, notificações, recompensas e backend professionalServices OK; concorrência limitada a 12')
 } finally {
+  await deleteAdminApp(adminApp)
   await testEnv.cleanup()
 }

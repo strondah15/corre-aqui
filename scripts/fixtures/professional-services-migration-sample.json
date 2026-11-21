@@ -1,0 +1,81 @@
+{
+  "users": {
+    "fixture-ready": {
+      "portfolio": {
+        "reparos_01": {
+          "id": "reparos_01",
+          "nome": "Reparos residenciais",
+          "descricao": "Pequenos reparos em residência.",
+          "categoriaId": "reparos",
+          "categoriaNome": "Reparos",
+          "faixaPreco": "R$ 80 a R$ 180",
+          "tempoMedio": "2 horas",
+          "regiao": "Região de teste",
+          "atendeDomicilio": true,
+          "urgente": false,
+          "ativo": true,
+          "fotos": [
+            "https://images.example.test/reparos.webp"
+          ]
+        }
+      },
+      "profile": {
+        "portfolio": [
+          {
+            "nome": "Montagem de móveis",
+            "descricao": "Montagem de móveis fictícia.",
+            "categoriaId": "montagem_moveis",
+            "categoriaNome": "Montagem de móveis",
+            "preco": "R$ 120",
+            "tempo": "3 horas",
+            "regiao": "Região de teste",
+            "atendeDomicilio": true,
+            "urgente": false,
+            "ativo": true,
+            "fotos": []
+          }
+        ]
+      }
+    },
+    "fixture-blocked": {
+      "profPortfolio": [
+        {
+          "id": "servico_sem_preco",
+          "nome": "Serviço incompleto",
+          "categoriaId": "reparos",
+          "categoriaNome": "Reparos",
+          "atendeDomicilio": true,
+          "urgente": false,
+          "ativo": true
+        }
+      ]
+    }
+  },
+  "publicProfiles": {
+    "fixture-ready": {
+      "uid": "fixture-ready",
+      "id": "fixture-ready",
+      "nome": "Perfil fictício",
+      "portfolio": {
+        "reparos_01": {
+          "id": "reparos_01",
+          "nome": "Reparos residenciais",
+          "descricao": "Pequenos reparos em residência.",
+          "categoriaId": "reparos",
+          "categoriaNome": "Reparos",
+          "faixaPreco": "R$ 80 a R$ 180",
+          "tempoMedio": "2 horas",
+          "regiao": "Região de teste",
+          "atendeDomicilio": true,
+          "urgente": false,
+          "ativo": true,
+          "fotos": [
+            "https://images.example.test/reparos.webp"
+          ]
+        }
+      }
+    }
+  },
+  "publicPortfolio": {},
+  "professionalServices": {}
+}

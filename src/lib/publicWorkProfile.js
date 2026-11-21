@@ -146,6 +146,7 @@ export const SERVER_MANAGED_REPUTATION_FIELDS = new Set([
 
 const SERVER_MANAGED_PUBLIC_FIELDS = new Set([
   ...SERVER_MANAGED_REPUTATION_FIELDS,
+  'portfolioSchemaVersion',
   'xp',
   'moedas',
   'patente',

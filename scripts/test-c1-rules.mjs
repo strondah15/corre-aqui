@@ -9,11 +9,18 @@ const rules = rulesDocument.rules
 const users = rules.users
 const user = users.$uid
 const publicProfiles = rules.publicProfiles
+const professionalServices = rules.professionalServices
 
 assert.equal(users['.read'], undefined, 'A raiz /users nao pode herdar leitura')
 assert.equal(user['.read'], 'auth != null && auth.uid === $uid')
 assert.equal(user.portfolio.$serviceId['.read'], 'auth != null && auth.uid === $uid')
 assert.equal(publicProfiles['.read'], 'auth != null')
+assert.equal(professionalServices['.read'], undefined, 'A raiz /professionalServices não pode ser enumerada')
+assert.equal(professionalServices.$uid['.write'], false, 'mutações v2 são exclusivas do backend')
+assert.equal(professionalServices.$uid.$serviceId['.write'], false, 'cliente não contorna o backend por escrita direta')
+assert.match(professionalServices.$uid['.read'], /auth\.uid === \$uid/)
+assert.match(professionalServices.$uid['.read'], /query\.equalTo === true/)
+assert.match(professionalServices.$uid.$serviceId['.read'], /data\.child\('ativo'\)\.val\(\) === true/)
 
 const canReadPrivateUser = (authUid, targetUid) => Boolean(authUid) && authUid === targetUid
 const canWritePrivateUser = (authUid, targetUid) => Boolean(authUid) && authUid === targetUid
@@ -35,6 +42,7 @@ for (const protectedPath of [
   "newData.child('role')",
   "newData.child('profile/admin')",
   "newData.child('profile/role')",
+  "newData.child('portfolioSchemaVersion')",
   "newData.child('cpf')",
   "newData.child('documento')",
 ]) {
@@ -46,6 +54,7 @@ assert.match(publicProfiles.$uid['.validate'], /!newData\.child\('email'\)\.exis
 assert.match(publicProfiles.$uid['.validate'], /!newData\.child\('telefone'\)\.exists\(\)/)
 assert.match(publicProfiles.$uid['.validate'], /!newData\.child\('cpf'\)\.exists\(\)/)
 assert.match(publicProfiles.$uid['.validate'], /!newData\.child\('documento'\)\.exists\(\)/)
+assert.equal(publicProfiles.$uid.portfolioSchemaVersion['.validate'], 'newData.val() === data.val()')
 
 assert.equal(rules.stagingSubscriptionFixtures['.read'], false)
 assert.equal(rules.stagingSubscriptionFixtures['.write'], false)

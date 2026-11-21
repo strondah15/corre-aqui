@@ -4,22 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ref, get, onValue, update, set, runTransaction, serverTimestamp } from '@/lib/firebaseDebug';
 import { auth, database } from "@/lib/firebase";
+import { uploadProfilePhotoToImgBB } from "@/lib/imgbbClient";
 import {
-  optimizePortfolioPhoto,
-  uploadPortfolioPhotoToImgBB,
-  uploadProfilePhotoToImgBB,
-} from "@/lib/imgbbClient";
-import {
-  getPortfolioPhotoStatus,
-  getPortfolioSaveBlocker,
-  PORTFOLIO_PHOTO_STATUS,
-  withoutLocalPortfolioPreviews,
-} from "@/lib/portfolioDraftState";
-import {
-  applyPortfolioMutation,
-  createPortfolioOperationQueue,
   getPortfolioReadErrorMessage,
-  mergePortfolioSources,
   resolveUserPortfolioMap,
   sanitizePortfolioErrorCode,
   withoutPortfolioFields,
@@ -34,13 +21,14 @@ import {
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import ProfessionalReputationSummary from "./ProfessionalReputationSummary";
-import { CATEGORIES, getCategoryById } from "@/constants/categories";
+import { getCategoryById } from "@/constants/categories";
 import { normalizeAtendimentoStatus, ATENDIMENTO_STATUS } from "@/lib/atendimento";
 import { openAssistantHelpCenter, startClientTutorial, startWorkerTutorial } from "@/components/tutorial/TutorialProvider";
 import { normalizeProfileStatus, projectPublicProfileForWrite, safePublicImageUrl } from "@/lib/publicWorkProfile";
 import { normalizePublicRequest } from "@/lib/publicRequests";
 import { logoutFirebaseSession } from "@/lib/sessionLogout";
 import { ListPanelSkeleton } from "@/components/LoadingSkeletons";
+import ProfessionalPortfolioSection from "@/components/ProfessionalPortfolioSection";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
   ssr: false,
@@ -866,19 +854,6 @@ function normalizePublicWhatsapp(value) {
   return digits.length >= 10 && digits.length <= 15 ? digits : "";
 }
 
-function normalizePublicPortfolioFotos(data = {}) {
-  const raw = [
-    ...(Array.isArray(data.fotos) ? data.fotos : []),
-    data.fotoURL,
-  ];
-
-  return Array.from(new Set(raw.map((foto) => safePublicImageUrl(foto)).filter(Boolean))).slice(0, 5);
-}
-
-function isPublicPortfolioId(value) {
-  return /^[A-Za-z0-9_-]{1,120}$/.test(String(value || "").trim());
-}
-
 function pickFoto(...vals) {
   return vals.map((v) => String(v || "").trim()).find(isFotoValor) || "";
 }
@@ -951,29 +926,6 @@ function normalizePortfolioFotos(data = {}) {
   return Array.from(new Set(raw.map((foto) => String(foto || "").trim()).filter(isFotoValor))).slice(0, 5);
 }
 
-function createEmptyPortfolioDraft() {
-  return {
-    id: "",
-    nome: "",
-    titulo: "",
-    descricao: "",
-    valor: "",
-    preco: "",
-    faixaPreco: "",
-    categoria: "",
-    categoriaId: "",
-    categoriaNome: "",
-    tempoMedio: "",
-    regiao: "",
-    atendeDomicilio: true,
-    urgente: false,
-    ativo: true,
-    fotoURL: "",
-    fotos: [],
-    fotoImgBbId: "",
-  };
-}
-
 function normalizePortfolio(value) {
   const list = Array.isArray(value)
     ? value
@@ -1018,118 +970,7 @@ function normalizePortfolio(value) {
     .slice(0, 12);
 }
 
-function toPortfolioFirebaseItem(item = {}) {
-  const id = String(item.id || `portfolio_${Date.now()}`).trim();
-  const categoriaMeta = getCategoryById(item.categoriaId || item.categoria);
-  const categoriaId = String(item.categoriaId || categoriaMeta?.id || "").trim();
-  const categoriaNome = String(item.categoriaNome || categoriaMeta?.label || item.categoria || "").trim();
-  const nome = String(item.nome || item.titulo || "").trim();
-  const preco = String(item.preco || "").trim();
-  const faixaPreco = String(item.faixaPreco || item.valor || preco || "").trim();
-
-  const fotos = withoutLocalPortfolioPreviews(normalizePortfolioFotos(item));
-
-  return {
-    id,
-    nome,
-    titulo: nome,
-    categoriaId,
-    categoriaNome,
-    categoria: categoriaNome,
-    preco,
-    faixaPreco,
-    valor: faixaPreco || preco,
-    descricao: String(item.descricao || "").trim(),
-    tempoMedio: String(item.tempoMedio || "").trim(),
-    fotos,
-    fotoURL: fotos[0] || "",
-    regiao: String(item.regiao || "").trim(),
-    atendeDomicilio: item.atendeDomicilio !== false,
-    urgente: item.urgente === true,
-    ativo: item.ativo !== false,
-    createdAt: item.createdAt || serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-}
-
-function portfolioListToMap(items = []) {
-  return normalizePortfolio(items).reduce((acc, item) => {
-    const normalized = toPortfolioFirebaseItem(item);
-    if (normalized.id) acc[normalized.id] = normalized;
-    return acc;
-  }, {});
-}
-
-function toPublicPortfolioService(item = {}) {
-  const normalized = toPortfolioFirebaseItem(item);
-  const id = String(normalized.id || "").trim();
-  const nome = String(normalized.nome || "").trim();
-  const fotos = normalizePublicPortfolioFotos(normalized);
-
-  if (!isPublicPortfolioId(id) || !nome) return null;
-
-  return {
-    id,
-    nome,
-    titulo: nome,
-    descricao: String(normalized.descricao || "").trim(),
-    categoriaId: String(normalized.categoriaId || "").trim(),
-    categoriaNome: String(normalized.categoriaNome || "").trim(),
-    categoria: String(normalized.categoria || "").trim(),
-    preco: String(normalized.preco || "").trim(),
-    faixaPreco: String(normalized.faixaPreco || "").trim(),
-    valor: String(normalized.valor || "").trim(),
-    tempoMedio: String(normalized.tempoMedio || "").trim(),
-    fotos,
-    fotoURL: fotos[0] || "",
-    regiao: String(normalized.regiao || "").trim(),
-    atendeDomicilio: normalized.atendeDomicilio !== false,
-    urgente: normalized.urgente === true,
-    ativo: normalized.ativo !== false,
-    createdAt: normalized.createdAt || Date.now(),
-    updatedAt: serverTimestamp(),
-  };
-}
-
-function portfolioListToPublicProfileMap(items = []) {
-  return normalizePortfolio(items).reduce((acc, item) => {
-    const service = toPublicPortfolioService(item);
-    if (service?.ativo === true) acc[service.id] = service;
-    return acc;
-  }, {});
-}
-
-function portfolioListToPublicMap(items = [], profile = {}, uid = "", fotoPrincipal = "") {
-  const nome = String(profile.nome || "").trim();
-  const cidade = String(profile.cidade || profile.profRegiao || profile.correRegiao || "").trim();
-  const isCorre = !!profile.isCorre;
-  const isProfissional = !!profile.isProfissional;
-  const fotoProfissional = safePublicImageUrl(fotoPrincipal);
-
-  return normalizePortfolio(items).reduce((acc, item) => {
-    const service = toPublicPortfolioService(item);
-    if (!service || service.ativo !== true) return acc;
-
-    acc[service.id] = {
-      ...service,
-      regiao: service.regiao || cidade,
-      ativo: true,
-      profissionalId: uid,
-      uid,
-      profissionalNome: nome,
-      providerName: nome,
-      profissionalFotoURL: fotoProfissional,
-      providerFotoURL: fotoProfissional,
-      cidade,
-      isCorre,
-      isProfissional,
-    };
-
-    return acc;
-  }, {});
-}
-
-function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", privacySettings = defaultPrivacy, profPortfolio = []) {
+function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", privacySettings = defaultPrivacy) {
   const corre = {
     ativo: !!profile.isCorre,
     titulo: profile.correTitulo || "Corre rapido",
@@ -1200,7 +1041,6 @@ function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", priv
     profExperiencia: profissional.experiencia,
     corre,
     profissional: publicProfissional,
-    portfolio: portfolioListToPublicProfileMap(profPortfolio),
     createdAt: profile.createdAt || profile.criadoEm || null,
     statusProfissional: profile.statusProfissional || "disponivel",
     ocupadoAte: profissional.ocupadoAte,
@@ -1227,14 +1067,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [professionalProfileStep, setProfessionalProfileStep] = useState("choice");
 
   const [profile, setProfile] = useState(initialProfile);
-  const [portfolioDraft, setPortfolioDraft] = useState(createEmptyPortfolioDraft);
-  const [portfolioEditingId, setPortfolioEditingId] = useState("");
-  const [portfolioSaving, setPortfolioSaving] = useState(false);
-  const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
-  const [portfolioPhotoStage, setPortfolioPhotoStage] = useState("");
-  const [portfolioPhotoStates, setPortfolioPhotoStates] = useState({});
-  const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
-  const [portfolioPhotoSuccess, setPortfolioPhotoSuccess] = useState("");
   const [portfolioReadStatus, setPortfolioReadStatus] = useState({ uid: "", loaded: false, error: "" });
   const [addresses, setAddresses] = useState([]);
   const [addressesStatus, setAddressesStatus] = useState({ uid: "", loaded: false, error: "" });
@@ -1293,24 +1125,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [serviceStatsStatus, setServiceStatsStatus] = useState({ uid: "", loaded: false, error: "" });
   const settingsLoadedRef = useRef(false);
   const drawerScrollRef = useRef(null);
-  const portfolioFormRef = useRef(null);
-  const portfolioFirstInputRef = useRef(null);
-  const portfolioSavingRef = useRef(false);
-  const portfolioOperationQueueRef = useRef(null);
-  const portfolioPhotoUploadLockRef = useRef(false);
-  const portfolioPhotoInputRef = useRef(null);
-  const portfolioPhotoAbortControllerRef = useRef(null);
-  const portfolioPhotoRetryFilesRef = useRef(new Map());
-  const portfolioPreviewUrlsRef = useRef(new Set());
-  const portfolioPreviewOwnerRef = useRef(String(uid || ""));
   const configSaveTimerRef = useRef(null);
   const configSnapshotRef = useRef("");
   const configLastSavedRef = useRef(null);
   const logoutCancelButtonRef = useRef(null);
-
-  if (!portfolioOperationQueueRef.current) {
-    portfolioOperationQueueRef.current = createPortfolioOperationQueue();
-  }
 
   const userBasePath = useMemo(() => (uid ? `users/${uid}` : ""), [uid]);
   const currentAddressesStatus = addressesStatus.uid === String(uid || "")
@@ -1323,53 +1141,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     ? portfolioReadStatus
     : { uid: String(uid || ""), loaded: false, error: "" };
 
-  const revokePortfolioPreviewUrl = (url) => {
-    if (!String(url || "").startsWith("blob:") || !portfolioPreviewUrlsRef.current.has(url)) return;
-    URL.revokeObjectURL(url);
-    portfolioPreviewUrlsRef.current.delete(url);
-  };
-
-  useEffect(() => () => {
-    portfolioPhotoAbortControllerRef.current?.abort();
-    portfolioPhotoAbortControllerRef.current = null;
-    portfolioPhotoRetryFilesRef.current.clear();
-    portfolioPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    portfolioPreviewUrlsRef.current.clear();
-    portfolioPhotoUploadLockRef.current = false;
-  }, []);
-
-  useEffect(() => {
-    const nextOwner = String(uid || "");
-    const ownerChanged = portfolioPreviewOwnerRef.current !== nextOwner;
-    portfolioPreviewOwnerRef.current = nextOwner;
-    if (open && !ownerChanged) return;
-
-    const localUrls = new Set(portfolioPreviewUrlsRef.current);
-    portfolioPhotoAbortControllerRef.current?.abort();
-    portfolioPhotoAbortControllerRef.current = null;
-    portfolioPhotoRetryFilesRef.current.clear();
-    setPortfolioPhotoStates({});
-    if (!localUrls.size) return;
-    localUrls.forEach((url) => URL.revokeObjectURL(url));
-    portfolioPreviewUrlsRef.current.clear();
-    setPortfolioDraft((prev) => {
-      const previousFotos = Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev);
-      const fotos = previousFotos.filter((url) => !localUrls.has(url));
-      if (fotos.length === previousFotos.length && !localUrls.has(prev.fotoURL)) return prev;
-      return {
-        ...prev,
-        fotos,
-        fotoURL: localUrls.has(prev.fotoURL) ? fotos[0] || "" : prev.fotoURL,
-      };
-    });
-  }, [open, uid]);
-
   useEffect(() => {
     settingsLoadedRef.current = false;
     configSnapshotRef.current = "";
     configLastSavedRef.current = null;
-    setPortfolioPhotoError("");
-    setPortfolioPhotoSuccess("");
     if (configSaveTimerRef.current) {
       window.clearTimeout(configSaveTimerRef.current);
       configSaveTimerRef.current = null;
@@ -1866,7 +1641,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       });
       setLogoutConfirmOpen(false);
       setProfile(initialProfile);
-      setPortfolioDraft(createEmptyPortfolioDraft());
       setAddresses([]);
       onClose?.();
       router.replace("/login");
@@ -2021,363 +1795,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     await handleProfilePhotoUpload(file);
   }
 
-  function setPortfolioPhotoStatus(url, status, errorCode = "") {
-    if (!url) return;
-    setPortfolioPhotoStates((current) => ({
-      ...current,
-      [url]: { status, errorCode },
-    }));
-  }
-
-  function portfolioUploadMessage(error) {
-    const code = String(error?.code || error?.message || "");
-    if (code === "imgbb_request_timeout" || code === "portfolio_upload_timeout") {
-      return "A foto demorou para enviar. Tente novamente.";
-    }
-    if (code === "imgbb_request_aborted") return "O envio da foto foi interrompido. Tente novamente.";
-    if (code === "imgbb_config_missing") return "O envio de fotos ainda não está configurado neste ambiente.";
-    if (code === "firebase_admin_not_configured") return "O envio seguro de fotos está temporariamente indisponível.";
-    if (code === "portfolio_format_not_supported" || code === "portfolio_image_decode_failed") {
-      return "Este formato não pôde ser lido neste aparelho. Escolha JPEG, PNG ou WebP.";
-    }
-    if (code === "portfolio_source_too_large" || code === "portfolio_dimensions_too_large" || code === "portfolio_original_too_large" || code === "foto_grande") {
-      return "A imagem é muito grande. Escolha uma foto menor.";
-    }
-    if (code === "tipo_invalido") return "Escolha uma imagem JPEG, PNG, WebP, GIF, HEIC ou HEIF.";
-    if (code.toLowerCase().includes("permission") || code.toLowerCase().includes("auth")) {
-      return "Entre novamente para anexar a foto.";
-    }
-    if (code === "imgbb_upload_failed" || code === "imgbb_unavailable" || code === "imgbb_url_missing") {
-      return "O serviço de imagens não concluiu o envio. Tente novamente.";
-    }
-    return "Não foi possível anexar a foto. Tente novamente.";
-  }
-
-  async function handlePortfolioPhotoUpload(file, { preparedFile = null, existingPreviewUrl = "" } = {}) {
-    const currentUser = auth.currentUser;
-    const currentUid = currentUser?.uid || "";
-    const currentFotos = Array.isArray(portfolioDraft.fotos)
-      ? portfolioDraft.fotos
-      : normalizePortfolioFotos(portfolioDraft);
-
-    setPortfolioPhotoError("");
-    setPortfolioPhotoSuccess("");
-
-    if (!currentUid) {
-      setPortfolioPhotoError("Entre novamente para anexar a foto.");
-      return;
-    }
-
-    if (uid && currentUid !== uid) {
-      setPortfolioPhotoError("Sessao diferente do perfil aberto. Entre novamente.");
-      return;
-    }
-
-    if (!file || (!file.type?.startsWith("image/") && !/\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name || ""))) {
-      setPortfolioPhotoError("Escolha uma imagem JPEG, PNG, WebP, GIF, HEIC ou HEIF.");
-      return false;
-    }
-
-    if (file.size > PHOTO_SOURCE_MAX_BYTES) {
-      setPortfolioPhotoError("A imagem é muito grande. Escolha uma foto menor.");
-      return false;
-    }
-
-    if (!existingPreviewUrl && currentFotos.length >= 5) {
-      setPortfolioPhotoError("Voce pode anexar ate 5 fotos por trabalho.");
-      return false;
-    }
-
-    let previewUrl = "";
-    let failureStage = "validation";
-    try {
-      failureStage = "optimization";
-      setPortfolioPhotoStage("optimizing");
-      const prepared = preparedFile
-        ? { file: preparedFile, metrics: { reason: "retry_prepared" } }
-        : await optimizePortfolioPhoto(file);
-      if (process.env.NODE_ENV !== "production") {
-        console.info("[PORTFOLIO_IMAGE] otimização", prepared.metrics);
-      }
-
-      previewUrl = existingPreviewUrl || URL.createObjectURL(prepared.file);
-      if (!existingPreviewUrl) {
-        portfolioPreviewUrlsRef.current.add(previewUrl);
-        setPortfolioDraft((prev) => {
-          const fotos = [...new Set([...(Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)), previewUrl])].slice(0, 5);
-          return { ...prev, fotoURL: prev.fotoURL || previewUrl, fotos };
-        });
-      }
-      portfolioPhotoRetryFilesRef.current.set(previewUrl, prepared.file);
-      setPortfolioPhotoStatus(previewUrl, PORTFOLIO_PHOTO_STATUS.PREVIEW);
-
-      failureStage = "authentication";
-      setPortfolioPhotoStatus(previewUrl, PORTFOLIO_PHOTO_STATUS.UPLOADING);
-      const idToken = await currentUser.getIdToken();
-      if (auth.currentUser?.uid !== currentUid || !portfolioPreviewUrlsRef.current.has(previewUrl)) {
-        const error = new Error("portfolio_auth_changed");
-        error.code = "portfolio_auth_changed";
-        throw error;
-      }
-      failureStage = "upload";
-      setPortfolioPhotoStage("uploading");
-      const abortController = new AbortController();
-      portfolioPhotoAbortControllerRef.current = abortController;
-      const uploaded = await uploadPortfolioPhotoToImgBB(prepared.file, {
-        uid: currentUid,
-        idToken,
-        signal: abortController.signal,
-      });
-
-      if (auth.currentUser?.uid !== currentUid || !portfolioPreviewUrlsRef.current.has(previewUrl)) {
-        revokePortfolioPreviewUrl(previewUrl);
-        return false;
-      }
-
-      setPortfolioDraft((prev) => {
-        const currentDraftFotos = Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev);
-        if (!currentDraftFotos.includes(previewUrl)) return prev;
-        return {
-          ...prev,
-          fotoURL: prev.fotoURL === previewUrl || !prev.fotoURL ? uploaded.url : prev.fotoURL,
-          fotos: [...new Set(currentDraftFotos.map((foto) => foto === previewUrl ? uploaded.url : foto))].slice(0, 5),
-          fotoImgBbId: uploaded.imageId || "",
-        };
-      });
-      portfolioPhotoRetryFilesRef.current.delete(previewUrl);
-      setPortfolioPhotoStates((current) => {
-        const next = { ...current };
-        delete next[previewUrl];
-        next[uploaded.url] = { status: PORTFOLIO_PHOTO_STATUS.UPLOADED, errorCode: "" };
-        return next;
-      });
-      window.setTimeout(() => revokePortfolioPreviewUrl(previewUrl), 0);
-      setPortfolioPhotoSuccess("Foto pronta. Salve o serviço para vinculá-la ao portfólio.");
-      return true;
-    } catch (error) {
-      const code = String(error?.code || error?.message || "");
-      console.warn("[PORTFOLIO_IMAGE] falha controlada", {
-        stage: failureStage,
-        code: String(error?.code || "portfolio_upload_failed").slice(0, 80),
-      });
-      if (previewUrl && portfolioPreviewUrlsRef.current.has(previewUrl)) {
-        setPortfolioPhotoStatus(previewUrl, PORTFOLIO_PHOTO_STATUS.FAILED, code);
-      }
-      setPortfolioPhotoError(portfolioUploadMessage(error));
-      return false;
-    } finally {
-      portfolioPhotoAbortControllerRef.current = null;
-    }
-  }
-
-  async function alterarFotoPortfolio(event) {
-    if (portfolioPhotoUploadLockRef.current) {
-      event.target.value = "";
-      return;
-    }
-    const files = Array.from(event.target.files || []);
-    event.target.value = "";
-    if (!files.length) return;
-
-    const currentFotos = Array.isArray(portfolioDraft.fotos)
-      ? portfolioDraft.fotos
-      : normalizePortfolioFotos(portfolioDraft);
-    const vagas = Math.max(0, 5 - currentFotos.length);
-
-    if (vagas <= 0) {
-      setPortfolioPhotoError("Voce pode anexar ate 5 fotos por trabalho.");
-      return;
-    }
-
-    portfolioPhotoUploadLockRef.current = true;
-    setPortfolioPhotoUploading(true);
-    setPortfolioPhotoError("");
-    setPortfolioPhotoSuccess("");
-    try {
-      for (const file of files.slice(0, vagas)) {
-        const uploaded = await handlePortfolioPhotoUpload(file);
-        if (!uploaded) break;
-      }
-    } finally {
-      portfolioPhotoUploadLockRef.current = false;
-      setPortfolioPhotoStage("");
-      setPortfolioPhotoUploading(false);
-    }
-  }
-
-  async function tentarNovamenteFotoPortfolio(fotoURL) {
-    if (portfolioPhotoUploadLockRef.current) return;
-    const preparedFile = portfolioPhotoRetryFilesRef.current.get(fotoURL);
-    if (!preparedFile) {
-      setPortfolioPhotoError("Selecione a foto novamente para tentar outro envio.");
-      return;
-    }
-
-    portfolioPhotoUploadLockRef.current = true;
-    setPortfolioPhotoUploading(true);
-    setPortfolioPhotoError("");
-    setPortfolioPhotoSuccess("");
-    try {
-      await handlePortfolioPhotoUpload(preparedFile, { preparedFile, existingPreviewUrl: fotoURL });
-    } finally {
-      portfolioPhotoUploadLockRef.current = false;
-      setPortfolioPhotoStage("");
-      setPortfolioPhotoUploading(false);
-    }
-  }
-
-  function abrirGaleriaPortfolio() {
-    if (portfolioPhotoUploadLockRef.current || portfolioDraftFotos.length >= 5) return;
-    setPortfolioPhotoError("");
-    setPortfolioPhotoSuccess("");
-    portfolioPhotoInputRef.current?.click();
-  }
-
-  function removerFotoPortfolioDraft(fotoURL) {
-    if (portfolioPhotoUploadLockRef.current) return;
-    setPortfolioDraft((prev) => {
-      const fotos = (Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)).filter((foto) => foto !== fotoURL);
-      return {
-        ...prev,
-        fotos,
-        fotoURL: fotos[0] || "",
-      };
-    });
-    revokePortfolioPreviewUrl(fotoURL);
-    portfolioPhotoRetryFilesRef.current.delete(fotoURL);
-    setPortfolioPhotoStates((current) => {
-      const next = { ...current };
-      delete next[fotoURL];
-      return next;
-    });
-    setPortfolioPhotoError("");
-    setPortfolioPhotoSuccess("");
-  }
-
-  function portfolioOperationError(code) {
-    const error = new Error(code);
-    error.code = code;
-    return error;
-  }
-
-  function logPortfolioOperationFailure(stage, error, fallback) {
-    console.warn("[PORTFOLIO] operação não concluída", {
-      stage,
-      code: sanitizePortfolioErrorCode(error, fallback),
-    });
-  }
-
-  async function validatePortfolioIdentity(expectedUid) {
-    const currentUser = auth.currentUser;
-    if (!expectedUid || String(currentUser?.uid || "") !== expectedUid) {
-      throw portfolioOperationError("portfolio_auth_mismatch");
-    }
-
-    try {
-      await currentUser.getIdToken();
-    } catch {
-      throw portfolioOperationError("portfolio_auth_refresh_failed");
-    }
-
-    if (String(auth.currentUser?.uid || "") !== expectedUid) {
-      throw portfolioOperationError("portfolio_auth_mismatch");
-    }
-  }
-
-  async function syncPortfolioPublicMutation({ expectedUid, mutation, profileToSave }) {
-    const publicProfileRef = ref(database, `publicProfiles/${expectedUid}`);
-    const publicProfileSnap = await get(publicProfileRef);
-    if (!publicProfileSnap.exists() || !publicProfileSnap.val()) return false;
-    if (blockedPublicProfileStatuses.has(normalizeProfileStatus(publicProfileSnap.val()))) return false;
-
-    const privacySettings = normalizePrivacy(profileToSave.privacy);
-    const fotoPrincipal = pickFoto(profileToSave.fotoURL, profileToSave.photoURL, profileToSave.avatar);
-    const publicMutationMap = mutation.type === "upsert" && privacySettings.profileVisible
-      ? portfolioListToPublicMap([mutation.item], profileToSave, expectedUid, fotoPrincipal)
-      : {};
-    const publicItem = publicMutationMap[mutation.id] || null;
-
-    const publicProfileResult = await runTransaction(publicProfileRef, (current) => {
-      if (!current || blockedPublicProfileStatuses.has(normalizeProfileStatus(current))) return undefined;
-      const currentPortfolio = mergePortfolioSources(current.portfolio);
-      const nextPortfolio = publicItem
-        ? applyPortfolioMutation(currentPortfolio, { type: "upsert", id: mutation.id, item: publicItem })
-        : applyPortfolioMutation(currentPortfolio, { type: "remove", id: mutation.id });
-
-      return projectPublicProfileForWrite({
-        current,
-        payload: {
-          portfolio: Object.keys(nextPortfolio).length ? nextPortfolio : null,
-          updatedAt: serverTimestamp(),
-          atualizadoEm: serverTimestamp(),
-        },
-      });
-    }, { applyLocally: false });
-
-    if (!publicProfileResult.committed) return false;
-    await set(ref(database, `publicPortfolio/${expectedUid}/${mutation.id}`), publicItem);
-    return true;
-  }
-
-  async function salvarPortfolio(mutation, profileToSave) {
-    const expectedUid = String(uid || "");
-    return portfolioOperationQueueRef.current.run(async () => {
-      let stage = "authentication";
-      let portfolioStored = false;
-      let confirmedPortfolio = [];
-
-      try {
-        await validatePortfolioIdentity(expectedUid);
-        stage = "private_read";
-        const userSnap = await get(ref(database, userBasePath));
-        if (!userSnap.exists() || !userSnap.val()) throw portfolioOperationError("portfolio_user_missing");
-        const legacyBaseline = resolveUserPortfolioMap(userSnap.val());
-
-        stage = "private_write";
-        const canonicalRef = ref(database, `${userBasePath}/portfolio`);
-        const transactionResult = await runTransaction(canonicalRef, (current) => {
-          const currentPortfolio = current === null
-            ? legacyBaseline
-            : mergePortfolioSources(current);
-          const nextPortfolio = applyPortfolioMutation(currentPortfolio, mutation);
-          return Object.keys(nextPortfolio).length ? nextPortfolio : null;
-        }, { applyLocally: false });
-
-        if (!transactionResult.committed) throw portfolioOperationError("portfolio_transaction_not_committed");
-        portfolioStored = true;
-        const confirmedMap = mergePortfolioSources(transactionResult.snapshot.val());
-        confirmedPortfolio = normalizePortfolio(confirmedMap);
-
-        stage = "legacy_sync";
-        await validatePortfolioIdentity(expectedUid);
-        await update(ref(database, userBasePath), {
-          profPortfolio: confirmedPortfolio.length ? confirmedPortfolio : null,
-          "profile/profPortfolio": confirmedPortfolio.length ? confirmedPortfolio : null,
-          "profile/portfolio": Object.keys(confirmedMap).length ? confirmedMap : null,
-          portfolioCanonicalVersion: 1,
-          portfolioCanonicalUpdatedAt: serverTimestamp(),
-        });
-
-        stage = "public_sync";
-        await validatePortfolioIdentity(expectedUid);
-        const publicSynced = await syncPortfolioPublicMutation({ expectedUid, mutation, profileToSave });
-        const latestCanonicalSnap = await get(ref(database, `${userBasePath}/portfolio`));
-        confirmedPortfolio = normalizePortfolio(mergePortfolioSources(latestCanonicalSnap.val()));
-        return { publicSynced, profPortfolio: confirmedPortfolio };
-      } catch (error) {
-        logPortfolioOperationFailure(stage, error, "portfolio_operation_failed");
-        if (!portfolioStored) throw error;
-
-        const partialError = portfolioOperationError(
-          stage === "public_sync" ? "portfolio_public_sync_failed" : "portfolio_compat_sync_failed",
-        );
-        partialError.portfolioStored = true;
-        partialError.confirmedPortfolio = confirmedPortfolio;
-        throw partialError;
-      }
-    });
-  }
-
   const salvar = async (profileOverride = null) => {
     if (!uid) return;
 
@@ -2436,8 +1853,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       const fotoPrincipal = pickFoto(profileToSave.fotoURL, profileToSave.photoURL, profileToSave.avatar);
       const publicProfileSnap = await get(ref(database, `publicProfiles/${uid}`)).catch(() => null);
       const shouldSyncPublicWorkProfile = !!(publicProfileSnap?.exists?.() && publicProfileSnap.val());
-      const publicProfilePayload = profileToPublicProfile(profileToSave, uid, fotoPrincipal, privacySettings, []);
-      delete publicProfilePayload.portfolio;
+      const publicProfilePayload = profileToPublicProfile(profileToSave, uid, fotoPrincipal, privacySettings);
       const profilePublic = withoutPortfolioFields(profileToSave);
       delete profilePublic.privacy;
       delete profilePublic.cpf;
@@ -2767,7 +2183,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     responseSamples: serviceStats.amostrasResposta,
     returningClients: serviceStats.clientesRecorrentes,
   };
-  const portfolioDraftFotos = normalizePortfolioFotos(portfolioDraft);
   const selectedWorkMode = profile.isCorre && profile.isProfissional
     ? "ambos"
     : profile.isProfissional
@@ -2855,160 +2270,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setPortfolioPhotoSuccess("");
     setPortfolioDraft((prev) => ({ ...prev, [field]: value }));
   };
-  const adicionarPortfolioItem = async () => {
-    if (portfolioSavingRef.current) return;
-
-    const draftFotos = normalizePortfolioFotos(portfolioDraft);
-    const saveBlocker = getPortfolioSaveBlocker({
-      name: portfolioDraft.nome || portfolioDraft.titulo,
-      photos: draftFotos,
-      photoStates: portfolioPhotoStates,
-      uploadInProgress: portfolioPhotoUploadLockRef.current || portfolioPhotoUploading,
-    });
-    if (saveBlocker === "portfolio_name_required") {
-      setPortfolioPhotoError("Preencha o nome do serviço para adicionar.");
-      portfolioFirstInputRef.current?.focus();
-      return;
-    }
-    if (saveBlocker === "portfolio_photo_failed") {
-      setPortfolioPhotoError("A foto não foi enviada. Tente novamente ou remova a foto antes de salvar.");
-      return;
-    }
-    if (saveBlocker) {
-      setPortfolioPhotoError("Aguarde o envio da foto antes de salvar o serviço.");
-      return;
-    }
-
-    portfolioSavingRef.current = true;
-    setPortfolioSaving(true);
-
-    const fotos = withoutLocalPortfolioPreviews(draftFotos);
-    const categoriaMeta = getCategoryById(portfolioDraft.categoriaId || portfolioDraft.categoria);
-    const categoriaId = String(portfolioDraft.categoriaId || categoriaMeta?.id || "").trim();
-    const categoriaNome = String(portfolioDraft.categoriaNome || categoriaMeta?.label || portfolioDraft.categoria || "").trim();
-    const id = portfolioEditingId || portfolioDraft.id || `portfolio_${Date.now()}`;
-    const item = {
-      id,
-      nome: String(portfolioDraft.nome || portfolioDraft.titulo || "").trim(),
-      titulo: String(portfolioDraft.nome || portfolioDraft.titulo || "").trim(),
-      descricao: portfolioDraft.descricao.trim(),
-      preco: portfolioDraft.preco.trim(),
-      faixaPreco: String(portfolioDraft.faixaPreco || portfolioDraft.valor || portfolioDraft.preco || "").trim(),
-      valor: String(portfolioDraft.faixaPreco || portfolioDraft.valor || portfolioDraft.preco || "").trim(),
-      categoriaId,
-      categoriaNome,
-      categoria: categoriaNome,
-      tempoMedio: portfolioDraft.tempoMedio.trim(),
-      regiao: String(portfolioDraft.regiao || profile.profRegiao || profile.cidade || "").trim(),
-      atendeDomicilio: portfolioDraft.atendeDomicilio !== false,
-      urgente: portfolioDraft.urgente === true,
-      ativo: portfolioDraft.ativo !== false,
-      fotoURL: fotos[0] || "",
-      fotos,
-      fotoImgBbId: portfolioDraft.fotoImgBbId || "",
-      createdAt: portfolioDraft.createdAt || Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    const nextProfile = {
-      ...profile,
-      profPortfolio: [
-        ...normalizePortfolio(profile.profPortfolio).filter((current) => current.id !== id),
-        item,
-      ].slice(0, 12),
-    };
-
-    setPortfolioDraft((prev) => ({ ...prev, id, createdAt: item.createdAt }));
-    setPortfolioPhotoError("");
-    setPortfolioPhotoSuccess("");
-
-    try {
-      const result = await salvarPortfolio({ type: "upsert", id, item }, nextProfile);
-      setProfile((prev) => ({ ...prev, profPortfolio: result.profPortfolio }));
-      if (result.publicSynced === false) {
-        setPortfolioPhotoError("Serviço salvo no perfil, mas a vitrine pública não foi atualizada. Tente salvar novamente.");
-      } else {
-        setPortfolioDraft(createEmptyPortfolioDraft());
-        setPortfolioEditingId("");
-        setPortfolioPhotoStates({});
-        portfolioPhotoRetryFilesRef.current.clear();
-        setPortfolioPhotoSuccess("Serviço e fotos salvos no portfólio.");
-      }
-    } catch (error) {
-      if (error?.portfolioStored) {
-        setProfile((prev) => ({
-          ...prev,
-          profPortfolio: normalizePortfolio(error.confirmedPortfolio),
-        }));
-        setPortfolioPhotoError("Serviço salvo no perfil, mas a vitrine pública não foi atualizada. Tente salvar novamente.");
-      } else if (error?.code === "portfolio_auth_mismatch") {
-        setPortfolioPhotoError("A sessão não corresponde ao perfil aberto. Entre novamente.");
-      } else if (error?.code === "portfolio_auth_refresh_failed") {
-        setPortfolioPhotoError("Não foi possível renovar sua sessão. Entre novamente e tente salvar.");
-      } else {
-        setPortfolioPhotoError("Não foi possível salvar o serviço. Seus dados continuam na tela para tentar novamente.");
-      }
-    } finally {
-      portfolioSavingRef.current = false;
-      setPortfolioSaving(false);
-    }
-  };
-  const editarPortfolioItem = (item) => {
-    const normalized = normalizePortfolio([item])[0] || item;
-    setPortfolioDraft({
-      ...createEmptyPortfolioDraft(),
-      ...normalized,
-      nome: normalized.nome || normalized.titulo || "",
-      titulo: normalized.nome || normalized.titulo || "",
-      valor: normalized.valor || normalized.faixaPreco || normalized.preco || "",
-      faixaPreco: normalized.faixaPreco || normalized.valor || "",
-      categoria: normalized.categoria || normalized.categoriaNome || "",
-      categoriaNome: normalized.categoriaNome || normalized.categoria || "",
-      fotos: normalizePortfolioFotos(normalized),
-    });
-    setPortfolioEditingId(normalized.id || "");
-    setPortfolioPhotoStates({});
-    portfolioPhotoRetryFilesRef.current.clear();
-    setPortfolioPhotoError("");
-    setPortfolioPhotoSuccess("");
-  };
-  const removerPortfolioItem = async (id) => {
-    if (portfolioSavingRef.current || !id) return;
-    portfolioSavingRef.current = true;
-    setPortfolioSaving(true);
-    setPortfolioPhotoError("");
-    setPortfolioPhotoSuccess("");
-
-    try {
-      const result = await salvarPortfolio({ type: "remove", id }, profile);
-      setProfile((prev) => ({ ...prev, profPortfolio: result.profPortfolio }));
-      if (portfolioEditingId === id) {
-        setPortfolioEditingId("");
-        setPortfolioDraft(createEmptyPortfolioDraft());
-      }
-      if (result.publicSynced === false) {
-        setPortfolioPhotoError("Serviço removido do perfil, mas a vitrine pública não foi atualizada.");
-      } else {
-        setPortfolioPhotoSuccess("Serviço removido do portfólio.");
-      }
-    } catch (error) {
-      if (error?.portfolioStored) {
-        setProfile((prev) => ({
-          ...prev,
-          profPortfolio: normalizePortfolio(error.confirmedPortfolio),
-        }));
-        setPortfolioPhotoError("Serviço removido do perfil, mas a vitrine pública não foi atualizada.");
-      } else if (error?.code === "portfolio_auth_mismatch" || error?.code === "portfolio_auth_refresh_failed") {
-        setPortfolioPhotoError("Sua sessão mudou. Entre novamente antes de remover o serviço.");
-      } else {
-        setPortfolioPhotoError("Não foi possível remover o serviço. Tente novamente.");
-      }
-    } finally {
-      portfolioSavingRef.current = false;
-      setPortfolioSaving(false);
-    }
-  };
-
   const updateAddressDraft = (field, value) => {
     setAddressAviso("");
     setAddressDraft((prev) => ({ ...prev, [field]: value }));
@@ -4806,468 +4067,29 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
               )}
 
               {currentProfSection === "portfolio" && (
-                <section data-tutorial="portfolio" className="overflow-hidden rounded-[26px] border border-blue-950/12 bg-white p-3 shadow-[0_22px_70px_rgba(15,23,42,0.10)] ring-1 ring-blue-950/5 md:rounded-[34px] md:p-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <span className="grid h-16 w-20 shrink-0 place-items-center rounded-[22px] border border-blue-100 bg-blue-50 shadow-[0_14px_30px_rgba(37,99,235,0.14)]">
-                        <ServiceToolboxIllustration className="h-14 w-20" />
-                      </span>
-                      <div className="min-w-0">
-                        <h3 className="text-lg font-black leading-tight text-blue-950 md:text-2xl">Seu portfólio profissional</h3>
-                        <p className="mt-1 text-xs font-bold text-slate-500 md:text-sm">Mostre seus serviços, preços e trabalhos feitos.</p>
-                        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">
-                          <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-                          {portfolioItems.length} serviços cadastrados
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="rounded-[18px] border border-blue-100 bg-blue-50/70 p-3 md:w-[260px]">
-                      <div className="flex items-start gap-2">
-                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blue-700 shadow-sm">✧</span>
-                        <div>
-                          <div className="text-xs font-black text-blue-700">Dica rápida</div>
-                          <p className="mt-0.5 text-[11px] font-bold leading-snug text-slate-500">
-                            Perfis com fotos reais recebem até 3x mais contatos.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-                    {[
-                      {
-                        icon: "R$",
-                        label: "Preço base",
-                        value: profile.preco,
-                        placeholder: "R$ 50,00",
-                        hint: "Valor mínimo de referência",
-                        onChange: (value) => setProfile((p) => ({ ...p, preco: value })),
-                        tone: "bg-emerald-500 text-white",
-                        inputMode: "decimal",
-                      },
-                      {
-                        icon: "☎",
-                        label: "WhatsApp",
-                        value: profile.whatsapp,
-                        placeholder: "(21) 3778-1502",
-                        hint: "Para clientes te chamarem",
-                        onChange: (value) => setProfile((p) => ({ ...p, whatsapp: value })),
-                        tone: "bg-emerald-500 text-white",
-                        inputMode: "tel",
-                      },
-                      {
-                        icon: "⌖",
-                        label: "Região",
-                        value: profile.profRegiao,
-                        placeholder: "Nova Iguaçu - RJ",
-                        hint: "Onde você atua",
-                        onChange: (value) => setProfile((p) => ({ ...p, profRegiao: value })),
-                        tone: "bg-blue-600 text-white",
-                        inputMode: "text",
-                      },
-                      {
-                        icon: "★",
-                        label: "Experiência",
-                        value: profile.profExperiencia,
-                        placeholder: "5 anos",
-                        hint: "Na sua área de atuação",
-                        onChange: (value) => setProfile((p) => ({ ...p, profExperiencia: value })),
-                        tone: "bg-[#ffd91a] text-blue-950",
-                        inputMode: "text",
-                      },
-                    ].map((card) => (
-                      <label key={card.label} className="group block rounded-[18px] border border-slate-100 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-100">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={["grid h-9 w-9 place-items-center rounded-2xl text-xs font-black shadow-sm", card.tone].join(" ")}>
-                            {card.icon}
-                          </span>
-                          <span className="grid h-8 w-8 place-items-center rounded-full text-slate-300 transition group-focus-within:bg-blue-50 group-focus-within:text-blue-700">✎</span>
-                        </div>
-                        <div className="mt-2 text-[11px] font-black text-slate-500">{card.label}</div>
-                        <input
-                          value={card.value}
-                          onChange={(e) => card.onChange(e.target.value)}
-                          placeholder={card.placeholder}
-                          inputMode={card.inputMode}
-                          aria-label={`Editar ${card.label}`}
-                          className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black text-blue-950 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                        />
-                        <div className="mt-1 text-[10px] font-bold text-slate-400">{card.hint}</div>
-                      </label>
-                    ))}
-                  </div>
-
-                  <div
-                    ref={portfolioFormRef}
-                    className={[
-                      "mt-4 scroll-mt-6 rounded-[22px] border bg-white p-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] transition md:p-4",
-                      "border-slate-100",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="grid h-10 w-10 place-items-center rounded-full bg-blue-700 text-white shadow-[0_12px_24px_rgba(37,99,235,0.24)]">
-                        <ServiceBriefcaseIcon className="h-5 w-5" />
-                      </span>
-                      <div>
-                        <div className="text-sm font-black text-blue-950">
-                          {portfolioEditingId ? "Editar serviço" : "Novo serviço"}
-                        </div>
-                        <div className="text-xs font-semibold text-slate-500">Preencha os dados do serviço que você oferece</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-1 gap-2.5 md:grid-cols-3">
-                      <Field label="Nome do serviço">
-                        <input
-                          ref={portfolioFirstInputRef}
-                          value={portfolioDraft.nome || portfolioDraft.titulo}
-                          onChange={(e) => updatePortfolioDraft("nome", e.target.value)}
-                          placeholder="Ex: Instalação elétrica"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                      <Field label="Categoria">
-                        <select
-                          value={portfolioDraft.categoriaId}
-                          onChange={(e) => {
-                            const cat = getCategoryById(e.target.value);
-                            setPortfolioDraft((prev) => ({
-                              ...prev,
-                              categoriaId: e.target.value,
-                              categoriaNome: cat?.label || "",
-                              categoria: cat?.label || "",
-                            }));
-                          }}
-                          className={inputClass("bg-white")}
-                        >
-                          <option value="" className="text-black">Selecione</option>
-                          {CATEGORIES.map((cat) => (
-                            <option key={cat.id} value={cat.id} className="text-black">{cat.emoji} {cat.label}</option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="Valor ou faixa">
-                        <input
-                          value={portfolioDraft.faixaPreco || portfolioDraft.valor}
-                          onChange={(e) => updatePortfolioDraft("faixaPreco", e.target.value)}
-                          placeholder="Ex: R$ 100 - R$ 200"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                      <Field label="Descrição curta">
-                        <input
-                          value={portfolioDraft.descricao}
-                          onChange={(e) => updatePortfolioDraft("descricao", e.target.value)}
-                          placeholder="Descreva seu serviço em poucas palavras"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                      <Field label="Tempo médio">
-                        <input
-                          value={portfolioDraft.tempoMedio}
-                          onChange={(e) => updatePortfolioDraft("tempoMedio", e.target.value)}
-                          placeholder="Ex: 2 horas"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                      <Field label="Região de atendimento">
-                        <input
-                          value={portfolioDraft.regiao}
-                          onChange={(e) => updatePortfolioDraft("regiao", e.target.value)}
-                          placeholder="Ex: Nova Iguaçu - RJ"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                    </div>
-                    <div className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-[1fr_2.2fr]">
-                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 lg:grid-cols-1">
-                        {[
-                          ["atendeDomicilio", "Atende em domicílio?"],
-                          ["urgente", "Serviço urgente?"],
-                          ["ativo", "Ativo na vitrine?"],
-                        ].map(([field, label]) => (
-                          <div key={field} className="rounded-[16px] border border-slate-100 bg-slate-50 p-3">
-                            <div className="text-xs font-black text-blue-950">{label}</div>
-                            <div className="mt-2 grid grid-cols-2 gap-2">
-                              {[true, false].map((value) => (
-                                <button
-                                  key={String(value)}
-                                  type="button"
-                                  onClick={() => updatePortfolioDraft(field, value)}
-                                  className={[
-                                    "h-9 rounded-full border text-xs font-black transition active:scale-[0.98]",
-                                    portfolioDraft[field] === value
-                                      ? "border-blue-200 bg-blue-50 text-blue-700"
-                                      : "border-slate-200 bg-white text-slate-500",
-                                  ].join(" ")}
-                                >
-                                  {value ? "Sim" : "Não"}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="rounded-[16px] border border-slate-100 bg-slate-50 p-3">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <div className="text-xs font-black text-blue-950">Fotos do serviço (até 5)</div>
-                            <div className="text-[11px] font-semibold text-slate-500">Mostre fotos reais dos seus trabalhos</div>
-                          </div>
-                          <div>
-                            <input
-                              ref={portfolioPhotoInputRef}
-                              type="file"
-                              accept="image/*,.heic,.heif"
-                              multiple
-                              disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
-                              className="sr-only"
-                              tabIndex={-1}
-                              onClick={(event) => { event.currentTarget.value = ""; }}
-                              onChange={alterarFotoPortfolio}
-                            />
-                            <button
-                              type="button"
-                              onClick={abrirGaleriaPortfolio}
-                              disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
-                              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                              aria-controls="portfolio-photo-status"
-                            >
-                            {portfolioPhotoUploading ? (
-                              <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" aria-hidden="true" />
-                            ) : null}
-                            {portfolioPhotoUploading ? "Enviando foto..." : "Escolher fotos"}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-3 gap-2 min-[420px]:grid-cols-5">
-                          {Array.from({ length: 5 }).map((_, index) => {
-                            const foto = portfolioDraftFotos[index];
-                            const photoStatus = foto ? getPortfolioPhotoStatus(foto, portfolioPhotoStates) : "";
-                            return (
-                              <div key={foto || index} className={["relative grid aspect-square place-items-center overflow-hidden rounded-[14px] border text-[10px] font-black", foto ? "border-slate-200 bg-slate-100" : "border-dashed border-blue-200 bg-white text-blue-600"].join(" ")}>
-                                {foto ? (
-                                  <>
-                                    <span
-                                      className="h-full w-full bg-cover bg-center"
-                                      style={{ backgroundImage: `url(${foto})` }}
-                                    />
-                                    <span className={["absolute left-1 top-1 rounded-full px-2 py-1 text-[9px] font-black text-white", photoStatus === PORTFOLIO_PHOTO_STATUS.FAILED ? "bg-rose-600" : photoStatus === PORTFOLIO_PHOTO_STATUS.UPLOADED ? "bg-emerald-600" : "bg-blue-700"].join(" ")}>
-                                      {photoStatus === PORTFOLIO_PHOTO_STATUS.FAILED
-                                        ? "Falhou"
-                                        : photoStatus === PORTFOLIO_PHOTO_STATUS.UPLOADED
-                                          ? "Enviada"
-                                          : photoStatus === PORTFOLIO_PHOTO_STATUS.UPLOADING
-                                            ? "Enviando"
-                                            : "Prévia"}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => removerFotoPortfolioDraft(foto)}
-                                      disabled={portfolioPhotoUploading}
-                                      className="absolute right-1 top-1 grid h-8 w-8 place-items-center rounded-full bg-slate-950/80 text-sm font-black text-white shadow-lg transition hover:bg-rose-600 disabled:opacity-50"
-                                      aria-label="Remover foto"
-                                    >
-                                      ×
-                                    </button>
-                                    {photoStatus === PORTFOLIO_PHOTO_STATUS.FAILED ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => void tentarNovamenteFotoPortfolio(foto)}
-                                        disabled={portfolioPhotoUploading}
-                                        className="absolute bottom-1 left-1 right-1 min-h-8 rounded-lg bg-rose-600 px-2 text-[9px] font-black text-white shadow-lg disabled:opacity-50"
-                                      >
-                                        Tentar novamente
-                                      </button>
-                                    ) : null}
-                                  </>
-                                ) : (
-                                  index === 0 ? "+ Foto" : "▧"
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div id="portfolio-photo-status" className="mt-2 min-h-4" aria-live="polite" aria-atomic="true">
-                          {portfolioPhotoUploading ? (
-                            <div className="text-xs font-black text-blue-700">
-                              {portfolioPhotoStage === "optimizing" ? "Enviando foto... preparando imagem." : "Enviando foto..."}
-                            </div>
-                          ) : portfolioPhotoError ? (
-                            <div className="text-xs font-black text-rose-600">{portfolioPhotoError}</div>
-                          ) : portfolioPhotoSuccess ? (
-                            <div className="text-xs font-black text-emerald-700">{portfolioPhotoSuccess}</div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                      {portfolioEditingId ? (
-                        <button
-                          type="button"
-                        onClick={() => {
-                          if (portfolioPhotoUploading) return;
-                          const localUrls = new Set(portfolioPreviewUrlsRef.current);
-                          localUrls.forEach((url) => URL.revokeObjectURL(url));
-                          portfolioPreviewUrlsRef.current.clear();
-                          portfolioPhotoRetryFilesRef.current.clear();
-                          setPortfolioPhotoStates({});
-                          setPortfolioEditingId("");
-                          setPortfolioDraft(createEmptyPortfolioDraft());
-                          setPortfolioPhotoError("");
-                          setPortfolioPhotoSuccess("");
-                        }}
-                          disabled={portfolioPhotoUploading}
-                          className="h-10 rounded-xl border border-slate-200 bg-white px-5 text-xs font-black text-slate-600 transition active:scale-[0.98]"
-                        >
-                          Cancelar
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => void adicionarPortfolioItem()}
-                        disabled={portfolioSaving || portfolioPhotoUploading}
-                        className={[
-                          "h-10 rounded-xl bg-blue-700 px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]",
-                          portfolioSaving || portfolioPhotoUploading ? "cursor-not-allowed opacity-60" : "",
-                        ].join(" ")}
-                      >
-                        {portfolioPhotoUploading
-                          ? "Aguarde o envio da foto..."
-                          : portfolioSaving
-                            ? "Salvando..."
-                            : portfolioEditingId
-                              ? "Salvar serviço"
-                              : "Adicionar"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {currentPortfolioReadStatus.error ? (
-                    <div role="alert" className="mt-4 rounded-[18px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
-                      {currentPortfolioReadStatus.error}
-                    </div>
-                  ) : !currentPortfolioReadStatus.loaded ? (
-                    <div className="mt-4 rounded-[18px] border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
-                      Carregando seus serviços...
-                    </div>
-                  ) : !portfolioItems.length ? (
-                    <div className="mt-4 flex flex-col gap-4 rounded-[22px] border border-slate-100 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.07)] md:flex-row md:items-center md:px-8">
-                      <div className="relative grid h-32 w-44 shrink-0 place-items-center">
-                        <ServiceToolboxIllustration className="h-32 w-44" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-black text-blue-950">Você ainda não cadastrou serviços</div>
-                        <p className="mt-1 max-w-xl text-xs font-semibold leading-relaxed text-slate-500">
-                          Preencha o formulário acima e finalize pelo botão Adicionar para montar sua vitrine profissional.
-                        </p>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-4 rounded-[22px] border border-slate-100 bg-white p-3 shadow-[0_14px_36px_rgba(15,23,42,0.07)] md:p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-black text-blue-950">Seus serviços cadastrados</div>
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
-                          {currentPortfolioReadStatus.error || !currentPortfolioReadStatus.loaded
-                            ? "— serviços"
-                            : `${portfolioItems.length} serviços`}
-                        </span>
-                      </div>
-                      <button type="button" className="h-8 w-fit rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-500">
-                        Mais recentes
-                      </button>
-                    </div>
-
-                    {portfolioItems.length ? (
-                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {portfolioItems.map((item) => {
-                          const cover = item.fotos?.[0] || "";
-                          const title = item.nome || item.titulo || "Serviço sem título";
-                          const category = item.categoriaNome || item.categoria || "Serviço";
-                          const price = item.faixaPreco || item.valor || item.preco || "A combinar";
-                          return (
-                            <article key={item.id} className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                              <div className="relative h-32 bg-gradient-to-br from-blue-50 via-slate-100 to-emerald-50">
-                                {cover ? (
-                                  <span
-                                    className="block h-full w-full bg-cover bg-center"
-                                    style={{ backgroundImage: `url(${cover})` }}
-                                  />
-                                ) : (
-                                  <div className="grid h-full place-items-center text-3xl text-blue-200">▧</div>
-                                )}
-                                {item.urgente ? (
-                                  <span className="absolute left-2 top-2 rounded-full bg-[#ffd91a] px-2 py-1 text-[10px] font-black text-blue-950">Destaque</span>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => editarPortfolioItem(item)}
-                                  className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-white/95 text-xs font-black text-slate-600 shadow-sm"
-                                  aria-label="Editar serviço"
-                                >
-                                  ⋮
-                                </button>
-                              </div>
-                              <div className="p-3">
-                                <div className="line-clamp-1 text-sm font-black text-blue-950">{title}</div>
-                                <div className="mt-0.5 text-[11px] font-bold text-slate-500">Em {category}</div>
-                                <div className="mt-2 text-sm font-black text-emerald-600">{price}</div>
-                                <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[10px] font-bold text-slate-500">
-                                  {item.regiao ? <span>{item.regiao}</span> : null}
-                                  {item.tempoMedio ? <span>{item.tempoMedio}</span> : null}
-                                  {item.ativo === false ? <span className="text-slate-400">Oculto</span> : null}
-                                </div>
-                                <div className="mt-3 grid grid-cols-2 gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => editarPortfolioItem(item)}
-                                    className="h-9 rounded-xl border border-blue-100 bg-blue-50 text-xs font-black text-blue-700"
-                                  >
-                                    Editar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void removerPortfolioItem(item.id)}
-                                    disabled={portfolioSaving}
-                                    className="h-9 rounded-xl border border-rose-100 bg-rose-50 text-xs font-black text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                  >
-                                    Remover
-                                  </button>
-                                </div>
-                              </div>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    ) : currentPortfolioReadStatus.loaded && !currentPortfolioReadStatus.error ? (
-                      <div className="mt-3 rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500">
-                        Nenhum serviço cadastrado ainda.
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-4 flex flex-col gap-2 rounded-[18px] border border-yellow-200 bg-yellow-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-xs font-bold text-yellow-900">
-                      <b>Dica para se destacar:</b> mantenha fotos reais e descrição objetiva para o cliente decidir mais rápido.
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProfSection("perfilProfissional");
-                        setProfessionalProfileStep("choice");
-                      }}
-                      className="h-9 rounded-xl bg-[#ffd91a] px-4 text-xs font-black text-blue-950 shadow-sm"
-                    >
-                      Ver meu perfil
-                    </button>
-                  </div>
-                </section>
+                <ProfessionalPortfolioSection
+                  uid={uid}
+                  user={auth.currentUser}
+                  legacyServices={portfolioItems}
+                  legacyReadStatus={currentPortfolioReadStatus}
+                  professionalDetails={{
+                    preco: profile.preco,
+                    whatsapp: profile.whatsapp,
+                    regiao: profile.profRegiao,
+                    experiencia: profile.profExperiencia,
+                  }}
+                  onProfessionalDetailChange={(field, value) => {
+                    const profileField = {
+                      preco: "preco",
+                      whatsapp: "whatsapp",
+                      regiao: "profRegiao",
+                      experiencia: "profExperiencia",
+                    }[field];
+                    if (profileField) setProfile((current) => ({ ...current, [profileField]: value }));
+                  }}
+                  onSaveProfessionalDetails={() => salvar()}
+                  profileSaving={salvando}
+                />
               )}
 
               {currentProfSection === "avaliacoes" && (

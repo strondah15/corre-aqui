@@ -9,23 +9,20 @@ import {
   uploadProfilePhotoToImgBB,
 } from '../src/lib/imgbbClient.js'
 import {
-  getPortfolioPhotoStatus,
-  getPortfolioSaveBlocker,
-  isLocalPortfolioPreview,
-  PORTFOLIO_PHOTO_STATUS,
-  withoutLocalPortfolioPreviews,
-} from '../src/lib/portfolioDraftState.js'
-import {
-  applyPortfolioMutation,
-  createPortfolioOperationQueue,
-  getPortfolioReadErrorMessage,
-  mergePortfolioSources,
   resolveUserPortfolioMap,
-  sanitizePortfolioErrorCode,
   withoutPortfolioFields,
 } from '../src/lib/portfolioPersistence.js'
+import {
+  buildProfessionalServicePayload,
+  createProfessionalServiceDraft,
+  getProfessionalServiceFormIssue,
+  PROFESSIONAL_SERVICE_PHOTO_STATUS,
+} from '../src/lib/professionalPortfolioUiState.js'
 
 const componentSource = await readFile(new URL('../src/components/PerfilDrawer.jsx', import.meta.url), 'utf8')
+const portfolioSectionSource = await readFile(new URL('../src/components/ProfessionalPortfolioSection.jsx', import.meta.url), 'utf8')
+const portfolioFormSource = await readFile(new URL('../src/components/ProfessionalServiceForm.jsx', import.meta.url), 'utf8')
+const portfolioClientSource = await readFile(new URL('../src/lib/professionalServicesClient.js', import.meta.url), 'utf8')
 const chatSource = await readFile(new URL('../src/components/ChatMensagens.jsx', import.meta.url), 'utf8')
 const uploadRouteSource = await readFile(new URL('../src/app/api/upload/profile-photo/route.js', import.meta.url), 'utf8')
 
@@ -217,40 +214,54 @@ assert.deepEqual(getPortfolioTargetDimensions(4000, 3000), { width: 1280, height
 assert.deepEqual(getPortfolioTargetDimensions(3000, 4000), { width: 960, height: 1280, scale: 0.32 })
 assert.deepEqual(getPortfolioTargetDimensions(640, 480), { width: 640, height: 480, scale: 1 })
 
-assert.equal(isLocalPortfolioPreview('blob:https://preview/1'), true)
-assert.equal(getPortfolioPhotoStatus('https://i.ibb.co/foto.webp'), PORTFOLIO_PHOTO_STATUS.UPLOADED, 'URL legada continua pronta sem metadado novo')
 assert.equal(
-  getPortfolioSaveBlocker({ name: 'Reparo', photos: ['blob:https://preview/1'] }),
-  'portfolio_photo_uploading',
+  getProfessionalServiceFormIssue({
+    draft: createProfessionalServiceDraft({ nome: 'Reparo', categoriaId: 'reparos', categoriaNome: 'Reparos', faixaPreco: 'R$ 80' }),
+    photos: [{ status: PROFESSIONAL_SERVICE_PHOTO_STATUS.PREVIEW, url: 'blob:https://preview/1' }],
+  }),
+  'professional_service_photo_uploading',
   'prévia local nunca pode ser persistida',
 )
 assert.equal(
-  getPortfolioSaveBlocker({
-    name: 'Reparo',
-    photos: ['blob:https://preview/1'],
-    photoStates: { 'blob:https://preview/1': { status: PORTFOLIO_PHOTO_STATUS.FAILED } },
+  getProfessionalServiceFormIssue({
+    draft: createProfessionalServiceDraft({ nome: 'Reparo', categoriaId: 'reparos', categoriaNome: 'Reparos', faixaPreco: 'R$ 80' }),
+    photos: [{ status: PROFESSIONAL_SERVICE_PHOTO_STATUS.FAILED, url: '' }],
   }),
-  'portfolio_photo_failed',
+  'professional_service_photo_failed',
   'falha de upload exige retry ou remoção',
 )
 assert.equal(
-  getPortfolioSaveBlocker({ name: 'Reparo', photos: [], uploadInProgress: true }),
-  'portfolio_photo_uploading',
+  getProfessionalServiceFormIssue({
+    draft: createProfessionalServiceDraft({ nome: 'Reparo', categoriaId: 'reparos', categoriaNome: 'Reparos', faixaPreco: 'R$ 80' }),
+    submitting: true,
+  }),
+  'professional_service_submitting',
   'upload lento bloqueia salvamento',
 )
 assert.equal(
-  getPortfolioSaveBlocker({ name: '  ', photos: ['https://i.ibb.co/foto.webp'] }),
-  'portfolio_name_required',
+  getProfessionalServiceFormIssue({
+    draft: createProfessionalServiceDraft({ nome: '  ', categoriaId: 'reparos', categoriaNome: 'Reparos', faixaPreco: 'R$ 80' }),
+  }),
+  'professional_service_name_required',
   'nome vazio falha fechado',
 )
 assert.equal(
-  getPortfolioSaveBlocker({ name: 'Reparo', photos: ['https://i.ibb.co/foto.webp'] }),
+  getProfessionalServiceFormIssue({
+    draft: createProfessionalServiceDraft({ nome: 'Reparo', categoriaId: 'reparos', categoriaNome: 'Reparos', faixaPreco: 'R$ 80' }),
+    photos: [{ status: PROFESSIONAL_SERVICE_PHOTO_STATUS.UPLOADED, url: 'https://i.ibb.co/foto.webp' }],
+  }),
   '',
   'URL existente e nome válido mantêm compatibilidade',
 )
 assert.deepEqual(
-  withoutLocalPortfolioPreviews(['blob:https://preview/1', 'https://i.ibb.co/foto.webp', 'https://i.ibb.co/foto.webp']),
-  ['https://i.ibb.co/foto.webp'],
+  buildProfessionalServicePayload(
+    createProfessionalServiceDraft({ nome: 'Reparo', categoriaId: 'reparos', categoriaNome: 'Reparos', faixaPreco: 'R$ 80' }),
+    [
+      { status: PROFESSIONAL_SERVICE_PHOTO_STATUS.PREVIEW, url: 'blob:https://preview/1' },
+      { status: PROFESSIONAL_SERVICE_PHOTO_STATUS.UPLOADED, url: 'https://i.ibb.co/foto.webp' },
+    ],
+  ).fotos,
+  { 0: 'https://i.ibb.co/foto.webp' },
   'serialização remove blob e preserva URLs existentes',
 )
 
@@ -414,16 +425,12 @@ await withFakeBrowser({ width: 1600, height: 1000, encodeFails: true }, async ()
   await assert.rejects(() => optimizePortfolioPhoto(large), /portfolio_original_too_large/)
 })
 
-const legacyPortfolio = [
-  { id: 'legacy-1', nome: 'Serviço legado', ativo: true },
-]
-const canonicalPortfolio = {
-  'canonical-1': { id: 'canonical-1', nome: 'Serviço canônico', ativo: true },
-}
+const legacyPortfolio = [{ id: 'legacy-1', nome: 'Serviço legado', ativo: true }]
+const canonicalPortfolio = { 'canonical-1': { id: 'canonical-1', nome: 'Serviço canônico', ativo: true } }
 assert.deepEqual(
   Object.keys(resolveUserPortfolioMap({ profPortfolio: legacyPortfolio })).sort(),
   ['legacy-1'],
-  'dados legados continuam legíveis antes da primeira escrita canônica',
+  'dados legados continuam apenas legíveis e preservados',
 )
 assert.deepEqual(
   Object.keys(resolveUserPortfolioMap({
@@ -432,39 +439,14 @@ assert.deepEqual(
     portfolioCanonicalVersion: 1,
   })).sort(),
   ['canonical-1'],
-  'mapa canônico confirmado não é sobrescrito por cópia legada antiga',
-)
-assert.deepEqual(
-  resolveUserPortfolioMap({ profPortfolio: legacyPortfolio, portfolioCanonicalVersion: 1 }),
-  {},
-  'marcador canônico distingue portfólio vazio de leitura legada ausente',
-)
-
-const preservedMutation = applyPortfolioMutation(canonicalPortfolio, {
-  type: 'upsert',
-  id: 'new-1',
-  item: { id: 'new-1', nome: 'Novo serviço', ativo: true },
-})
-assert.deepEqual(
-  Object.keys(preservedMutation).sort(),
-  ['canonical-1', 'new-1'],
-  'upsert preserva serviços remotos existentes',
-)
-assert.deepEqual(
-  Object.keys(applyPortfolioMutation(preservedMutation, { type: 'remove', id: 'canonical-1' })),
-  ['new-1'],
-  'remoção dedicada altera somente o serviço solicitado',
+  'compatibilidade de leitura antiga permanece determinística',
 )
 
 const strippedProfile = withoutPortfolioFields({
   nome: 'Profissional',
   profPortfolio: legacyPortfolio,
   portfolio: canonicalPortfolio,
-  profissional: {
-    titulo: 'Reparos',
-    profPortfolio: legacyPortfolio,
-    portfolio: canonicalPortfolio,
-  },
+  profissional: { titulo: 'Reparos', profPortfolio: legacyPortfolio, portfolio: canonicalPortfolio },
 })
 assert.equal(strippedProfile.nome, 'Profissional')
 assert.equal(strippedProfile.profissional.titulo, 'Reparos')
@@ -473,148 +455,51 @@ assert.equal('portfolio' in strippedProfile, false, 'salvamento geral não receb
 assert.equal('profPortfolio' in strippedProfile.profissional, false, 'perfil profissional geral não recebe profPortfolio')
 assert.equal('portfolio' in strippedProfile.profissional, false, 'perfil profissional geral não recebe portfolio')
 
-const queue = createPortfolioOperationQueue()
-let releaseFirst
-let markFirstStarted
-const firstGate = new Promise((resolve) => { releaseFirst = resolve })
-const firstStarted = new Promise((resolve) => { markFirstStarted = resolve })
-let simulatedRemote = mergePortfolioSources(canonicalPortfolio)
-const executionOrder = []
-const firstMutation = queue.run(async () => {
-  executionOrder.push('first:start')
-  markFirstStarted()
-  await firstGate
-  simulatedRemote = applyPortfolioMutation(simulatedRemote, {
-    type: 'upsert',
-    id: 'slow-1',
-    item: { id: 'slow-1', nome: 'Lento', ativo: true },
-  })
-  executionOrder.push('first:end')
-})
-const secondMutation = queue.run(async () => {
-  executionOrder.push('second:start')
-  simulatedRemote = applyPortfolioMutation(simulatedRemote, {
-    type: 'upsert',
-    id: 'fast-1',
-    item: { id: 'fast-1', nome: 'Rápido', ativo: true },
-  })
-  executionOrder.push('second:end')
-})
-await firstStarted
-assert.deepEqual(executionOrder, ['first:start'], 'operações simultâneas ficam serializadas independentemente do botão')
-releaseFirst()
-await Promise.all([firstMutation, secondMutation])
-assert.deepEqual(executionOrder, ['first:start', 'first:end', 'second:start', 'second:end'])
-assert.deepEqual(
-  Object.keys(simulatedRemote).sort(),
-  ['canonical-1', 'fast-1', 'slow-1'],
-  'fila aplica a segunda operação sobre o estado confirmado pela primeira',
-)
-assert.deepEqual(
-  Object.keys(resolveUserPortfolioMap({
-    profPortfolio: legacyPortfolio,
-    portfolio: simulatedRemote,
-    portfolioCanonicalVersion: 1,
-  })).sort(),
-  ['canonical-1', 'fast-1', 'slow-1'],
-  'recarregar usa o estado canônico confirmado e ignora a cópia legada antiga',
-)
-
-const recoveringQueue = createPortfolioOperationQueue()
-await assert.rejects(
-  () => recoveringQueue.run(async () => { throw Object.assign(new Error('write_failed'), { code: 'permission_denied' }) }),
-  /write_failed/,
-  'falha de escrita é propagada',
-)
-const recoveredResult = await recoveringQueue.run(async () => 'recovered')
-assert.equal(recoveredResult, 'recovered', 'fila continua utilizável após falha de escrita')
-assert.match(getPortfolioReadErrorMessage({ code: 'PERMISSION_DENIED' }), /sessão precisa ser renovada/)
-assert.equal(sanitizePortfolioErrorCode({ message: 'erro com dado privado' }), 'erro_com_dado_privado')
-
-assert.match(componentSource, /portfolioPhotoUploadLockRef\.current/, 'duplo envio bloqueado por ref síncrona')
-assert.match(componentSource, /Enviando foto\.\.\./, 'feedback único permanece visível durante preparação e upload')
-assert.match(componentSource, /URL\.createObjectURL\(prepared\.file\)/, 'preview usa exatamente o arquivo preparado')
-assert.match(componentSource, /uploadPortfolioPhotoToImgBB\(prepared\.file/, 'upload recebe exatamente o arquivo preparado')
-assert.match(componentSource, /portfolioPreviewOwnerRef/, 'preview pertence ao UID que iniciou o fluxo')
-assert.match(componentSource, /auth\.currentUser\?\.uid !== currentUid/, 'upload de A não entra no estado de B')
-assert.match(componentSource, /localUrls\.forEach\(\(url\) => URL\.revokeObjectURL\(url\)\)/, 'fechamento e troca A→B revogam previews')
-assert.match(componentSource, /revokePortfolioPreviewUrl\(fotoURL\)/, 'remoção revoga preview local')
-assert.match(componentSource, /portfolioPreviewUrlsRef\.current\.forEach\(\(url\) => URL\.revokeObjectURL\(url\)\)/, 'unmount revoga previews restantes')
-assert.match(componentSource, /disabled=\{portfolioPhotoUploading\}/, 'remoção fica bloqueada durante processamento/upload')
-assert.match(componentSource, /uploadProfilePhotoToImgBB\(file, \{/, 'foto de perfil continua no pipeline anterior')
-assert.match(componentSource, /accept="image\/\*,\.heic,\.heif"/, 'seletor móvel permite abrir a galeria sem forçar câmera')
-assert.match(componentSource, /ref=\{portfolioPhotoInputRef\}/, 'seletor móvel possui referência estável')
-assert.match(componentSource, /portfolioPhotoInputRef\.current\?\.click\(\)/, 'botão abre a galeria diretamente no gesto do usuário')
-const portfolioUploadBody = componentSource.slice(componentSource.indexOf('async function handlePortfolioPhotoUpload'), componentSource.indexOf('async function alterarFotoPortfolio'))
-assert.match(portfolioUploadBody, /currentUser\.getIdToken\(\)/, 'upload usa renovação normal do SDK sem forçar refresh em toda foto')
-assert.doesNotMatch(portfolioUploadBody, /currentUser\.getIdToken\(true\)/, 'upload móvel não força refresh de token desnecessário')
-assert.match(componentSource, /code === "imgbb_config_missing"[\s\S]*envio de fotos ainda não está configurado/, 'configuração ausente recebe erro claro e seguro')
-assert.match(componentSource, /aria-live="polite"/, 'resultado do upload é anunciado de forma acessível')
-assert.match(componentSource, /Aguarde o envio da foto\.\.\./, 'botão explica por que salvar está bloqueado')
-assert.match(componentSource, /tentarNovamenteFotoPortfolio/, 'falha de upload oferece retry explícito')
-assert.match(componentSource, /PORTFOLIO_PHOTO_STATUS\.PREVIEW/, 'foto entra no estado preview')
-assert.match(componentSource, /PORTFOLIO_PHOTO_STATUS\.UPLOADING/, 'foto entra no estado uploading')
-assert.match(componentSource, /PORTFOLIO_PHOTO_STATUS\.UPLOADED/, 'foto entra no estado uploaded')
-assert.match(componentSource, /PORTFOLIO_PHOTO_STATUS\.FAILED/, 'foto entra no estado failed')
-
-const addBody = componentSource.slice(componentSource.indexOf('const adicionarPortfolioItem'), componentSource.indexOf('const editarPortfolioItem'))
-assert.match(addBody, /const nextProfile = \{[\s\S]*profPortfolio:/, 'item usa o portfólio completo que será persistido')
-assert.match(addBody, /await salvarPortfolio\(\{ type: "upsert", id, item \}, nextProfile\)/, 'Adicionar usa mutação dedicada do portfólio')
-assert.doesNotMatch(addBody, /await salvar\(nextProfile\)/, 'Adicionar não dispara escritas acessórias de todo o perfil')
-assert.match(addBody, /setPortfolioDraft\(\(prev\) => \(\{ \.\.\.prev, id, createdAt: item\.createdAt \}\)\)/, 'retentativa reutiliza o mesmo item após falha parcial')
-assert.match(addBody, /Seus dados continuam na tela para tentar novamente/, 'falha de persistência preserva o rascunho')
-assert.match(addBody, /portfolio_name_required[\s\S]*Preencha o nome do serviço/, 'nome vazio recebe erro explícito')
-assert.match(addBody, /withoutLocalPortfolioPreviews\(draftFotos\)/, 'blob local não entra no item persistido')
-const persistenceCallIndex = addBody.indexOf('await salvarPortfolio({ type: "upsert", id, item }, nextProfile)')
-const confirmedProfileIndex = addBody.indexOf('setProfile(')
-assert.ok(persistenceCallIndex >= 0 && confirmedProfileIndex > persistenceCallIndex, 'estado local só confirma depois da escrita privada')
-assert.match(addBody, /result\.publicSynced === false[\s\S]*vitrine pública não foi atualizada/, 'falha parcial é distinguida de falha privada')
-assert.match(addBody, /setPortfolioPhotoSuccess\("Serviço e fotos salvos no portfólio\."\)/, 'sucesso integral depende do retorno da persistência')
-
-const portfolioSaveBody = componentSource.slice(componentSource.indexOf('async function salvarPortfolio'), componentSource.indexOf('const salvar = async'))
-assert.match(portfolioSaveBody, /runTransaction\(canonicalRef[\s\S]*applyPortfolioMutation\(currentPortfolio, mutation\)/, 'mapa canônico usa transação contra estado remoto atual')
-assert.match(portfolioSaveBody, /resolveUserPortfolioMap\(userSnap\.val\(\)\)/, 'primeira mutação preserva dados legados')
-assert.match(portfolioSaveBody, /portfolioCanonicalVersion: 1/, 'marcador distingue vazio canônico de ausência legada')
-assert.match(portfolioSaveBody, /"profile\/profPortfolio"[\s\S]*"profile\/portfolio"/, 'cópias legadas são derivadas do resultado confirmado')
-assert.match(portfolioSaveBody, /validatePortfolioIdentity\(expectedUid\)[\s\S]*stage = "private_write"/, 'persistência confirma identidade antes da escrita')
-assert.match(portfolioSaveBody, /stage = "legacy_sync"[\s\S]*validatePortfolioIdentity\(expectedUid\)[\s\S]*update\(ref\(database, userBasePath\)/, 'identidade é conferida novamente antes das cópias privadas')
-assert.doesNotMatch(portfolioSaveBody, /settings\/mapa|settings\/ui|usuariosOnline|subscriptions|assinatura/, 'persistência do portfólio não toca em configurações ou comércio')
-
-const generalSaveStart = componentSource.indexOf('const salvar = async')
-const generalSaveBody = componentSource.slice(generalSaveStart, componentSource.indexOf('const configSnapshot =', generalSaveStart))
-assert.match(generalSaveBody, /withoutPortfolioFields\(profileToSave\)/, 'salvamento geral remove campos de portfólio do payload espalhado')
-assert.doesNotMatch(generalSaveBody, /"profile\/profPortfolio"|"profile\/portfolio"/, 'salvamento geral não grava mirrors privados do portfólio')
-assert.doesNotMatch(generalSaveBody, /profPortfolio,|portfolio: portfolioMap/, 'salvamento geral não regrava listas capturadas no React')
-assert.doesNotMatch(generalSaveBody, /publicPortfolio\//, 'salvamento geral não projeta lista pública a partir de estado antigo')
-assert.doesNotMatch(generalSaveBody, /syncPortfolioProjection/, 'salvamento geral não chama um segundo escritor de portfólio')
-assert.match(generalSaveBody, /delete publicProfilePayload\.portfolio/, 'perfil público geral preserva o portfólio já confirmado')
+assert.match(componentSource, /<ProfessionalPortfolioSection/, 'PerfilDrawer usa a interface 2.0')
+assert.match(componentSource, /withoutPortfolioFields\(profileToSave\)/, 'salvamento geral remove campos legados do portfólio')
+assert.doesNotMatch(componentSource, /async function salvarPortfolio|adicionarPortfolioItem|removerPortfolioItem/, 'escritor direto antigo não permanece na interface')
 assert.match(componentSource, /currentProfSection !== "perfilProfissional" && currentProfSection !== "portfolio"/, 'botão global Salvar não aparece na seção de portfólio')
-assert.match(componentSource, /createPortfolioOperationQueue\(\)/, 'fila síncrona protege operações mesmo antes do rerender do botão')
-assert.match(componentSource, /stage: "private_read"[\s\S]*getPortfolioReadErrorMessage/, 'falha de leitura privada recebe estado e mensagem próprios')
-assert.match(componentSource, /currentPortfolioReadStatus\.error[\s\S]*Carregando seus serviços/, 'erro ou carregamento não são apresentados como zero serviços')
-assert.match(componentSource, /profPortfolio: portfolioSalvo,/, 'lista canônica realmente vazia substitui estado visual antigo')
+assert.match(componentSource, /profPortfolio: portfolioSalvo,/, 'dados legados continuam disponíveis somente para indicação segura')
 assert.match(
   componentSource,
   /const dataWithoutPortfolio = withoutPortfolioFields\(data\);[\s\S]*?\.\.\.dataWithoutPortfolio/,
-  'listener legado não reintroduz portfólio antigo no estado React',
+  'listener de perfil não reintroduz arrays legados no salvamento geral',
 )
 
-const editBody = componentSource.slice(componentSource.indexOf('const editarPortfolioItem'), componentSource.indexOf('const removerPortfolioItem'))
-const removeBody = componentSource.slice(componentSource.indexOf('const removerPortfolioItem'), componentSource.indexOf('const updateAddressDraft'))
-assert.doesNotMatch(editBody, /optimizePortfolioPhoto|uploadPortfolioPhotoToImgBB/, 'editar sem nova foto não reprocessa URLs')
-assert.doesNotMatch(removeBody, /optimizePortfolioPhoto|uploadPortfolioPhotoToImgBB/, 'remover item não reprocessa imagens')
-assert.match(removeBody, /await salvarPortfolio\(\{ type: "remove", id \}, profile\)/, 'remoção também usa o único escritor dedicado')
-assert.doesNotMatch(chatSource, /optimizePortfolioPhoto|uploadPortfolioPhotoToImgBB/, 'Chat permanece fora do pipeline')
-assert.match(uploadRouteSource, /verifyIdToken\(idToken\)/, 'endpoint continua autenticado')
-assert.match(uploadRouteSource, /decoded\.uid[^\n]+!== uid/, 'endpoint mantém ownership do UID')
+assert.match(portfolioSectionSource, /optimizePortfolioPhoto\(file\)/, 'foto usa o otimizador móvel existente')
+assert.match(portfolioSectionSource, /uploadPortfolioPhotoToImgBB\(prepared\.file/, 'arquivo otimizado segue para o ImgBB')
+assert.match(portfolioSectionSource, /auth\.currentUser[\s\S]*currentUser\?\.uid/, 'UID é validado imediatamente antes do upload')
+assert.match(portfolioSectionSource, /new AbortController\(\)/, 'upload e requisições podem ser cancelados')
+assert.match(portfolioSectionSource, /URL\.revokeObjectURL/, 'previews locais são liberados')
+assert.match(portfolioSectionSource, /professionalServiceOperationFingerprint/, 'retry compara o conteúdo da operação')
+assert.match(portfolioSectionSource, /operationRef\.current\?\.fingerprint === fingerprint/, 'retry idêntico reutiliza o operationId')
+assert.match(portfolioSectionSource, /createService\(\{ operationId, service: payload \}\)/, 'criação usa somente a API autenticada')
+assert.match(portfolioSectionSource, /editService\([\s\S]*expectedRevision: draft\.revision/, 'edição envia revision autoritativa')
+assert.match(portfolioSectionSource, /deleteService\([\s\S]*expectedRevision: service\.revision/, 'exclusão envia revision autoritativa')
+assert.doesNotMatch(portfolioSectionSource, /firebaseDebug|runTransaction\(|\bupdate\(|\bset\(ref|database/, 'interface 2.0 não escreve diretamente no RTDB')
+assert.match(portfolioSectionSource, /A lista não foi interpretada como vazia/, 'falha de leitura não aparece como zero serviços')
+assert.match(portfolioSectionSource, /aguardando migração[\s\S]*não são alterados/, 'serviços legados recebem indicação sem sincronização')
+assert.match(portfolioSectionSource, /ownerUidRef[\s\S]*cancelPhotoRequests[\s\S]*releaseLocalPhotos/, 'troca de conta invalida uploads e previews')
+assert.match(portfolioSectionSource, /PROFESSIONAL_SERVICE_PHOTO_STATUS\.PREVIEW/, 'foto possui estado preview')
+assert.match(portfolioSectionSource, /PROFESSIONAL_SERVICE_PHOTO_STATUS\.UPLOADING/, 'foto possui estado uploading')
+assert.match(portfolioSectionSource, /PROFESSIONAL_SERVICE_PHOTO_STATUS\.UPLOADED/, 'foto possui estado uploaded')
+assert.match(portfolioSectionSource, /PROFESSIONAL_SERVICE_PHOTO_STATUS\.FAILED/, 'foto possui estado failed')
+
+assert.match(portfolioFormSource, /accept="image\/jpeg,image\/png,image\/webp,image\/gif,image\/heic,image\/heif,\.heic,\.heif"/, 'seletor móvel inclui HEIC e HEIF')
+assert.match(portfolioFormSource, /Aguarde o envio da foto\.\.\./, 'salvamento explica upload pendente')
+assert.match(portfolioFormSource, /Tentar novamente/, 'falha de foto oferece retry explícito')
+assert.match(portfolioFormSource, /aria-live="polite"/, 'erros e confirmações são anunciados')
+assert.match(portfolioClientSource, /Authorization: `Bearer \$\{token\}`/, 'API usa ID token Firebase')
+assert.match(portfolioClientSource, /credentials: 'same-origin'/, 'cliente limita credenciais à mesma origem')
+assert.match(portfolioClientSource, /professional_service_request_aborted/, 'cliente distingue cancelamento por logout/troca de conta')
+
+assert.match(componentSource, /uploadProfilePhotoToImgBB\(file, \{/, 'foto de perfil continua no pipeline anterior')
+assert.doesNotMatch(chatSource, /professionalServices|uploadPortfolioPhotoToImgBB/, 'Chat permanece fora do Portfólio 2.0')
+assert.match(uploadRouteSource, /verifyIdToken\(idToken\)/, 'endpoint de imagem continua autenticado')
+assert.match(uploadRouteSource, /decoded\.uid[^\n]+!== uid/, 'endpoint de imagem mantém ownership do UID')
 assert.match(uploadRouteSource, /api\.imgbb\.com\/1\/upload/, 'provider permanece ImgBB')
 assert.match(uploadRouteSource, /AbortController/, 'endpoint limita espera do provider')
-assert.match(uploadRouteSource, /imgbb_unavailable/, 'falha de rede do provider recebe erro sanitizado')
-assert.doesNotMatch(uploadRouteSource, /data\?\.error\?\.message\s*\|\|/, 'mensagem bruta do provider não é devolvida ao navegador')
-assert.doesNotMatch(uploadRouteSource, /firebase\/storage|uploadBytes|getDownloadURL/, 'path não migrou para Firebase Storage')
-assert.match(componentSource, /portfolioPhotoAbortControllerRef\.current\?\.abort\(\)/, 'fechamento do perfil cancela upload pendente')
-assert.match(componentSource, /withoutLocalPortfolioPreviews\(normalizePortfolioFotos\(item\)\)/, 'defesa adicional remove blob antes do Firebase')
-assert.match(componentSource, /code === "imgbb_request_timeout"[\s\S]*foto demorou para enviar/, 'timeout novo mantém mensagem clara na foto de perfil')
+assert.doesNotMatch(uploadRouteSource, /data\?\.error\?\.message\s*\|\|/, 'mensagem bruta do provider não volta ao navegador')
 
 const fixtureSpecs = [
   { name: 'jpeg-horizontal-4000x3000', width: 4000, height: 3000, format: 'jpeg' },

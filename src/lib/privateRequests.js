@@ -7,6 +7,7 @@ import { buildPushPayload } from './pushPayload'
 import { createEventNotificationId, EVENT_NOTIFICATION_TYPES, formatEventSchedule } from './eventNotifications'
 import { registrarMensagemSistemaConfiavel } from './trustedSystemChat'
 import { announceSubscriptionRequired } from './subscriptionClient'
+import { PROFESSIONAL_SERVICE_LEGACY_DEFAULT_ID } from './professionalServiceModel'
 
 const DEBUG_PRIVATE_REQUESTS = process.env.NODE_ENV !== 'production'
 const PRIVATE_REQUEST_USER_ERROR = 'Não foi possível enviar a solicitação. Tente novamente.'
@@ -213,7 +214,7 @@ function normalizeService(service = {}, provider = {}) {
   const valor = pickText(service.valor, service.faixaPreco, service.preco, service.priceRange, service.price)
 
   return {
-    id: safeId(pickText(service.id, service.serviceId, service.key, `service_${Date.now()}`)),
+    id: safeId(pickText(service.id, service.serviceId, service.key)),
     titulo,
     nome: titulo,
     categoriaId,
@@ -223,7 +224,41 @@ function normalizeService(service = {}, provider = {}) {
     faixaPreco: pickText(service.faixaPreco, service.valor, service.priceRange, service.preco),
     tempoMedio: pickText(service.tempoMedio, service.tempo, service.duration),
     regiao: pickText(service.regiao, service.region, provider.profCidadeAtende, provider.correRegiao, provider.cidade),
-    fotos: Array.isArray(service.fotos) ? service.fotos.slice(0, 5) : [],
+    fotos: Array.isArray(service.fotos)
+      ? service.fotos.slice(0, 5)
+      : service.fotos && typeof service.fotos === 'object'
+        ? Object.values(service.fotos).slice(0, 5)
+        : [],
+  }
+}
+
+export function resolveContractableService(provider = {}, requestedService = null) {
+  const explicit = requestedService && typeof requestedService === 'object' ? requestedService : null
+  if (explicit && safeId(pickText(explicit.id, explicit.serviceId, explicit.key))) return explicit
+
+  const portfolio = Array.isArray(provider?.portfolio)
+    ? provider.portfolio
+    : provider?.portfolio && typeof provider.portfolio === 'object'
+      ? Object.values(provider.portfolio)
+      : []
+  const active = portfolio.find((service) => (
+    service
+    && service.ativo !== false
+    && service.active !== false
+    && safeId(pickText(service.id, service.serviceId, service.key))
+  ))
+  if (active) return active
+
+  if (
+    Number(provider?.portfolioSchemaVersion) === 2
+    || provider?.portfolioSource === 'canonical'
+  ) {
+    return null
+  }
+  return {
+    id: PROFESSIONAL_SERVICE_LEGACY_DEFAULT_ID,
+    serviceId: PROFESSIONAL_SERVICE_LEGACY_DEFAULT_ID,
+    nome: pickText(provider.profTitulo, provider.correTitulo, provider.nome, 'Serviço solicitado'),
   }
 }
 
@@ -417,6 +452,12 @@ export async function createPrivateRequest({
   }
 
   const service = normalizeService(servico, profissional)
+  if (!service.id) {
+    throw createAgendaInternalError(
+      'professional_service_required',
+      'Escolha um serviço ativo antes de enviar a solicitação.',
+    )
+  }
   const currentUser = auth.currentUser
   let result = null
   try {
