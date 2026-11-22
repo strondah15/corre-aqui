@@ -26,6 +26,8 @@ let vinhetaJaRodouNoRuntime = false
 let googleRedirectPromise = null
 const USER_READ_TIMEOUT_MS = 7000
 const AUTH_NULL_GRACE_MS = 2200
+const SPLASH_MIN_DURATION_MS = 2400
+const SPLASH_REDUCED_MOTION_DURATION_MS = 1450
 const DEBUG_AUTH =
   process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true'
 const DEBUG_PRESENCE =
@@ -277,11 +279,12 @@ export default function LoginGate({ children }) {
       return undefined
     }
 
-    const frame = window.requestAnimationFrame(() => {
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    const timer = window.setTimeout(() => {
       setSplashMinDone(true)
-    })
+    }, reduceMotion ? SPLASH_REDUCED_MOTION_DURATION_MS : SPLASH_MIN_DURATION_MS)
 
-    return () => window.cancelAnimationFrame(frame)
+    return () => window.clearTimeout(timer)
   }, [pularVinheta])
 
   useEffect(() => {
