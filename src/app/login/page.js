@@ -15,6 +15,9 @@ let loginRedirectPromise = null
 const DEBUG_AUTH =
   process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true'
 
+const LOGIN_PAGE_CLASS_NAME =
+  'relative z-[1] isolate grid min-h-[100dvh] place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white'
+
 function debugAuth(evento, dados = {}) {
   if (!DEBUG_AUTH) return
   console.log(`[CorreAqui Auth /login] ${evento}`, dados)
@@ -170,7 +173,7 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <main className="grid min-h-[100dvh] place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white">
+      <main className={LOGIN_PAGE_CLASS_NAME}>
         <div className="w-full max-w-sm rounded-[28px] border border-white/35 bg-white/92 p-5 text-center text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.22)] backdrop-blur-2xl">
           <LogoCorreAqui className="mx-auto h-20 w-20 rounded-[22px] bg-white shadow-[0_14px_34px_rgba(37,99,235,0.18)]" />
           <h1 className="mt-4 text-xl font-black text-blue-950">
@@ -185,7 +188,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-[100dvh] place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white">
+    <main className={LOGIN_PAGE_CLASS_NAME}>
       <div className="w-full max-w-md rounded-[32px] border border-white/35 bg-white/92 p-5 text-center text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.22)] backdrop-blur-2xl sm:p-6">
         <LogoCorreAqui className="mx-auto h-24 w-24 rounded-[28px] bg-white shadow-[0_18px_55px_rgba(37,99,235,0.2)]" />
         <h1 className="mt-3 text-2xl font-black text-blue-950">Entrar no app</h1>
