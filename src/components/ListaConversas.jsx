@@ -74,8 +74,10 @@ export default function ListaConversas({
   meuId,
   onAbrirChat,
   onPreloadChat,
+  onUnreadCountChange,
   limit = 60,
   logoUrl,
+  compact = false,
 }) {
   const openConversationLockRef = useRef('')
   const sessionUid = String(meuId || '')
@@ -124,6 +126,10 @@ export default function ListaConversas({
   const totalNaoLidas = useMemo(() => {
     return (conversas || []).reduce((acc, c) => acc + (c?.unread === true ? 1 : 0), 0)
   }, [conversas])
+
+  useEffect(() => {
+    onUnreadCountChange?.(totalNaoLidas)
+  }, [onUnreadCountChange, totalNaoLidas])
 
   const conversasComIndex = useMemo(() => {
     return (conversas || []).map((c) => {
@@ -212,6 +218,138 @@ export default function ListaConversas({
   useEffect(() => {
     openConversationLockRef.current = ''
   }, [sessionUid])
+
+  if (compact) {
+    return (
+      <section className="bg-white text-slate-950 dark:bg-slate-950 dark:text-white" aria-label="Conversas">
+        <div className="border-b border-slate-200 bg-slate-50/90 px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.035] md:px-4">
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm dark:border-white/10 dark:bg-white/[0.06]">
+            <span className="text-sm text-slate-400" aria-hidden="true">⌕</span>
+            <span className="sr-only">Buscar conversa</span>
+            <input
+              value={busca}
+              onChange={(event) => setBusca(event.target.value)}
+              placeholder="Buscar conversa"
+              className="min-w-0 flex-1 bg-transparent text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500 md:text-sm"
+            />
+          </label>
+
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5" aria-label="Filtrar conversas">
+            {[
+              ['todas', 'Todas', totais.todas],
+              ['ativas', 'Ativas', totais.ativas],
+              ['arquivadas', 'Histórico', totais.arquivadas],
+            ].map(([id, label, count]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setFiltro(id)}
+                aria-pressed={filtro === id}
+                className={[
+                  'h-8 shrink-0 rounded-full border px-3 text-[11px] font-black transition active:scale-[0.98]',
+                  filtro === id
+                    ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.08]',
+                ].join(' ')}
+              >
+                {label} <span className="opacity-70">{count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="max-h-[min(62dvh,42rem)] overflow-y-auto overscroll-contain">
+          {loading ? (
+            <ListPanelSkeleton
+              label="Carregando conversas"
+              rows={4}
+              showHeader={false}
+              className="border-0 bg-transparent shadow-none"
+            />
+          ) : conversasFiltradas.length === 0 ? (
+            <div className="px-5 py-10 text-center">
+              <div className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-xl text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">💬</div>
+              <div className="mt-3 text-sm font-black text-slate-900 dark:text-white">Nenhuma conversa aqui</div>
+              <p className="mx-auto mt-1 max-w-xs text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+                Conversas de atendimentos aceitos aparecem nesta lista.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-200 dark:divide-white/10">
+              {conversasFiltradas.map((c) => {
+                const hora = timeShort(c._timestampMs)
+                const preview = String(c.preview || '').trim()
+                const pessoa = c.pessoa || 'Participante'
+                const enviadaPorMim = c.lastById && meuId && String(c.lastById) === String(meuId)
+                const meta = c._statusMeta || statusMeta(c)
+                const avatarUrl = safeAvatarUrl(c?.outroFotoURL || c?.outroPhotoURL || c?.outroFoto)
+                const inicial = pessoa.slice(0, 1).toUpperCase() || 'C'
+
+                return (
+                  <motion.button
+                    key={c.pedidoId}
+                    type="button"
+                    whileTap={{ scale: 0.99 }}
+                    onClick={() => abrirConversa(c.pedidoId)}
+                    onPointerEnter={() => onPreloadChat?.(c.pedidoId)}
+                    onPointerDown={() => onPreloadChat?.(c.pedidoId)}
+                    onFocus={() => onPreloadChat?.(c.pedidoId)}
+                    className={[
+                      'flex w-full items-center gap-3 px-3 py-2.5 text-left transition md:px-4 md:py-3',
+                      c.unread
+                        ? 'bg-blue-50/90 hover:bg-blue-100/80 dark:bg-blue-500/10 dark:hover:bg-blue-500/15'
+                        : 'bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-white/[0.04]',
+                    ].join(' ')}
+                  >
+                    <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-sm font-black text-white shadow-sm md:h-11 md:w-11">
+                      {avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={avatarUrl}
+                          alt=""
+                          width="44"
+                          height="44"
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : inicial}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-black text-slate-950 dark:text-white">{pessoa}</span>
+                        {c.unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" aria-label="Mensagens não lidas" /> : null}
+                      </div>
+                      <div className="mt-0.5 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        {preview ? (
+                          <>{enviadaPorMim ? <span className="text-slate-400 dark:text-slate-500">Você: </span> : null}{preview}</>
+                        ) : 'Sem mensagens ainda'}
+                      </div>
+                    </div>
+
+                    <div className="flex w-[4.75rem] shrink-0 flex-col items-end gap-1 text-right">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{hora}</span>
+                      {c.unread ? (
+                        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white">
+                          {Math.min(99, Number(c.unreadCount || 1))}
+                        </span>
+                      ) : (
+                        <span className="inline-flex max-w-full items-center gap-1 truncate text-[9px] font-black uppercase tracking-[0.04em] text-slate-400 dark:text-slate-500">
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} />
+                          <span className="truncate">{meta.label}</span>
+                        </span>
+                      )}
+                    </div>
+                  </motion.button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[#050b14] text-white shadow-[0_26px_80px_rgba(0,0,0,0.35)] md:rounded-[32px]">

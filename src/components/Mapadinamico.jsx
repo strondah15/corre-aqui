@@ -116,6 +116,7 @@ const PerfilDrawer = dynamic(() => import('@/components/PerfilDrawer'), { loadin
 const ModalIA = dynamic(() => import('./ModalIA'), { loading: CreationModalLoading })
 const ModalAgenda = dynamic(() => import('./ModalAgenda'), { loading: AgendaModalLoading })
 const ListaConversas = dynamic(() => import('@/components/ListaConversas'), { loading: InboxPanelLoading })
+const CorreCommunicationCenter = dynamic(() => import('@/components/CorreCommunicationCenter'), { loading: InboxPanelLoading })
 const MeusPedidosCliente = dynamic(() => import('@/components/MeusPedidosCliente'), { loading: OrdersPanelLoading })
 const AgendaProfissional = dynamic(() => import('@/components/AgendaProfissional'), { loading: AgendaPanelLoading })
 const CentralNotificacoes = dynamic(() => import('@/components/CentralNotificacoes'), { loading: LightPanelLoading })
@@ -1388,6 +1389,7 @@ function GlobalProfileMenu({
 export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {}) {
   const router = useRouter()
   const [tab, setTab] = useState('corre') // corre | inbox | agenda
+  const [correCommunicationTab, setCorreCommunicationTab] = useState('conversations')
   const [clientePainelBaixo, setClientePainelBaixo] = useState('') // '' | meusPedidos | conversas
 
   const [modoApp, setModoApp] = useState(initialMode === 'cliente' || initialMode === 'corre' ? initialMode : 'corre') // cliente | corre
@@ -4275,7 +4277,12 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
       })
       return
     }
-    if (['inbox', 'agenda', 'seguranca', 'ganhos'].includes(id)) {
+    if (id === 'inbox') {
+      setCorreCommunicationTab('conversations')
+      setTab('inbox')
+      return
+    }
+    if (['agenda', 'seguranca', 'ganhos'].includes(id)) {
       setTab(id)
       return
     }
@@ -4351,6 +4358,8 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
           'relative z-10 mx-auto w-full max-w-[1280px] px-2.5 pt-0 sm:px-5 md:px-4 md:py-5 lg:px-6',
           modoApp === 'corre' && tab === 'agenda'
             ? 'flex h-[100dvh] flex-col overflow-hidden pb-0 md:block md:h-auto md:overflow-visible md:pb-32'
+            : modoApp === 'corre' && tab === 'inbox'
+              ? 'pb-[var(--bottom-bar-safe-space)] md:pb-32'
             : 'pb-24 md:pb-32',
         ].join(' ')}
       >
@@ -4441,7 +4450,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setTab('inbox')}
+                      onClick={() => {
+                        setCorreCommunicationTab('notices')
+                        setTab('inbox')
+                      }}
                       title="Notificações e conversas"
                       className="relative grid h-9 w-9 place-items-center rounded-[14px] bg-white/90 text-sm shadow-[0_12px_26px_rgba(15,23,42,0.14)] transition hover:scale-[1.03] min-[390px]:h-10 min-[390px]:w-10 min-[390px]:rounded-[16px] min-[390px]:text-base md:h-14 md:w-14 md:rounded-[22px] md:text-lg"
                     >
@@ -4500,23 +4512,11 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
             </div>
 
             {tab === 'inbox' && (
-              <div className="mb-3 overflow-hidden rounded-[24px] bg-white border border-slate-200 shadow-[0_14px_44px_rgba(15,23,42,0.12)] md:mb-4 md:rounded-[32px] md:shadow-[0_18px_60px_rgba(15,23,42,0.14)]">
-                <div className="px-4 py-3 border-b border-slate-200 bg-gradient-to-br from-white to-slate-50">
-                  <div className="text-base font-extrabold text-slate-950">💬 Inbox</div>
-                  <div className="mt-1 text-xs text-slate-500">Notificações, conversas dos pedidos aceitos e histórico rápido.</div>
-                </div>
-
-                <div className="space-y-3 p-3 bg-slate-50">
-                  <CentralNotificacoes
-                    key={`notifications:${meuId}`}
-                    meuId={meuId}
-                    corres={pedidosConhecidos}
-                    onAbrirChat={abrirChatFocado}
-                    onAbrirPedido={abrirPedidoFocado}
-                    onAction={abrirAcaoNotificacao}
-                    onToast={showToast}
-                  />
-
+              <CorreCommunicationCenter
+                activeTab={correCommunicationTab}
+                onTabChange={setCorreCommunicationTab}
+                className="mb-3 md:mb-4"
+                conversations={(
                   <ListaConversas
                     key={`conversations:${meuId}`}
                     meuId={meuId}
@@ -4530,8 +4530,19 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                       }
                     }}
                   />
-                </div>
-              </div>
+                )}
+                notices={(
+                  <CentralNotificacoes
+                    key={`notifications:${meuId}`}
+                    meuId={meuId}
+                    corres={pedidosConhecidos}
+                    onAbrirChat={abrirChatFocado}
+                    onAbrirPedido={abrirPedidoFocado}
+                    onAction={abrirAcaoNotificacao}
+                    onToast={showToast}
+                  />
+                )}
+              />
             )}
           </>
         )}
@@ -4557,7 +4568,10 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
                     privateRequestsError={privateRequestsError}
                     notificacoesCount={notificacoesNaoLidas}
                     onAbrirPerfil={() => setOpenProfileMenu(true)}
-                    onAbrirNotificacoes={() => setTab('inbox')}
+                    onAbrirNotificacoes={() => {
+                      setCorreCommunicationTab('notices')
+                      setTab('inbox')
+                    }}
                     onAbrirChat={abrirChatFocado}
                     onPreloadChat={preloadChatFocado}
                     onToast={showToast}
@@ -6016,7 +6030,7 @@ export default function Mapadinamico({ initialMode = 'corre', onBackToMode } = {
         />
       ) : null}
 
-      {modoApp === 'corre' && !openIA && !isMapOpen ? (
+      {modoApp === 'corre' && tab !== 'inbox' && !openIA && !isMapOpen ? (
         <button
           type="button"
           onClick={() => onBottomTab('disponivel')}

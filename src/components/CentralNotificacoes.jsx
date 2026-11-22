@@ -307,7 +307,9 @@ export default function CentralNotificacoes({
   onAbrirPedido,
   onAction,
   onToast,
+  onUnreadCountChange,
   limit = 80,
+  compact = false,
 }) {
   const [notificacoes, setNotificacoes] = useState([])
   const [filtro, setFiltro] = useState('todas')
@@ -414,6 +416,10 @@ export default function CentralNotificacoes({
 
   const naoLidas = useMemo(() => notificacoes.filter((n) => n?.lida !== true && n?.read !== true).length, [notificacoes])
   const lidas = notificacoes.length - naoLidas
+
+  useEffect(() => {
+    onUnreadCountChange?.(naoLidas)
+  }, [naoLidas, onUnreadCountChange])
 
   const filtradas = useMemo(() => {
     if (filtro === 'nao_lidas') return notificacoes.filter((n) => n?.lida !== true && n?.read !== true)
@@ -524,6 +530,154 @@ export default function CentralNotificacoes({
     }
 
     onAbrirPedido?.(pedido)
+  }
+
+  if (compact) {
+    return (
+      <section className="bg-white text-slate-950 dark:bg-slate-950 dark:text-white" aria-label="Avisos">
+        <div className="border-b border-slate-200 bg-slate-50/90 px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.035] md:px-4">
+          <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+            <div className="flex min-w-0 flex-1 gap-1.5" aria-label="Filtrar avisos">
+              {[
+                ['todas', 'Todas', notificacoes.length],
+                ['nao_lidas', 'Não lidas', naoLidas],
+                ['lidas', 'Lidas', lidas],
+              ].map(([id, label, count]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setFiltro(id)}
+                  aria-pressed={filtro === id}
+                  className={[
+                    'h-8 shrink-0 rounded-full border px-3 text-[11px] font-black transition active:scale-[0.98]',
+                    filtro === id
+                      ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.08]',
+                  ].join(' ')}
+                >
+                  {label} <span className="opacity-70">{count}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={marcarTodas}
+              disabled={naoLidas === 0}
+              className="h-8 shrink-0 rounded-full border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.08]"
+            >
+              Marcar lidas
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[min(62dvh,42rem)] overflow-y-auto overscroll-contain">
+          {sourceErrorCount ? (
+            <div role="alert" className="m-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-200">
+              {sourceErrorCount === 2
+                ? 'Não foi possível carregar os avisos agora.'
+                : 'Parte dos avisos não pôde ser carregada agora.'}
+            </div>
+          ) : null}
+
+          {notificationsLoading ? (
+            <ListPanelSkeleton
+              label="Carregando avisos"
+              rows={4}
+              showHeader={false}
+              className="border-0 bg-transparent shadow-none"
+            />
+          ) : filtradas.length === 0 ? (
+            <div className="px-5 py-10 text-center">
+              <div className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-emerald-50 text-xl text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">✓</div>
+              <div className="mt-3 text-sm font-black text-slate-900 dark:text-white">
+                {sourceErrorCount ? 'Sem avisos disponíveis' : 'Tudo em dia'}
+              </div>
+              <p className="mx-auto mt-1 max-w-xs text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+                {sourceErrorCount ? 'Tente novamente daqui a pouco.' : 'Os avisos importantes aparecem nesta lista.'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-200 dark:divide-white/10">
+              {filtradas.map((n) => {
+                const info = tipoInfo(n?.tipo)
+                const unread = n?.lida !== true && n?.read !== true
+                const actionLabel = n?.action?.label || defaultActionLabel(n, info)
+
+                return (
+                  <motion.article
+                    key={n.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={[
+                      'flex min-w-0 items-stretch transition',
+                      unread
+                        ? 'bg-blue-50/90 hover:bg-blue-100/80 dark:bg-blue-500/10 dark:hover:bg-blue-500/15'
+                        : 'bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-white/[0.04]',
+                    ].join(' ')}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => abrir(n)}
+                      className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left md:px-4 md:py-3"
+                    >
+                      <span
+                        className={[
+                          'grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-black',
+                          info.tone === 'emerald' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : '',
+                          info.tone === 'amber' ? 'bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200' : '',
+                          info.tone === 'blue' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300' : '',
+                          info.tone === 'purple' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300' : '',
+                          info.tone === 'rose' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : '',
+                          info.tone === 'slate' ? 'bg-slate-100 text-slate-700 dark:bg-white/[0.08] dark:text-slate-300' : '',
+                        ].filter(Boolean).join(' ')}
+                        aria-hidden="true"
+                      >
+                        {info.icon}
+                      </span>
+
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-black text-slate-950 dark:text-white">
+                            {n?.titulo || info.label}
+                          </span>
+                          {unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" aria-label="Aviso não lido" /> : null}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          {n?.mensagem || info.label}
+                        </span>
+                        <span className="mt-1 block truncate text-[10px] font-black uppercase tracking-[0.05em] text-blue-600 dark:text-blue-300">
+                          {actionLabel} →
+                        </span>
+                      </span>
+
+                      <span
+                        className="shrink-0 self-start pt-0.5 text-[10px] font-bold text-slate-400 dark:text-slate-500"
+                        title={formatDataHora(n?.criadoEm || n?.createdAt)}
+                      >
+                        {formatTempo(n?.criadoEm || n?.createdAt)}
+                      </span>
+                    </button>
+
+                    {unread ? (
+                      <button
+                        type="button"
+                        onClick={() => marcarLida(n)}
+                        className="w-11 shrink-0 border-l border-slate-200 text-sm font-black text-slate-400 transition hover:bg-white/70 hover:text-blue-600 dark:border-white/10 dark:hover:bg-white/[0.06] dark:hover:text-blue-300"
+                        aria-label="Marcar aviso como lido"
+                        title="Marcar como lido"
+                      >
+                        ✓
+                      </button>
+                    ) : null}
+                  </motion.article>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+    )
   }
 
   return (

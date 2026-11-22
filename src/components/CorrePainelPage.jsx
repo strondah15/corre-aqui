@@ -26,14 +26,15 @@ function LightPanelLoading() {
 const AgendaProfissional = dynamic(() => import('@/components/AgendaProfissional'), { loading: AgendaPanelLoading })
 const CentralNotificacoes = dynamic(() => import('@/components/CentralNotificacoes'), { loading: LightPanelLoading })
 const ListaConversas = dynamic(() => import('@/components/ListaConversas'), { loading: InboxPanelLoading })
+const CorreCommunicationCenter = dynamic(() => import('@/components/CorreCommunicationCenter'), { loading: InboxPanelLoading })
 const PainelProblemasDenuncias = dynamic(() => import('@/components/PainelProblemasDenuncias'), { loading: LightPanelLoading })
 
 const META = {
   inbox: {
     icon: '💬',
-    eyebrow: 'Inbox',
-    title: 'Conversas e notificações',
-    subtitle: 'Mensagens, aceites, conclusões e avisos importantes em uma tela limpa.',
+    eyebrow: 'Comunicação',
+    title: 'Conversas e avisos',
+    subtitle: 'Acompanhe mensagens e atualizações importantes em abas compactas.',
   },
   agenda: {
     icon: '📅',
@@ -242,26 +243,30 @@ export default function CorrePainelPage({ tipo = 'inbox' }) {
       <div className={['relative -mt-5 rounded-t-[34px] bg-white px-3 pt-5 shadow-[0_-18px_60px_rgba(15,23,42,0.10)] md:-mt-7 md:rounded-t-[44px] md:px-6 md:pt-7', tipo === 'agenda' ? 'flex min-h-0 flex-1 flex-col pb-2' : 'pb-[calc(env(safe-area-inset-bottom)+1.5rem)]'].join(' ')}>
         <section className={['mx-auto w-full max-w-5xl', tipo === 'agenda' ? 'min-h-0 flex-1' : ''].join(' ')}>
           {tipo === 'inbox' ? (
-            <div className="grid gap-3 md:gap-4">
-              <CentralNotificacoes
-                key={`notifications:${uid}`}
-                meuId={uid}
-                corres={meusPedidos}
-                onAbrirChat={abrirChat}
-                onAbrirPedido={(pedido) => {
-                  const id = pedido?.id || pedido?.pedidoId
-                  if (id) navigateOnce(`/pedido/${encodeURIComponent(String(id))}?voltar=inbox`)
-                  else voltarCorre()
-                }}
-                onAction={abrirAcaoNotificacao}
-              />
-              <ListaConversas
-                key={`conversations:${uid}`}
-                meuId={uid}
-                onAbrirChat={(pedidoId) => abrirChat({ id: pedidoId })}
-                onPreloadChat={(pedidoId) => preloadChat({ id: pedidoId })}
-              />
-            </div>
+            <CorreCommunicationCenter
+              conversations={(
+                <ListaConversas
+                  key={`conversations:${uid}`}
+                  meuId={uid}
+                  onAbrirChat={(pedidoId) => abrirChat({ id: pedidoId })}
+                  onPreloadChat={(pedidoId) => preloadChat({ id: pedidoId })}
+                />
+              )}
+              notices={(
+                <CentralNotificacoes
+                  key={`notifications:${uid}`}
+                  meuId={uid}
+                  corres={meusPedidos}
+                  onAbrirChat={abrirChat}
+                  onAbrirPedido={(pedido) => {
+                    const id = pedido?.id || pedido?.pedidoId
+                    if (id) navigateOnce(`/pedido/${encodeURIComponent(String(id))}?voltar=inbox`)
+                    else voltarCorre()
+                  }}
+                  onAction={abrirAcaoNotificacao}
+                />
+              )}
+            />
           ) : null}
 
           {tipo === 'agenda' ? (
