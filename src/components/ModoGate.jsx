@@ -1066,8 +1066,8 @@ export default function ModoGate() {
 
       <div className="relative mx-auto flex min-h-[calc(100dvh_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)_-_1.75rem)] w-full max-w-[780px] flex-col justify-center">
         <header className="mx-auto w-full max-w-[620px] text-center">
-          <div data-mode-selection-brand className="flex items-center justify-center gap-2.5 sm:gap-3">
-            <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden min-[390px]:h-16 min-[390px]:w-16 sm:h-[72px] sm:w-[72px]">
+          <div data-mode-selection-brand className="flex items-center justify-center gap-0.5 min-[390px]:gap-1 sm:gap-1.5">
+            <div data-mode-selection-logo className="grid h-[54px] w-[54px] shrink-0 place-items-center overflow-hidden min-[390px]:h-[62px] min-[390px]:w-[62px] sm:h-[68px] sm:w-[68px]">
               <Image
                 src="/corre-logo-mark.png"
                 width={512}
@@ -1075,14 +1075,14 @@ export default function ModoGate() {
                 alt="Corre Aqui"
                 priority
                 unoptimized
-                className="h-full w-full scale-[1.7] object-contain drop-shadow-[0_12px_22px_rgba(15,23,42,0.20)]"
+                className="h-full w-full translate-y-[6%] scale-[1.66] object-contain drop-shadow-[0_12px_22px_rgba(15,23,42,0.20)]"
               />
             </div>
-            <div className="whitespace-nowrap text-[clamp(1.4rem,6.6vw,2rem)] font-black leading-none tracking-[-0.045em] text-[#102451] dark:text-white sm:text-[2rem]">
+            <div className="whitespace-nowrap text-[clamp(1.35rem,6.2vw,1.9rem)] font-black leading-none tracking-[-0.04em] text-[#102451] dark:text-white sm:text-[1.95rem]">
               CORRE <span className="text-violet-600">AQUI</span>
             </div>
           </div>
-          <h1 className="mx-auto mt-2.5 max-w-[24rem] text-balance text-[clamp(1.45rem,6.8vw,2.05rem)] font-black leading-[1.08] tracking-[-0.035em] text-[#102451] dark:text-white sm:mt-4 sm:max-w-[620px] sm:text-[2.4rem]">
+          <h1 data-mode-selection-title className="mx-auto mt-2 max-w-[21rem] text-balance text-[clamp(1.3rem,5.7vw,1.75rem)] font-extrabold leading-[1.14] tracking-[-0.025em] text-[#102451] dark:text-white min-[390px]:max-w-[23rem] sm:mt-3.5 sm:max-w-[600px] sm:text-[2.2rem]">
             Como voc&ecirc; quer usar o Corre Aqui?
           </h1>
           <p className="mt-1.5 text-[13px] font-semibold text-slate-600 dark:text-slate-300 sm:mt-2 sm:text-base">Escolha como deseja continuar</p>

@@ -7,6 +7,22 @@ assert.match(modeGate, /src="\/corre-logo-mark\.png"/, 'a tela preserva a marca 
 assert.match(modeGate, /Como voc&ecirc; quer usar o Corre Aqui\?/, 'o titulo aprovado esta presente')
 assert.match(modeGate, /Escolha como deseja continuar/, 'o subtitulo aprovado esta presente')
 
+const brandClass = modeGate.match(/data-mode-selection-brand className="([^"]+)"/)?.[1] || ''
+assert.match(brandClass, /gap-0\.5/, 'o pin fica visualmente proximo ao nome Corre Aqui em celulares pequenos')
+assert.match(brandClass, /min-\[390px\]:gap-1/, 'a proximidade da marca permanece equilibrada em celulares maiores')
+
+const logoClass = modeGate.match(/data-mode-selection-logo className="([^"]+)"/)?.[1] || ''
+assert.match(logoClass, /h-\[54px\]/, 'a marca preserva proporcao compacta em 320 e 360 px')
+assert.match(logoClass, /min-\[390px\]:h-\[62px\]/, 'a marca cresce de forma controlada em 390 e 430 px')
+assert.match(modeGate, /translate-y-\[6%\] scale-\[1\.66\]/, 'o alinhamento visual compensa apenas o espaco transparente do asset original')
+
+const titleClass = modeGate.match(/data-mode-selection-title className="([^"]+)"/)?.[1] || ''
+assert.match(titleClass, /text-balance/, 'o titulo usa quebra equilibrada')
+assert.match(titleClass, /text-\[clamp\(1\.3rem,5\.7vw,1\.75rem\)\]/, 'o titulo usa escala fluida apropriada para Android')
+assert.match(titleClass, /font-extrabold/, 'o peso do titulo permanece forte sem excesso visual')
+assert.match(titleClass, /leading-\[1\.14\]/, 'o titulo preserva espacamento legivel entre linhas')
+assert.match(titleClass, /tracking-\[-0\.025em\]/, 'o titulo usa espacamento refinado entre letras')
+
 const screenClass = modeGate.match(/<main data-mode-selection-screen className="([^"]+)"/)?.[1] || ''
 assert.match(screenClass, /min-h-\[100dvh\]/, 'a tela cobre o viewport sem travar sua altura')
 assert.match(screenClass, /overflow-x-hidden/, 'a tela impede overflow horizontal')
@@ -19,6 +35,13 @@ const settingsClass = modeGate.match(/data-mode-selection-settings\s+className="
 assert.match(settingsClass, /rounded-full/, 'Configuracoes usa o formato arredondado aprovado')
 assert.match(settingsClass, /min-h-11/, 'Configuracoes preserva uma area de toque acessivel')
 assert.doesNotMatch(settingsClass, /(?:^|\s)(?:fixed|absolute)(?:\s|$)/, 'Configuracoes permanece no fluxo e nao cobre os cartoes')
+
+const selectionMarkup = modeGate.slice(modeGate.indexOf('<main data-mode-selection-screen'))
+assert.doesNotMatch(
+  selectionMarkup,
+  /<button[^>]+className="[^"]*(?:fixed|absolute)[^"]*(?:right-|left-)[^"]*rounded-full/i,
+  'a tela nao cria botao circular flutuante sobre os cartoes'
+)
 
 assert.match(modeGate, /dark:bg-slate-950/, 'a composicao possui fundo para tema escuro')
 assert.match(modeGate, /dark:text-white/, 'textos principais permanecem legiveis no tema escuro')
