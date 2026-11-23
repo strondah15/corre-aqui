@@ -90,7 +90,6 @@ function getConfigSnapshot(profile = {}) {
     mapLimiteOnline: Math.max(5, Math.min(80, Number(profile.mapLimiteOnline || 30))),
     animacoes: profile.animacoes !== false,
     modoEconomico: profile.modoEconomico === true,
-    aparencia: profile.aparencia || "sistema",
     notificationPreferences: normalizeNotificationPreferences(profile.notificationPreferences),
     privacy: normalizePrivacy(profile.privacy),
   };
@@ -153,7 +152,6 @@ const initialProfile = {
   mapLimiteOnline: 30,
   animacoes: true,
   modoEconomico: false,
-  aparencia: "sistema",
   notificationPreferences: defaultNotificationPreferences,
   privacy: defaultPrivacy,
 };
@@ -568,20 +566,6 @@ function ConfiguracoesOrganizadas({
           <ConfigRow icon="E" title="Modo econ&ocirc;mico" description="Reduz anima&ccedil;&otilde;es e atualiza&ccedil;&otilde;es em segundo plano." tone="amber">
             <ConfigToggle checked={profile.modoEconomico === true} onChange={(checked) => onProfileChange({ modoEconomico: checked })} label="Modo economico" tone="amber" />
           </ConfigRow>
-          <div className="flex flex-col gap-3 px-3 py-4 md:flex-row md:items-center md:justify-between md:px-4">
-            <div className="flex items-center gap-3">
-              <ConfigIcon tone="amber">A</ConfigIcon>
-              <div>
-                <div className="text-sm font-black text-slate-900">Apar&ecirc;ncia</div>
-                <div className="mt-1 text-xs font-semibold text-slate-500">Escolha o tema do aplicativo.</div>
-              </div>
-            </div>
-            <div className="grid w-full grid-cols-3 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:w-auto">
-              {[["sistema", "Sistema"], ["claro", "Claro"], ["escuro", "Escuro"]].map(([value, label]) => (
-                <button key={value} type="button" onClick={() => onProfileChange({ aparencia: value })} className={["min-h-11 rounded-xl px-3 text-xs font-black transition", (profile.aparencia || "sistema") === value ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-200" : "text-slate-500 hover:text-slate-800"].join(" ")}>{label}</button>
-              ))}
-            </div>
-          </div>
         </ConfigSection>
 
         <div className="flex items-center gap-3 rounded-[22px] border border-blue-100 bg-blue-50/70 px-4 py-3 text-blue-950 shadow-[0_10px_26px_rgba(37,99,235,0.05)]">
@@ -1231,7 +1215,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           prev.notificationPreferences,
         ),
         modoEconomico: settingsUi.modoEconomico ?? profileData.modoEconomico ?? prev.modoEconomico,
-        aparencia: settingsUi.aparencia ?? profileData.aparencia ?? prev.aparencia,
         privacy: privacyData,
       }));
       setPortfolioReadStatus({ uid: effectUid, loaded: true, error: "" });
@@ -1244,7 +1227,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           mapLimiteOnline: Math.max(5, Math.min(80, Number(settingsMapa.limiteOnline ?? prev.mapLimiteOnline))),
           animacoes: settingsUi.animacoes ?? prev.animacoes,
           modoEconomico: settingsUi.modoEconomico ?? prev.modoEconomico,
-          aparencia: settingsUi.aparencia ?? prev.aparencia,
           notificationPreferences: normalizeNotificationPreferences(
             settingsUi.notificationPreferences ?? prev.notificationPreferences,
             prev.notificationPreferences,
@@ -1279,6 +1261,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         setProfile((prev) => {
           const data = snap.val() || {};
           const dataWithoutPortfolio = withoutPortfolioFields(data);
+          delete dataWithoutPortfolio.aparencia;
           const corre = dataWithoutPortfolio.corre || {};
           const profissional = dataWithoutPortfolio.profissional || {};
           const fotoPrincipal = pickFoto(
@@ -1303,7 +1286,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
               prev.notificationPreferences,
             ),
             modoEconomico: data.modoEconomico ?? prev.modoEconomico,
-            aparencia: data.aparencia || prev.aparencia || "sistema",
             isCorre: data.isCorre ?? corre.ativo ?? prev.isCorre,
             correTitulo: data.correTitulo || corre.titulo || "",
             correBio: data.correBio || corre.bio || "",
@@ -1839,7 +1821,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       const uiSettings = {
         animacoes: profileToSave.animacoes !== false,
         modoEconomico: profileToSave.modoEconomico === true,
-        aparencia: profileToSave.aparencia || "sistema",
         notificationPreferences: normalizeNotificationPreferences(profileToSave.notificationPreferences),
         atualizadoEm: serverTimestamp(),
       };
@@ -1855,6 +1836,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       const shouldSyncPublicWorkProfile = !!(publicProfileSnap?.exists?.() && publicProfileSnap.val());
       const publicProfilePayload = profileToPublicProfile(profileToSave, uid, fotoPrincipal, privacySettings);
       const profilePublic = withoutPortfolioFields(profileToSave);
+      delete profilePublic.aparencia;
       delete profilePublic.privacy;
       delete profilePublic.cpf;
       delete profilePublic.cpfDigits;
@@ -2060,7 +2042,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           update(ref(database, `${userBasePath}/settings/ui`), {
             animacoes: configSnapshot.animacoes,
             modoEconomico: configSnapshot.modoEconomico,
-            aparencia: configSnapshot.aparencia,
             notificationPreferences: configSnapshot.notificationPreferences,
             atualizadoEm: serverTimestamp(),
           }),
@@ -2069,7 +2050,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             notificacoes: configSnapshot.notificacoes,
             notificationPreferences: configSnapshot.notificationPreferences,
             modoEconomico: configSnapshot.modoEconomico,
-            aparencia: configSnapshot.aparencia,
           }),
           update(ref(database, userBasePath), {
             visivel: configSnapshot.visivel,

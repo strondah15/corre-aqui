@@ -230,15 +230,15 @@ export default function LoginPage() {
         </div>
 
         {erro ? (
-          <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-3 py-3 text-left text-xs font-bold leading-relaxed text-amber-100">
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-left text-xs font-bold leading-relaxed text-amber-800">
             {erro}
           </div>
         ) : null}
 
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-500">
-          <a href="/termos" className="transition hover:text-slate-300">Termos</a>
-          <a href="/privacidade" className="transition hover:text-slate-300">Privacidade</a>
-          <a href="/seguranca" className="transition hover:text-slate-300">Segurança</a>
+          <a href="/termos" className="transition hover:text-blue-700">Termos</a>
+          <a href="/privacidade" className="transition hover:text-blue-700">Privacidade</a>
+          <a href="/seguranca" className="transition hover:text-blue-700">Segurança</a>
         </div>
 
         <button
@@ -246,7 +246,7 @@ export default function LoginPage() {
           onClick={() => {
             router.replace('/')
           }}
-          className="relative z-50 mt-3 h-12 w-full rounded-[20px] border border-white/10 bg-white/[0.04] text-sm font-bold text-white/70 transition hover:bg-white/[0.07] pointer-events-auto"
+          className="relative z-50 mt-3 h-12 w-full rounded-[20px] border border-slate-200 bg-slate-50 text-sm font-bold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 pointer-events-auto"
         >
           Voltar
         </button>

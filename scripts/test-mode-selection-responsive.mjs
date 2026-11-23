@@ -43,9 +43,9 @@ assert.doesNotMatch(
   'a tela nao cria botao circular flutuante sobre os cartoes'
 )
 
-assert.match(modeGate, /dark:bg-slate-950/, 'a composicao possui fundo para tema escuro')
-assert.match(modeGate, /dark:text-white/, 'textos principais permanecem legiveis no tema escuro')
+assert.match(screenClass, /bg-\[#f7fbff\]/, 'a composicao possui o fundo claro aprovado')
+assert.match(screenClass, /text-\[#102451\]/, 'a composicao usa texto escuro legivel no tema unico claro')
 assert.match(modeGate, /isClient \? 'bg-violet-50 text-violet-700' : 'bg-orange-50 text-orange-700'/, 'as identidades Cliente e Corre Pro permanecem roxa e laranja')
 assert.match(modeGate, /onClick=\{\(\) => onSelect\(id\)\}/, 'a selecao de modo continua usando o fluxo existente')
 
-console.log('Selecao de modo responsiva: marca, textos, safe areas, rolagem, temas e acoes preservados')
+console.log('Selecao de modo responsiva: marca, textos, safe areas, rolagem, tema claro e acoes preservados')

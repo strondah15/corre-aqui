@@ -28,7 +28,7 @@ assert.match(centerSource, /label: 'Avisos'/, 'aba Avisos está disponível')
 assert.match(centerSource, /compact: true/, 'a central ativa apenas a apresentação compacta')
 assert.match(centerSource, /onUnreadCountChange: updateConversationCount/, 'contador de conversas não lidas alimenta a aba')
 assert.match(centerSource, /onUnreadCountChange: updateNoticeCount/, 'contador de avisos não lidos alimenta a aba')
-assert.match(centerSource, /dark:/, 'a central mantém estilos para tema escuro')
+assert.match(centerSource, /from-white/, 'a central preserva a superfície clara aprovada')
 assert.doesNotMatch(centerSource, /@\/lib\/firebase|firebaseDebug|onValue|update\(ref/, 'a central não altera a camada de dados')
 
 assert.match(conversationsSource, /compact = false/, 'lista de conversas mantém o visual anterior por padrão')
@@ -40,7 +40,7 @@ assert.match(conversationsSource, /onUnreadCountChange\?\.\(totalNaoLidas\)/, 't
 assert.match(conversationsSource, /onClick=\{\(\) => abrirConversa\(c\.pedidoId\)\}/, 'linha compacta preserva a abertura da conversa')
 assert.match(conversationsSource, /set\(ref\(database, `conversas\/\$\{expectedUid\}\/\$\{pedidoId\}\/unread`\), false\)/, 'marcação de leitura existente foi preservada')
 assert.match(conversationsSource, /Nenhuma conversa aqui/, 'estado vazio de Conversas é explícito')
-assert.match(conversationsSource, /dark:bg-slate-950/, 'linhas de Conversas possuem tratamento para tema escuro')
+assert.match(conversationsSource, /bg-white text-slate-950/, 'linhas de Conversas usam fundo claro e texto legível')
 
 assert.match(noticesSource, /compact = false/, 'avisos mantêm o visual anterior por padrão')
 assert.match(noticesSource, /if \(compact\)/, 'avisos possuem apresentação compacta isolada')
@@ -50,7 +50,7 @@ assert.match(noticesSource, /onClick=\{\(\) => marcarLida\(n\)\}/, 'marcação i
 assert.match(noticesSource, /const offLegacy = onValue/, 'listener legado de avisos foi preservado')
 assert.match(noticesSource, /const offModern = onValue/, 'listener moderno de avisos foi preservado')
 assert.match(noticesSource, /Tudo em dia/, 'estado vazio de Avisos é explícito')
-assert.match(noticesSource, /dark:bg-slate-950/, 'linhas de Avisos possuem tratamento para tema escuro')
+assert.match(noticesSource, /bg-white text-slate-950/, 'linhas de Avisos usam fundo claro e texto legível')
 
 const bottomTabHandler = mapSource.slice(
   mapSource.indexOf('const onBottomTab = (id) =>'),

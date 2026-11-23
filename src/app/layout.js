@@ -90,12 +90,13 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
+  colorScheme: "light",
   themeColor: "#eaf7ff",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" className="light" data-theme="light" style={{ colorScheme: "light" }}>
       <body
         className={`
           ${geistSans.variable}
@@ -103,7 +104,7 @@ export default function RootLayout({ children }) {
           antialiased
           relative
           z-[1]
-          text-gray-100
+          text-slate-900
         `}
       >
         <PWARegister />
