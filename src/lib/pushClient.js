@@ -8,6 +8,7 @@ import {
   createPushFlowError,
   describePushFlowError,
   isPushSessionCurrent,
+  runPushStorageWriteWithRecovery,
   shouldRemoveRemotePushToken,
 } from './pushNotificationPolicy'
 
@@ -77,23 +78,24 @@ function logPushFlowFailure(error, fallbackStage) {
   return details
 }
 
-async function requireCurrentPushSession(uid, stage) {
+async function requireCurrentPushSession(uid, stage, { forceRefresh = false } = {}) {
   const currentUser = auth.currentUser
   if (!isPushSessionCurrent(uid, currentUser?.uid) || typeof currentUser?.getIdToken !== 'function') {
     throw createPushFlowError('push/session-changed', stage)
   }
 
+  let idToken = ''
   try {
-    await currentUser.getIdToken()
+    idToken = await currentUser.getIdToken(forceRefresh)
   } catch (error) {
     throw createPushFlowError('push/session-changed', stage, error)
   }
 
-  if (!isPushSessionCurrent(uid, auth.currentUser?.uid)) {
+  if (!idToken || currentUser !== auth.currentUser || !isPushSessionCurrent(uid, auth.currentUser?.uid)) {
     throw createPushFlowError('push/session-changed', stage)
   }
 
-  return currentUser
+  return Object.freeze({ user: currentUser, idToken })
 }
 
 async function persistPushRegistration(uid, token, permission = 'granted', { includeCreatedAt = false } = {}) {
@@ -138,13 +140,20 @@ async function persistPushRegistration(uid, token, permission = 'granted', { inc
   }
   if (includeCreatedAt) updates[`${tokenPath}/createdAt`] = serverTimestamp()
 
+  const writeRegistration = () => update(ref(database), updates)
+
   try {
-    await update(ref(database), updates)
+    await runPushStorageWriteWithRecovery({
+      write: writeRegistration,
+      recoverSession: async () => {
+        await requireCurrentPushSession(uid, 'rtdb_auth_refresh', { forceRefresh: true })
+      },
+    })
   } catch (error) {
-    logPushFlowFailure(error, 'rtdb_persistence')
+    const details = logPushFlowFailure(error, 'rtdb_persistence')
     throw createPushFlowError(
-      describePushFlowError(error, 'rtdb_persistence').code,
-      'rtdb_persistence',
+      details.code,
+      details.stage,
       error,
     )
   }
@@ -385,11 +394,7 @@ function mensagemErroPushApi(data, fallback = 'Nao consegui enviar o push de tes
 export async function testarPushNotification(uid) {
   if (!uid) throw new Error('Faça login para testar.')
 
-  const currentUser = auth.currentUser
-  if (!currentUser?.getIdToken) throw new Error('Faça login para testar.')
-  if (currentUser.uid !== uid) throw new Error('Usuario atual nao bate com o perfil aberto.')
-
-  const idToken = await currentUser.getIdToken()
+  const { idToken } = await requireCurrentPushSession(uid, 'test_auth', { forceRefresh: true })
   const response = await fetch('/api/push/send', {
     method: 'POST',
     headers: {
@@ -415,8 +420,12 @@ export async function testarPushNotification(uid) {
     data = { ok: false, reason: 'invalid_push_response', status: response.status }
   }
 
-  if (!response.ok || data?.ok === false) {
+  if (!response.ok || data?.ok === false || data?.skipped === true) {
     throw new Error(mensagemErroPushApi(data))
+  }
+
+  if (!isPushSessionCurrent(uid, auth.currentUser?.uid)) {
+    throw createPushFlowError('push/session-changed', 'test_response')
   }
 
   return data

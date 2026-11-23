@@ -18,6 +18,7 @@ import {
   removerPushTokenDoDispositivo,
   testarPushNotification,
 } from "@/lib/pushNotifications";
+import { getPushTestReadiness } from "@/lib/pushNotificationPolicy";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import ProfessionalReputationSummary from "./ProfessionalReputationSummary";
@@ -456,9 +457,6 @@ function ConfiguracoesOrganizadas({
   onStartWorkerTutorial,
 }) {
   const preferences = normalizeNotificationPreferences(profile.notificationPreferences);
-  const friendlyPushAviso = /vapid|service worker|messaging|token|firebase/i.test(String(pushAviso || ""))
-    ? "Nao foi possivel enviar a notificacao de teste."
-    : pushAviso;
   const setMapLimit = (delta) => {
     const current = Number(profile.mapLimiteOnline || 30);
     const next = Math.max(5, Math.min(80, current + delta));
@@ -507,7 +505,7 @@ function ConfiguracoesOrganizadas({
 
         <ConfigSection id="notificacoes" title="Notifica&ccedil;&otilde;es" description="Escolha o que voc&ecirc; deseja receber." icon="!" tone="violet" open={sections.notificacoes} onToggle={onToggleSection}>
           <ConfigRow icon="!" title="Receber notifica&ccedil;&otilde;es" description="Pedidos, mensagens, agendamentos e atendimentos importantes." tone="violet">
-            <ConfigToggle checked={pushAtivo || profile.notificacoes !== false} onChange={onTogglePush} label="Receber notificacoes" tone="violet" />
+            <ConfigToggle checked={pushAtivo} onChange={onTogglePush} label="Receber notificacoes" tone="violet" />
           </ConfigRow>
           <div className="grid grid-cols-2 gap-2 px-2 py-3 sm:grid-cols-3 md:grid-cols-5 md:gap-3 md:px-3">
             {categoryItems.map(([key, label, color, symbol]) => (
@@ -528,7 +526,7 @@ function ConfiguracoesOrganizadas({
           <ConfigRow icon="&gt;" title="Testar notifica&ccedil;&atilde;o" description="Envie uma notifica&ccedil;&atilde;o de teste para este dispositivo." tone="violet" onClick={pushCanUse ? onTestPush : undefined}>
             <span className="text-xl font-black text-violet-600">&rarr;</span>
           </ConfigRow>
-          {!pushCanUse && !pushAviso ? null : friendlyPushAviso ? <div className="mx-3 mb-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-800">{friendlyPushAviso}</div> : null}
+          {!pushCanUse && !pushAviso ? null : pushAviso ? <div className="mx-3 mb-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-800">{pushAviso}</div> : null}
           {pushSalvando || pushTestando ? <div className="px-3 pb-2 text-xs font-bold text-slate-500">Aguarde um momento...</div> : null}
         </ConfigSection>
 
@@ -1581,20 +1579,21 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   async function testarPush() {
     if (!uid || pushTestando) return;
 
+    const readiness = getPushTestReadiness({
+      uid,
+      authenticatedUid: auth.currentUser?.uid,
+      supported: pushCanUse,
+      permission: pushInfo.permission,
+      pushEnabled: pushAtivo,
+    });
+    if (!readiness.allowed) {
+      setPushAviso(readiness.message);
+      return;
+    }
+
     try {
       setPushTestando(true);
       setPushAviso("Enviando teste...");
-      const result = await ativarPushNotifications(uid);
-      setProfile((p) => ({
-        ...p,
-        notificacoes: true,
-        pushNotifications: {
-          enabled: true,
-          permission: result.permission,
-          tokenKey: result.tokenKey,
-        },
-      }));
-      setPushInfo((p) => ({ ...p, supported: true, permission: result.permission }));
       await testarPushNotification(uid);
       setPushAviso("Notificação de teste enviada.");
     } catch (error) {
