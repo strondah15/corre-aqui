@@ -1,5 +1,6 @@
 import { getFirebaseAdminConfigurationStatus } from '@/lib/firebaseAdmin'
 import { assessFirebaseClientConfiguration } from '@/lib/firebaseClientConfig'
+import { assessNotificationsV2Runtime } from '@/lib/notificationsV2Runtime'
 
 export async function GET(request) {
   const vapidKey = process.env.FIREBASE_VAPID_KEY || process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || ''
@@ -21,6 +22,7 @@ export async function GET(request) {
   })()
   const clientStatus = assessFirebaseClientConfiguration(config, { hostname })
   const adminStatus = getFirebaseAdminConfigurationStatus()
+  const notificationsV2 = assessNotificationsV2Runtime({ env: process.env, adminStatus })
 
   if (!clientStatus.valid || !adminStatus.configured) {
     return Response.json(
@@ -37,6 +39,7 @@ export async function GET(request) {
       config,
       vapidKey,
       vapidKeyConfigured: Boolean(vapidKey),
+      notificationsV2Enabled: notificationsV2.enabled,
     },
     {
       headers: {

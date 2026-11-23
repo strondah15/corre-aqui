@@ -110,6 +110,7 @@ export function getPushTestReadiness({
 }
 
 export function describePushFlowError(error = {}, fallbackStage = 'unknown') {
+  const rawCode = String(error?.code || '').toLowerCase()
   if (error?.name === 'PushFlowError') {
     return Object.freeze({
       code: String(error.code || 'push/activation-failed'),

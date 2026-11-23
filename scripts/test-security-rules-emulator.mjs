@@ -33,6 +33,11 @@ import {
   listPublicProfessionalServices,
   resolveAuthoritativeProfessionalService,
 } from '../src/lib/professionalServiceCatalog.js'
+import {
+  disablePushDevice,
+  getPushDeviceState,
+  registerPushDevice,
+} from '../src/lib/pushDeviceRegistryServer.js'
 
 const PROJECT_ID = 'demo-corre-aqui-security'
 const rawHost = String(process.env.FIREBASE_DATABASE_EMULATOR_HOST || '')
@@ -1118,6 +1123,125 @@ try {
   await assertFails(get(ref(workerDb, `userPrivate/${CLIENT}/pushTokens/${pushTokenKey}`)))
   const ownPushToken = await assertSucceeds(get(ref(clientDb, `userPrivate/${CLIENT}/pushTokens/${pushTokenKey}`)))
   assert.equal(ownPushToken.val()?.token, 'fake-emulator-token-never-sent')
+
+  const pushV2Uid = 'push-v2-owner'
+  const pushV2TokenA = `push-v2-token-a-${'a'.repeat(48)}`
+  const pushV2TokenB = `push-v2-token-b-${'b'.repeat(48)}`
+  const [registeredA, registeredB] = await Promise.all([
+    registerPushDevice({
+      database: adminDatabase,
+      uid: pushV2Uid,
+      token: pushV2TokenA,
+      device: { origin: 'https://staging.example.test', language: 'pt-BR' },
+      now: baseTime + 20,
+    }),
+    registerPushDevice({
+      database: adminDatabase,
+      uid: pushV2Uid,
+      token: pushV2TokenB,
+      device: { origin: 'https://staging.example.test', language: 'pt-BR' },
+      now: baseTime + 21,
+    }),
+  ])
+  assert.notEqual(registeredA.deviceId, registeredB.deviceId)
+  const concurrentPushState = await getPushDeviceState({
+    database: adminDatabase,
+    uid: pushV2Uid,
+    deviceId: registeredA.deviceId,
+  })
+  assert.equal(concurrentPushState.activeDeviceCount, 2, 'duas ativações concorrentes preservam ambos os dispositivos')
+  assert.equal(concurrentPushState.registered, true)
+
+  const repeatedRegistration = await registerPushDevice({
+    database: adminDatabase,
+    uid: pushV2Uid,
+    token: pushV2TokenA,
+    device: { origin: 'https://staging.example.test', language: 'pt-BR' },
+    now: baseTime + 22,
+  })
+  assert.equal(repeatedRegistration.deviceId, registeredA.deviceId)
+  assert.equal(repeatedRegistration.idempotent, true)
+  assert.equal(repeatedRegistration.activeDeviceCount, 2, 'registro repetido não duplica o dispositivo')
+
+  const disabledA = await disablePushDevice({
+    database: adminDatabase,
+    uid: pushV2Uid,
+    deviceId: registeredA.deviceId,
+    now: baseTime + 23,
+  })
+  assert.equal(disabledA.activeDeviceCount, 1, 'desativação afeta somente o dispositivo informado')
+  const deviceBState = await getPushDeviceState({
+    database: adminDatabase,
+    uid: pushV2Uid,
+    deviceId: registeredB.deviceId,
+  })
+  assert.equal(deviceBState.registered, true)
+  const repeatedDisable = await disablePushDevice({
+    database: adminDatabase,
+    uid: pushV2Uid,
+    deviceId: registeredA.deviceId,
+    now: baseTime + 24,
+  })
+  assert.equal(repeatedDisable.idempotent, true)
+  assert.equal(repeatedDisable.activeDeviceCount, 1)
+
+  const legacyPushUid = 'push-v2-legacy-owner'
+  const legacyPushToken = `legacy-push-token-${'c'.repeat(48)}`
+  await adminDatabase.ref(`userPrivate/${legacyPushUid}/pushTokens/legacy-token-key`).set({
+    token: legacyPushToken,
+    enabled: true,
+    active: true,
+    provider: 'firebase_messaging',
+    createdAt: baseTime,
+  })
+  const upgradedLegacyDevice = await registerPushDevice({
+    database: adminDatabase,
+    uid: legacyPushUid,
+    token: legacyPushToken,
+    device: { origin: 'https://staging.example.test' },
+    now: baseTime + 25,
+  })
+  assert.match(upgradedLegacyDevice.deviceId, /^[a-f0-9]{64}$/)
+  const legacyTokensAfterRegistration = (
+    await adminDatabase.ref(`userPrivate/${legacyPushUid}/pushTokens`).get()
+  ).val()
+  assert.deepEqual(Object.keys(legacyTokensAfterRegistration), ['legacy-token-key'])
+  assert.equal(legacyTokensAfterRegistration['legacy-token-key'].token, legacyPushToken)
+  assert.equal(legacyTokensAfterRegistration['legacy-token-key'].deviceId, upgradedLegacyDevice.deviceId)
+
+  const recoverableUid = 'push-v2-recoverable-owner'
+  const recoverableToken = `recoverable-push-token-${'d'.repeat(48)}`
+  let failProjectionOnce = true
+  const recoverableDatabase = {
+    ref(path) {
+      if (path !== undefined) return adminDatabase.ref(path)
+      return {
+        update: async (updates) => {
+          if (failProjectionOnce) {
+            failProjectionOnce = false
+            throw new Error('simulated_projection_failure')
+          }
+          return adminDatabase.ref().update(updates)
+        },
+      }
+    },
+  }
+  await assert.rejects(registerPushDevice({
+    database: recoverableDatabase,
+    uid: recoverableUid,
+    token: recoverableToken,
+    device: { origin: 'https://staging.example.test' },
+    now: baseTime + 26,
+  }), /simulated_projection_failure/)
+  const recoveredRegistration = await registerPushDevice({
+    database: recoverableDatabase,
+    uid: recoverableUid,
+    token: recoverableToken,
+    device: { origin: 'https://staging.example.test' },
+    now: baseTime + 27,
+  })
+  assert.equal(recoveredRegistration.idempotent, true)
+  assert.equal(recoveredRegistration.activeDeviceCount, 1, 'repetição recupera projeção sem duplicar token')
 
   const finalSnapshot = await assertSucceeds(get(ref(clientDb, 'pedidos/order-flow/status')))
   assert.equal(finalSnapshot.val(), 'finalizado')

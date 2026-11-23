@@ -156,9 +156,15 @@ function selectAuthorizedEvent({ context, sourceId, actorUid, toUid, requestedTy
 async function readEnabledPushTokens(db, toUid) {
   const userPrivateSnapshot = await db.ref(`userPrivate/${toUid}`).get()
   const userPrivate = userPrivateSnapshot.val() || {}
+  const seenTokens = new Set()
   return Object.entries(userPrivate?.pushTokens || {})
     .map(([key, value]) => ({ key, token: value?.token, enabled: value?.enabled !== false }))
-    .filter((entry) => entry.enabled && typeof entry.token === 'string' && entry.token.length > 20)
+    .filter((entry) => {
+      if (!entry.enabled || typeof entry.token !== 'string' || entry.token.length <= 20) return false
+      if (seenTokens.has(entry.token)) return false
+      seenTokens.add(entry.token)
+      return true
+    })
 }
 
 async function reserveNotificationEvent(db, trusted, now) {

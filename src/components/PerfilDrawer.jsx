@@ -13,6 +13,7 @@ import {
 } from "@/lib/portfolioPersistence";
 import {
   ativarPushNotifications,
+  consultarEstadoPushNotifications,
   desativarPushNotifications,
   getPushCapabilities,
   removerPushTokenDoDispositivo,
@@ -523,7 +524,7 @@ function ConfiguracoesOrganizadas({
               </button>
             ))}
           </div>
-          <ConfigRow icon="&gt;" title="Testar notifica&ccedil;&atilde;o" description="Envie uma notifica&ccedil;&atilde;o de teste para este dispositivo." tone="violet" onClick={pushCanUse ? onTestPush : undefined}>
+          <ConfigRow icon="&gt;" title="Testar notifica&ccedil;&atilde;o" description={pushAtivo ? "Envie uma notifica&ccedil;&atilde;o de teste para este dispositivo." : "Ative as notifica&ccedil;&otilde;es neste aparelho antes de testar."} tone="violet" onClick={pushCanUse && pushAtivo ? onTestPush : undefined}>
             <span className="text-xl font-black text-violet-600">&rarr;</span>
           </ConfigRow>
           {!pushCanUse && !pushAviso ? null : pushAviso ? <div className="mx-3 mb-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-800">{pushAviso}</div> : null}
@@ -1069,7 +1070,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     permission: "default",
     reason: "Verificando push...",
   });
-  const [vapidKey, setVapidKey] = useState("");
   const [vapidConfigured, setVapidConfigured] = useState(false);
   const [pushSalvando, setPushSalvando] = useState(false);
   const [pushTestando, setPushTestando] = useState(false);
@@ -1470,50 +1470,47 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     let active = true;
 
     async function carregarPushConfig() {
-      const suportaNotification = typeof window !== "undefined" && "Notification" in window;
       const suportaServiceWorker = typeof navigator !== "undefined" && "serviceWorker" in navigator;
-      const permission = suportaNotification ? Notification.permission : "unsupported";
 
       try {
-        const response = await fetch("/api/firebase-config", { cache: "no-store" });
-        const data = await response.json().catch(() => ({}));
-        const hasVapidKey = Boolean(data.vapidKey);
-        const vapidConfigured = Boolean(data.vapidKeyConfigured && data.vapidKey);
+        const capabilities = await getPushCapabilities();
+        if (!active) return;
+        setVapidConfigured(capabilities.vapidConfigured === true);
 
-        console.log("[PUSH CONFIG]", {
-          vapidKeyConfigured: data.vapidKeyConfigured,
-          hasVapidKey,
-        });
+        const notificationsV2Enabled = capabilities.notificationsV2Enabled === true;
+        let deviceState = null;
+        if (notificationsV2Enabled && uid) {
+          try {
+            deviceState = await consultarEstadoPushNotifications(uid);
+          } catch (error) {
+            if (active) setPushAviso(error?.message || "Não foi possível consultar este dispositivo agora.");
+          }
+        }
 
         if (!active) return;
-
-        setVapidKey(data.vapidKey || "");
-        setVapidConfigured(Boolean(data.vapidKeyConfigured && data.vapidKey));
-
-        const supported = suportaNotification && suportaServiceWorker && vapidConfigured;
-        const reason = !suportaNotification
-          ? "Este navegador nao suporta notificacoes web."
-          : !suportaServiceWorker
-            ? "Service worker indisponivel neste navegador."
-            : !vapidConfigured
-              ? "Chave VAPID de notificacoes nao esta configurada no servidor."
-              : "";
-
         setPushInfo((current) => ({
           ...current,
-          supported,
-          permission,
-          reason,
-          vapidConfigured,
+          ...capabilities,
+          notificationsV2Enabled,
+          deviceRegistered: deviceState ? deviceState.registered === true : current.deviceRegistered,
           serviceWorkerAvailable: suportaServiceWorker,
         }));
+        if (deviceState) {
+          setProfile((current) => ({
+            ...current,
+            pushNotifications: {
+              ...(current.pushNotifications || {}),
+              enabled: deviceState.registered === true,
+              registry: deviceState.registry,
+            },
+          }));
+        }
       } catch (error) {
         if (!active) return;
-        setVapidKey("");
         setVapidConfigured(false);
         setPushInfo({
           supported: false,
-          permission,
+          permission: typeof Notification !== "undefined" ? Notification.permission : "unsupported",
           reason: error?.message || "Nao foi possivel carregar a configuracao de notificacoes.",
           serviceWorkerAvailable: suportaServiceWorker,
         });
@@ -1525,7 +1522,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     return () => {
       active = false;
     };
-  }, [open]);
+  }, [open, uid]);
 
   async function ativarPush() {
     if (!uid || pushSalvando) return;
@@ -1543,12 +1540,17 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           tokenKey: result.tokenKey,
         },
       }));
-      setPushInfo((p) => ({ ...p, supported: true, permission: result.permission }));
+      setPushInfo((p) => ({
+        ...p,
+        supported: true,
+        permission: result.permission,
+        deviceRegistered: result.registered === true || p.notificationsV2Enabled !== true,
+      }));
       setPushAviso("Notificações ativadas neste aparelho.");
     } catch (error) {
       setPushAviso(error?.message || "Não consegui ativar notificações agora.");
       const info = await getPushCapabilities().catch(() => null);
-      if (info) setPushInfo(info);
+      if (info) setPushInfo((current) => ({ ...current, ...info }));
     } finally {
       setPushSalvando(false);
     }
@@ -1562,13 +1564,14 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       await desativarPushNotifications(uid);
       setProfile((p) => ({
         ...p,
-        notificacoes: false,
+        ...(pushInfo.notificationsV2Enabled ? {} : { notificacoes: false }),
         pushNotifications: {
           ...(p.pushNotifications || {}),
           enabled: false,
         },
       }));
-      setPushAviso("Push desativado neste perfil.");
+      setPushInfo((p) => ({ ...p, deviceRegistered: false }));
+      setPushAviso("Notificações desativadas neste aparelho.");
     } catch (error) {
       setPushAviso(error?.message || "Não consegui desativar notificações agora.");
     } finally {
@@ -1598,7 +1601,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       setPushAviso("Notificação de teste enviada.");
     } catch (error) {
       const info = await getPushCapabilities().catch(() => null);
-      if (info) setPushInfo(info);
+      if (info) setPushInfo((current) => ({ ...current, ...info }));
       const permissionDenied =
         typeof Notification !== "undefined" &&
         (Notification.permission === "denied" || /bloquead|negad|permiss/i.test(String(error?.message || "")));
@@ -2094,24 +2097,25 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     profile.perfilVerificado ||
     profile.trust?.verificado
   );
-  const pushAtivo = profile.pushNotifications?.enabled === true;
+  const pushAtivo = pushInfo.notificationsV2Enabled
+    ? pushInfo.deviceRegistered === true
+    : profile.pushNotifications?.enabled === true;
   const pushPermission = pushInfo.permission || "default";
   const pushStatusLabel =
-    pushPermission === "granted"
-      ? "Ativada"
-      : pushPermission === "denied"
-        ? "Bloqueada"
-        : "Não ativada";
+    pushPermission === "denied"
+      ? "Bloqueadas"
+      : pushAtivo
+        ? "Ativadas"
+        : "Desativadas";
   const pushStatusClass =
-    pushPermission === "granted"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : pushPermission === "denied"
-        ? "border-rose-200 bg-rose-50 text-rose-700"
+    pushPermission === "denied"
+      ? "border-rose-200 bg-rose-50 text-rose-700"
+      : pushAtivo
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
         : "border-amber-200 bg-amber-50 text-amber-700";
   const pushCanUse =
     pushInfo.supported &&
     pushInfo.serviceWorkerAvailable !== false &&
-    Boolean(vapidKey) &&
     vapidConfigured;
   const pushReason = vapidConfigured && /vapid/i.test(String(pushInfo.reason || "")) ? "" : pushInfo.reason;
   const privacy = normalizePrivacy(profile.privacy);

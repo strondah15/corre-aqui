@@ -158,6 +158,8 @@ export default function PWARegister() {
       if (openedEventId) await markPushEventAsRead(user.uid, openedEventId)
 
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        const caps = await getPushCapabilities().catch(() => null)
+        if (caps?.notificationsV2Enabled) return
         sincronizarPushNotifications(user.uid).catch((error) => {
           if (process.env.NODE_ENV !== 'production') {
             console.debug('[PUSH] sincronizacao silenciosa falhou:', error?.message || error)
@@ -179,6 +181,7 @@ export default function PWARegister() {
       if (!uid || pushPrompt || !isPushSessionCurrent(uid, authenticatedUid)) return
 
       const caps = await getPushCapabilities().catch(() => null)
+      if (caps?.notificationsV2Enabled) return
       if (!shouldOfferPushPrompt({
         uid,
         authenticatedUid: auth.currentUser?.uid,
