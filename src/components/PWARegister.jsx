@@ -15,8 +15,13 @@ import {
   removerPushTokenDoDispositivo,
   sincronizarPushNotifications,
 } from '@/lib/pushClient'
+import {
+  describePushFlowError,
+  isPushSessionCurrent,
+  pushPromptStorageKey,
+  shouldOfferPushPrompt,
+} from '@/lib/pushNotificationPolicy'
 
-const PUSH_PROMPT_COOLDOWN = 14 * 24 * 60 * 60 * 1000
 const ESSENTIAL_FOREGROUND_TYPES = new Set([
   'agendamento_criado',
   'agendamento_solicitado',
@@ -26,13 +31,10 @@ const ESSENTIAL_FOREGROUND_TYPES = new Set([
   'corre_aceito',
 ])
 
-function promptStorageKey(uid) {
-  return `correAqui:pushPromptDismissed:${uid}`
-}
-
 function readPromptDismissedAt(uid) {
   try {
-    return Number(localStorage.getItem(promptStorageKey(uid)) || 0)
+    const key = pushPromptStorageKey(uid)
+    return key ? Number(localStorage.getItem(key) || 0) : 0
   } catch {
     return 0
   }
@@ -40,7 +42,8 @@ function readPromptDismissedAt(uid) {
 
 function savePromptDismissedAt(uid) {
   try {
-    if (uid) localStorage.setItem(promptStorageKey(uid), String(Date.now()))
+    const key = pushPromptStorageKey(uid)
+    if (key) localStorage.setItem(key, String(Date.now()))
   } catch {}
 }
 
@@ -99,6 +102,7 @@ export default function PWARegister() {
   const lastPush = useRef({ key: '', at: 0 })
   const currentUid = useRef('')
   const activeChatId = useRef('')
+  const pushActivationId = useRef(0)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -127,6 +131,15 @@ export default function PWARegister() {
       const previousUid = currentUid.current
       const nextUid = user?.uid || ''
 
+      currentUid.current = nextUid
+
+      if (previousUid !== nextUid) {
+        pushActivationId.current += 1
+        setPushPrompt(null)
+        setPushPromptError('')
+        setAtivandoPush(false)
+      }
+
       if (previousUid && previousUid !== nextUid) {
         await removerPushTokenDoDispositivo(previousUid).catch((error) => {
           if (process.env.NODE_ENV !== 'production') {
@@ -135,7 +148,6 @@ export default function PWARegister() {
         })
       }
 
-      currentUid.current = nextUid
       setInstallAppReady(Boolean(nextUid))
       if (!user?.uid) {
         setPushPrompt(null)
@@ -163,11 +175,17 @@ export default function PWARegister() {
     let promptTimer = null
     const requestContextualPrompt = async (event) => {
       const uid = currentUid.current
-      if (!uid || pushPrompt) return
+      const authenticatedUid = auth.currentUser?.uid || ''
+      if (!uid || pushPrompt || !isPushSessionCurrent(uid, authenticatedUid)) return
 
       const caps = await getPushCapabilities().catch(() => null)
-      if (!caps?.supported || caps.permission !== 'default') return
-      if (Date.now() - readPromptDismissedAt(uid) < PUSH_PROMPT_COOLDOWN) return
+      if (!shouldOfferPushPrompt({
+        uid,
+        authenticatedUid: auth.currentUser?.uid,
+        supported: caps?.supported,
+        permission: caps?.permission,
+        dismissedAt: readPromptDismissedAt(uid),
+      })) return
 
       if (document.querySelector('[aria-modal="true"], [data-tutorial-overlay]')) {
         window.clearTimeout(promptTimer)
@@ -175,7 +193,7 @@ export default function PWARegister() {
         return
       }
 
-      setPushPrompt({ context: event?.detail?.context || event?.type || 'contextual' })
+      setPushPrompt({ context: event?.detail?.context || event?.type || 'contextual', uid })
       setPushPromptError('')
     }
 
@@ -251,26 +269,44 @@ export default function PWARegister() {
   }
 
   const closePushPrompt = () => {
-    savePromptDismissedAt(currentUid.current)
+    pushActivationId.current += 1
+    savePromptDismissedAt(pushPrompt?.uid || currentUid.current)
     setPushPrompt(null)
     setPushPromptError('')
   }
 
   const activateContextualPush = async () => {
-    const uid = currentUid.current
+    const uid = pushPrompt?.uid || currentUid.current
     if (!uid || ativandoPush) return
+
+    if (!isPushSessionCurrent(uid, auth.currentUser?.uid)) {
+      const details = describePushFlowError({
+        name: 'PushFlowError',
+        code: 'push/session-changed',
+        stage: 'permission_request',
+        message: 'Sua sessao mudou ou expirou. Entre novamente e tente ativar as notificacoes.',
+      })
+      setPushPromptError(details.message)
+      return
+    }
+
+    const activationId = pushActivationId.current + 1
+    pushActivationId.current = activationId
     try {
       setAtivandoPush(true)
       setPushPromptError('')
       await ativarPushNotifications(uid)
+      if (pushActivationId.current !== activationId || !isPushSessionCurrent(uid, auth.currentUser?.uid)) return
       setPushPrompt(null)
     } catch (error) {
-      setPushPromptError(error?.message || 'Nao foi possivel ativar as notificacoes agora.')
+      if (pushActivationId.current !== activationId) return
+      const details = describePushFlowError(error, 'activation')
+      setPushPromptError(details.message)
       if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
         savePromptDismissedAt(uid)
       }
     } finally {
-      setAtivandoPush(false)
+      if (pushActivationId.current === activationId) setAtivandoPush(false)
     }
   }
 
@@ -327,7 +363,7 @@ export default function PWARegister() {
           </div>
           {pushPromptError ? <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{pushPromptError}</p> : null}
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <button type="button" onClick={closePushPrompt} className="h-11 rounded-xl border border-slate-200 bg-white text-sm font-black text-slate-700">
+            <button type="button" onClick={closePushPrompt} disabled={ativandoPush} className="h-11 rounded-xl border border-slate-200 bg-white text-sm font-black text-slate-700 disabled:opacity-60">
               Agora nao
             </button>
             <button type="button" onClick={activateContextualPush} disabled={ativandoPush} className="h-11 rounded-xl bg-blue-600 px-3 text-sm font-black text-white disabled:opacity-60">

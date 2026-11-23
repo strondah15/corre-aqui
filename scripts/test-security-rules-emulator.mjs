@@ -212,6 +212,19 @@ try {
         },
       },
       users: {
+        [CLIENT]: {
+          nome: 'Cliente A',
+          online: false,
+          portfolioSchemaVersion: 2,
+          xp: 0,
+          moedas: 0,
+          servicosCorre: 0,
+          servicosProf: 0,
+          patenteCorre: 0,
+          patenteProf: 0,
+          patenteAtualizadaEm: baseTime,
+          missaoAtualizadaEm: baseTime,
+        },
         [WORKER]: {
           nome: 'Profissional B',
           online: false,
@@ -1054,9 +1067,61 @@ try {
     await assertFails(remove(ref(clientDb, `${rootName}/client-A/server-existing`)))
   }
 
+  const pushTokenKey = 'local-emulator-token-key'
+  const pushRegistration = {
+    [`users/${CLIENT}/notificacoes`]: true,
+    [`users/${CLIENT}/push`]: {
+      enabled: true,
+      permission: 'granted',
+      provider: 'firebase_messaging',
+      tokenKey: pushTokenKey,
+      updatedAt: serverTimestamp(),
+      userAgent: 'Emulator',
+      standalone: false,
+      language: 'pt-BR',
+      origin: 'https://staging.example.test',
+    },
+    [`users/${CLIENT}/profile/notificacoes`]: true,
+    [`users/${CLIENT}/profile/pushNotifications`]: {
+      enabled: true,
+      permission: 'granted',
+      provider: 'firebase_messaging',
+      tokenKey: pushTokenKey,
+      updatedAt: serverTimestamp(),
+    },
+    [`userPrivate/${CLIENT}/push`]: {
+      enabled: true,
+      permission: 'granted',
+      provider: 'firebase_messaging',
+      tokenKey: pushTokenKey,
+      updatedAt: serverTimestamp(),
+      userAgent: 'Emulator',
+      standalone: false,
+      language: 'pt-BR',
+      origin: 'https://staging.example.test',
+    },
+    [`userPrivate/${CLIENT}/pushTokens/${pushTokenKey}`]: {
+      token: 'fake-emulator-token-never-sent',
+      enabled: true,
+      active: true,
+      provider: 'firebase_messaging',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      userAgent: 'Emulator',
+      standalone: false,
+      language: 'pt-BR',
+      origin: 'https://staging.example.test',
+    },
+  }
+  await assertSucceeds(update(ref(clientDb), pushRegistration))
+  await assertFails(update(ref(workerDb), pushRegistration))
+  await assertFails(get(ref(workerDb, `userPrivate/${CLIENT}/pushTokens/${pushTokenKey}`)))
+  const ownPushToken = await assertSucceeds(get(ref(clientDb, `userPrivate/${CLIENT}/pushTokens/${pushTokenKey}`)))
+  assert.equal(ownPushToken.val()?.token, 'fake-emulator-token-never-sent')
+
   const finalSnapshot = await assertSucceeds(get(ref(clientDb, 'pedidos/order-flow/status')))
   assert.equal(finalSnapshot.val(), 'finalizado')
-  console.log('Firebase Emulator: matriz A/B/C, estados, chat, notificações, recompensas e backend professionalServices OK; concorrência limitada a 12')
+  console.log('Firebase Emulator: matriz A/B/C, estados, chat, notificações, push privado, recompensas e backend professionalServices OK; concorrência limitada a 12')
 } finally {
   await deleteAdminApp(adminApp)
   await testEnv.cleanup()

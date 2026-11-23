@@ -4,6 +4,12 @@ import app, { auth, database } from '@/lib/firebase'
 import { get, ref, serverTimestamp, update, remove } from './firebaseDebug'
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 import { createPushRegistrationController } from './pushRegistrationControl'
+import {
+  createPushFlowError,
+  describePushFlowError,
+  isPushSessionCurrent,
+  shouldRemoveRemotePushToken,
+} from './pushNotificationPolicy'
 
 export const MESSAGING_SW_PATH = '/firebase-messaging-sw.js'
 const TOKEN_KEY_STORAGE = 'correAqui:pushTokenKey'
@@ -62,49 +68,86 @@ function clearLocalTokenKey(uid) {
   } catch {}
 }
 
+function logPushFlowFailure(error, fallbackStage) {
+  const details = describePushFlowError(error, fallbackStage)
+  console.warn('[PUSH FLOW]', {
+    stage: details.stage,
+    code: details.code,
+  })
+  return details
+}
+
+async function requireCurrentPushSession(uid, stage) {
+  const currentUser = auth.currentUser
+  if (!isPushSessionCurrent(uid, currentUser?.uid) || typeof currentUser?.getIdToken !== 'function') {
+    throw createPushFlowError('push/session-changed', stage)
+  }
+
+  try {
+    await currentUser.getIdToken()
+  } catch (error) {
+    throw createPushFlowError('push/session-changed', stage, error)
+  }
+
+  if (!isPushSessionCurrent(uid, auth.currentUser?.uid)) {
+    throw createPushFlowError('push/session-changed', stage)
+  }
+
+  return currentUser
+}
+
 async function persistPushRegistration(uid, token, permission = 'granted', { includeCreatedAt = false } = {}) {
   const key = tokenKey(token)
   if (!uid || !key) throw new Error('Token FCM invalido.')
 
+  await requireCurrentPushSession(uid, 'rtdb_persistence')
+
   const info = platformInfo()
-  const tokenPayload = {
-    token,
+  const publicPreference = {
     enabled: true,
-    active: true,
+    permission,
     provider: 'firebase_messaging',
+    tokenKey: key,
     updatedAt: serverTimestamp(),
     ...info,
   }
-  if (includeCreatedAt) tokenPayload.createdAt = serverTimestamp()
+  const profilePreference = {
+    enabled: true,
+    permission,
+    provider: 'firebase_messaging',
+    tokenKey: key,
+    updatedAt: serverTimestamp(),
+  }
+  const privatePreference = { ...publicPreference }
+  const tokenPath = `userPrivate/${uid}/pushTokens/${key}`
+  const updates = {
+    [`users/${uid}/notificacoes`]: true,
+    [`users/${uid}/push`]: publicPreference,
+    [`users/${uid}/profile/notificacoes`]: true,
+    [`users/${uid}/profile/pushNotifications`]: profilePreference,
+    [`userPrivate/${uid}/push`]: privatePreference,
+    [`${tokenPath}/token`]: token,
+    [`${tokenPath}/enabled`]: true,
+    [`${tokenPath}/active`]: true,
+    [`${tokenPath}/provider`]: 'firebase_messaging',
+    [`${tokenPath}/updatedAt`]: serverTimestamp(),
+    [`${tokenPath}/userAgent`]: info.userAgent || '',
+    [`${tokenPath}/standalone`]: Boolean(info.standalone),
+    [`${tokenPath}/language`]: info.language || 'pt-BR',
+    [`${tokenPath}/origin`]: info.origin || '',
+  }
+  if (includeCreatedAt) updates[`${tokenPath}/createdAt`] = serverTimestamp()
 
-  await update(ref(database, `users/${uid}`), { notificacoes: true })
-  await update(ref(database, `users/${uid}/push`), {
-    enabled: true,
-    permission,
-    provider: 'firebase_messaging',
-    tokenKey: key,
-    updatedAt: serverTimestamp(),
-    ...info,
-  })
-  await update(ref(database, `users/${uid}/profile`), { notificacoes: true })
-  await update(ref(database, `users/${uid}/profile/pushNotifications`), {
-    enabled: true,
-    permission,
-    provider: 'firebase_messaging',
-    tokenKey: key,
-    updatedAt: serverTimestamp(),
-  })
-  await update(ref(database, `userPrivate/${uid}`), {
-    push: {
-      enabled: true,
-      permission,
-      provider: 'firebase_messaging',
-      tokenKey: key,
-      updatedAt: serverTimestamp(),
-      ...info,
-    },
-    [`pushTokens/${key}`]: tokenPayload,
-  })
+  try {
+    await update(ref(database), updates)
+  } catch (error) {
+    logPushFlowFailure(error, 'rtdb_persistence')
+    throw createPushFlowError(
+      describePushFlowError(error, 'rtdb_persistence').code,
+      'rtdb_persistence',
+      error,
+    )
+  }
 
   saveLocalTokenKey(uid, key)
   removedTokenUids.delete(uid)
@@ -214,19 +257,25 @@ export async function getServiceWorkerRegistration() {
 export async function ativarPushNotifications(uid) {
   if (!uid) throw new Error('Entre no app antes de ativar notificacoes.')
 
+  await requireCurrentPushSession(uid, 'permission_request')
+
   const caps = await getPushCapabilities()
   if (!caps.supported) throw new Error(caps.reason || 'Push indisponivel neste navegador.')
 
-  const permission = await Notification.requestPermission()
-  if (permission !== 'granted') {
-    await update(ref(database, `users/${uid}/push`), {
-      enabled: false,
-      permission,
-      updatedAt: serverTimestamp(),
-    }).catch(() => {})
-
-    throw new Error(permission === 'denied' ? 'Notificacoes bloqueadas no navegador.' : 'Permissao de notificacao nao liberada.')
+  let permission
+  try {
+    permission = await Notification.requestPermission()
+  } catch (error) {
+    throw createPushFlowError('push/browser-permission-default', 'permission_request', error)
   }
+  if (permission !== 'granted') {
+    throw createPushFlowError(
+      permission === 'denied' ? 'push/browser-permission-denied' : 'push/browser-permission-default',
+      'permission_request',
+    )
+  }
+
+  await requireCurrentPushSession(uid, 'token_registration')
 
   const registration = await getServiceWorkerRegistration()
   const messaging = getMessaging(app)
@@ -250,6 +299,8 @@ export async function sincronizarPushNotifications(uid) {
   if (Notification.permission !== 'granted') {
     return { synced: false, reason: Notification.permission }
   }
+
+  await requireCurrentPushSession(uid, 'silent_sync')
 
   const configuredState = await get(ref(database, `users/${uid}/push`)).catch(() => null)
   if (configuredState?.exists?.() && configuredState.val()?.enabled === false) {
@@ -392,27 +443,54 @@ export async function removerPushTokenDoDispositivo(uid) {
 
   if (messaging) await deleteToken(messaging).catch(() => {})
 
-  if (key) await remove(ref(database, `userPrivate/${uid}/pushTokens/${key}`))
+  let remoteRemovalError = null
+  if (key && shouldRemoveRemotePushToken(uid, auth.currentUser?.uid)) {
+    try {
+      await remove(ref(database, `userPrivate/${uid}/pushTokens/${key}`))
+    } catch (error) {
+      remoteRemovalError = error
+      logPushFlowFailure(error, 'token_cleanup')
+    }
+  }
 
   clearLocalTokenKey(uid)
   removedTokenUids.add(uid)
+
+  if (remoteRemovalError) {
+    throw createPushFlowError(
+      describePushFlowError(remoteRemovalError, 'token_cleanup').code,
+      'token_cleanup',
+      remoteRemovalError,
+    )
+  }
 }
 
 export async function desativarPushNotifications(uid) {
   if (!uid) return
 
+  await requireCurrentPushSession(uid, 'disable_notifications')
+
   await removerPushTokenDoDispositivo(uid)
 
-  await update(ref(database, `users/${uid}`), { notificacoes: false })
-  await update(ref(database, `users/${uid}/push`), {
-    enabled: false,
-    disabledAt: serverTimestamp(),
-  })
-  await update(ref(database, `users/${uid}/profile`), { notificacoes: false })
-  await update(ref(database, `users/${uid}/profile/pushNotifications`), {
-    enabled: false,
-    disabledAt: serverTimestamp(),
-  })
+  try {
+    await update(ref(database), {
+      [`users/${uid}/notificacoes`]: false,
+      [`users/${uid}/push/enabled`]: false,
+      [`users/${uid}/push/disabledAt`]: serverTimestamp(),
+      [`users/${uid}/profile/notificacoes`]: false,
+      [`users/${uid}/profile/pushNotifications/enabled`]: false,
+      [`users/${uid}/profile/pushNotifications/disabledAt`]: serverTimestamp(),
+      [`userPrivate/${uid}/push/enabled`]: false,
+      [`userPrivate/${uid}/push/disabledAt`]: serverTimestamp(),
+    })
+  } catch (error) {
+    logPushFlowFailure(error, 'disable_notifications')
+    throw createPushFlowError(
+      describePushFlowError(error, 'disable_notifications').code,
+      'disable_notifications',
+      error,
+    )
+  }
 }
 
 export async function onForegroundPush(callback) {
