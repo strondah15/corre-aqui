@@ -117,15 +117,25 @@ e mostram selo `Previa`.
 Os nos comerciais possuem leitura e escrita negadas nas regras do Realtime
 Database. Somente rotas server-side com Firebase Admin criam checkout, validam
 webhook e ativam ou encerram entitlements.
-# Assinaturas anuais
+# Assinaturas trimestrais recorrentes
 
 O Corre Aqui oferece um pedido gratuito ao Cliente. A gratuidade é consumida somente quando a rota autenticada `/api/pedidos/create` grava o pedido e o marcador `users/{uid}/clientFreeOrderUsed` na mesma atualização atômica. Pedidos seguintes exigem `subscriptions/client/status = active` e `expiresAt` futuro.
 
-O período grátis de Profissional/Corre começa na primeira entrada no modo Trabalhar, pela rota `/api/subscriptions/status`, e dura três meses de calendário. Ações profissionais novas, como aceitar pedido ou responder solicitação privada, são verificadas no backend. Trabalhos, conversas e dados existentes não são apagados.
+O período grátis de Profissional/Corre começa na primeira entrada no modo Trabalhar, pela rota `/api/subscriptions/status`, e dura exatamente 90 dias. Ações profissionais novas, como aceitar pedido ou responder solicitação privada, são verificadas no backend. Trabalhos, conversas e dados existentes não são apagados quando a gratuidade ou uma assinatura termina.
 
 Planos Mercado Pago:
 
-- `CLIENT_ANNUAL`: R$ 19,90 por 12 meses.
-- `PROFESSIONAL_ANNUAL`: R$ 49,90 por 12 meses.
+- `CLIENT_QUARTERLY`: R$ 19,90 a cada 3 meses, com renovação automática.
+- `PROFESSIONAL_QUARTERLY`: R$ 50,00 a cada 3 meses, com renovação automática.
 
-O checkout reutiliza `/api/planos/checkout`; a liberação ocorre exclusivamente pelo webhook `/api/mercado-pago/webhook`, após validação de assinatura, consulta do pagamento, valor, moeda, produto, tentativa e idempotência. Impulsionamentos e destaques existentes permanecem produtos independentes das assinaturas.
+Registros anuais existentes continuam reconhecidos até sua validade original, mas não são oferecidos para novas contratações.
+
+O checkout reutiliza `/api/planos/checkout` e cria uma autorização oficial em `/preapproval`, sem plano remoto associado. Preço, BRL, frequência de 3 meses e data inicial são definidos pelo servidor. O navegador precisa registrar consentimento explícito e nunca envia UID ou preço como autoridade.
+
+A autorização recorrente não libera benefícios. A liberação ocorre exclusivamente depois de um pagamento `approved` consultado diretamente na API do Mercado Pago pelo webhook `/api/mercado-pago/webhook`. O webhook aceita os tópicos `payment`, `subscription_preapproval` e `subscription_authorized_payment`, sempre com HMAC válido, e confere referência, tentativa, produto, valor, moeda, recebedor e idempotência.
+
+O cancelamento passa por `/api/subscriptions/cancel`, cancela futuras cobranças no `/preapproval/{id}` e preserva o acesso até o fim do período já pago. Estorno ou contestação do último pagamento encerram a vigência correspondente. Impulsionamentos e destaques existentes permanecem produtos independentes das assinaturas.
+
+## Notificacoes financeiras
+
+Pagamento aprovado, falha, cancelamento e encerramento reutilizam a Central de Avisos das Notificacoes 2.0, com IDs determinísticos e materializacao idempotente nas raizes existentes. A flag server-side `SUBSCRIPTION_NOTIFICATIONS_ENABLED` permanece `false` por padrao no sandbox, portanto os testes nao enviam avisos financeiros reais. O modulo tambem reconhece os eventos de fim proximo da gratuidade e renovacao proxima para integracao futura com um acionador agendado, sem criar cron de cobranca.

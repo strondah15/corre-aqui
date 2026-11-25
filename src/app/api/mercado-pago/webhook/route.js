@@ -1,40 +1,31 @@
 import { NextResponse } from 'next/server'
 import {
   getCommercialDatabase,
+  mercadoPagoApiRequest,
   processApprovedCommercialPayment,
+  processRecurringPreapprovalUpdate,
   safeText,
   verifyMercadoPagoSignature,
   writeCommercialAudit,
 } from '@/lib/commercialServer'
 import { buildMercadoPagoSignatureDiagnostic } from '@/lib/mercadoPagoWebhookSignature'
+import {
+  resolveAuthorizedPaymentId,
+  resolveInvoicePreapprovalId,
+} from '@/lib/recurringSubscriptions'
 
 export const runtime = 'nodejs'
 
 const responseHeaders = { 'Cache-Control': 'private, no-store' }
 
-async function fetchMercadoPagoPayment(paymentId) {
-  const accessToken = safeText(process.env.MERCADO_PAGO_ACCESS_TOKEN)
-  if (!accessToken) {
-    const error = new Error('missing_mercado_pago_access_token')
-    error.status = 503
-    throw error
-  }
-
-  const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/json',
-    },
-    cache: 'no-store',
-  })
-  const data = await response.json().catch(() => null)
-  if (!response.ok) {
-    const error = new Error(data?.message || `mercado_pago_payment_${response.status}`)
-    error.status = 502
-    error.details = data
-    throw error
-  }
-  return data
+function webhookType(request, body) {
+  const raw = safeText(
+    body?.type
+      || request.nextUrl.searchParams.get('type')
+      || request.nextUrl.searchParams.get('topic'),
+  ).toLowerCase()
+  if (raw === 'payments') return 'payment'
+  return raw
 }
 
 export async function POST(request) {
@@ -83,15 +74,56 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: responseHeaders })
   }
 
+  const type = webhookType(request, body)
+  const supportedTypes = new Set(['payment', 'subscription_preapproval', 'subscription_authorized_payment'])
+  if (!supportedTypes.has(type)) {
+    return NextResponse.json({ ok: true, ignored: true, reason: 'unsupported_webhook_type' }, { headers: responseHeaders })
+  }
+
   const database = getCommercialDatabase()
   await writeCommercialAudit(database, {
-    eventId: `webhook_received_${signature.paymentId}`,
+    eventId: `webhook_received_${type}_${signature.paymentId}`,
     type: 'webhook_received',
     paymentReference: signature.paymentId,
     statusAfter: safeText(body?.action || body?.type || 'received'),
   })
 
-  const payment = await fetchMercadoPagoPayment(signature.paymentId)
-  const result = await processApprovedCommercialPayment({ database, payment })
-  return NextResponse.json(result, { headers: responseHeaders })
+  if (type === 'payment') {
+    const payment = await mercadoPagoApiRequest(`/v1/payments/${encodeURIComponent(signature.paymentId)}`)
+    const result = await processApprovedCommercialPayment({ database, payment })
+    return NextResponse.json(result, { headers: responseHeaders })
+  }
+
+  if (type === 'subscription_preapproval') {
+    const subscription = await mercadoPagoApiRequest(`/preapproval/${encodeURIComponent(signature.paymentId)}`)
+    const result = await processRecurringPreapprovalUpdate({ database, subscription })
+    return NextResponse.json(result, { headers: responseHeaders })
+  }
+
+  const invoice = await mercadoPagoApiRequest(`/authorized_payments/${encodeURIComponent(signature.paymentId)}`)
+  const preapprovalId = resolveInvoicePreapprovalId(invoice)
+  const subscriptionResult = preapprovalId
+    ? await processRecurringPreapprovalUpdate({
+        database,
+        subscription: await mercadoPagoApiRequest(`/preapproval/${encodeURIComponent(preapprovalId)}`),
+      })
+    : { ok: true, updated: false, reason: 'invoice_without_preapproval' }
+  const paymentId = resolveAuthorizedPaymentId(invoice)
+  if (!paymentId) {
+    return NextResponse.json({
+      ok: subscriptionResult.ok !== false,
+      invoiceProcessed: true,
+      paymentProcessed: false,
+      subscription: subscriptionResult,
+    }, { headers: responseHeaders })
+  }
+  const payment = await mercadoPagoApiRequest(`/v1/payments/${encodeURIComponent(paymentId)}`)
+  const paymentResult = await processApprovedCommercialPayment({ database, payment })
+  return NextResponse.json({
+    ok: subscriptionResult.ok !== false && paymentResult.ok !== false,
+    invoiceProcessed: true,
+    paymentProcessed: true,
+    subscription: subscriptionResult,
+    payment: paymentResult,
+  }, { headers: responseHeaders })
 }

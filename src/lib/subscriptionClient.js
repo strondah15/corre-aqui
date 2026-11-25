@@ -2,9 +2,9 @@
 
 import { auth } from '@/lib/firebase'
 import {
-  PROFESSIONAL_ANNUAL_PRODUCT_ID,
   canReusePendingSubscriptionCheckout,
   isSubscriptionSessionCurrent,
+  subscriptionKindForProduct,
 } from '@/lib/subscriptions'
 
 const PENDING_CHECKOUT_KEY = 'correaqui:pending-subscription-checkout:v1'
@@ -65,18 +65,21 @@ export async function ensureClientDirectRequestAccess() {
   return false
 }
 
-export async function startAnnualSubscriptionCheckout(productId) {
+export async function startRecurringSubscriptionCheckout(productId, { autoRenewConsent = false } = {}) {
   const checkoutUid = auth.currentUser?.uid
   if (!checkoutUid) throw new Error('Entre na sua conta para continuar.')
   let baseline = null
   try {
     const status = await getSubscriptionStatus()
-    const kind = productId === PROFESSIONAL_ANNUAL_PRODUCT_ID ? 'professional' : 'client'
+    const kind = subscriptionKindForProduct(productId) || 'client'
     baseline = status?.subscriptions?.[kind] || null
   } catch {}
 
   if (!isSubscriptionSessionCurrent(checkoutUid, auth.currentUser?.uid)) throw new Error('A sessão mudou durante esta ação. Tente novamente.')
-  const result = await subscriptionRequest('/api/planos/checkout', { planId: productId })
+  const result = await subscriptionRequest('/api/planos/checkout', {
+    planId: productId,
+    autoRenewConsent: autoRenewConsent === true,
+  })
   if (!isSubscriptionSessionCurrent(checkoutUid, auth.currentUser?.uid)) throw new Error('A sessão mudou durante esta ação. Tente novamente.')
   if (result?.checkoutUrl && typeof window !== 'undefined') {
     try {
@@ -90,6 +93,10 @@ export async function startAnnualSubscriptionCheckout(productId) {
     } catch {}
   }
   return result
+}
+
+export function cancelRecurringSubscription(kind) {
+  return subscriptionRequest('/api/subscriptions/cancel', { kind })
 }
 
 export function readPendingSubscriptionCheckout(expectedUid = '') {

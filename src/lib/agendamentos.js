@@ -63,7 +63,7 @@ export async function respondLegacyAgendamento({ database, agendamento = {}, act
     const subscriptionResult = await activateProfessionalTrial()
     if (!subscriptionResult?.subscriptions?.professional?.canUseProfessionalFeatures) {
       announceSubscriptionRequired({ kind: 'professional', reason: 'professional_subscription_required' })
-      throw new Error('Assine o plano anual para aceitar novas solicitações.')
+      throw new Error('Assine o plano trimestral para aceitar novas solicitações.')
     }
   }
 

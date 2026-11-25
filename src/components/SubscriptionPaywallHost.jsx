@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
-  CLIENT_ANNUAL_PRICE_CENTS,
-  CLIENT_ANNUAL_PRODUCT_ID,
-  PROFESSIONAL_ANNUAL_PRICE_CENTS,
-  PROFESSIONAL_ANNUAL_PRODUCT_ID,
+  CLIENT_QUARTERLY_PRICE_CENTS,
+  CLIENT_QUARTERLY_PRODUCT_ID,
+  PROFESSIONAL_QUARTERLY_PRICE_CENTS,
+  PROFESSIONAL_QUARTERLY_PRODUCT_ID,
   formatSubscriptionPrice,
   isSubscriptionSessionCurrent,
 } from '@/lib/subscriptions'
@@ -14,7 +14,7 @@ import {
   clearPendingSubscriptionCheckout,
   getSubscriptionStatus,
   readPendingSubscriptionCheckout,
-  startAnnualSubscriptionCheckout,
+  startRecurringSubscriptionCheckout,
 } from '@/lib/subscriptionClient'
 import {
   subscriptionKindFromProduct,
@@ -27,19 +27,19 @@ const copy = {
     eyebrow: 'Plano Cliente',
     title: 'Continue usando o Corre Aqui',
     lead: 'Seu primeiro pedido foi grátis.',
-    description: 'Continue criando pedidos durante todo o ano.',
-    price: CLIENT_ANNUAL_PRICE_CENTS,
-    monthly: 'Menos de R$ 1,70 por mês',
-    productId: CLIENT_ANNUAL_PRODUCT_ID,
+    description: 'Crie pedidos ilimitados enquanto o plano estiver vigente.',
+    price: CLIENT_QUARTERLY_PRICE_CENTS,
+    monthly: 'Cobrança automática a cada 3 meses',
+    productId: CLIENT_QUARTERLY_PRODUCT_ID,
   },
   professional: {
     eyebrow: 'Plano Profissional',
     title: 'Continue trabalhando pelo Corre Aqui',
-    lead: 'Seu período gratuito de 3 meses terminou.',
-    description: 'Continue encontrando oportunidades durante todo o ano.',
-    price: PROFESSIONAL_ANNUAL_PRICE_CENTS,
-    monthly: 'Cerca de R$ 4,16 por mês',
-    productId: PROFESSIONAL_ANNUAL_PRODUCT_ID,
+    lead: 'Seu período gratuito de 90 dias terminou.',
+    description: 'Continue trabalhando e divulgando seus serviços no Corre Aqui.',
+    price: PROFESSIONAL_QUARTERLY_PRICE_CENTS,
+    monthly: 'Cobrança automática a cada 3 meses',
+    productId: PROFESSIONAL_QUARTERLY_PRODUCT_ID,
   },
 }
 
@@ -47,8 +47,8 @@ const directClientCopy = {
   ...copy.client,
   title: 'Agende diretamente pelo Corre Aqui',
   lead: 'Para agendar diretamente com um profissional, ative o Plano Cliente.',
-  description: 'Crie novas solicitações diretas com segurança durante todo o ano.',
-  validity: 'Plano válido por 12 meses após a confirmação do pagamento.',
+  description: 'Crie solicitações diretas e pedidos ilimitados durante a vigência.',
+  validity: 'Plano válido por 3 meses a cada pagamento confirmado.',
   benefits: [
     'Agendamentos e pedidos diretos com profissionais',
     'Acompanhamento pelo chat, agenda e histórico',
@@ -105,6 +105,7 @@ export default function SubscriptionPaywallHost() {
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [autoRenewConsent, setAutoRenewConsent] = useState(false)
   const [paymentReturn, setPaymentReturn] = useState(null)
   const [sessionUid, setSessionUid] = useState(undefined)
   const checkoutBusyRef = useRef(false)
@@ -191,6 +192,7 @@ export default function SubscriptionPaywallHost() {
         setReason('')
         setLoading(false)
         setError('')
+        setAutoRenewConsent(false)
         setPaymentReturn(null)
       }
       activeUidRef.current = nextUid
@@ -210,6 +212,7 @@ export default function SubscriptionPaywallHost() {
       setKind(nextKind)
       setReason(String(event?.detail?.reason || ''))
       setError('')
+      setAutoRenewConsent(false)
     }
     window.addEventListener('correaqui:subscription-required', open)
     return () => window.removeEventListener('correaqui:subscription-required', open)
@@ -256,6 +259,7 @@ export default function SubscriptionPaywallHost() {
     setReason('')
     setPaymentReturn(null)
     setError('')
+    setAutoRenewConsent(false)
   }
 
   const retryAfterFailure = (requestedKind = '') => {
@@ -269,12 +273,16 @@ export default function SubscriptionPaywallHost() {
 
   const checkout = async () => {
     if (!kind || checkoutBusyRef.current) return
+    if (!autoRenewConsent) {
+      setError('Confirme que você concorda com a renovação automática trimestral.')
+      return
+    }
     checkoutBusyRef.current = true
     let redirecting = false
     setLoading(true)
     setError('')
     try {
-      const data = await startAnnualSubscriptionCheckout(copy[kind].productId)
+      const data = await startRecurringSubscriptionCheckout(copy[kind].productId, { autoRenewConsent: true })
       if (data.checkoutUrl) {
         window.location.assign(data.checkoutUrl)
         redirecting = true
@@ -382,7 +390,7 @@ export default function SubscriptionPaywallHost() {
         </div>
         <div className="p-6 sm:p-7">
           <div className="rounded-[24px] border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 text-center dark:border-amber-400/20 dark:from-amber-400/10 dark:to-slate-900">
-            <div className="text-4xl font-black tracking-tight text-blue-950 dark:text-white">{formatSubscriptionPrice(content.price)} <span className="text-base text-slate-500 dark:text-slate-400">/ ano</span></div>
+            <div className="text-4xl font-black tracking-tight text-blue-950 dark:text-white">{formatSubscriptionPrice(content.price)} <span className="text-base text-slate-500 dark:text-slate-400">/ 3 meses</span></div>
             <div className="mt-3 inline-flex rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-black text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-200">{content.monthly}</div>
           </div>
           <div className="mt-4 flex items-start gap-2 rounded-2xl bg-slate-50 px-3 py-2.5 text-[11px] font-semibold leading-relaxed text-slate-600 dark:bg-white/5 dark:text-slate-300">
@@ -400,8 +408,20 @@ export default function SubscriptionPaywallHost() {
               ))}
             </ul>
           ) : null}
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-3 text-left text-xs font-semibold leading-relaxed text-slate-700">
+            <input
+              type="checkbox"
+              checked={autoRenewConsent}
+              onChange={(event) => {
+                setAutoRenewConsent(event.target.checked)
+                if (event.target.checked) setError('')
+              }}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-blue-700"
+            />
+            <span>Concordo com a cobrança automática de {formatSubscriptionPrice(content.price)} a cada 3 meses. Posso cancelar a renovação futura no app e manter o período já pago.</span>
+          </label>
           {error ? <p role="alert" className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-700 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200">{error}</p> : null}
-          <button type="button" onClick={checkout} disabled={loading} className="mt-4 flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#ffd91a] px-4 text-sm font-black text-blue-950 shadow-[0_14px_30px_rgba(245,158,11,0.25)] transition hover:bg-[#ffe34f] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">
+          <button type="button" onClick={checkout} disabled={loading || !autoRenewConsent} className="mt-4 flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl bg-[#ffd91a] px-4 text-sm font-black text-blue-950 shadow-[0_14px_30px_rgba(245,158,11,0.25)] transition hover:bg-[#ffe34f] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">
             {loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-950/25 border-t-blue-950" aria-hidden="true" /> : null}
             {loading ? 'Abrindo checkout seguro...' : 'Assinar agora'}
           </button>

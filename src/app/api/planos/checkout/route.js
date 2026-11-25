@@ -4,12 +4,14 @@ import {
   getCommercialProduct,
 } from '@/lib/commercialProducts'
 import {
-  CLIENT_ANNUAL_PRODUCT_ID,
-  PROFESSIONAL_ANNUAL_PRODUCT_ID,
+  CLIENT_QUARTERLY_PRODUCT_ID,
+  PROFESSIONAL_QUARTERLY_PRODUCT_ID,
+  isRecurringSubscriptionProduct,
 } from '@/lib/subscriptions'
 import {
   createMercadoPagoCheckout,
-  getAuthenticatedUid,
+  createMercadoPagoRecurringCheckout,
+  getAuthenticatedIdentity,
   getCommercialDatabase,
   getMercadoPagoCheckoutReadiness,
   getProfileRegionKeys,
@@ -18,6 +20,7 @@ import {
   loadPublicProfile,
   safeText,
 } from '@/lib/commercialServer'
+import { ensureProfessionalTrial } from '@/lib/subscriptionServer'
 
 export const runtime = 'nodejs'
 
@@ -35,13 +38,14 @@ export async function POST(request) {
       }, { status: 503, headers: responseHeaders })
     }
 
-    const uid = await getAuthenticatedUid(request)
+    const identity = await getAuthenticatedIdentity(request)
+    const uid = identity.uid
     const body = await request.json().catch(() => ({}))
     const planId = safeText(body?.planId)
 
     const supportedPlans = new Set([
-      CLIENT_ANNUAL_PRODUCT_ID,
-      PROFESSIONAL_ANNUAL_PRODUCT_ID,
+      CLIENT_QUARTERLY_PRODUCT_ID,
+      PROFESSIONAL_QUARTERLY_PRODUCT_ID,
       PROFESSIONAL_FEATURED_PLAN_ID,
     ])
     if (!supportedPlans.has(planId)) {
@@ -58,6 +62,23 @@ export async function POST(request) {
 
     const product = getCommercialProduct(planId)
     const database = getCommercialDatabase()
+    if (isRecurringSubscriptionProduct(planId) && body?.autoRenewConsent !== true) {
+      return NextResponse.json({
+        ok: false,
+        error: 'auto_renew_consent_required',
+        message: 'Confirme a renovacao automatica trimestral para continuar.',
+      }, { status: 400, headers: responseHeaders })
+    }
+    if (isRecurringSubscriptionProduct(planId) && (!identity.email || !identity.emailVerified)) {
+      return NextResponse.json({
+        ok: false,
+        error: 'verified_email_required',
+        message: 'Sua conta precisa ter um e-mail verificado para autorizar a assinatura.',
+      }, { status: 409, headers: responseHeaders })
+    }
+    if (planId === PROFESSIONAL_QUARTERLY_PRODUCT_ID) {
+      await ensureProfessionalTrial(database, uid)
+    }
     const profile = planId === PROFESSIONAL_FEATURED_PLAN_ID
       ? await loadPublicProfile(database, uid)
       : null
@@ -74,17 +95,24 @@ export async function POST(request) {
       }, { status: 409, headers: responseHeaders })
     }
 
-    const { attempt, checkout } = await createMercadoPagoCheckout({
-      database,
-      userId: uid,
-      product,
-      targetId: uid,
-      targetType: planId === PROFESSIONAL_FEATURED_PLAN_ID ? 'profile' : 'subscription',
-      targetSummary: {
-        nome: safeText(profile?.nome).slice(0, 80),
-        regions: getProfileRegionKeys(profile),
-      },
-    })
+    const { attempt, checkout } = isRecurringSubscriptionProduct(planId)
+      ? await createMercadoPagoRecurringCheckout({
+          database,
+          userId: uid,
+          product,
+          payerEmail: identity.email,
+        })
+      : await createMercadoPagoCheckout({
+          database,
+          userId: uid,
+          product,
+          targetId: uid,
+          targetType: 'profile',
+          targetSummary: {
+            nome: safeText(profile?.nome).slice(0, 80),
+            regions: getProfileRegionKeys(profile),
+          },
+        })
 
     return NextResponse.json({
       ok: true,
@@ -99,7 +127,9 @@ export async function POST(request) {
       },
       status: attempt.status,
       ...checkout,
-      message: 'Checkout criado.',
+      message: isRecurringSubscriptionProduct(planId)
+        ? 'Autorizacao de assinatura criada.'
+        : 'Checkout criado.',
     }, { headers: responseHeaders })
   } catch (error) {
     console.error('[planos/checkout] falha ao criar checkout:', {

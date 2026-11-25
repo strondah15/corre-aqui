@@ -15,10 +15,25 @@ import {
   CLIENT_ANNUAL_PRODUCT_ID,
   PROFESSIONAL_ANNUAL_PRODUCT_ID,
   addCalendarMonths,
+  getProfessionalSubscriptionStatus,
+  isRecurringSubscriptionProduct,
+  subscriptionKindForProduct,
 } from '@/lib/subscriptions'
+import {
+  RECURRING_PROVIDER,
+  SUBSCRIPTION_CHECKOUT_LEASE_MS,
+  buildRecurringPreapprovalPayload,
+  isCanceledProviderStatus,
+  nextQuarterlyExpiration,
+  paymentRenewalStatus,
+  providerRenewalStatus,
+  shouldApplyProviderUpdate,
+  validateRecurringPreapproval,
+} from '@/lib/recurringSubscriptions'
 import { commercialAuditKey } from '@/lib/commercialAuditKey'
 import { verifyMercadoPagoHmacSignature } from '@/lib/mercadoPagoWebhookSignature'
 import { assessMercadoPagoCheckoutConfiguration } from '@/lib/commercialRuntimeConfig'
+import { materializeSubscriptionNotification } from '@/lib/subscriptionNotifications'
 
 export const COMMERCIAL_SOURCE = 'mercado_pago'
 const PAYMENT_EVENT_LEASE_MS = 5 * 60 * 1000
@@ -29,6 +44,18 @@ export const normalizeText = (value) => safeText(value)
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .toLowerCase()
+
+async function notifySubscriptionEventSafely({ database, ...event }) {
+  try {
+    return await materializeSubscriptionNotification({ database, ...event })
+  } catch (error) {
+    console.error('[commercial] subscription notification failed', {
+      code: safeText(error?.code || error?.message || 'unknown').slice(0, 120),
+      type: safeText(event.type).slice(0, 64),
+    })
+    return { ok: false, reason: 'subscription_notification_failed' }
+  }
+}
 
 export const asTimestamp = (value) => {
   if (!value) return 0
@@ -64,7 +91,7 @@ export function referenceKey(value) {
     .slice(0, 180)
 }
 
-export async function getAuthenticatedUid(request) {
+export async function getAuthenticatedIdentity(request) {
   if (!isFirebaseAdminConfigured()) {
     const error = new Error('Firebase Admin nao configurado.')
     error.status = 503
@@ -80,7 +107,16 @@ export async function getAuthenticatedUid(request) {
   }
 
   const decoded = await getFirebaseAdminAuth().verifyIdToken(idToken)
-  return decoded.uid
+  return {
+    uid: decoded.uid,
+    email: safeText(decoded.email).toLowerCase(),
+    emailVerified: decoded.email_verified === true,
+  }
+}
+
+export async function getAuthenticatedUid(request) {
+  const identity = await getAuthenticatedIdentity(request)
+  return identity.uid
 }
 
 export function getCommercialDatabase() {
@@ -337,6 +373,291 @@ function checkoutConfigurationError(readiness) {
   error.status = 503
   error.configurationIssues = Array.from(readiness?.issues || [])
   return error
+}
+
+function mercadoPagoError(data, status, fallback = 'mercado_pago_request_failed') {
+  const error = new Error(safeText(data?.message || data?.error || fallback))
+  error.code = safeText(data?.code || fallback)
+  error.status = status >= 400 && status < 500 ? 409 : 502
+  return error
+}
+
+export async function mercadoPagoApiRequest(path, { method = 'GET', body } = {}) {
+  const accessToken = safeText(process.env.MERCADO_PAGO_ACCESS_TOKEN)
+  if (!accessToken) {
+    const error = new Error('missing_mercado_pago_access_token')
+    error.status = 503
+    throw error
+  }
+  const response = await globalThis.fetch(`https://api.mercadopago.com${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    cache: 'no-store',
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok) throw mercadoPagoError(data, response.status, `mercado_pago_${response.status}`)
+  return data
+}
+
+async function findRecurringPreapprovalByReference(externalReference) {
+  const data = await mercadoPagoApiRequest(`/preapproval/search?q=${encodeURIComponent(externalReference)}`)
+  return Array.isArray(data?.results)
+    ? data.results.find((item) => safeText(item?.external_reference) === externalReference) || null
+    : null
+}
+
+async function loadReusableRecurringCheckout({ database, lock, product }) {
+  const preapprovalId = safeText(lock?.preapprovalId)
+  if (!preapprovalId) return null
+  const attemptSnapshot = await database.ref(`commercialCheckoutAttempts/${safeText(lock?.attemptId)}`).get()
+  const attempt = attemptSnapshot.val()
+  if (!attempt || attempt.productId !== product.id) return null
+  const subscription = await mercadoPagoApiRequest(`/preapproval/${encodeURIComponent(preapprovalId)}`)
+  const validation = validateRecurringPreapproval({ subscription, attempt, product })
+  if (!validation.valid || isCanceledProviderStatus(subscription?.status)) return null
+  const checkoutUrl = safeText(subscription?.init_point || subscription?.sandbox_init_point || lock?.checkoutUrl)
+  if (!checkoutUrl) return null
+  return {
+    attempt,
+    checkout: {
+      checkoutAvailable: true,
+      checkoutUrl,
+      initPoint: checkoutUrl,
+      preapprovalId,
+      providerStatus: safeText(subscription?.status),
+      reused: true,
+    },
+  }
+}
+
+async function acquireRecurringCheckoutLease({ database, userId, kind, product }) {
+  const lockRef = database.ref(`subscriptionCheckoutLocks/${userId}/${kind}`)
+  const existingSnapshot = await lockRef.get()
+  const existing = existingSnapshot.val() || {}
+  if (safeText(existing.status) === 'ready' && safeText(existing.productId) === product.id) {
+    const reusable = await loadReusableRecurringCheckout({ database, lock: existing, product })
+    if (reusable) return { reused: reusable }
+  }
+
+  const now = Date.now()
+  const processingToken = crypto.randomUUID()
+  const transaction = await lockRef.transaction((current) => {
+    const lock = current && typeof current === 'object' ? current : {}
+    const status = safeText(lock.status).toLowerCase()
+    const updatedAt = asTimestamp(lock.updatedAt || lock.createdAt)
+    if (status === 'processing' && updatedAt > now - SUBSCRIPTION_CHECKOUT_LEASE_MS) return undefined
+    return cleanFirebasePayload({
+      ...lock,
+      status: 'processing',
+      processingToken,
+      productId: product.id,
+      createdAt: Number(lock.createdAt || 0) || now,
+      updatedAt: now,
+    })
+  })
+  if (!transaction.committed || transaction.snapshot.val()?.processingToken !== processingToken) {
+    const error = new Error('subscription_checkout_in_progress')
+    error.status = 409
+    throw error
+  }
+  return { lockRef, lock: transaction.snapshot.val(), processingToken }
+}
+
+function subscriptionCheckoutFirstChargeAt({ currentPlan = {}, kind, now }) {
+  const currentExpiresAt = asTimestamp(currentPlan.expiresAt)
+  const trialEndsAt = asTimestamp(currentPlan.trialEndsAt)
+  return Math.max(
+    now,
+    currentExpiresAt > now ? currentExpiresAt : 0,
+    kind === 'professional' && trialEndsAt > now ? trialEndsAt : 0,
+  )
+}
+
+async function persistPendingRecurringSubscription({
+  database,
+  userId,
+  kind,
+  product,
+  attempt,
+  subscription,
+  firstChargeAt,
+}) {
+  const now = Date.now()
+  const subscriptionRef = database.ref(`users/${userId}/subscriptions/${kind}`)
+  await subscriptionRef.transaction((current) => {
+    const plan = current && typeof current === 'object' ? current : {}
+    const currentExpiresAt = asTimestamp(plan.expiresAt)
+    const keepPaidAccess = ['active', 'canceled'].includes(safeText(plan.status).toLowerCase()) && currentExpiresAt > now
+    return cleanFirebasePayload({
+      ...plan,
+      status: keepPaidAccess ? 'active' : 'pending_authorization',
+      plan: keepPaidAccess ? (safeText(plan.plan) || 'annual') : 'quarterly',
+      pendingPlan: 'quarterly',
+      recurringProductId: product.id,
+      preapprovalId: safeText(subscription.id),
+      providerStatus: safeText(subscription.status || 'pending').toLowerCase(),
+      providerLastModifiedAt: asTimestamp(subscription.last_modified || subscription.date_created) || now,
+      autoRenew: safeText(subscription.status).toLowerCase() === 'authorized',
+      renewalStatus: providerRenewalStatus(subscription.status),
+      nextPaymentDate: asTimestamp(subscription.next_payment_date) || firstChargeAt || null,
+      firstChargeAt: firstChargeAt || null,
+      checkoutAttemptId: attempt.id,
+      updatedAt: now,
+      source: RECURRING_PROVIDER,
+    })
+  })
+}
+
+export async function createMercadoPagoRecurringCheckout({
+  database,
+  userId,
+  product,
+  payerEmail,
+}) {
+  const readiness = getMercadoPagoCheckoutReadiness()
+  if (!readiness.ready) throw checkoutConfigurationError(readiness)
+  if (!isRecurringSubscriptionProduct(product?.id) || product?.billingMode !== 'quarterly_recurring') {
+    const error = new Error('invalid_recurring_product')
+    error.status = 400
+    throw error
+  }
+  const kind = subscriptionKindForProduct(product.id)
+  const currentSnapshot = await database.ref(`users/${userId}/subscriptions/${kind}`).get()
+  let currentPlan = currentSnapshot.val() || {}
+  if (
+    currentPlan.autoRenew === true
+    && safeText(currentPlan.preapprovalId)
+    && !isCanceledProviderStatus(currentPlan.providerStatus)
+  ) {
+    const error = new Error('subscription_already_active')
+    error.status = 409
+    throw error
+  }
+
+  const lease = await acquireRecurringCheckoutLease({ database, userId, kind, product })
+  if (lease.reused) return lease.reused
+  const { lockRef, lock, processingToken } = lease
+  let attempt = null
+  try {
+    const latestPlanSnapshot = await database.ref(`users/${userId}/subscriptions/${kind}`).get()
+    currentPlan = latestPlanSnapshot.val() || {}
+    if (
+      currentPlan.autoRenew === true
+      && safeText(currentPlan.preapprovalId)
+      && !isCanceledProviderStatus(currentPlan.providerStatus)
+    ) {
+      const error = new Error('subscription_already_active')
+      error.status = 409
+      throw error
+    }
+    const existingAttemptId = safeText(lock?.attemptId)
+    if (existingAttemptId) {
+      const existingAttemptSnapshot = await database.ref(`commercialCheckoutAttempts/${existingAttemptId}`).get()
+      attempt = existingAttemptSnapshot.val()
+    }
+    if (!attempt || attempt.productId !== product.id || attempt.userId !== userId) {
+      attempt = await createCommercialCheckoutAttempt({
+        database,
+        userId,
+        product,
+        targetId: userId,
+        targetType: 'recurring_subscription',
+      })
+      await lockRef.update({ attemptId: attempt.id, updatedAt: Date.now() })
+    }
+
+    const now = Date.now()
+    const firstChargeAt = subscriptionCheckoutFirstChargeAt({ currentPlan, kind, now })
+    let subscription = safeText(attempt.preapprovalId)
+      ? await mercadoPagoApiRequest(`/preapproval/${encodeURIComponent(attempt.preapprovalId)}`)
+      : await findRecurringPreapprovalByReference(attempt.externalReference)
+
+    if (!subscription || isCanceledProviderStatus(subscription.status)) {
+      const payload = buildRecurringPreapprovalPayload({
+        product,
+        attempt,
+        payerEmail,
+        siteOrigin: readiness.siteOrigin,
+        firstChargeAt,
+        now,
+      })
+      subscription = await mercadoPagoApiRequest('/preapproval', { method: 'POST', body: payload })
+    }
+
+    const validation = validateRecurringPreapproval({ subscription, attempt, product })
+    if (!validation.valid) {
+      const error = new Error(`invalid_recurring_preapproval:${validation.errors.join(',')}`)
+      error.status = 502
+      throw error
+    }
+    const checkoutUrl = safeText(subscription.init_point || subscription.sandbox_init_point)
+    if (!checkoutUrl) {
+      const error = new Error('mercado_pago_checkout_url_missing')
+      error.status = 502
+      throw error
+    }
+
+    const preapprovalId = safeText(subscription.id)
+    const providerData = cleanFirebasePayload({
+      preapprovalId,
+      collectorId: safeText(subscription.collector_id),
+      applicationId: safeText(subscription.application_id),
+      providerStatus: safeText(subscription.status),
+      checkoutUrl,
+      firstChargeAt,
+      updatedAt: Date.now(),
+    })
+    await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update(providerData)
+    await database.ref(`commercialCheckoutAttemptsBySubscription/${referenceKey(preapprovalId)}`).set(attempt.id)
+    await lockRef.update({
+      ...providerData,
+      status: 'ready',
+      processingToken: null,
+    })
+    await persistPendingRecurringSubscription({
+      database,
+      userId,
+      kind,
+      product,
+      attempt,
+      subscription,
+      firstChargeAt,
+    })
+    await writeCommercialAudit(database, {
+      eventId: `recurring_checkout_ready_${attempt.id}`,
+      type: 'recurring_checkout_ready',
+      userId,
+      productId: product.id,
+      paymentReference: attempt.externalReference,
+      statusAfter: safeText(subscription.status),
+    })
+
+    return {
+      attempt,
+      checkout: {
+        checkoutAvailable: true,
+        checkoutUrl,
+        initPoint: checkoutUrl,
+        preapprovalId,
+        providerStatus: safeText(subscription.status),
+        firstChargeAt,
+        reused: false,
+      },
+    }
+  } catch (error) {
+    await lockRef.update({
+      status: 'failed',
+      processingToken,
+      errorCode: safeText(error?.code || error?.message || 'recurring_checkout_failed').slice(0, 160),
+      updatedAt: Date.now(),
+    }).catch(() => {})
+    throw error
+  }
 }
 
 async function createMercadoPagoPreference({
@@ -616,6 +937,108 @@ async function activateAnnualSubscription({ database, attempt, payment }) {
   return { activated: true, expiresAt, subscriptionKind: kind, duplicate: duplicatePayment }
 }
 
+async function writeSubscriptionPaymentHistory({ database, attempt, payment }) {
+  if (!isRecurringSubscriptionProduct(attempt.productId)) return
+  const kind = subscriptionKindForProduct(attempt.productId)
+  const paymentId = safeText(payment?.id)
+  if (!kind || !paymentId) return
+  const historyRef = database.ref(`subscriptionPaymentHistory/${attempt.userId}/${kind}/${referenceKey(paymentId)}`)
+  const status = safeText(payment?.status).toLowerCase()
+  const now = Date.now()
+  await historyRef.transaction((current) => {
+    const existing = current && typeof current === 'object' ? current : {}
+    if (safeText(existing.status).toLowerCase() === 'approved' && !['refunded', 'charged_back'].includes(status)) {
+      return existing
+    }
+    return cleanFirebasePayload({
+      ...existing,
+      id: paymentId,
+      status,
+      amountInCents: Math.round(Number(payment?.transaction_amount || 0) * 100),
+      currency: safeText(payment?.currency_id || payment?.currency),
+      paidAt: asTimestamp(payment?.date_approved) || existing.paidAt || null,
+      createdAt: asTimestamp(payment?.date_created) || existing.createdAt || now,
+      updatedAt: asTimestamp(payment?.date_last_updated) || now,
+      productId: attempt.productId,
+      attemptId: attempt.id,
+      preapprovalId: safeText(attempt.preapprovalId),
+    })
+  })
+}
+
+async function activateQuarterlySubscription({ database, attempt, payment }) {
+  const kind = subscriptionKindForProduct(attempt.productId)
+  if (!kind) return { activated: false, reason: 'invalid_subscription_kind' }
+  const subscriptionRef = database.ref(`users/${attempt.userId}/subscriptions/${kind}`)
+  const now = Date.now()
+  const paymentId = safeText(payment?.id)
+  const paymentKey = referenceKey(paymentId)
+  const paymentEventAt = asTimestamp(payment?.date_last_updated || payment?.date_approved || payment?.date_created) || now
+  let duplicatePayment = false
+  let expiresAt = nextQuarterlyExpiration(now)
+  const result = await subscriptionRef.transaction((current) => {
+    const plan = current && typeof current === 'object' ? current : {}
+    const processedPayments = plan.processedPayments && typeof plan.processedPayments === 'object'
+      ? plan.processedPayments
+      : {}
+    const currentExpiresAt = asTimestamp(plan.expiresAt)
+    if (processedPayments[paymentKey]?.paymentId === paymentId || safeText(plan.paymentId) === paymentId) {
+      duplicatePayment = true
+      expiresAt = currentExpiresAt || expiresAt
+      return plan
+    }
+    const base = currentExpiresAt > now ? currentExpiresAt : now
+    expiresAt = nextQuarterlyExpiration(base)
+    return cleanFirebasePayload({
+      ...plan,
+      status: 'active',
+      plan: 'quarterly',
+      pendingPlan: null,
+      recurringProductId: attempt.productId,
+      preapprovalId: safeText(attempt.preapprovalId || plan.preapprovalId),
+      startedAt: asTimestamp(plan.startedAt) || now,
+      expiresAt,
+      autoRenew: !isCanceledProviderStatus(plan.providerStatus),
+      renewalStatus: isCanceledProviderStatus(plan.providerStatus) ? 'canceled' : 'enabled',
+      lastPaymentStatus: 'approved',
+      lastPaymentAt: asTimestamp(payment?.date_approved) || now,
+      lastPaymentEventAt: paymentEventAt,
+      updatedAt: now,
+      source: RECURRING_PROVIDER,
+      paymentReference: attempt.externalReference,
+      paymentId,
+      processedPayments: {
+        ...processedPayments,
+        [paymentKey]: { paymentId, approvedAt: asTimestamp(payment?.date_approved) || now },
+      },
+    })
+  })
+
+  if (!result.committed) return { activated: false, reason: 'subscription_transaction_failed' }
+  await writeSubscriptionPaymentHistory({ database, attempt, payment })
+  await writeCommercialAudit(database, {
+    eventId: `${duplicatePayment ? 'quarterly_subscription_duplicate_ignored' : 'quarterly_subscription_activated'}_${attempt.id}_${referenceKey(paymentId)}`,
+    type: duplicatePayment ? 'quarterly_subscription_duplicate_ignored' : 'quarterly_subscription_activated',
+    userId: attempt.userId,
+    productId: attempt.productId,
+    paymentReference: attempt.externalReference,
+    statusAfter: 'active',
+  })
+  if (!duplicatePayment) {
+    await notifySubscriptionEventSafely({
+      database,
+      uid: attempt.userId,
+      kind,
+      type: 'payment_approved',
+      reference: paymentId,
+      occurredAt: asTimestamp(payment?.date_approved) || now,
+      accessUntil: expiresAt,
+      nextPaymentDate: asTimestamp(result.snapshot.val()?.nextPaymentDate),
+    })
+  }
+  return { activated: true, expiresAt, subscriptionKind: kind, duplicate: duplicatePayment }
+}
+
 async function endCommercialEntitlement({ database, attempt, payment, status }) {
   const now = Date.now()
   const paymentId = safeText(payment?.id)
@@ -623,17 +1046,21 @@ async function endCommercialEntitlement({ database, attempt, payment, status }) 
   const auditType = status === 'charged_back' ? 'chargeback_received' : 'refund_received'
   const product = getCommercialProduct(attempt.productId)
 
-  if (attempt.productId === CLIENT_ANNUAL_PRODUCT_ID || attempt.productId === PROFESSIONAL_ANNUAL_PRODUCT_ID) {
-    const kind = attempt.productId === CLIENT_ANNUAL_PRODUCT_ID ? 'client' : 'professional'
+  if (subscriptionKindForProduct(attempt.productId)) {
+    const kind = subscriptionKindForProduct(attempt.productId)
     const subscriptionRef = database.ref(`users/${attempt.userId}/subscriptions/${kind}`)
     const snapshot = await subscriptionRef.get()
     const current = snapshot.val() || {}
-    const ownsCurrentSubscription =
-      safeText(current.paymentReference) === attempt.externalReference ||
-      safeText(current.paymentId) === paymentId
+    const ownsCurrentSubscription = isRecurringSubscriptionProduct(attempt.productId)
+      ? safeText(current.paymentId) === paymentId
+      : safeText(current.paymentReference) === attempt.externalReference || safeText(current.paymentId) === paymentId
     if (ownsCurrentSubscription) {
       await subscriptionRef.update(cleanFirebasePayload({
-        status: 'expired',
+        status: statusAfter,
+        expiresAt: now,
+        autoRenew: false,
+        renewalStatus: statusAfter,
+        lastPaymentStatus: status,
         endedAt: now,
         endedReason: statusAfter,
         updatedAt: now,
@@ -648,6 +1075,17 @@ async function endCommercialEntitlement({ database, attempt, payment, status }) 
       statusBefore: current.status || null,
       statusAfter: ownsCurrentSubscription ? 'expired' : current.status || statusAfter,
     })
+    await writeSubscriptionPaymentHistory({ database, attempt, payment })
+    if (ownsCurrentSubscription) {
+      await notifySubscriptionEventSafely({
+        database,
+        uid: attempt.userId,
+        kind,
+        type: 'subscription_expired',
+        reference: `${paymentId}:${statusAfter}`,
+        occurredAt: now,
+      })
+    }
     return { activated: false, ended: ownsCurrentSubscription, reason: statusAfter }
   }
 
@@ -792,6 +1230,14 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     await lockRef.update({ status: 'ignored', reason: 'invalid_amount_or_currency', updatedAt: Date.now() })
     return { ok: false, reason: 'invalid_amount_or_currency' }
   }
+  if (
+    isRecurringSubscriptionProduct(product.id)
+    && safeText(attempt.collectorId)
+    && safeText(payment?.collector_id) !== safeText(attempt.collectorId)
+  ) {
+    await lockRef.update({ status: 'ignored', reason: 'collector_mismatch', updatedAt: Date.now() })
+    return { ok: false, reason: 'collector_mismatch' }
+  }
   if (status === 'refunded' || status === 'charged_back') {
     const ending = await endCommercialEntitlement({ database, attempt, payment, status })
     await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update(cleanFirebasePayload({
@@ -808,6 +1254,35 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     return { ok: true, ...ending }
   }
   if (status !== 'approved') {
+    if (isRecurringSubscriptionProduct(product.id)) {
+      await writeSubscriptionPaymentHistory({ database, attempt, payment })
+      const kind = subscriptionKindForProduct(product.id)
+      const subscriptionRef = database.ref(`users/${attempt.userId}/subscriptions/${kind}`)
+      const paymentEventAt = asTimestamp(payment?.date_last_updated || payment?.date_created || payment?.date_approved) || Date.now()
+      await subscriptionRef.transaction((current) => {
+        const plan = current && typeof current === 'object' ? current : {}
+        if (safeText(plan.paymentId) === paymentId && safeText(plan.lastPaymentStatus) === 'approved') return plan
+        const currentPaymentEventAt = asTimestamp(plan.lastPaymentEventAt || plan.lastPaymentAt)
+        if (currentPaymentEventAt && paymentEventAt < currentPaymentEventAt) return plan
+        return cleanFirebasePayload({
+          ...plan,
+          lastPaymentStatus: status || 'unknown',
+          lastPaymentEventAt: paymentEventAt,
+          renewalStatus: paymentRenewalStatus(status),
+          updatedAt: Date.now(),
+        })
+      })
+      if (paymentRenewalStatus(status) === 'payment_failed') {
+        await notifySubscriptionEventSafely({
+          database,
+          uid: attempt.userId,
+          kind,
+          type: 'payment_failed',
+          reference: paymentId,
+          occurredAt: asTimestamp(payment?.date_last_updated || payment?.date_created) || Date.now(),
+        })
+      }
+    }
     await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update(cleanFirebasePayload({
       status: status ? `payment_${status}` : 'payment_not_approved',
       paymentId,
@@ -817,7 +1292,9 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     return { ok: true, activated: false, reason: 'payment_not_approved' }
   }
 
-  const activation = product.id === CLIENT_ANNUAL_PRODUCT_ID || product.id === PROFESSIONAL_ANNUAL_PRODUCT_ID
+  const activation = isRecurringSubscriptionProduct(product.id)
+    ? await activateQuarterlySubscription({ database, attempt, payment })
+    : product.id === CLIENT_ANNUAL_PRODUCT_ID || product.id === PROFESSIONAL_ANNUAL_PRODUCT_ID
     ? await activateAnnualSubscription({ database, attempt, payment })
     : product.id === PROFESSIONAL_FEATURED_PLAN_ID
       ? await activateProfessionalEntitlement({ database, attempt, payment })
@@ -844,5 +1321,151 @@ export async function processApprovedCommercialPayment({ database, payment }) {
       updatedAt: Date.now(),
     }).catch(() => {})
     throw error
+  }
+}
+
+export async function processRecurringPreapprovalUpdate({ database, subscription, force = false }) {
+  const externalReference = safeText(subscription?.external_reference)
+  const parsed = parseExternalReference(externalReference)
+  if (!parsed) return { ok: false, reason: 'invalid_external_reference' }
+  const attemptSnapshot = await database.ref(`commercialCheckoutAttempts/${parsed.attemptId}`).get()
+  const attempt = attemptSnapshot.val()
+  if (!attempt || attempt.externalReference !== externalReference) return { ok: false, reason: 'attempt_not_found' }
+  if (
+    safeText(attempt.id) !== parsed.attemptId
+    || safeText(attempt.userId) !== parsed.userId
+    || safeText(attempt.productId) !== parsed.productId
+    || safeText(attempt.targetId || 'profile') !== parsed.targetId
+  ) return { ok: false, reason: 'attempt_identity_mismatch' }
+  const product = getCommercialProduct(attempt.productId)
+  if (!product || !isRecurringSubscriptionProduct(product.id)) return { ok: false, reason: 'invalid_recurring_product' }
+  const validation = validateRecurringPreapproval({ subscription, attempt, product })
+  if (!validation.valid) return { ok: false, reason: validation.errors[0] || 'invalid_recurring_preapproval' }
+  if (safeText(attempt.preapprovalId) && safeText(attempt.preapprovalId) !== safeText(subscription.id)) {
+    return { ok: false, reason: 'preapproval_id_mismatch' }
+  }
+  if (safeText(attempt.collectorId) && safeText(attempt.collectorId) !== safeText(subscription.collector_id)) {
+    return { ok: false, reason: 'collector_mismatch' }
+  }
+
+  const kind = subscriptionKindForProduct(product.id)
+  const now = Date.now()
+  const providerStatus = safeText(subscription.status).toLowerCase()
+  const subscriptionRef = database.ref(`users/${attempt.userId}/subscriptions/${kind}`)
+  let ignoredOutOfOrder = false
+  await subscriptionRef.transaction((current) => {
+    const plan = current && typeof current === 'object' ? current : {}
+    if (!force && !shouldApplyProviderUpdate(plan, subscription)) {
+      ignoredOutOfOrder = true
+      return plan
+    }
+    const expiresAt = asTimestamp(plan.expiresAt)
+    const hasPaidAccess = ['active', 'canceled'].includes(safeText(plan.status).toLowerCase()) && expiresAt > now
+    let status = hasPaidAccess ? 'active' : 'pending_authorization'
+    if (providerStatus === 'authorized' && !hasPaidAccess) status = 'pending_payment'
+    if (isCanceledProviderStatus(providerStatus) && !hasPaidAccess) status = 'canceled'
+    return cleanFirebasePayload({
+      ...plan,
+      status,
+      plan: hasPaidAccess ? (safeText(plan.plan) || 'quarterly') : 'quarterly',
+      pendingPlan: hasPaidAccess ? plan.pendingPlan || null : 'quarterly',
+      recurringProductId: product.id,
+      preapprovalId: safeText(subscription.id),
+      providerStatus,
+      providerLastModifiedAt: asTimestamp(subscription.last_modified || subscription.date_created) || now,
+      nextPaymentDate: asTimestamp(subscription.next_payment_date) || plan.nextPaymentDate || null,
+      autoRenew: providerStatus === 'authorized',
+      renewalStatus: providerRenewalStatus(providerStatus),
+      canceledAt: isCanceledProviderStatus(providerStatus) ? (asTimestamp(subscription.last_modified) || now) : plan.canceledAt || null,
+      updatedAt: now,
+      source: RECURRING_PROVIDER,
+    })
+  })
+
+  await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update(cleanFirebasePayload({
+    preapprovalId: safeText(subscription.id),
+    providerStatus,
+    collectorId: safeText(subscription.collector_id),
+    applicationId: safeText(subscription.application_id),
+    updatedAt: now,
+  }))
+  await writeCommercialAudit(database, {
+    eventId: `subscription_status_${attempt.id}_${referenceKey(`${providerStatus}:${subscription.last_modified || ''}`)}`,
+    type: ignoredOutOfOrder ? 'subscription_status_out_of_order_ignored' : 'subscription_status_updated',
+    userId: attempt.userId,
+    productId: product.id,
+    paymentReference: externalReference,
+    statusAfter: providerStatus,
+  })
+  return { ok: true, updated: !ignoredOutOfOrder, ignoredOutOfOrder, subscriptionKind: kind, providerStatus }
+}
+
+export async function cancelMercadoPagoRecurringSubscription({ database, userId, kind }) {
+  if (!['client', 'professional'].includes(kind)) {
+    const error = new Error('invalid_subscription_kind')
+    error.status = 400
+    throw error
+  }
+  const planSnapshot = await database.ref(`users/${userId}/subscriptions/${kind}`).get()
+  const plan = planSnapshot.val() || {}
+  const preapprovalId = safeText(plan.preapprovalId)
+  const productId = safeText(plan.recurringProductId)
+  if (!preapprovalId || !isRecurringSubscriptionProduct(productId)) {
+    const error = new Error('recurring_subscription_not_found')
+    error.status = 409
+    throw error
+  }
+  const attemptId = safeText(plan.checkoutAttemptId)
+    || safeText((await database.ref(`commercialCheckoutAttemptsBySubscription/${referenceKey(preapprovalId)}`).get()).val())
+  const attemptSnapshot = await database.ref(`commercialCheckoutAttempts/${attemptId}`).get()
+  const attempt = attemptSnapshot.val()
+  if (!attempt || attempt.userId !== userId || attempt.productId !== productId) {
+    const error = new Error('subscription_ownership_mismatch')
+    error.status = 409
+    throw error
+  }
+  const product = getCommercialProduct(productId)
+  let providerSubscription = await mercadoPagoApiRequest(`/preapproval/${encodeURIComponent(preapprovalId)}`)
+  const validation = validateRecurringPreapproval({ subscription: providerSubscription, attempt, product })
+  if (!validation.valid) {
+    const error = new Error(`invalid_recurring_preapproval:${validation.errors.join(',')}`)
+    error.status = 409
+    throw error
+  }
+  if (!isCanceledProviderStatus(providerSubscription.status)) {
+    providerSubscription = await mercadoPagoApiRequest(`/preapproval/${encodeURIComponent(preapprovalId)}`, {
+      method: 'PUT',
+      body: { status: 'canceled' },
+    })
+  }
+  if (!isCanceledProviderStatus(providerSubscription.status)) {
+    const error = new Error('subscription_cancellation_not_confirmed')
+    error.status = 502
+    throw error
+  }
+  const result = await processRecurringPreapprovalUpdate({
+    database,
+    subscription: providerSubscription,
+    force: true,
+  })
+  if (!result.ok) {
+    const error = new Error(result.reason || 'subscription_cancellation_sync_failed')
+    error.status = 502
+    throw error
+  }
+  await notifySubscriptionEventSafely({
+    database,
+    uid: userId,
+    kind,
+    type: 'cancellation_confirmed',
+    reference: preapprovalId,
+    occurredAt: asTimestamp(providerSubscription.last_modified) || Date.now(),
+    accessUntil: asTimestamp(plan.expiresAt),
+  })
+  return {
+    canceled: true,
+    alreadyCanceled: isCanceledProviderStatus(plan.providerStatus),
+    accessUntil: asTimestamp(plan.expiresAt) || null,
+    providerStatus: safeText(providerSubscription.status),
   }
 }

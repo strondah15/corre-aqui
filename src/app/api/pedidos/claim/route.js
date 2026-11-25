@@ -83,7 +83,7 @@ export async function POST(request) {
     try {
       await ensureProfessionalFeatureAccess(database, uid)
     } catch (subscriptionError) {
-      return jsonError('Assine o plano anual para aceitar novos pedidos.', subscriptionError?.status || 402, 'professional_subscription_required')
+      return jsonError('Assine o plano trimestral para aceitar novos pedidos.', subscriptionError?.status || 402, 'professional_subscription_required')
     }
     const [pedidoSnapshot, publicSnapshot, privateRequestSnapshot, accountSnapshot] = await Promise.all([
       database.ref('pedidos/' + pedidoId).get(),

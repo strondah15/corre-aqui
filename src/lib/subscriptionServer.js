@@ -1,6 +1,5 @@
 import {
-  PROFESSIONAL_TRIAL_MONTHS,
-  addCalendarMonths,
+  PROFESSIONAL_TRIAL_MS,
   canCreateClientDirectRequest,
   getClientSubscriptionStatus,
   getProfessionalSubscriptionStatus,
@@ -10,6 +9,18 @@ import {
   assessStagingSubscriptionFixtureRuntime,
   resolveClientDirectRequestAccessWithFixture,
 } from './stagingSubscriptionFixtures.js'
+import { publicPaymentHistoryEntry } from './recurringSubscriptions.js'
+
+async function readPaymentHistory(database, uid, kind) {
+  const snapshot = await database.ref(`subscriptionPaymentHistory/${uid}/${kind}`).get()
+  const value = snapshot.val()
+  if (!value || typeof value !== 'object') return []
+  return Object.values(value)
+    .map((entry) => publicPaymentHistoryEntry(entry))
+    .filter((entry) => entry.id && entry.amountInCents > 0 && entry.currency === 'BRL')
+    .sort((left, right) => Number(right.updatedAt || right.paidAt || 0) - Number(left.updatedAt || left.paidAt || 0))
+    .slice(0, 10)
+}
 
 async function resolveClientDirectRequestAccess(database, account, uid, now, env = process.env) {
   const commercialAccess = canCreateClientDirectRequest(account, { now })
@@ -60,13 +71,13 @@ function clientDirectSubscriptionError(subscription) {
 }
 
 export function defaultClientSubscription(current = {}) {
+  const plan = current && typeof current === 'object' && !Array.isArray(current) ? current : {}
   return {
-    status: current.status || 'free',
-    plan: 'annual',
-    startedAt: current.startedAt || null,
-    expiresAt: current.expiresAt || null,
-    ...(current.paymentId ? { paymentId: current.paymentId } : {}),
-    ...(current.paymentReference ? { paymentReference: current.paymentReference } : {}),
+    ...plan,
+    status: plan.status || 'free',
+    plan: plan.plan || 'quarterly',
+    startedAt: plan.startedAt || null,
+    expiresAt: plan.expiresAt || null,
   }
 }
 
@@ -85,9 +96,9 @@ export async function ensureProfessionalTrial(database, uid, now = Date.now()) {
     return {
       ...plan,
       status: 'trial',
-      plan: 'annual',
+      plan: plan.plan || 'quarterly',
       trialStartedAt: now,
-      trialEndsAt: addCalendarMonths(now, PROFESSIONAL_TRIAL_MONTHS),
+      trialEndsAt: now + PROFESSIONAL_TRIAL_MS,
       startedAt: plan.startedAt || null,
       expiresAt: plan.expiresAt || null,
       updatedAt: now,
@@ -138,8 +149,12 @@ export async function readSubscriptionSummary(database, uid, now = Date.now()) {
 export async function readSubscriptionAccessSummary(database, uid, now = Date.now(), env = process.env) {
   const snapshot = await database.ref(`users/${uid}`).get()
   const user = snapshot.val() || {}
-  const client = getClientSubscriptionStatus(user, now)
-  const professional = getProfessionalSubscriptionStatus(user, now)
+  const [clientHistory, professionalHistory] = await Promise.all([
+    readPaymentHistory(database, uid, 'client'),
+    readPaymentHistory(database, uid, 'professional'),
+  ])
+  const client = { ...getClientSubscriptionStatus(user, now), paymentHistory: clientHistory }
+  const professional = { ...getProfessionalSubscriptionStatus(user, now), paymentHistory: professionalHistory }
   const access = snapshot.exists()
     ? await resolveClientDirectRequestAccess(database, user, uid, now, env)
     : { allowed: false }

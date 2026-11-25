@@ -1,6 +1,8 @@
 import {
   CLIENT_ANNUAL_PRODUCT_ID,
+  CLIENT_QUARTERLY_PRODUCT_ID,
   PROFESSIONAL_ANNUAL_PRODUCT_ID,
+  PROFESSIONAL_QUARTERLY_PRODUCT_ID,
 } from './subscriptions.js'
 
 export const SUBSCRIPTION_CONFIRMATION_TIMEOUT_MS = 30_000
@@ -61,8 +63,8 @@ async function readStatusWithTimeout({ readStatus, timeoutMs, signal }) {
 }
 
 export function subscriptionKindFromProduct(productId) {
-  if (productId === PROFESSIONAL_ANNUAL_PRODUCT_ID) return 'professional'
-  if (productId === CLIENT_ANNUAL_PRODUCT_ID) return 'client'
+  if ([PROFESSIONAL_ANNUAL_PRODUCT_ID, PROFESSIONAL_QUARTERLY_PRODUCT_ID].includes(productId)) return 'professional'
+  if ([CLIENT_ANNUAL_PRODUCT_ID, CLIENT_QUARTERLY_PRODUCT_ID].includes(productId)) return 'client'
   return ''
 }
 

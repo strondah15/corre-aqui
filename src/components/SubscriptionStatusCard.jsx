@@ -3,14 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
-  CLIENT_ANNUAL_PRICE_CENTS,
-  CLIENT_ANNUAL_PRODUCT_ID,
-  PROFESSIONAL_ANNUAL_PRICE_CENTS,
-  PROFESSIONAL_ANNUAL_PRODUCT_ID,
+  CLIENT_QUARTERLY_PRICE_CENTS,
+  CLIENT_QUARTERLY_PRODUCT_ID,
+  PROFESSIONAL_QUARTERLY_PRICE_CENTS,
+  PROFESSIONAL_QUARTERLY_PRODUCT_ID,
   formatSubscriptionPrice,
   isSubscriptionSessionCurrent,
 } from '@/lib/subscriptions'
-import { getSubscriptionStatus, startAnnualSubscriptionCheckout } from '@/lib/subscriptionClient'
+import {
+  cancelRecurringSubscription,
+  getSubscriptionStatus,
+  startRecurringSubscriptionCheckout,
+} from '@/lib/subscriptionClient'
 import { auth } from '@/lib/firebase'
 
 function dateLabel(timestamp) {
@@ -34,14 +38,42 @@ function StatusBadge({ tone = 'blue', children }) {
 }
 
 function PlanButton({ children, loading, disabled, onClick, tone = 'blue' }) {
-  const color = tone === 'emerald'
-    ? 'bg-emerald-700 text-white shadow-[0_12px_24px_rgba(4,120,87,0.18)] hover:bg-emerald-600'
-    : 'bg-blue-700 text-white shadow-[0_12px_24px_rgba(29,78,216,0.18)] hover:bg-blue-600'
+  const color = tone === 'rose'
+    ? 'border border-rose-200 bg-white text-rose-700 hover:bg-rose-50'
+    : tone === 'emerald'
+      ? 'bg-emerald-700 text-white shadow-[0_12px_24px_rgba(4,120,87,0.18)] hover:bg-emerald-600'
+      : 'bg-blue-700 text-white shadow-[0_12px_24px_rgba(29,78,216,0.18)] hover:bg-blue-600'
   return (
     <button type="button" onClick={onClick} disabled={disabled} className={`mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl px-4 text-xs font-black transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${color}`}>
       {loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" aria-hidden="true" /> : null}
       {loading ? 'Abrindo checkout...' : children}
     </button>
+  )
+}
+
+function ConsentControl({ checked, onChange, price }) {
+  return (
+    <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5 text-[11px] font-semibold leading-relaxed text-slate-600">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-blue-700" />
+      <span>Concordo com a renovação automática de {price} a cada 3 meses e com o cancelamento das cobranças futuras pelo app.</span>
+    </label>
+  )
+}
+
+function PaymentHistory({ entries = [] }) {
+  if (!entries.length) return null
+  return (
+    <details className="mt-3 rounded-2xl border border-slate-200 bg-white/75 px-3 py-2.5">
+      <summary className="cursor-pointer text-xs font-black text-slate-700">Histórico de pagamentos</summary>
+      <div className="mt-2 grid gap-2">
+        {entries.map((entry) => (
+          <div key={entry.id} className="flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-600">
+            <span>{entry.status === 'approved' ? 'Pagamento aprovado' : entry.status === 'refunded' ? 'Pagamento estornado' : 'Pagamento ' + entry.status}</span>
+            <span>{formatSubscriptionPrice(entry.amountInCents)} · {dateLabel(entry.paidAt || entry.updatedAt)}</span>
+          </div>
+        ))}
+      </div>
+    </details>
   )
 }
 
@@ -68,6 +100,8 @@ export default function SubscriptionStatusCard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [checkoutLoading, setCheckoutLoading] = useState('')
+  const [cancelLoading, setCancelLoading] = useState('')
+  const [consent, setConsent] = useState({ client: false, professional: false })
   const [error, setError] = useState('')
   const checkoutBusyRef = useRef(false)
 
@@ -91,6 +125,8 @@ export default function SubscriptionStatusCard() {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       checkoutBusyRef.current = false
       setCheckoutLoading('')
+      setCancelLoading('')
+      setConsent({ client: false, professional: false })
       setData(null)
       setError('')
       if (user?.uid) loadStatus({ expectedUid: user.uid })
@@ -111,7 +147,12 @@ export default function SubscriptionStatusCard() {
     setCheckoutLoading(productId)
     setError('')
     try {
-      const result = await startAnnualSubscriptionCheckout(productId)
+      const kind = productId === PROFESSIONAL_QUARTERLY_PRODUCT_ID ? 'professional' : 'client'
+      if (!consent[kind]) {
+        setError('Confirme a renovação automática trimestral para continuar.')
+        return
+      }
+      const result = await startRecurringSubscriptionCheckout(productId, { autoRenewConsent: true })
       if (result.checkoutUrl) {
         window.location.assign(result.checkoutUrl)
         redirecting = true
@@ -126,7 +167,21 @@ export default function SubscriptionStatusCard() {
         setCheckoutLoading('')
       }
     }
-  }, [])
+  }, [consent])
+
+  const cancelRenewal = useCallback(async (kind) => {
+    if (cancelLoading) return
+    setCancelLoading(kind)
+    setError('')
+    try {
+      await cancelRecurringSubscription(kind)
+      await loadStatus({ quiet: true, expectedUid: auth.currentUser?.uid })
+    } catch (cancelError) {
+      setError(cancelError?.message || 'Não foi possível cancelar a renovação agora.')
+    } finally {
+      setCancelLoading('')
+    }
+  }, [cancelLoading, loadStatus])
 
   if (loading) {
     return (
@@ -149,10 +204,22 @@ export default function SubscriptionStatusCard() {
 
   const client = data.client || {}
   const professional = data.professional || {}
-  const clientPrice = formatSubscriptionPrice(CLIENT_ANNUAL_PRICE_CENTS)
-  const professionalPrice = formatSubscriptionPrice(PROFESSIONAL_ANNUAL_PRICE_CENTS)
+  const clientPrice = formatSubscriptionPrice(CLIENT_QUARTERLY_PRICE_CENTS)
+  const professionalPrice = formatSubscriptionPrice(PROFESSIONAL_QUARTERLY_PRICE_CENTS)
   const clientExpired = client.status === 'expired'
   const professionalPaidExpired = professional.status === 'expired' && Boolean(professional.expiresAt)
+  const clientPending = !client.active && (
+    client.autoRenew
+    || client.paymentFailed
+    || ['pending_authorization', 'pending_payment', 'payment_failed'].includes(client.status)
+    || client.renewalStatus === 'awaiting_authorization'
+  )
+  const professionalPending = !professional.active && (
+    professional.autoRenew
+    || professional.paymentFailed
+    || ['pending_authorization', 'pending_payment', 'payment_failed'].includes(professional.status)
+    || professional.renewalStatus === 'awaiting_authorization'
+  )
   const checkoutDisabled = Boolean(checkoutLoading)
 
   return (
@@ -168,71 +235,133 @@ export default function SubscriptionStatusCard() {
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <PlanShell icon="C" title="Plano Cliente" subtitle="Para continuar criando pedidos">
-          {client.active ? (
+          {clientPending ? (
+            <>
+              <StatusBadge tone={client.paymentFailed ? 'rose' : 'amber'}>{client.paymentFailed ? 'Pagamento recusado' : client.autoRenew ? 'Aguardando pagamento' : 'Aguardando autorização'}</StatusBadge>
+              <div className="mt-3 text-xl font-black">{client.autoRenew ? 'Assinatura trimestral autorizada' : 'Autorização ainda não concluída'}</div>
+              <p className="mt-2 text-xs font-semibold text-slate-500">{client.paymentFailed ? 'O Mercado Pago controla as novas tentativas de cobrança.' : client.autoRenew ? 'O acesso pago será liberado somente após a confirmação do pagamento.' : 'Continue no Mercado Pago para escolher o meio compatível e autorizar a renovação.'}</p>
+              {client.nextPaymentDate ? <p className="mt-2 text-xs font-black">Próxima tentativa: {dateLabel(client.nextPaymentDate)}</p> : null}
+              {!client.autoRenew ? (
+                <>
+                  <ConsentControl checked={consent.client} onChange={(checked) => setConsent((value) => ({ ...value, client: checked }))} price={clientPrice} />
+                  <PlanButton loading={checkoutLoading === CLIENT_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.client} onClick={() => checkout(CLIENT_QUARTERLY_PRODUCT_ID)}>Continuar autorização</PlanButton>
+                </>
+              ) : null}
+              <PlanButton tone="rose" loading={cancelLoading === 'client'} disabled={Boolean(cancelLoading || checkoutLoading)} onClick={() => cancelRenewal('client')}>Cancelar renovação automática</PlanButton>
+              <PaymentHistory entries={client.paymentHistory} />
+            </>
+          ) : client.active ? (
             <>
               <StatusBadge tone="emerald">Assinatura ativa</StatusBadge>
-              <div className="mt-3 text-2xl font-black text-blue-950 dark:text-white">{clientPrice} <span className="text-sm text-slate-500 dark:text-slate-400">/ ano</span></div>
+              <div className="mt-3 text-2xl font-black text-blue-950 dark:text-white">{client.plan === 'annual' ? 'Plano anual legado' : <>{clientPrice} <span className="text-sm text-slate-500 dark:text-slate-400">/ 3 meses</span></>}</div>
               <p className="mt-2 text-sm font-black">Válida até: {dateLabel(client.expiresAt)}</p>
               <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{daysUntil(client.expiresAt)} dias restantes</p>
-              <PlanButton loading={checkoutLoading === CLIENT_ANNUAL_PRODUCT_ID} disabled={checkoutDisabled} onClick={() => checkout(CLIENT_ANNUAL_PRODUCT_ID)}>Renovar assinatura</PlanButton>
-              <p className="mt-2 text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400">A renovação soma mais 12 meses à validade atual.</p>
+              {client.autoRenew ? (
+                <>
+                  <StatusBadge tone={client.paymentFailed ? 'rose' : 'blue'}>{client.paymentFailed ? 'Renovação recusada; acesso atual preservado' : 'Renovação automática ativa'}</StatusBadge>
+                  {client.nextPaymentDate ? <p className="mt-2 text-xs font-semibold text-slate-500">Próxima cobrança: {dateLabel(client.nextPaymentDate)}</p> : null}
+                  <PlanButton tone="rose" loading={cancelLoading === 'client'} disabled={Boolean(cancelLoading || checkoutLoading)} onClick={() => cancelRenewal('client')}>Cancelar renovação automática</PlanButton>
+                </>
+              ) : (
+                <>
+                  <StatusBadge tone="amber">{client.plan === 'annual' ? 'Benefício anual preservado' : 'Renovação automática desativada'}</StatusBadge>
+                  <ConsentControl checked={consent.client} onChange={(checked) => setConsent((value) => ({ ...value, client: checked }))} price={clientPrice} />
+                  <PlanButton loading={checkoutLoading === CLIENT_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.client} onClick={() => checkout(CLIENT_QUARTERLY_PRODUCT_ID)}>Ativar renovação trimestral</PlanButton>
+                </>
+              )}
+              <PaymentHistory entries={client.paymentHistory} />
             </>
           ) : clientExpired ? (
             <>
               <StatusBadge tone="rose">Assinatura vencida</StatusBadge>
-              <div className="mt-3 text-xl font-black">Renove por {clientPrice}/ano</div>
+              <div className="mt-3 text-xl font-black">Assine por {clientPrice}/3 meses</div>
               {client.expiresAt ? <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Venceu em {dateLabel(client.expiresAt)}</p> : null}
-              <PlanButton loading={checkoutLoading === CLIENT_ANNUAL_PRODUCT_ID} disabled={checkoutDisabled} onClick={() => checkout(CLIENT_ANNUAL_PRODUCT_ID)}>Renovar assinatura</PlanButton>
+              <ConsentControl checked={consent.client} onChange={(checked) => setConsent((value) => ({ ...value, client: checked }))} price={clientPrice} />
+              <PlanButton loading={checkoutLoading === CLIENT_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.client} onClick={() => checkout(CLIENT_QUARTERLY_PRODUCT_ID)}>Autorizar assinatura trimestral</PlanButton>
+              <PaymentHistory entries={client.paymentHistory} />
             </>
           ) : client.freeOrderUsed ? (
             <>
               <StatusBadge tone="amber">1º pedido utilizado</StatusBadge>
-              <div className="mt-3 text-xl font-black">Continue por {clientPrice}/ano</div>
-              <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Crie novos pedidos durante todo o ano.</p>
-              <PlanButton loading={checkoutLoading === CLIENT_ANNUAL_PRODUCT_ID} disabled={checkoutDisabled} onClick={() => checkout(CLIENT_ANNUAL_PRODUCT_ID)}>Assinar por R$ 19,90/ano</PlanButton>
+              <div className="mt-3 text-xl font-black">Continue por {clientPrice}/3 meses</div>
+              <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Pedidos ilimitados durante a vigência, sem comissão.</p>
+              <ConsentControl checked={consent.client} onChange={(checked) => setConsent((value) => ({ ...value, client: checked }))} price={clientPrice} />
+              <PlanButton loading={checkoutLoading === CLIENT_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.client} onClick={() => checkout(CLIENT_QUARTERLY_PRODUCT_ID)}>Autorizar assinatura trimestral</PlanButton>
+              <PaymentHistory entries={client.paymentHistory} />
             </>
           ) : (
             <>
               <StatusBadge tone="blue">1º pedido grátis</StatusBadge>
               <div className="mt-3 text-xl font-black">Sua gratuidade está disponível</div>
               <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Ela só é utilizada quando um pedido é realmente publicado.</p>
-              <div className="mt-4 rounded-2xl border border-blue-100 bg-white/75 px-3 py-2.5 text-xs font-bold text-blue-900 dark:border-white/10 dark:bg-white/5 dark:text-blue-100">Depois: {clientPrice}/ano</div>
+              <div className="mt-4 rounded-2xl border border-blue-100 bg-white/75 px-3 py-2.5 text-xs font-bold text-blue-900 dark:border-white/10 dark:bg-white/5 dark:text-blue-100">Depois: {clientPrice} a cada 3 meses</div>
             </>
           )}
         </PlanShell>
 
         <PlanShell icon="P" title="Plano Profissional" subtitle="Para Corre e Profissional" tone="emerald">
-          {professional.active ? (
+          {professionalPending ? (
+            <>
+              <StatusBadge tone={professional.paymentFailed ? 'rose' : 'amber'}>{professional.paymentFailed ? 'Pagamento recusado' : professional.autoRenew && professional.trialActive ? 'Autorizada para após a gratuidade' : professional.autoRenew ? 'Aguardando pagamento' : 'Aguardando autorização'}</StatusBadge>
+              <div className="mt-3 text-xl font-black">{professional.autoRenew ? 'Renovação trimestral autorizada' : 'Autorização ainda não concluída'}</div>
+              {professional.trialActive ? <p className="mt-2 text-xs font-semibold text-slate-500">Seu acesso gratuito continua até {dateLabel(professional.trialEndsAt)}.</p> : null}
+              {professional.nextPaymentDate ? <p className="mt-2 text-xs font-black">Próxima cobrança: {dateLabel(professional.nextPaymentDate)}</p> : null}
+              {!professional.autoRenew ? (
+                <>
+                  <ConsentControl checked={consent.professional} onChange={(checked) => setConsent((value) => ({ ...value, professional: checked }))} price={professionalPrice} />
+                  <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.professional} onClick={() => checkout(PROFESSIONAL_QUARTERLY_PRODUCT_ID)}>Continuar autorização</PlanButton>
+                </>
+              ) : null}
+              <PlanButton tone="rose" loading={cancelLoading === 'professional'} disabled={Boolean(cancelLoading || checkoutLoading)} onClick={() => cancelRenewal('professional')}>Cancelar renovação automática</PlanButton>
+              <PaymentHistory entries={professional.paymentHistory} />
+            </>
+          ) : professional.active ? (
             <>
               <StatusBadge tone="emerald">Assinatura ativa</StatusBadge>
-              <div className="mt-3 text-2xl font-black text-emerald-950 dark:text-white">{professionalPrice} <span className="text-sm text-slate-500 dark:text-slate-400">/ ano</span></div>
+              <div className="mt-3 text-2xl font-black text-emerald-950 dark:text-white">{professional.plan === 'annual' ? 'Plano anual legado' : <>{professionalPrice} <span className="text-sm text-slate-500 dark:text-slate-400">/ 3 meses</span></>}</div>
               <p className="mt-2 text-sm font-black">Válida até: {dateLabel(professional.expiresAt)}</p>
               <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{daysUntil(professional.expiresAt)} dias restantes</p>
-              <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_ANNUAL_PRODUCT_ID} disabled={checkoutDisabled} onClick={() => checkout(PROFESSIONAL_ANNUAL_PRODUCT_ID)}>Renovar assinatura</PlanButton>
-              <p className="mt-2 text-center text-[10px] font-semibold text-slate-500 dark:text-slate-400">A renovação soma mais 12 meses à validade atual.</p>
+              {professional.autoRenew ? (
+                <>
+                  <StatusBadge tone={professional.paymentFailed ? 'rose' : 'blue'}>{professional.paymentFailed ? 'Renovação recusada; acesso atual preservado' : 'Renovação automática ativa'}</StatusBadge>
+                  {professional.nextPaymentDate ? <p className="mt-2 text-xs font-semibold text-slate-500">Próxima cobrança: {dateLabel(professional.nextPaymentDate)}</p> : null}
+                  <PlanButton tone="rose" loading={cancelLoading === 'professional'} disabled={Boolean(cancelLoading || checkoutLoading)} onClick={() => cancelRenewal('professional')}>Cancelar renovação automática</PlanButton>
+                </>
+              ) : (
+                <>
+                  <StatusBadge tone="amber">{professional.plan === 'annual' ? 'Benefício anual preservado' : 'Renovação automática desativada'}</StatusBadge>
+                  <ConsentControl checked={consent.professional} onChange={(checked) => setConsent((value) => ({ ...value, professional: checked }))} price={professionalPrice} />
+                  <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.professional} onClick={() => checkout(PROFESSIONAL_QUARTERLY_PRODUCT_ID)}>Ativar renovação trimestral</PlanButton>
+                </>
+              )}
+              <PaymentHistory entries={professional.paymentHistory} />
             </>
           ) : professional.status === 'trial' ? (
             <>
               <StatusBadge tone="emerald">Período grátis</StatusBadge>
               <div className="mt-3 text-2xl font-black">{professional.daysRemaining} dias restantes</div>
               <p className="mt-2 text-sm font-black">Grátis até {dateLabel(professional.trialEndsAt)}</p>
-              <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Depois: {professionalPrice}/ano</p>
-              <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_ANNUAL_PRODUCT_ID} disabled={checkoutDisabled} onClick={() => checkout(PROFESSIONAL_ANNUAL_PRODUCT_ID)}>Assinar antecipadamente</PlanButton>
+              <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Primeira cobrança em {dateLabel(professional.trialEndsAt)}; depois, {professionalPrice} a cada 3 meses.</p>
+              <ConsentControl checked={consent.professional} onChange={(checked) => setConsent((value) => ({ ...value, professional: checked }))} price={professionalPrice} />
+              <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.professional} onClick={() => checkout(PROFESSIONAL_QUARTERLY_PRODUCT_ID)}>Autorizar após o período grátis</PlanButton>
             </>
           ) : professional.status === 'expired' ? (
             <>
               <StatusBadge tone="rose">{professionalPaidExpired ? 'Assinatura vencida' : 'Período grátis encerrado'}</StatusBadge>
-              <div className="mt-3 text-xl font-black">{professionalPaidExpired ? `Renove por ${professionalPrice}/ano` : `Continue por ${professionalPrice}/ano`}</div>
+              <div className="mt-3 text-xl font-black">{professionalPaidExpired ? `Renove por ${professionalPrice}/3 meses` : `Continue por ${professionalPrice}/3 meses`}</div>
               {professional.expiresAt ? <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Venceu em {dateLabel(professional.expiresAt)}</p> : professional.trialEndsAt ? <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Período encerrado em {dateLabel(professional.trialEndsAt)}</p> : null}
-              <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_ANNUAL_PRODUCT_ID} disabled={checkoutDisabled} onClick={() => checkout(PROFESSIONAL_ANNUAL_PRODUCT_ID)}>{professionalPaidExpired ? 'Renovar por R$ 49,90/ano' : 'Assinar por R$ 49,90/ano'}</PlanButton>
+              <ConsentControl checked={consent.professional} onChange={(checked) => setConsent((value) => ({ ...value, professional: checked }))} price={professionalPrice} />
+              <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.professional} onClick={() => checkout(PROFESSIONAL_QUARTERLY_PRODUCT_ID)}>Autorizar assinatura trimestral</PlanButton>
+              <PaymentHistory entries={professional.paymentHistory} />
             </>
           ) : (
             <>
-              <StatusBadge tone="blue">3 meses grátis</StatusBadge>
+              <StatusBadge tone="blue">90 dias grátis</StatusBadge>
               <div className="mt-3 text-xl font-black">Período grátis disponível</div>
               <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Começa quando você entrar pela primeira vez em Trabalhar.</p>
-              <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Depois: {professionalPrice}/ano</p>
-              <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_ANNUAL_PRODUCT_ID} disabled={checkoutDisabled} onClick={() => checkout(PROFESSIONAL_ANNUAL_PRODUCT_ID)}>Assinar antecipadamente</PlanButton>
+              <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Depois: {professionalPrice} a cada 3 meses.</p>
+              <ConsentControl checked={consent.professional} onChange={(checked) => setConsent((value) => ({ ...value, professional: checked }))} price={professionalPrice} />
+              <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.professional} onClick={() => checkout(PROFESSIONAL_QUARTERLY_PRODUCT_ID)}>Iniciar período grátis e autorizar</PlanButton>
             </>
           )}
         </PlanShell>

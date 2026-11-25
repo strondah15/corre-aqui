@@ -124,7 +124,7 @@ export async function POST(request) {
         reason: access.reason,
         message: access.reason === 'free_order_in_progress'
           ? 'Seu primeiro pedido ainda está aberto. Finalize-o antes de criar outro sem assinatura.'
-          : 'Seu primeiro pedido grátis já foi utilizado. Assine o plano anual para continuar criando pedidos.',
+          : 'Seu primeiro pedido grátis já foi utilizado. Assine o plano trimestral para continuar criando pedidos.',
         subscription: access.subscription,
       }, { status, headers })
     }
