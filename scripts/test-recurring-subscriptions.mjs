@@ -40,6 +40,7 @@ const {
 const {
   cancelMercadoPagoRecurringSubscription,
   createMercadoPagoRecurringCheckout,
+  mercadoPagoApiRequest,
   processApprovedCommercialPayment,
   processRecurringPreapprovalUpdate,
   referenceKey,
@@ -98,12 +99,17 @@ function createMemoryDatabase(initial = {}) {
   return { ref, dump: () => clone(root), read: (path) => clone(read(path)) }
 }
 
+const sandboxBuyerEmail = 'test_user_fixture@testuser.com'
+
 function stagingEnvironment() {
   return {
     CORRE_AQUI_ENV: 'staging',
     VERCEL_ENV: 'preview',
+    VERCEL_GIT_COMMIT_REF: 'codex/staging/consolidated-2026-09-07',
+    VERCEL_PROJECT_ID: 'prj_M3gKqNx4UkEzAEgL4pcyoYG5kTUB',
     MERCADO_PAGO_CHECKOUT_ENABLED: 'true',
     MERCADO_PAGO_CREDENTIAL_ENV: 'test',
+    MERCADO_PAGO_STAGING_BUYER_EMAIL: sandboxBuyerEmail,
     MERCADO_PAGO_ACCESS_TOKEN: 'test-token-not-real',
     MERCADO_PAGO_WEBHOOK_SECRET: 'test-secret-not-real',
     SITE_URL: 'https://preview.example.test',
@@ -237,6 +243,20 @@ assert.equal(resolveInvoicePreapprovalId({ preapproval_id: 'preapproval-a' }), '
 assert.equal(shouldApplyProviderUpdate({ providerLastModifiedAt: '2026-02-01T00:00:00Z' }, { last_modified: '2026-01-01T00:00:00Z' }), false)
 
 const checkoutDatabase = createMemoryDatabase({ users: { 'user-a': { clientFreeOrderUsed: true } } })
+const checkoutInput = {
+  database: checkoutDatabase,
+  userId: 'user-a',
+  product: getCommercialProduct(CLIENT_QUARTERLY_PRODUCT_ID),
+  authenticatedEmail: 'payer@example.test',
+}
+await withEnvironment({ ...stagingEnvironment(), MERCADO_PAGO_STAGING_BUYER_EMAIL: '' }, async () => {
+  await assert.rejects(createMercadoPagoRecurringCheckout({
+    ...checkoutInput,
+    product: professionalProduct,
+    database: { ref: () => assert.fail('missing sandbox buyer must fail before touching RTDB') },
+  }), { message: 'mercado_pago_staging_buyer_unavailable', status: 503 })
+})
+
 let postCount = 0
 let releaseSearch
 const searchGate = new Promise((resolve) => { releaseSearch = resolve })
@@ -250,6 +270,8 @@ globalThis.fetch = async (url, options = {}) => {
   if (path.endsWith('/preapproval') && options.method === 'POST') {
     postCount += 1
     const body = JSON.parse(options.body)
+    assert.equal(body.payer_email, sandboxBuyerEmail)
+    assert.match(body.external_reference, /^CLIENT_QUARTERLY:user-a:user-a:/)
     return new Response(JSON.stringify({
       id: 'preapproval-created',
       external_reference: body.external_reference,
@@ -279,18 +301,35 @@ globalThis.fetch = async (url, options = {}) => {
 
 try {
   await withEnvironment(stagingEnvironment(), async () => {
-    const product = getCommercialProduct(CLIENT_QUARTERLY_PRODUCT_ID)
-    const first = createMercadoPagoRecurringCheckout({ database: checkoutDatabase, userId: 'user-a', product, payerEmail: 'payer@example.test' })
+    const first = createMercadoPagoRecurringCheckout(checkoutInput)
     await new Promise((resolve) => setTimeout(resolve, 0))
-    const second = createMercadoPagoRecurringCheckout({ database: checkoutDatabase, userId: 'user-a', product, payerEmail: 'payer@example.test' })
+    const second = createMercadoPagoRecurringCheckout(checkoutInput)
     releaseSearch()
     const results = await Promise.allSettled([first, second])
     assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1, 'duas criacoes simultaneas geram um checkout')
     assert.equal(results.filter((result) => result.status === 'rejected').length, 1)
     assert.equal(postCount, 1, 'provider recebe um unico POST')
-    const retry = await createMercadoPagoRecurringCheckout({ database: checkoutDatabase, userId: 'user-a', product, payerEmail: 'payer@example.test' })
+    assert.ok(!JSON.stringify(checkoutDatabase.dump()).includes(sandboxBuyerEmail), 'buyer email is not persisted in RTDB')
+    const retry = await createMercadoPagoRecurringCheckout(checkoutInput)
     assert.equal(retry.checkout.reused, true, 'repeticao reutiliza preapproval existente')
     assert.equal(postCount, 1)
+  })
+} finally {
+  globalThis.fetch = originalFetch
+}
+
+globalThis.fetch = async () => Response.json({
+  message: 'Both payer and collector must be real or test users.',
+  cause: [{ description: sandboxBuyerEmail }],
+}, { status: 400 })
+try {
+  await withEnvironment(stagingEnvironment(), async () => {
+    await assert.rejects(mercadoPagoApiRequest('/preapproval', { method: 'POST' }), {
+      status: 409,
+      code: 'mercado_pago_payer_collector_mismatch',
+      message: 'mercado_pago_payer_collector_mismatch',
+      userMessage: /conta compradora de teste.*conta vendedora de teste/,
+    })
   })
 } finally {
   globalThis.fetch = originalFetch
@@ -483,6 +522,7 @@ globalThis.fetch = async (url, options = {}) => {
   if (String(url).endsWith('/preapproval') && options.method === 'POST') {
     replacementPostCount += 1
     const body = JSON.parse(options.body)
+    assert.equal(body.payer_email, sandboxBuyerEmail)
     assert.equal(body.auto_recurring.transaction_amount, 49.9)
     assert.equal(body.auto_recurring.start_date, new Date(paidUntil).toISOString())
     return Response.json({
@@ -512,7 +552,7 @@ globalThis.fetch = async (url, options = {}) => {
 }
 try {
   const env = stagingEnvironment()
-  const request = { database: cancelDatabase, userId: 'cancel-user', product: professionalProduct, payerEmail: 'pro@example.test' }
+  const request = { database: cancelDatabase, userId: 'cancel-user', product: professionalProduct, authenticatedEmail: 'pro@example.test' }
   await withEnvironment(env, async () => {
     const baseline = cancelDatabase.dump()
     const status = await readSubscriptionAccessSummary(cancelDatabase, request.userId, Date.now(), env)
@@ -586,7 +626,8 @@ const webhookRoute = await readFile(new URL('../src/app/api/mercado-pago/webhook
 const statusCard = await readFile(new URL('../src/components/SubscriptionStatusCard.jsx', import.meta.url), 'utf8')
 assert.match(checkoutRoute, /autoRenewConsent !== true/)
 assert.match(checkoutRoute, /getAuthenticatedIdentity\(request\)/)
-assert.doesNotMatch(checkoutRoute, /body\?\.(?:uid|userId|amount|amountInCents|price|preco)/)
+assert.match(checkoutRoute, /authenticatedEmail: identity\.email/)
+assert.doesNotMatch(checkoutRoute, /body\?\.(?:uid|userId|amount|amountInCents|price|preco|payerEmail|payer_email)/)
 assert.match(cancelRoute, /getAuthenticatedUid\(request\)/)
 assert.match(webhookRoute, /subscription_preapproval/)
 assert.match(webhookRoute, /subscription_authorized_payment/)

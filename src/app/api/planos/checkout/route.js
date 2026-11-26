@@ -20,7 +20,6 @@ import {
   loadPublicProfile,
   safeText,
 } from '@/lib/commercialServer'
-import { ensureProfessionalTrial } from '@/lib/subscriptionServer'
 
 export const runtime = 'nodejs'
 
@@ -76,9 +75,6 @@ export async function POST(request) {
         message: 'Sua conta precisa ter um e-mail verificado para autorizar a assinatura.',
       }, { status: 409, headers: responseHeaders })
     }
-    if (planId === PROFESSIONAL_QUARTERLY_PRODUCT_ID) {
-      await ensureProfessionalTrial(database, uid)
-    }
     const profile = planId === PROFESSIONAL_FEATURED_PLAN_ID
       ? await loadPublicProfile(database, uid)
       : null
@@ -100,7 +96,7 @@ export async function POST(request) {
           database,
           userId: uid,
           product,
-          payerEmail: identity.email,
+          authenticatedEmail: identity.email,
         })
       : await createMercadoPagoCheckout({
           database,

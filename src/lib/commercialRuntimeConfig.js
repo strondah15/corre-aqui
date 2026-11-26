@@ -18,6 +18,8 @@ export const CORRE_AQUI_ENVIRONMENTS = Object.freeze({
 })
 
 const MERCADO_PAGO_CREDENTIAL_ENVIRONMENTS = new Set(['test', 'production'])
+const STAGING_SUBSCRIPTION_BRANCH = 'codex/staging/consolidated-2026-09-07'
+const STAGING_SUBSCRIPTION_PROJECT_ID = 'prj_M3gKqNx4UkEzAEgL4pcyoYG5kTUB'
 
 function envText(value) {
   return String(value || '').trim()
@@ -293,4 +295,19 @@ export function assessMercadoPagoCheckoutConfiguration(env = process.env) {
     expectedFirebaseProjectId: firebase.expectedProjectId,
     mercadoPagoCredentialEnvironment: credentialEnvironmentValid ? credentialEnvironment : '',
   })
+}
+
+export function resolveMercadoPagoRecurringBuyer(env, checkout, authenticatedEmail) {
+  if (!checkout.ready) return ''
+  if (checkout.environment === 'production') return envText(authenticatedEmail)
+  if (
+    checkout.environment !== 'staging'
+    || checkout.mercadoPagoCredentialEnvironment !== 'test'
+    || envText(env.VERCEL_ENV) !== 'preview'
+    || envText(env.VERCEL_GIT_COMMIT_REF) !== STAGING_SUBSCRIPTION_BRANCH
+    || envText(env.VERCEL_PROJECT_ID) !== STAGING_SUBSCRIPTION_PROJECT_ID
+  ) return ''
+
+  const email = envText(env.MERCADO_PAGO_STAGING_BUYER_EMAIL).toLowerCase()
+  return email.length <= 254 && /^[a-z0-9._+-]+@testuser\.com$/.test(email) ? email : ''
 }

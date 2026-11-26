@@ -24,6 +24,7 @@ import {
   SUBSCRIPTION_CHECKOUT_LEASE_MS,
   buildRecurringPreapprovalPayload,
   isCanceledProviderStatus,
+  isValidPayerEmail,
   nextQuarterlyExpiration,
   paymentRenewalStatus,
   providerRenewalStatus,
@@ -33,8 +34,9 @@ import {
 } from '@/lib/recurringSubscriptions'
 import { commercialAuditKey } from '@/lib/commercialAuditKey'
 import { verifyMercadoPagoHmacSignature } from '@/lib/mercadoPagoWebhookSignature'
-import { assessMercadoPagoCheckoutConfiguration } from '@/lib/commercialRuntimeConfig'
+import { assessMercadoPagoCheckoutConfiguration, resolveMercadoPagoRecurringBuyer } from '@/lib/commercialRuntimeConfig'
 import { materializeSubscriptionNotification } from '@/lib/subscriptionNotifications'
+import { ensureProfessionalTrial } from '@/lib/subscriptionServer'
 
 export const COMMERCIAL_SOURCE = 'mercado_pago'
 const PAYMENT_EVENT_LEASE_MS = 5 * 60 * 1000
@@ -383,6 +385,17 @@ function mercadoPagoError(data, status, fallback = 'mercado_pago_request_failed'
   return error
 }
 
+function mercadoPagoRecurringCheckoutError(data, status, fallback) {
+  const causes = Array.isArray(data?.cause) ? data.cause.map((cause) => cause?.description) : []
+  const mismatch = [data?.message, data?.error, ...causes].some((detail) =>
+    /both\s+payer\s+and\s+collector\s+must\s+be\s+real\s+or\s+test\s+users/i.test(safeText(detail)))
+  const error = mercadoPagoError(null, status, mismatch ? 'mercado_pago_payer_collector_mismatch' : fallback)
+  error.userMessage = mismatch && process.env.CORRE_AQUI_ENV === 'staging'
+    ? 'O Mercado Pago recusou a combinação de contas. Use a conta compradora de teste, diferente da conta vendedora de teste.'
+    : 'O Mercado Pago não conseguiu abrir a assinatura. Confira a conta usada no checkout e tente novamente.'
+  return error
+}
+
 export async function mercadoPagoApiRequest(path, { method = 'GET', body } = {}) {
   const accessToken = safeText(process.env.MERCADO_PAGO_ACCESS_TOKEN)
   if (!accessToken) {
@@ -401,7 +414,12 @@ export async function mercadoPagoApiRequest(path, { method = 'GET', body } = {})
     cache: 'no-store',
   })
   const data = await response.json().catch(() => null)
-  if (!response.ok) throw mercadoPagoError(data, response.status, `mercado_pago_${response.status}`)
+  if (!response.ok) {
+    const fallback = `mercado_pago_${response.status}`
+    throw path === '/preapproval' && method === 'POST'
+      ? mercadoPagoRecurringCheckoutError(data, response.status, fallback)
+      : mercadoPagoError(data, response.status, fallback)
+  }
   return data
 }
 
@@ -539,7 +557,7 @@ export async function createMercadoPagoRecurringCheckout({
   database,
   userId,
   product,
-  payerEmail,
+  authenticatedEmail,
 }) {
   const readiness = getMercadoPagoCheckoutReadiness()
   if (!readiness.ready) throw checkoutConfigurationError(readiness)
@@ -548,7 +566,18 @@ export async function createMercadoPagoRecurringCheckout({
     error.status = 400
     throw error
   }
+  const payerEmail = resolveMercadoPagoRecurringBuyer(process.env, readiness, authenticatedEmail)
+  if (!isValidPayerEmail(payerEmail)) {
+    const sandbox = readiness.environment === 'staging'
+    const error = new Error(sandbox ? 'mercado_pago_staging_buyer_unavailable' : 'verified_email_required')
+    error.status = sandbox ? 503 : 409
+    error.userMessage = sandbox
+      ? 'A conta compradora de teste ainda não está configurada neste Preview. Avise a equipe do Corre Aqui.'
+      : 'Sua conta precisa ter um e-mail verificado para autorizar a assinatura.'
+    throw error
+  }
   const kind = subscriptionKindForProduct(product.id)
+  if (kind === 'professional') await ensureProfessionalTrial(database, userId)
   const currentSnapshot = await database.ref(`users/${userId}/subscriptions/${kind}`).get()
   let currentPlan = currentSnapshot.val() || {}
   if (

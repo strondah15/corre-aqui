@@ -134,6 +134,8 @@ Registros anuais existentes continuam reconhecidos até sua validade original, m
 
 O checkout reutiliza `/api/planos/checkout` e cria uma autorização oficial em `/preapproval`, sem plano remoto associado. Preço, BRL, frequência de 3 meses e data inicial são definidos pelo servidor. O navegador precisa registrar consentimento explícito e nunca envia UID ou preço como autoridade.
 
+Para testar assinaturas, configure `MERCADO_PAGO_STAGING_BUYER_EMAIL` somente no Preview da branch `codex/staging/consolidated-2026-09-07`, com o e-mail da conta compradora de teste do Mercado Pago, do mesmo país e distinta do vendedor de teste. Entre no Corre Aqui com a conta Firebase que deve receber o benefício e conclua o checkout no Mercado Pago com a conta compradora e um cartão de teste. A tentativa e a assinatura continuam vinculadas ao UID verificado no servidor.
+
 A autorização recorrente não libera benefícios. A liberação ocorre exclusivamente depois de um pagamento `approved` consultado diretamente na API do Mercado Pago pelo webhook `/api/mercado-pago/webhook`. O webhook aceita os tópicos `payment`, `subscription_preapproval` e `subscription_authorized_payment`, sempre com HMAC válido, e confere referência, tentativa, produto, valor, moeda, recebedor e idempotência.
 
 O cancelamento passa por `/api/subscriptions/cancel`, cancela futuras cobranças no `/preapproval/{id}` e preserva o acesso até o fim do período já pago. Estorno ou contestação do último pagamento encerram a vigência correspondente. Impulsionamentos e destaques existentes permanecem produtos independentes das assinaturas.

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import {
   assessMercadoPagoCheckoutConfiguration,
   firebaseDatabaseBelongsToProject,
+  resolveMercadoPagoRecurringBuyer,
 } from '../src/lib/commercialRuntimeConfig.js'
 import { assessFirebaseClientConfiguration } from '../src/lib/firebaseClientConfig.js'
 
@@ -191,6 +192,29 @@ await withRuntimeEnvironment(productionEnvironment(), async () => {
 await withRuntimeEnvironment(stagingEnvironment(), async () => {
   assert.equal(getMercadoPagoCheckoutReadiness().ready, true)
 })
+
+const authenticatedEmail = 'firebase-account@example.test'
+const testBuyerEmail = 'test_user_fixture@testuser.com'
+const stagingBuyerEnvironment = {
+  VERCEL_GIT_COMMIT_REF: 'codex/staging/consolidated-2026-09-07',
+  VERCEL_PROJECT_ID: 'prj_M3gKqNx4UkEzAEgL4pcyoYG5kTUB',
+  MERCADO_PAGO_STAGING_BUYER_EMAIL: testBuyerEmail,
+}
+const resolveBuyer = (env) => resolveMercadoPagoRecurringBuyer(env, assessMercadoPagoCheckoutConfiguration(env), authenticatedEmail)
+assert.equal(resolveBuyer(stagingEnvironment(stagingBuyerEnvironment)), testBuyerEmail)
+assert.equal(resolveBuyer(productionEnvironment(stagingBuyerEnvironment)), authenticatedEmail, 'Production ignora a variável de comprador de teste')
+for (const overrides of [
+  { MERCADO_PAGO_STAGING_BUYER_EMAIL: '' },
+  { MERCADO_PAGO_STAGING_BUYER_EMAIL: authenticatedEmail },
+  { MERCADO_PAGO_CREDENTIAL_ENV: 'production' },
+  { VERCEL_ENV: 'development' },
+  { VERCEL_ENV: 'production' },
+  { VERCEL_GIT_COMMIT_REF: 'main' },
+  { VERCEL_PROJECT_ID: 'prj_other' },
+  { NEXT_PUBLIC_FIREBASE_PROJECT_ID: 'corre-aqui-3f9ec' },
+]) {
+  assert.equal(resolveBuyer(stagingEnvironment({ ...stagingBuyerEnvironment, ...overrides })), '')
+}
 
 expectBlocked({}, 'checkout_flag_not_enabled', 'checkout fica desativado por padrao')
 expectBlocked(productionEnvironment({ MERCADO_PAGO_CHECKOUT_ENABLED: '' }), 'checkout_flag_not_enabled', 'flag ausente bloqueia')
