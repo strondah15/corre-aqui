@@ -12,7 +12,6 @@ import {
 } from '@/lib/subscriptions'
 import {
   cancelRecurringSubscription,
-  getStagingPreapprovalCheck,
   getSubscriptionStatus,
   startRecurringSubscriptionCheckout,
 } from '@/lib/subscriptionClient'
@@ -104,9 +103,6 @@ export default function SubscriptionStatusCard() {
   const [cancelLoading, setCancelLoading] = useState('')
   const [consent, setConsent] = useState({ client: false, professional: false })
   const [error, setError] = useState('')
-  const [stagingCheckAvailable, setStagingCheckAvailable] = useState(false)
-  const [stagingCheck, setStagingCheck] = useState(null)
-  const [checkingStaging, setCheckingStaging] = useState(false)
   const checkoutBusyRef = useRef(false)
 
   const loadStatus = useCallback(async ({ quiet = false, expectedUid = auth.currentUser?.uid } = {}) => {
@@ -117,7 +113,6 @@ export default function SubscriptionStatusCard() {
       const result = await getSubscriptionStatus()
       if (!isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
       setData(result.subscriptions)
-      setStagingCheckAvailable(result.stagingPreapprovalCheckAvailable === true)
     } catch (statusError) {
       if (!isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
       setError(statusError?.message || 'Não foi possível carregar sua assinatura agora.')
@@ -133,9 +128,6 @@ export default function SubscriptionStatusCard() {
       setCancelLoading('')
       setConsent({ client: false, professional: false })
       setData(null)
-      setStagingCheckAvailable(false)
-      setStagingCheck(null)
-      setCheckingStaging(false)
       setError('')
       if (user?.uid) loadStatus({ expectedUid: user.uid })
       else setLoading(false)
@@ -147,23 +139,6 @@ export default function SubscriptionStatusCard() {
       window.removeEventListener('correaqui:subscription-status-refresh', refresh)
     }
   }, [loadStatus])
-
-  async function inspectStagingPreapproval() {
-    const uid = auth.currentUser?.uid
-    if (!uid || checkingStaging) return
-    setCheckingStaging(true)
-    setStagingCheck(null)
-    try {
-      const result = await getStagingPreapprovalCheck()
-      if (isSubscriptionSessionCurrent(uid, auth.currentUser?.uid)) setStagingCheck(result.stagingPreapproval)
-    } catch (checkError) {
-      if (isSubscriptionSessionCurrent(uid, auth.currentUser?.uid)) {
-        setStagingCheck({ error: checkError.code || 'staging_check_failed' })
-      }
-    } finally {
-      if (isSubscriptionSessionCurrent(uid, auth.currentUser?.uid)) setCheckingStaging(false)
-    }
-  }
 
   const checkout = useCallback(async (productId) => {
     if (checkoutBusyRef.current) return
@@ -401,14 +376,6 @@ export default function SubscriptionStatusCard() {
         </PlanShell>
       </div>
 
-      {stagingCheckAvailable ? (
-        <div className="mt-4">
-          <button type="button" disabled={checkingStaging} onClick={inspectStagingPreapproval} className="rounded-xl border px-3 py-2 text-xs font-bold">
-            {checkingStaging ? 'Consultando autorização…' : 'Conferir autorização sandbox'}
-          </button>
-          {stagingCheck ? <pre className="mt-2 whitespace-pre-wrap break-words text-xs">{JSON.stringify(stagingCheck, null, 2)}</pre> : null}
-        </div>
-      ) : null}
       {error ? <p role="alert" className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-700 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200">{error}</p> : null}
     </section>
   )

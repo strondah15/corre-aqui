@@ -48,10 +48,6 @@ export function getSubscriptionStatus(options = {}) {
   return subscriptionRequest('/api/subscriptions/status', {}, options)
 }
 
-export function getStagingPreapprovalCheck() {
-  return subscriptionRequest('/api/subscriptions/status', { checkStagingPreapproval: true })
-}
-
 export function activateProfessionalTrial() {
   return subscriptionRequest('/api/subscriptions/status', { activateProfessionalTrial: true })
 }
