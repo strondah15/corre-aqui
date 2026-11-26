@@ -32,7 +32,7 @@ export const COMMERCIAL_PRODUCTS = {
   [PROFESSIONAL_QUARTERLY_PRODUCT_ID]: {
     id: PROFESSIONAL_QUARTERLY_PRODUCT_ID,
     name: 'Corre Aqui Profissional Trimestral',
-    displayPrice: 'R$ 50,00',
+    displayPrice: formatCommercialPrice(PROFESSIONAL_QUARTERLY_PRICE_CENTS),
     amountInCents: PROFESSIONAL_QUARTERLY_PRICE_CENTS,
     currency: COMMERCIAL_CURRENCY,
     type: 'professional_subscription',

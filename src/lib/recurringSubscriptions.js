@@ -1,5 +1,6 @@
 import {
   QUARTERLY_PLAN_MONTHS,
+  isRecurringSubscriptionProduct,
   subscriptionKindForProduct,
   subscriptionTimestamp,
 } from './subscriptions.js'
@@ -26,6 +27,17 @@ export function recurringSubscriptionKind(productId) {
   return subscriptionKindForProduct(productId)
 }
 
+export function recurringCheckoutAmountInCents(attempt, productId) {
+  const amount = attempt?.amountInCents
+  return isRecurringSubscriptionProduct(productId)
+    && attempt?.productId === productId
+    && attempt?.currency === RECURRING_CURRENCY
+    && Number.isSafeInteger(amount)
+    && amount > 0
+    ? amount
+    : null
+}
+
 export function buildRecurringPreapprovalPayload({
   product,
   attempt,
@@ -36,6 +48,8 @@ export function buildRecurringPreapprovalPayload({
 }) {
   if (!product || product.billingMode !== 'quarterly_recurring') throw new Error('invalid_recurring_product')
   if (!attempt?.externalReference) throw new Error('missing_external_reference')
+  const amountInCents = recurringCheckoutAmountInCents(attempt, product.id)
+  if (amountInCents === null || amountInCents !== product.amountInCents) throw new Error('recurring_checkout_price_mismatch')
   if (!isValidPayerEmail(payerEmail)) throw new Error('verified_email_required')
   const origin = new URL(siteOrigin).origin
   const startDate = Number(firstChargeAt) > Number(now) + 60_000
@@ -50,7 +64,7 @@ export function buildRecurringPreapprovalPayload({
       frequency: RECURRING_FREQUENCY,
       frequency_type: RECURRING_FREQUENCY_TYPE,
       ...(startDate ? { start_date: startDate } : {}),
-      transaction_amount: product.amountInCents / 100,
+      transaction_amount: amountInCents / 100,
       currency_id: RECURRING_CURRENCY,
     },
     back_url: `${origin}/?checkout=success`,
@@ -60,14 +74,16 @@ export function buildRecurringPreapprovalPayload({
 
 export function validateRecurringPreapproval({ subscription, attempt, product }) {
   const autoRecurring = subscription?.auto_recurring || {}
-  const amountInCents = Math.round(Number(autoRecurring.transaction_amount || 0) * 100)
+  const providerAmount = Number(autoRecurring.transaction_amount)
+  const amountInCents = Math.round(providerAmount * 100)
+  const expectedAmountInCents = recurringCheckoutAmountInCents(attempt, product?.id)
   const errors = []
   if (!text(subscription?.id)) errors.push('subscription_id_missing')
   if (text(subscription?.external_reference) !== text(attempt?.externalReference)) errors.push('external_reference_mismatch')
   if (Number(autoRecurring.frequency) !== RECURRING_FREQUENCY) errors.push('frequency_mismatch')
   if (text(autoRecurring.frequency_type) !== RECURRING_FREQUENCY_TYPE) errors.push('frequency_type_mismatch')
   if (text(autoRecurring.currency_id) !== RECURRING_CURRENCY) errors.push('currency_mismatch')
-  if (amountInCents !== Number(product?.amountInCents)) errors.push('amount_mismatch')
+  if (expectedAmountInCents === null || providerAmount !== expectedAmountInCents / 100) errors.push('amount_mismatch')
   return { valid: errors.length === 0, errors, amountInCents }
 }
 

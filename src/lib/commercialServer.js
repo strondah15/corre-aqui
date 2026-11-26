@@ -27,6 +27,7 @@ import {
   nextQuarterlyExpiration,
   paymentRenewalStatus,
   providerRenewalStatus,
+  recurringCheckoutAmountInCents,
   shouldApplyProviderUpdate,
   validateRecurringPreapproval,
 } from '@/lib/recurringSubscriptions'
@@ -411,15 +412,24 @@ async function findRecurringPreapprovalByReference(externalReference) {
     : null
 }
 
-async function loadReusableRecurringCheckout({ database, lock, product }) {
+function assertCurrentRecurringCheckoutPrice(attempt, product) {
+  if (recurringCheckoutAmountInCents(attempt, product.id) === product.amountInCents) return
+  const error = new Error('subscription_checkout_previous_price')
+  error.status = 409
+  error.userMessage = 'Existe uma autorização com o valor anterior. Para contratar pelo valor atual, cancele a autorização anterior na tela Assinatura.'
+  throw error
+}
+
+async function loadReusableRecurringCheckout({ database, lock, product, userId }) {
   const preapprovalId = safeText(lock?.preapprovalId)
   if (!preapprovalId) return null
   const attemptSnapshot = await database.ref(`commercialCheckoutAttempts/${safeText(lock?.attemptId)}`).get()
   const attempt = attemptSnapshot.val()
-  if (!attempt || attempt.productId !== product.id) return null
+  if (!attempt || attempt.productId !== product.id || attempt.userId !== userId) return null
   const subscription = await mercadoPagoApiRequest(`/preapproval/${encodeURIComponent(preapprovalId)}`)
   const validation = validateRecurringPreapproval({ subscription, attempt, product })
   if (!validation.valid || isCanceledProviderStatus(subscription?.status)) return null
+  assertCurrentRecurringCheckoutPrice(attempt, product)
   const checkoutUrl = safeText(subscription?.init_point || subscription?.sandbox_init_point || lock?.checkoutUrl)
   if (!checkoutUrl) return null
   return {
@@ -440,7 +450,7 @@ async function acquireRecurringCheckoutLease({ database, userId, kind, product }
   const existingSnapshot = await lockRef.get()
   const existing = existingSnapshot.val() || {}
   if (safeText(existing.status) === 'ready' && safeText(existing.productId) === product.id) {
-    const reusable = await loadReusableRecurringCheckout({ database, lock: existing, product })
+    const reusable = await loadReusableRecurringCheckout({ database, lock: existing, product, userId })
     if (reusable) return { reused: reusable }
   }
 
@@ -476,6 +486,18 @@ function subscriptionCheckoutFirstChargeAt({ currentPlan = {}, kind, now }) {
     currentExpiresAt > now ? currentExpiresAt : 0,
     kind === 'professional' && trialEndsAt > now ? trialEndsAt : 0,
   )
+}
+
+async function createLockedRecurringAttempt({ database, lockRef, userId, product }) {
+  const attempt = await createCommercialCheckoutAttempt({
+    database,
+    userId,
+    product,
+    targetId: userId,
+    targetType: 'recurring_subscription',
+  })
+  await lockRef.update({ attemptId: attempt.id, preapprovalId: null, checkoutUrl: null, updatedAt: Date.now() })
+  return attempt
 }
 
 async function persistPendingRecurringSubscription({
@@ -561,14 +583,7 @@ export async function createMercadoPagoRecurringCheckout({
       attempt = existingAttemptSnapshot.val()
     }
     if (!attempt || attempt.productId !== product.id || attempt.userId !== userId) {
-      attempt = await createCommercialCheckoutAttempt({
-        database,
-        userId,
-        product,
-        targetId: userId,
-        targetType: 'recurring_subscription',
-      })
-      await lockRef.update({ attemptId: attempt.id, updatedAt: Date.now() })
+      attempt = await createLockedRecurringAttempt({ database, lockRef, userId, product })
     }
 
     const now = Date.now()
@@ -578,6 +593,9 @@ export async function createMercadoPagoRecurringCheckout({
       : await findRecurringPreapprovalByReference(attempt.externalReference)
 
     if (!subscription || isCanceledProviderStatus(subscription.status)) {
+      if (subscription || recurringCheckoutAmountInCents(attempt, product.id) !== product.amountInCents) {
+        attempt = await createLockedRecurringAttempt({ database, lockRef, userId, product })
+      }
       const payload = buildRecurringPreapprovalPayload({
         product,
         attempt,
@@ -595,6 +613,7 @@ export async function createMercadoPagoRecurringCheckout({
       error.status = 502
       throw error
     }
+    assertCurrentRecurringCheckoutPrice(attempt, product)
     const checkoutUrl = safeText(subscription.init_point || subscription.sandbox_init_point)
     if (!checkoutUrl) {
       const error = new Error('mercado_pago_checkout_url_missing')
@@ -1226,12 +1245,17 @@ export async function processApprovedCommercialPayment({ database, payment }) {
     await lockRef.update({ status: 'ignored', reason: 'invalid_product', updatedAt: Date.now() })
     return { ok: false, reason: 'invalid_product' }
   }
-  if (amountInCents !== product.amountInCents || currency !== product.currency) {
+  const recurring = isRecurringSubscriptionProduct(product.id)
+  const expectedAmountInCents = recurring ? recurringCheckoutAmountInCents(attempt, product.id) : product.amountInCents
+  const validAmount = recurring
+    ? expectedAmountInCents !== null && Number(payment?.transaction_amount) === expectedAmountInCents / 100
+    : amountInCents === expectedAmountInCents
+  if (!validAmount || currency !== product.currency) {
     await lockRef.update({ status: 'ignored', reason: 'invalid_amount_or_currency', updatedAt: Date.now() })
     return { ok: false, reason: 'invalid_amount_or_currency' }
   }
   if (
-    isRecurringSubscriptionProduct(product.id)
+    recurring
     && safeText(attempt.collectorId)
     && safeText(payment?.collector_id) !== safeText(attempt.collectorId)
   ) {

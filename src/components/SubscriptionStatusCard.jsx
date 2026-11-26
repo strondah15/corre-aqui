@@ -206,6 +206,10 @@ export default function SubscriptionStatusCard() {
   const professional = data.professional || {}
   const clientPrice = formatSubscriptionPrice(CLIENT_QUARTERLY_PRICE_CENTS)
   const professionalPrice = formatSubscriptionPrice(PROFESSIONAL_QUARTERLY_PRICE_CENTS)
+  const professionalRecurringPrice = professional.recurringAmountInCents
+    ? formatSubscriptionPrice(professional.recurringAmountInCents)
+    : null
+  const professionalPreviousPrice = professionalRecurringPrice && professional.recurringAmountInCents !== PROFESSIONAL_QUARTERLY_PRICE_CENTS
   const clientExpired = client.status === 'expired'
   const professionalPaidExpired = professional.status === 'expired' && Boolean(professional.expiresAt)
   const clientPending = !client.active && (
@@ -306,7 +310,11 @@ export default function SubscriptionStatusCard() {
               <div className="mt-3 text-xl font-black">{professional.autoRenew ? 'Renovação trimestral autorizada' : 'Autorização ainda não concluída'}</div>
               {professional.trialActive ? <p className="mt-2 text-xs font-semibold text-slate-500">Seu acesso gratuito continua até {dateLabel(professional.trialEndsAt)}.</p> : null}
               {professional.nextPaymentDate ? <p className="mt-2 text-xs font-black">Próxima cobrança: {dateLabel(professional.nextPaymentDate)}</p> : null}
-              {!professional.autoRenew ? (
+              {professionalRecurringPrice ? <p className="mt-2 text-xs font-semibold text-slate-500">Valor da autorização: {professionalRecurringPrice} a cada 3 meses.</p> : null}
+              {professionalPreviousPrice && !professional.autoRenew ? (
+                <p className="mt-2 text-xs font-semibold text-slate-500">Para contratar por {professionalPrice}, cancele a autorização anterior.</p>
+              ) : null}
+              {!professional.autoRenew && !professionalPreviousPrice ? (
                 <>
                   <ConsentControl checked={consent.professional} onChange={(checked) => setConsent((value) => ({ ...value, professional: checked }))} price={professionalPrice} />
                   <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.professional} onClick={() => checkout(PROFESSIONAL_QUARTERLY_PRODUCT_ID)}>Continuar autorização</PlanButton>
@@ -318,12 +326,13 @@ export default function SubscriptionStatusCard() {
           ) : professional.active ? (
             <>
               <StatusBadge tone="emerald">Assinatura ativa</StatusBadge>
-              <div className="mt-3 text-2xl font-black text-emerald-950 dark:text-white">{professional.plan === 'annual' ? 'Plano anual legado' : <>{professionalPrice} <span className="text-sm text-slate-500 dark:text-slate-400">/ 3 meses</span></>}</div>
+              <div className="mt-3 text-2xl font-black text-emerald-950 dark:text-white">{professional.plan === 'annual' ? 'Plano anual legado' : 'Plano trimestral'}</div>
               <p className="mt-2 text-sm font-black">Válida até: {dateLabel(professional.expiresAt)}</p>
               <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">{daysUntil(professional.expiresAt)} dias restantes</p>
               {professional.autoRenew ? (
                 <>
                   <StatusBadge tone={professional.paymentFailed ? 'rose' : 'blue'}>{professional.paymentFailed ? 'Renovação recusada; acesso atual preservado' : 'Renovação automática ativa'}</StatusBadge>
+                  {professionalRecurringPrice ? <p className="mt-2 text-xs font-semibold text-slate-500">Valor da renovação: {professionalRecurringPrice} a cada 3 meses.</p> : null}
                   {professional.nextPaymentDate ? <p className="mt-2 text-xs font-semibold text-slate-500">Próxima cobrança: {dateLabel(professional.nextPaymentDate)}</p> : null}
                   <PlanButton tone="rose" loading={cancelLoading === 'professional'} disabled={Boolean(cancelLoading || checkoutLoading)} onClick={() => cancelRenewal('professional')}>Cancelar renovação automática</PlanButton>
                 </>

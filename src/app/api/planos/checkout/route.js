@@ -141,6 +141,7 @@ export async function POST(request) {
     return NextResponse.json({
       ok: false,
       error: error?.message || 'checkout_failed',
+      ...(error?.userMessage ? { message: error.userMessage } : {}),
     }, { status: error?.status || 500, headers: responseHeaders })
   }
 }

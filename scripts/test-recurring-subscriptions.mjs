@@ -44,7 +44,7 @@ const {
   processRecurringPreapprovalUpdate,
   referenceKey,
 } = await import('../src/lib/commercialServer.js')
-const { defaultClientSubscription, ensureProfessionalTrial } = await import('../src/lib/subscriptionServer.js')
+const { defaultClientSubscription, ensureProfessionalTrial, readSubscriptionAccessSummary } = await import('../src/lib/subscriptionServer.js')
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
@@ -134,12 +134,19 @@ async function withEnvironment(env, callback) {
 }
 
 assert.equal(CLIENT_QUARTERLY_PRICE_CENTS, 1990)
-assert.equal(PROFESSIONAL_QUARTERLY_PRICE_CENTS, 5000)
+assert.equal(PROFESSIONAL_QUARTERLY_PRICE_CENTS, 4990)
 assert.equal(PROFESSIONAL_TRIAL_MS, 90 * 24 * 60 * 60 * 1000)
 assert.equal(getCommercialProduct(CLIENT_QUARTERLY_PRODUCT_ID).frequency, 3)
-assert.equal(getCommercialProduct(PROFESSIONAL_QUARTERLY_PRODUCT_ID).frequencyType, 'months')
+const professionalProduct = getCommercialProduct(PROFESSIONAL_QUARTERLY_PRODUCT_ID)
+assert.equal(professionalProduct.frequencyType, 'months')
+assert.equal(professionalProduct.displayPrice.replace(/\s+/g, ' '), 'R$ 49,90')
 
-const payloadAttempt = { externalReference: 'CLIENT_QUARTERLY:user-a:user-a:attempt-a:nonce' }
+const payloadAttempt = {
+  productId: CLIENT_QUARTERLY_PRODUCT_ID,
+  externalReference: 'CLIENT_QUARTERLY:user-a:user-a:attempt-a:nonce',
+  amountInCents: 1990,
+  currency: 'BRL',
+}
 const payload = buildRecurringPreapprovalPayload({
   product: getCommercialProduct(CLIENT_QUARTERLY_PRODUCT_ID),
   attempt: payloadAttempt,
@@ -158,16 +165,33 @@ assert.equal(payload.back_url, 'https://preview.example.test/?checkout=success')
 assert.equal(Object.hasOwn(payload, 'card_token_id'), false)
 
 const trialFirstCharge = Date.UTC(2026, 3, 1)
-const professionalPayload = buildRecurringPreapprovalPayload({
-  product: getCommercialProduct(PROFESSIONAL_QUARTERLY_PRODUCT_ID),
-  attempt: { externalReference: 'PROFESSIONAL_QUARTERLY:user-b:user-b:attempt-b:nonce' },
+const professionalAttempt = {
+  productId: PROFESSIONAL_QUARTERLY_PRODUCT_ID,
+  externalReference: 'PROFESSIONAL_QUARTERLY:user-b:user-b:attempt-b:nonce',
+  amountInCents: 4990,
+  currency: 'BRL',
+}
+const professionalCheckoutInput = {
+  product: professionalProduct,
+  attempt: professionalAttempt,
   payerEmail: 'pro@example.test',
   siteOrigin: 'https://preview.example.test',
   firstChargeAt: trialFirstCharge,
   now: Date.UTC(2026, 0, 1),
-})
+}
+const professionalPayload = buildRecurringPreapprovalPayload(professionalCheckoutInput)
 assert.equal(professionalPayload.auto_recurring.start_date, new Date(trialFirstCharge).toISOString())
-assert.equal(professionalPayload.auto_recurring.transaction_amount, 50)
+assert.equal(professionalPayload.auto_recurring.transaction_amount, 49.9)
+const previousPriceAttempt = { ...professionalAttempt, amountInCents: 5000 }
+assert.throws(() => buildRecurringPreapprovalPayload({ ...professionalCheckoutInput, attempt: previousPriceAttempt }), /recurring_checkout_price_mismatch/)
+
+const previousPreapproval = {
+  id: 'previous-authorization',
+  external_reference: professionalAttempt.externalReference,
+  auto_recurring: { ...professionalPayload.auto_recurring, transaction_amount: 50 },
+}
+assert.equal(validateRecurringPreapproval({ subscription: previousPreapproval, attempt: previousPriceAttempt, product: professionalProduct }).valid, true)
+assert.deepEqual(validateRecurringPreapproval({ subscription: previousPreapproval, attempt: professionalAttempt, product: professionalProduct }).errors, ['amount_mismatch'])
 
 const validPreapproval = {
   id: 'preapproval-a',
@@ -282,6 +306,8 @@ const paymentDatabase = createMemoryDatabase({
       productId: CLIENT_QUARTERLY_PRODUCT_ID,
       targetId: 'user-pay',
       externalReference,
+      amountInCents: 1990,
+      currency: 'BRL',
       preapprovalId: 'preapproval-pay',
       collectorId: '321',
     },
@@ -382,18 +408,44 @@ try {
   Date.now = originalNow
 }
 
+for (const amountInCents of [4990, 5000]) {
+  const attempt = {
+    ...professionalAttempt,
+    id: 'attempt-b',
+    userId: 'user-b',
+    targetId: 'user-b',
+    preapprovalId: 'professional-pay',
+    collectorId: '321',
+    amountInCents,
+  }
+  const database = createMemoryDatabase({ commercialCheckoutAttempts: { [attempt.id]: attempt } })
+  const payment = { ...approvedPayment, id: 'professional-payment', external_reference: attempt.externalReference }
+  const wrongAmount = amountInCents === 4990 ? 50 : 49.9
+  const invalid = await processApprovedCommercialPayment({ database, payment: { ...payment, id: 'wrong-price', transaction_amount: wrongAmount } })
+  assert.equal(invalid.reason, 'invalid_amount_or_currency')
+  assert.equal(database.read('users/user-b/subscriptions/professional'), undefined)
+
+  const chargedAmount = { ...payment, transaction_amount: amountInCents / 100 }
+  assert.equal((await processApprovedCommercialPayment({ database, payment: chargedAmount })).activated, true)
+  assert.equal((await processApprovedCommercialPayment({ database, payment: chargedAmount })).duplicate, true)
+  const payments = Object.values(database.read('subscriptionPaymentHistory/user-b/professional'))
+  assert.deepEqual(payments.map((entry) => entry.amountInCents), [amountInCents])
+  console.log(`Professional webhook validates ${amountInCents} cents against its original checkout and applies payment once`)
+}
+
+const paidUntil = Date.now() + 10 * 86_400_000
 const cancelDatabase = createMemoryDatabase({
   users: {
     'cancel-user': {
       subscriptions: {
-        client: {
+        professional: {
           status: 'active',
           plan: 'quarterly',
-          expiresAt: Date.UTC(2027, 0, 1),
-          autoRenew: true,
-          providerStatus: 'authorized',
+          expiresAt: paidUntil,
+          autoRenew: false,
+          providerStatus: 'pending',
           preapprovalId: 'preapproval-cancel',
-          recurringProductId: CLIENT_QUARTERLY_PRODUCT_ID,
+          recurringProductId: PROFESSIONAL_QUARTERLY_PRODUCT_ID,
           checkoutAttemptId: 'attempt-cancel',
         },
       },
@@ -403,42 +455,91 @@ const cancelDatabase = createMemoryDatabase({
     'attempt-cancel': {
       id: 'attempt-cancel',
       userId: 'cancel-user',
-      productId: CLIENT_QUARTERLY_PRODUCT_ID,
+      productId: PROFESSIONAL_QUARTERLY_PRODUCT_ID,
       targetId: 'cancel-user',
-      externalReference: `${CLIENT_QUARTERLY_PRODUCT_ID}:cancel-user:cancel-user:attempt-cancel:nonce`,
+      externalReference: `${PROFESSIONAL_QUARTERLY_PRODUCT_ID}:cancel-user:cancel-user:attempt-cancel:nonce`,
+      amountInCents: 5000,
+      currency: 'BRL',
       preapprovalId: 'preapproval-cancel',
       collectorId: '321',
+    },
+  },
+  subscriptionCheckoutLocks: {
+    'cancel-user': {
+      professional: {
+        status: 'ready',
+        productId: PROFESSIONAL_QUARTERLY_PRODUCT_ID,
+        preapprovalId: 'preapproval-cancel',
+        attemptId: 'attempt-cancel',
+      },
     },
   },
 })
 const cancelFetch = globalThis.fetch
 let cancelPutCount = 0
+let replacementPostCount = 0
+let previousStatus = 'pending'
 globalThis.fetch = async (url, options = {}) => {
+  if (String(url).endsWith('/preapproval') && options.method === 'POST') {
+    replacementPostCount += 1
+    const body = JSON.parse(options.body)
+    assert.equal(body.auto_recurring.transaction_amount, 49.9)
+    assert.equal(body.auto_recurring.start_date, new Date(paidUntil).toISOString())
+    return Response.json({
+      id: 'preapproval-new',
+      external_reference: body.external_reference,
+      status: 'pending',
+      init_point: 'https://www.mercadopago.com.br/subscriptions/checkout?preapproval_id=preapproval-new',
+      auto_recurring: body.auto_recurring,
+    }, { status: 201 })
+  }
+  assert.ok(String(url).endsWith('/preapproval/preapproval-cancel'))
   const attempt = cancelDatabase.read('commercialCheckoutAttempts/attempt-cancel')
-  const status = options.method === 'PUT' ? 'canceled' : 'authorized'
-  if (options.method === 'PUT') cancelPutCount += 1
+  if (options.method === 'PUT') {
+    assert.deepEqual(JSON.parse(options.body), { status: 'canceled' })
+    cancelPutCount += 1
+    previousStatus = 'canceled'
+  }
   return new Response(JSON.stringify({
     id: 'preapproval-cancel',
     external_reference: attempt.externalReference,
-    status,
+    status: previousStatus,
     collector_id: 321,
     application_id: 654,
-    last_modified: status === 'canceled' ? '2026-05-01T00:00:00Z' : '2026-04-30T00:00:00Z',
-    auto_recurring: { frequency: 3, frequency_type: 'months', transaction_amount: 19.9, currency_id: 'BRL' },
+    last_modified: previousStatus === 'canceled' ? '2026-05-01T00:00:00Z' : '2026-04-30T00:00:00Z',
+    auto_recurring: { frequency: 3, frequency_type: 'months', transaction_amount: 50, currency_id: 'BRL' },
   }), { status: 200 })
 }
 try {
-  await withEnvironment({ MERCADO_PAGO_ACCESS_TOKEN: 'test-token-not-real' }, async () => {
-    const canceled = await cancelMercadoPagoRecurringSubscription({ database: cancelDatabase, userId: 'cancel-user', kind: 'client' })
+  const env = stagingEnvironment()
+  const request = { database: cancelDatabase, userId: 'cancel-user', product: professionalProduct, payerEmail: 'pro@example.test' }
+  await withEnvironment(env, async () => {
+    const baseline = cancelDatabase.dump()
+    const status = await readSubscriptionAccessSummary(cancelDatabase, request.userId, Date.now(), env)
+    assert.equal(status.subscriptions.professional.recurringAmountInCents, 5000)
+    await assert.rejects(createMercadoPagoRecurringCheckout(request), { message: 'subscription_checkout_previous_price', status: 409 })
+    assert.equal(replacementPostCount, 0)
+    assert.deepEqual(cancelDatabase.dump(), baseline, 'new consent at R$ 49.90 does not change an old R$ 50 authorization')
+
+    const canceled = await cancelMercadoPagoRecurringSubscription({ database: cancelDatabase, userId: request.userId, kind: 'professional' })
     assert.equal(canceled.canceled, true)
+    assert.equal(cancelDatabase.read('users/cancel-user/subscriptions/professional/autoRenew'), false)
+    assert.equal(cancelDatabase.read('users/cancel-user/subscriptions/professional/status'), 'active')
+    assert.equal(cancelDatabase.read('users/cancel-user/subscriptions/professional/expiresAt'), paidUntil)
+
+    const oldAttempt = cancelDatabase.read('commercialCheckoutAttempts/attempt-cancel')
+    const replacement = await createMercadoPagoRecurringCheckout(request)
+    assert.notEqual(replacement.attempt.externalReference, oldAttempt.externalReference)
+    assert.equal(replacement.attempt.amountInCents, 4990)
+    assert.deepEqual(cancelDatabase.read('commercialCheckoutAttempts/attempt-cancel'), oldAttempt)
+    assert.equal(cancelDatabase.read('users/cancel-user/subscriptions/professional/expiresAt'), paidUntil)
   })
 } finally {
   globalThis.fetch = cancelFetch
 }
 assert.equal(cancelPutCount, 1)
-assert.equal(cancelDatabase.read('users/cancel-user/subscriptions/client/autoRenew'), false)
-assert.equal(cancelDatabase.read('users/cancel-user/subscriptions/client/status'), 'active')
-assert.equal(cancelDatabase.read('users/cancel-user/subscriptions/client/expiresAt'), Date.UTC(2027, 0, 1), 'cancelamento preserva vigencia paga')
+assert.equal(replacementPostCount, 1)
+console.log('Old R$ 50 authorization and paid term are preserved; a new checkout at R$ 49.90 requires a separate authorization')
 
 assert.equal(
   getClientSubscriptionStatus({

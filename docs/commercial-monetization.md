@@ -126,7 +126,9 @@ O período grátis de Profissional/Corre começa na primeira entrada no modo Tra
 Planos Mercado Pago:
 
 - `CLIENT_QUARTERLY`: R$ 19,90 a cada 3 meses, com renovação automática.
-- `PROFESSIONAL_QUARTERLY`: R$ 50,00 a cada 3 meses, com renovação automática.
+- `PROFESSIONAL_QUARTERLY`: R$ 49,90 a cada 3 meses, com renovação automática.
+
+O preço do catálogo vale para novos checkouts. O webhook valida renovações pelo valor gravado na tentativa original, preservando o preço das autorizações existentes.
 
 Registros anuais existentes continuam reconhecidos até sua validade original, mas não são oferecidos para novas contratações.
 

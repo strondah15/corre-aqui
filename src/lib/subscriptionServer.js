@@ -1,4 +1,5 @@
 import {
+  PROFESSIONAL_QUARTERLY_PRODUCT_ID,
   PROFESSIONAL_TRIAL_MS,
   canCreateClientDirectRequest,
   getClientSubscriptionStatus,
@@ -9,7 +10,7 @@ import {
   assessStagingSubscriptionFixtureRuntime,
   resolveClientDirectRequestAccessWithFixture,
 } from './stagingSubscriptionFixtures.js'
-import { publicPaymentHistoryEntry } from './recurringSubscriptions.js'
+import { publicPaymentHistoryEntry, recurringCheckoutAmountInCents } from './recurringSubscriptions.js'
 
 async function readPaymentHistory(database, uid, kind) {
   const snapshot = await database.ref(`subscriptionPaymentHistory/${uid}/${kind}`).get()
@@ -20,6 +21,21 @@ async function readPaymentHistory(database, uid, kind) {
     .filter((entry) => entry.id && entry.amountInCents > 0 && entry.currency === 'BRL')
     .sort((left, right) => Number(right.updatedAt || right.paidAt || 0) - Number(left.updatedAt || left.paidAt || 0))
     .slice(0, 10)
+}
+
+async function readProfessionalRecurringAmount(database, uid, plan) {
+  const attemptId = plan?.checkoutAttemptId
+  if (
+    plan?.recurringProductId !== PROFESSIONAL_QUARTERLY_PRODUCT_ID
+    || !plan.preapprovalId
+    || typeof attemptId !== 'string'
+    || !/^[A-Za-z0-9_-]{1,128}$/.test(attemptId)
+  ) return null
+
+  const snapshot = await database.ref(`commercialCheckoutAttempts/${attemptId}`).get()
+  const attempt = snapshot.val()
+  if (attempt?.id !== attemptId || attempt.userId !== uid || attempt.preapprovalId !== plan.preapprovalId) return null
+  return recurringCheckoutAmountInCents(attempt, PROFESSIONAL_QUARTERLY_PRODUCT_ID)
 }
 
 async function resolveClientDirectRequestAccess(database, account, uid, now, env = process.env) {
@@ -149,12 +165,13 @@ export async function readSubscriptionSummary(database, uid, now = Date.now()) {
 export async function readSubscriptionAccessSummary(database, uid, now = Date.now(), env = process.env) {
   const snapshot = await database.ref(`users/${uid}`).get()
   const user = snapshot.val() || {}
-  const [clientHistory, professionalHistory] = await Promise.all([
+  const [clientHistory, professionalHistory, recurringAmountInCents] = await Promise.all([
     readPaymentHistory(database, uid, 'client'),
     readPaymentHistory(database, uid, 'professional'),
+    readProfessionalRecurringAmount(database, uid, user.subscriptions?.professional),
   ])
   const client = { ...getClientSubscriptionStatus(user, now), paymentHistory: clientHistory }
-  const professional = { ...getProfessionalSubscriptionStatus(user, now), paymentHistory: professionalHistory }
+  const professional = { ...getProfessionalSubscriptionStatus(user, now), paymentHistory: professionalHistory, recurringAmountInCents }
   const access = snapshot.exists()
     ? await resolveClientDirectRequestAccess(database, user, uid, now, env)
     : { allowed: false }
