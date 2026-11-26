@@ -92,6 +92,7 @@ export function resolveAuthoritativeSubscriptionActivation({
 export async function verifyAuthoritativeSubscriptionReturn({
   readStatus,
   expectedKind,
+  checkoutAttemptId = '',
   baselineExpiresAt = 0,
   checkoutCreatedAt = 0,
   automatic = false,
@@ -154,6 +155,10 @@ export async function verifyAuthoritativeSubscriptionReturn({
         expiresAt: activation.expiresAt,
         attempts,
       }
+    }
+    const plan = result?.subscriptions?.[expectedKind]
+    if (checkoutAttemptId && plan?.checkoutAttemptId === checkoutAttemptId && plan.autoRenew === true && !plan.paymentFailed) {
+      return { state: 'authorized', nextPaymentDate: plan.nextPaymentDate || null, attempts }
     }
     if (!automatic) {
       return { state: 'pending', reason: 'backend_not_active', attempts }

@@ -20,6 +20,7 @@ import {
   loadPublicProfile,
   safeText,
 } from '@/lib/commercialServer'
+import { getSubscriptionApiError, getSubscriptionRateLimit } from '@/lib/subscriptionApiPolicy'
 
 export const runtime = 'nodejs'
 
@@ -59,21 +60,33 @@ export async function POST(request) {
       }, { status: 403, headers: responseHeaders })
     }
 
-    const product = getCommercialProduct(planId)
-    const database = getCommercialDatabase()
-    if (isRecurringSubscriptionProduct(planId) && body?.autoRenewConsent !== true) {
+    const recurring = isRecurringSubscriptionProduct(planId)
+    if (recurring && body?.autoRenewConsent !== true) {
       return NextResponse.json({
         ok: false,
         error: 'auto_renew_consent_required',
         message: 'Confirme a renovacao automatica trimestral para continuar.',
       }, { status: 400, headers: responseHeaders })
     }
-    if (isRecurringSubscriptionProduct(planId) && (!identity.email || !identity.emailVerified)) {
+    if (recurring && (!identity.email || !identity.emailVerified)) {
       return NextResponse.json({
         ok: false,
         error: 'verified_email_required',
         message: 'Sua conta precisa ter um e-mail verificado para autorizar a assinatura.',
       }, { status: 409, headers: responseHeaders })
+    }
+
+    const product = getCommercialProduct(planId)
+    const database = getCommercialDatabase()
+    if (recurring) {
+      const limit = await getSubscriptionRateLimit(database, uid, 'checkout')
+      if (limit) {
+        return NextResponse.json({
+          ok: false,
+          error: limit.error,
+          message: limit.message,
+        }, { status: 429, headers: { ...responseHeaders, 'Retry-After': limit.retryAfter } })
+      }
     }
     const profile = planId === PROFESSIONAL_FEATURED_PLAN_ID
       ? await loadPublicProfile(database, uid)
@@ -91,7 +104,7 @@ export async function POST(request) {
       }, { status: 409, headers: responseHeaders })
     }
 
-    const { attempt, checkout } = isRecurringSubscriptionProduct(planId)
+    const { attempt, checkout } = recurring
       ? await createMercadoPagoRecurringCheckout({
           database,
           userId: uid,
@@ -123,21 +136,18 @@ export async function POST(request) {
       },
       status: attempt.status,
       ...checkout,
-      message: isRecurringSubscriptionProduct(planId)
+      message: recurring
         ? 'Autorizacao de assinatura criada.'
         : 'Checkout criado.',
     }, { headers: responseHeaders })
   } catch (error) {
-    console.error('[planos/checkout] falha ao criar checkout:', {
-      code: error?.code,
-      message: error?.message,
-      status: error?.status,
-    })
+    const { code, status, message } = getSubscriptionApiError(error, 'checkout')
+    if (status >= 500) console.error('[planos/checkout] falha ao criar checkout', { code, status })
 
     return NextResponse.json({
       ok: false,
-      error: error?.message || 'checkout_failed',
-      ...(error?.userMessage ? { message: error.userMessage } : {}),
-    }, { status: error?.status || 500, headers: responseHeaders })
+      error: code,
+      message,
+    }, { status, headers: responseHeaders })
   }
 }

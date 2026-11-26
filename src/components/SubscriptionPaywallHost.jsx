@@ -86,7 +86,7 @@ function cleanCheckoutParams(url) {
 }
 
 function ReturnIcon({ state }) {
-  if (state === 'approved') {
+  if (state === 'approved' || state === 'authorized') {
     return <span className="grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-3xl font-black text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200" aria-hidden="true">✓</span>
   }
   if (state === 'failed') {
@@ -119,7 +119,7 @@ export default function SubscriptionPaywallHost() {
     verificationAbortRef.current = null
   }, [])
 
-  const verifyPayment = useCallback(async ({ expectedKind = '', expectedUid = '', automatic = false, baselineExpiresAt = 0, checkoutCreatedAt = 0 } = {}) => {
+  const verifyPayment = useCallback(async ({ expectedKind = '', expectedUid = '', automatic = false, baselineExpiresAt = 0, checkoutCreatedAt = 0, checkoutAttemptId = '' } = {}) => {
     if (!isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
     verificationAbortRef.current?.abort()
     const runId = verificationRunRef.current + 1
@@ -131,16 +131,18 @@ export default function SubscriptionPaywallHost() {
       kind: expectedKind || current?.kind || '',
       baselineExpiresAt: Number(baselineExpiresAt || current?.baselineExpiresAt || 0),
       checkoutCreatedAt: Number(checkoutCreatedAt || current?.checkoutCreatedAt || 0),
+      checkoutAttemptId,
       state: 'checking',
       error: '',
     }))
 
     try {
       const outcome = await verifyAuthoritativeSubscriptionReturn({
-        readStatus: getSubscriptionStatus,
+        readStatus: (options) => getSubscriptionStatus({ ...options, reconcile: true, kind: expectedKind }),
         expectedKind,
         baselineExpiresAt,
         checkoutCreatedAt,
+        checkoutAttemptId,
         automatic,
         signal: controller.signal,
         shouldContinue: () => verificationRunRef.current === runId
@@ -150,14 +152,15 @@ export default function SubscriptionPaywallHost() {
         || verificationRunRef.current !== runId
         || !isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
 
-      if (outcome.state === 'approved') {
+      if (outcome.state === 'approved' || outcome.state === 'authorized') {
         const url = new URL(window.location.href)
         if (checkoutReturnValues.has(url.searchParams.get('checkout'))) cleanCheckoutParams(url)
         clearPendingSubscriptionCheckout()
         setPaymentReturn({
           kind: expectedKind,
-          state: 'approved',
+          state: outcome.state,
           expiresAt: outcome.expiresAt,
+          nextPaymentDate: outcome.nextPaymentDate,
           error: '',
         })
         window.dispatchEvent(new CustomEvent('correaqui:subscription-status-refresh'))
@@ -247,6 +250,7 @@ export default function SubscriptionPaywallHost() {
       automatic: true,
       baselineExpiresAt: pendingCheckout?.baselineExpiresAt,
       checkoutCreatedAt: pendingCheckout?.createdAt,
+      checkoutAttemptId: pendingCheckout.attemptId,
     })
     return cancelPaymentVerification
   }, [cancelPaymentVerification, sessionUid, verifyPayment])
@@ -301,6 +305,7 @@ export default function SubscriptionPaywallHost() {
 
   if (paymentReturn) {
     const isApproved = paymentReturn.state === 'approved'
+    const isAuthorized = paymentReturn.state === 'authorized'
     const isFailed = paymentReturn.state === 'failed'
     const isChecking = paymentReturn.state === 'checking'
     const returnCopy = isApproved
@@ -308,6 +313,11 @@ export default function SubscriptionPaywallHost() {
           title: 'Pagamento confirmado!',
           description: 'Sua assinatura Corre Aqui está ativa.',
         }
+      : isAuthorized
+        ? {
+            title: 'Renovação autorizada',
+            description: 'O Mercado Pago confirmou a recorrência. A validade paga será atualizada após a confirmação da cobrança.',
+          }
       : isFailed
         ? {
             title: 'Pagamento não concluído',
@@ -338,7 +348,11 @@ export default function SubscriptionPaywallHost() {
             </div>
           ) : null}
 
-          {!isApproved && !isFailed ? (
+          {isAuthorized && paymentReturn.nextPaymentDate ? (
+            <p className="mt-4 text-sm font-bold">Próxima cobrança prevista para {dateLabel(paymentReturn.nextPaymentDate)}.</p>
+          ) : null}
+
+          {!isApproved && !isAuthorized && !isFailed ? (
             <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-900 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-100">
               Não é necessário pagar novamente. Vamos consultar o status com segurança.
             </div>
@@ -346,7 +360,7 @@ export default function SubscriptionPaywallHost() {
 
           {paymentReturn.error ? <p role="alert" className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-bold text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200">{paymentReturn.error}</p> : null}
 
-          {isApproved ? (
+          {isApproved || isAuthorized ? (
             <button type="button" onClick={close} className="mt-5 min-h-12 w-full rounded-2xl bg-emerald-700 px-4 text-sm font-black text-white shadow-[0_14px_30px_rgba(4,120,87,0.2)] transition active:scale-[0.98]">Continuar no Corre Aqui</button>
           ) : isFailed ? (
             <>
@@ -362,7 +376,7 @@ export default function SubscriptionPaywallHost() {
             </>
           ) : (
             <>
-              <button type="button" onClick={() => verifyPayment({ expectedKind: paymentReturn.kind, expectedUid: sessionUid, baselineExpiresAt: paymentReturn.baselineExpiresAt, checkoutCreatedAt: paymentReturn.checkoutCreatedAt })} disabled={paymentReturn.state === 'checking' || !paymentReturn.kind} className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-700 px-4 text-sm font-black text-white shadow-[0_14px_30px_rgba(29,78,216,0.2)] transition active:scale-[0.98] disabled:opacity-60">
+              <button type="button" onClick={() => verifyPayment({ expectedKind: paymentReturn.kind, expectedUid: sessionUid, baselineExpiresAt: paymentReturn.baselineExpiresAt, checkoutCreatedAt: paymentReturn.checkoutCreatedAt, checkoutAttemptId: paymentReturn.checkoutAttemptId })} disabled={paymentReturn.state === 'checking' || !paymentReturn.kind} className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-700 px-4 text-sm font-black text-white shadow-[0_14px_30px_rgba(29,78,216,0.2)] transition active:scale-[0.98] disabled:opacity-60">
                 {paymentReturn.state === 'checking' ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" aria-hidden="true" /> : null}
                 {paymentReturn.state === 'checking' ? 'Verificando...' : 'Verificar novamente'}
               </button>

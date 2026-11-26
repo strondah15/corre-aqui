@@ -126,6 +126,13 @@ function expectBlocked(env, expectedIssue, message) {
   return assessment
 }
 
+const closedCheckout = stagingEnvironment({ MERCADO_PAGO_CHECKOUT_ENABLED: 'false' })
+assert.equal(assessMercadoPagoCheckoutConfiguration(closedCheckout).ready, false)
+assert.equal(assessMercadoPagoCheckoutConfiguration(closedCheckout, { requireCheckoutEnabled: false }).ready, true)
+assert.equal(assessMercadoPagoCheckoutConfiguration({
+  ...closedCheckout, MERCADO_PAGO_CREDENTIAL_ENV: 'production',
+}, { requireCheckoutEnabled: false }).ready, false)
+
 assert.equal(
   assessMercadoPagoCheckoutConfiguration(productionEnvironment()).ready,
   true,

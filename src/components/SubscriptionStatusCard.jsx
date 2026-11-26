@@ -110,7 +110,7 @@ export default function SubscriptionStatusCard() {
     if (!quiet) setLoading(true)
     setError('')
     try {
-      const result = await getSubscriptionStatus()
+      const result = await getSubscriptionStatus({ reconcile: true })
       if (!isSubscriptionSessionCurrent(expectedUid, auth.currentUser?.uid)) return
       setData(result.subscriptions)
     } catch (statusError) {

@@ -52,8 +52,8 @@ export function buildRecurringPreapprovalPayload({
   if (amountInCents === null || amountInCents !== product.amountInCents) throw new Error('recurring_checkout_price_mismatch')
   if (!isValidPayerEmail(payerEmail)) throw new Error('verified_email_required')
   const origin = new URL(siteOrigin).origin
-  const startDate = Number(firstChargeAt) > Number(now) + 60_000
-    ? new Date(Number(firstChargeAt)).toISOString()
+  const startDate = Number(firstChargeAt) > Number(now)
+    ? new Date(Math.ceil(Number(firstChargeAt) / 1000) * 1000).toISOString()
     : undefined
 
   return {
@@ -79,6 +79,10 @@ export function validateRecurringPreapproval({ subscription, attempt, product })
   const expectedAmountInCents = recurringCheckoutAmountInCents(attempt, product?.id)
   const errors = []
   if (!text(subscription?.id)) errors.push('subscription_id_missing')
+  if (text(attempt?.preapprovalId) && text(subscription?.id) !== text(attempt.preapprovalId)) errors.push('preapproval_id_mismatch')
+  if (text(attempt?.collectorId) && text(subscription?.collector_id) !== text(attempt.collectorId)) errors.push('collector_mismatch')
+  if (text(attempt?.applicationId) && text(subscription?.application_id) !== text(attempt.applicationId)) errors.push('application_mismatch')
+  if (text(attempt?.payerId) && text(subscription?.payer_id) !== text(attempt.payerId)) errors.push('payer_mismatch')
   if (text(subscription?.external_reference) !== text(attempt?.externalReference)) errors.push('external_reference_mismatch')
   if (Number(autoRecurring.frequency) !== RECURRING_FREQUENCY) errors.push('frequency_mismatch')
   if (text(autoRecurring.frequency_type) !== RECURRING_FREQUENCY_TYPE) errors.push('frequency_type_mismatch')
@@ -89,6 +93,10 @@ export function validateRecurringPreapproval({ subscription, attempt, product })
 
 export function isCanceledProviderStatus(status) {
   return CANCELED_PROVIDER_STATUSES.has(text(status).toLowerCase())
+}
+
+export function isTerminalRecurringCancellation(status) {
+  return ['canceled', 'cancelled'].includes(text(status).toLowerCase())
 }
 
 export function providerRenewalStatus(status) {
@@ -110,6 +118,11 @@ export function paymentRenewalStatus(status) {
 }
 
 export function shouldApplyProviderUpdate(current = {}, providerSubscription = {}) {
+  const currentStatus = text(current?.providerStatus).toLowerCase()
+  const incomingStatus = text(providerSubscription?.status).toLowerCase()
+  if (text(current?.preapprovalId) && text(current.preapprovalId) !== text(providerSubscription?.id)) return false
+  if (isTerminalRecurringCancellation(currentStatus) && !isTerminalRecurringCancellation(incomingStatus)) return false
+  if (currentStatus === 'authorized' && incomingStatus === 'pending') return false
   const incomingAt = subscriptionTimestamp(providerSubscription?.last_modified || providerSubscription?.date_created)
   const currentAt = subscriptionTimestamp(current?.providerLastModifiedAt)
   if (!incomingAt) return currentAt === 0

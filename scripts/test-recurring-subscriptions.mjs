@@ -378,6 +378,20 @@ try {
 }
 
 const providerAttempt = paymentDatabase.read(`commercialCheckoutAttempts/${attemptId}`)
+{
+  const database = createMemoryDatabase({ commercialCheckoutAttempts: { [attemptId]: providerAttempt } })
+  const later = { ...approvedPayment, id: 'installment-later', date_approved: '2026-04-30T12:00:00Z' }
+  const earlier = { ...approvedPayment, id: 'installment-earlier' }
+  assert.equal((await processApprovedCommercialPayment({ database, payment: later })).activated, true)
+  const laterPlan = database.read('users/user-pay/subscriptions/client')
+  const recovered = await processApprovedCommercialPayment({ database, payment: earlier })
+  assert.equal(recovered.reason, 'earlier_paid_period_recorded')
+  const finalPlan = database.read('users/user-pay/subscriptions/client')
+  assert.equal(finalPlan.expiresAt, laterPlan.expiresAt)
+  assert.equal(finalPlan.paymentId, later.id)
+  assert.equal(database.read(`commercialCheckoutAttempts/${attemptId}/paymentId`), later.id)
+  assert.equal(Object.keys(database.read('subscriptionPaymentHistory/user-pay/client')).length, 2)
+}
 const authorizedSubscription = {
   id: 'preapproval-pay',
   external_reference: externalReference,
@@ -501,6 +515,8 @@ const cancelDatabase = createMemoryDatabase({
       currency: 'BRL',
       preapprovalId: 'preapproval-cancel',
       collectorId: '321',
+      applicationId: '654',
+      payerId: '789',
     },
   },
   subscriptionCheckoutLocks: {
@@ -514,6 +530,7 @@ const cancelDatabase = createMemoryDatabase({
     },
   },
 })
+const originalCancelData = cancelDatabase.dump()
 const cancelFetch = globalThis.fetch
 let cancelPutCount = 0
 let replacementPostCount = 0
@@ -524,12 +541,15 @@ globalThis.fetch = async (url, options = {}) => {
     const body = JSON.parse(options.body)
     assert.equal(body.payer_email, sandboxBuyerEmail)
     assert.equal(body.auto_recurring.transaction_amount, 49.9)
-    assert.equal(body.auto_recurring.start_date, new Date(paidUntil).toISOString())
+    assert.equal(body.auto_recurring.start_date, new Date(Math.ceil(paidUntil / 1000) * 1000).toISOString())
     return Response.json({
       id: 'preapproval-new',
       external_reference: body.external_reference,
       status: 'pending',
       init_point: 'https://www.mercadopago.com.br/subscriptions/checkout?preapproval_id=preapproval-new',
+      collector_id: 321,
+      application_id: 654,
+      payer_id: 789,
       auto_recurring: body.auto_recurring,
     }, { status: 201 })
   }
@@ -546,6 +566,7 @@ globalThis.fetch = async (url, options = {}) => {
     status: previousStatus,
     collector_id: 321,
     application_id: 654,
+    payer_id: 789,
     last_modified: previousStatus === 'canceled' ? '2026-05-01T00:00:00Z' : '2026-04-30T00:00:00Z',
     auto_recurring: { frequency: 3, frequency_type: 'months', transaction_amount: 50, currency_id: 'BRL' },
   }), { status: 200 })
@@ -580,6 +601,130 @@ try {
 assert.equal(cancelPutCount, 1)
 assert.equal(replacementPostCount, 1)
 console.log('Old R$ 50 authorization and paid term are preserved; a new checkout at R$ 49.90 requires a separate authorization')
+
+const rejectedCancelSpelling = { error: 'bad_request', message: 'Invalid preapproval status param: canceled' }
+const cancellationCases = [
+  {
+    name: 'only the exact sandbox enum rejection permits the alternative spelling',
+    steps: [
+      ['GET', 'authorized'],
+      ['PUT canceled', rejectedCancelSpelling, 400],
+      ['PUT cancelled', 'cancelled'],
+    ],
+    expectedStatus: 'cancelled',
+  },
+  {
+    name: 'a lost PUT response is reconciled by GET without another write',
+    steps: [
+      ['GET', 'authorized'],
+      ['PUT canceled', new TypeError('connection reset')],
+      ['GET', 'cancelled'],
+    ],
+    expectedStatus: 'cancelled',
+  },
+  {
+    name: 'a partial successful PUT is reconciled by GET',
+    steps: [
+      ['GET', 'authorized'],
+      ['PUT canceled', { status: 'cancelled' }],
+      ['GET', 'cancelled'],
+    ],
+    expectedStatus: 'cancelled',
+  },
+  {
+    name: 'a different 4xx does not trigger a second PUT',
+    steps: [
+      ['GET', 'authorized'],
+      ['PUT canceled', { message: 'Invalid preapproval status param: canceled for this account' }, 400],
+      ['GET', 'authorized'],
+    ],
+    error: 'subscription_cancellation_not_confirmed',
+  },
+  {
+    name: 'a failed alternative PUT never sends a third write or treats paused as terminal',
+    steps: [
+      ['GET', 'paused'],
+      ['PUT canceled', rejectedCancelSpelling, 400],
+      ['PUT cancelled', new TypeError('connection reset')],
+      ['GET', 'paused'],
+    ],
+    error: 'subscription_cancellation_not_confirmed',
+  },
+  {
+    name: 'the sandbox spelling is not retried in Production',
+    env: { CORRE_AQUI_ENV: 'production', MERCADO_PAGO_CREDENTIAL_ENV: 'production' },
+    steps: [
+      ['GET', 'authorized'],
+      ['PUT canceled', rejectedCancelSpelling, 400],
+      ['GET', 'authorized'],
+    ],
+    error: 'subscription_cancellation_not_confirmed',
+  },
+  {
+    name: 'an already cancelled subscription never issues a PUT',
+    steps: [['GET', 'cancelled']],
+    expectedStatus: 'cancelled',
+    alreadyCanceled: true,
+  },
+  {
+    name: 'a provider subscription from a different application cannot be cancelled',
+    steps: [['GET', 'authorized', 200, { application_id: 789 }]],
+    error: 'invalid_recurring_preapproval:application_mismatch',
+  },
+  {
+    name: 'a different payer cannot be cancelled',
+    steps: [['GET', 'authorized', 200, { payer_id: 321 }]],
+    error: 'invalid_recurring_preapproval:payer_mismatch',
+  },
+]
+
+for (const { name, env, steps, expectedStatus, error, alreadyCanceled = false } of cancellationCases) {
+  const database = createMemoryDatabase(originalCancelData)
+  const pendingSteps = [...steps]
+  const actualSteps = []
+  const attempt = database.read('commercialCheckoutAttempts/attempt-cancel')
+  const request = { database, userId: 'cancel-user', kind: 'professional' }
+  const initialData = database.dump()
+  globalThis.fetch = async (url, options) => {
+    assert.ok(String(url).endsWith('/preapproval/preapproval-cancel'), name)
+    const requestStep = options.method === 'PUT' ? `PUT ${JSON.parse(options.body).status}` : options.method
+    actualSteps.push(requestStep)
+    const step = pendingSteps.shift()
+    assert.ok(step, `${name}: unexpected ${requestStep}`)
+    const [expectedStep, response, httpStatus = 200, providerFields = {}] = step
+    assert.equal(requestStep, expectedStep, name)
+    if (response instanceof Error) throw response
+    return Response.json(typeof response === 'string' ? {
+      id: attempt.preapprovalId,
+      external_reference: attempt.externalReference,
+      status: response,
+      collector_id: 321,
+      application_id: 654,
+      payer_id: 789,
+      auto_recurring: { frequency: 3, frequency_type: 'months', transaction_amount: 50, currency_id: 'BRL' },
+      ...providerFields,
+    } : response, { status: httpStatus })
+  }
+  try {
+    await withEnvironment({ ...stagingEnvironment(), ...env }, async () => {
+      if (error) {
+        await assert.rejects(cancelMercadoPagoRecurringSubscription(request), { message: error }, name)
+        assert.deepEqual(database.dump(), initialData, `${name}: uncertain cancellation does not alter RTDB`)
+        return
+      }
+      const result = await cancelMercadoPagoRecurringSubscription(request)
+      assert.equal(result.providerStatus, expectedStatus, name)
+      assert.equal(result.alreadyCanceled, alreadyCanceled, name)
+      const canceledPlan = database.read('users/cancel-user/subscriptions/professional')
+      assert.equal(canceledPlan.autoRenew, false, name)
+      assert.equal(canceledPlan.status, 'active', name)
+      assert.equal(canceledPlan.expiresAt, paidUntil, name)
+    })
+    assert.deepEqual(actualSteps, steps.map(([method]) => method), name)
+  } finally {
+    globalThis.fetch = cancelFetch
+  }
+}
 
 assert.equal(
   getClientSubscriptionStatus({
@@ -639,5 +784,29 @@ assert.equal(rules.commercialCheckoutAttempts?.['.read'], false)
 assert.equal(rules.processedPaymentEvents?.['.write'], false)
 assert.equal(rules.subscriptionPaymentHistory, undefined, 'nova raiz permanece server-only pelo deny padrao')
 assert.equal(rules.serverSubscriptionNotificationEvents, undefined, 'reservas de notificacao permanecem server-only pelo deny padrao')
+
+{
+  const database = createMemoryDatabase()
+  const product = getCommercialProduct(CLIENT_QUARTERLY_PRODUCT_ID)
+  let providerWrites = 0
+  globalThis.fetch = async (url, options = {}) => {
+    const path = new URL(url).pathname
+    if (path === '/preapproval/search') return Response.json({ results: [] })
+    assert.equal(path, '/preapproval')
+    assert.equal(options.method, 'POST')
+    providerWrites += 1
+    throw new Error('response lost after submission')
+  }
+  try {
+    await withEnvironment(stagingEnvironment(), async () => {
+      const input = { database, userId: 'ambiguous-checkout-owner', product, authenticatedEmail: 'verified@example.com' }
+      await assert.rejects(createMercadoPagoRecurringCheckout(input), /response lost/)
+      await assert.rejects(createMercadoPagoRecurringCheckout(input), /subscription_checkout_pending_confirmation/)
+      assert.equal(providerWrites, 1, 'uma busca vazia nunca autoriza um segundo POST depois de uma resposta perdida')
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+}
 
 console.log('recurring subscription tests passed')

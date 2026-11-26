@@ -170,8 +170,17 @@ export async function readSubscriptionAccessSummary(database, uid, now = Date.no
     readPaymentHistory(database, uid, 'professional'),
     readProfessionalRecurringAmount(database, uid, user.subscriptions?.professional),
   ])
-  const client = { ...getClientSubscriptionStatus(user, now), paymentHistory: clientHistory }
-  const professional = { ...getProfessionalSubscriptionStatus(user, now), paymentHistory: professionalHistory, recurringAmountInCents }
+  const client = {
+    ...getClientSubscriptionStatus(user, now),
+    checkoutAttemptId: user.subscriptions?.client?.checkoutAttemptId || null,
+    paymentHistory: clientHistory,
+  }
+  const professional = {
+    ...getProfessionalSubscriptionStatus(user, now),
+    checkoutAttemptId: user.subscriptions?.professional?.checkoutAttemptId || null,
+    paymentHistory: professionalHistory,
+    recurringAmountInCents,
+  }
   const access = snapshot.exists()
     ? await resolveClientDirectRequestAccess(database, user, uid, now, env)
     : { allowed: false }

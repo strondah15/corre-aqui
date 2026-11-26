@@ -356,7 +356,7 @@ assert.ok(
 )
 const rejectedSignatureBlock = webhookSecurityRouteSource.slice(webhookSignatureGuardAt, webhookBodyParseAt)
 assert.doesNotMatch(rejectedSignatureBlock, /getCommercialDatabase|writeCommercialAudit/, 'assinatura invalida nao toca a RTDB')
-assert.match(webhookSecurityRouteSource, /mercadoPagoApiRequest\(`\/v1\/payments\/\$\{encodeURIComponent\(signature\.paymentId\)\}`\)/, 'consulta do pagamento usa o ID autenticado da query')
+assert.match(webhookSecurityRouteSource, /readProviderResource\('\/v1\/payments', signature\.paymentId, signal\)/, 'consulta do pagamento usa o ID autenticado da query')
 
 const paymentNow = Date.UTC(2026, 9, 3, 12)
 const approvedClient = commercialPaymentScenario()
@@ -974,7 +974,7 @@ assert.match(
 )
 assert.match(webhookRouteSource, /request\.nextUrl\.searchParams\.get\('data\.id'\)/, 'webhook le o data.id autoritativo da query')
 assert.match(webhookRouteSource, /dataId:\s*signatureDataId/, 'webhook passa explicitamente o data.id da query para validacao')
-assert.match(webhookRouteSource, /\/v1\/payments\//, 'webhook consulta o pagamento no Mercado Pago')
+assert.match(webhookRouteSource, /readProviderResource\('\/v1\/payments',/, 'webhook consulta o pagamento no Mercado Pago')
 assert.ok(
   commercialSource.indexOf("if (status !== 'approved')") < commercialSource.indexOf('const activation = isRecurringSubscriptionProduct'),
   'pagamento pendente ou rejeitado nao chega a ativacao',
@@ -1027,13 +1027,30 @@ assert.match(subscriptionPaywallSource, /Estamos confirmando seu pagamento/)
 assert.match(subscriptionPaywallSource, /Pagamento em processamento/)
 assert.match(subscriptionPaywallSource, /Para agendar diretamente com um profissional, ative o Plano Cliente\./)
 assert.match(subscriptionPaywallSource, /verifyAuthoritativeSubscriptionReturn\(/)
-assert.match(subscriptionPaywallSource, /readStatus: getSubscriptionStatus/)
+assert.match(subscriptionPaywallSource, /readStatus: \(options\) => getSubscriptionStatus\(\{ \.\.\.options, reconcile: true, kind: expectedKind \}\)/)
 assert.match(subscriptionPaywallSource, /onAuthStateChanged\(auth/)
 assert.match(subscriptionPaywallSource, /readPendingSubscriptionCheckout\(sessionUid\)/)
 assert.match(subscriptionPaywallSource, /isSubscriptionSessionCurrent\(expectedUid, auth\.currentUser\?\.uid\)/)
 assert.match(subscriptionPaywallSource, /verificationAbortRef\.current\?\.abort\(\)/, 'troca de execucao aborta consulta anterior')
 assert.match(subscriptionPaywallSource, /replaceState\(window\.history\.state/, 'limpeza da URL preserva estado do router')
-assert.match(subscriptionPaywallSource, /cleanCheckoutParams\(url\)[\s\S]*clearPendingSubscriptionCheckout\(\)[\s\S]*state: 'approved'/, 'confirmacao limpa URL antes do pending')
+assert.match(subscriptionPaywallSource, /cleanCheckoutParams\(url\)[\s\S]*clearPendingSubscriptionCheckout\(\)[\s\S]*state: outcome\.state/, 'confirmacao limpa URL antes do pending')
+const scheduledAuthorization = {
+  subscriptions: {
+    professional: { checkoutAttemptId: 'matching-attempt', autoRenew: true, active: false, nextPaymentDate: now + 86400000 },
+  },
+}
+const scheduledReturn = await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => scheduledAuthorization,
+  expectedKind: 'professional',
+  checkoutAttemptId: 'matching-attempt',
+})
+assert.equal(scheduledReturn.state, 'authorized')
+assert.equal(scheduledReturn.expiresAt, undefined)
+assert.equal((await verifyAuthoritativeSubscriptionReturn({
+  readStatus: async () => scheduledAuthorization,
+  expectedKind: 'professional',
+  checkoutAttemptId: 'other-attempt',
+})).state, 'pending')
 assert.doesNotMatch(subscriptionPaywallSource, /if \(!nextUid\) clearPendingSubscriptionCheckout\(\)/, 'auth null transitorio nao apaga tentativa vinculada ao UID')
 assert.doesNotMatch(subscriptionPaywallSource, /set\([^\n]*subscriptions/)
 assert.doesNotMatch(subscriptionReturnSource, /collection_status|payment_id|external_reference/, 'redirect nao participa da confirmacao autoritativa')

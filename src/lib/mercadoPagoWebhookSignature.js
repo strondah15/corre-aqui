@@ -3,13 +3,14 @@ import crypto from 'crypto'
 const safeText = (value) => String(value || '').trim()
 
 function parseSignatureParts(signatureHeader) {
-  const parts = {}
+  const parts = Object.create(null)
   for (const part of safeText(signatureHeader).split(',')) {
     const separatorIndex = part.indexOf('=')
     if (separatorIndex < 0) continue
     const key = safeText(part.slice(0, separatorIndex)).toLowerCase()
     const value = safeText(part.slice(separatorIndex + 1))
-    if (!key || !value) continue
+    if (key !== 'ts' && key !== 'v1') continue
+    if (Object.hasOwn(parts, key)) return {}
     parts[key] = value
   }
   return parts
@@ -70,22 +71,16 @@ export function verifyMercadoPagoHmacSignature({ secret, dataId, headers }) {
   const ts = safeText(parts.ts)
   const received = safeText(parts.v1)
   if (!ts || !received) return { ok: false, reason: 'invalid_signature_payload' }
+  if (!/^\d{1,16}$/.test(ts) || !/^[0-9a-f]{64}$/i.test(received)) {
+    return { ok: false, reason: 'invalid_signature_format' }
+  }
 
   const manifest = `id:${authoritativeDataId};request-id:${requestId};ts:${ts};`
-  const expected = crypto.createHmac('sha256', normalizedSecret).update(manifest).digest('hex')
-  try {
-    const receivedBuffer = Buffer.from(received, 'hex')
-    const expectedBuffer = Buffer.from(expected, 'hex')
-    if (receivedBuffer.length !== expectedBuffer.length) {
-      return { ok: false, reason: 'signature_mismatch' }
-    }
-    const ok = crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
-    return {
-      ok,
-      reason: ok ? '' : 'signature_mismatch',
-      paymentId: authoritativeDataId,
-    }
-  } catch {
-    return { ok: false, reason: 'invalid_signature_format' }
+  const expected = crypto.createHmac('sha256', normalizedSecret).update(manifest).digest()
+  const ok = crypto.timingSafeEqual(Buffer.from(received, 'hex'), expected)
+  return {
+    ok,
+    reason: ok ? '' : 'signature_mismatch',
+    paymentId: authoritativeDataId,
   }
 }

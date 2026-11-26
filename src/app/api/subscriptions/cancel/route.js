@@ -3,9 +3,10 @@ import {
   cancelMercadoPagoRecurringSubscription,
   getAuthenticatedUid,
   getCommercialDatabase,
-  getMercadoPagoCheckoutReadiness,
+  getMercadoPagoSubscriptionManagementReadiness,
   safeText,
 } from '@/lib/commercialServer'
+import { getSubscriptionApiError, getSubscriptionRateLimit } from '@/lib/subscriptionApiPolicy'
 
 export const runtime = 'nodejs'
 
@@ -13,7 +14,7 @@ const headers = { 'Cache-Control': 'private, no-store' }
 
 export async function POST(request) {
   try {
-    const readiness = getMercadoPagoCheckoutReadiness()
+    const readiness = getMercadoPagoSubscriptionManagementReadiness()
     if (!readiness.ready) {
       return NextResponse.json({
         ok: false,
@@ -27,8 +28,17 @@ export async function POST(request) {
     if (!['client', 'professional'].includes(kind)) {
       return NextResponse.json({ ok: false, error: 'invalid_subscription_kind' }, { status: 400, headers })
     }
+    const database = getCommercialDatabase()
+    const limit = await getSubscriptionRateLimit(database, uid, 'cancel')
+    if (limit) {
+      return NextResponse.json({
+        ok: false,
+        error: limit.error,
+        message: limit.message,
+      }, { status: 429, headers: { ...headers, 'Retry-After': limit.retryAfter } })
+    }
     const result = await cancelMercadoPagoRecurringSubscription({
-      database: getCommercialDatabase(),
+      database,
       userId: uid,
       kind,
     })
@@ -38,14 +48,13 @@ export async function POST(request) {
       message: 'Renovacao automatica cancelada. O acesso pago permanece ate o fim da vigencia.',
     }, { headers })
   } catch (error) {
-    console.error('[subscriptions/cancel] cancelamento falhou:', {
-      code: error?.code,
-      message: error?.message,
-      status: error?.status,
-    })
+    const { code, status, message } = getSubscriptionApiError(error, 'cancel')
+    if (status >= 500) console.error('[subscriptions/cancel] cancelamento falhou', { code, status })
+
     return NextResponse.json({
       ok: false,
-      error: error?.message || 'subscription_cancellation_failed',
-    }, { status: error?.status || 500, headers })
+      error: code,
+      message,
+    }, { status, headers })
   }
 }

@@ -45,7 +45,8 @@ async function subscriptionRequest(path, body = {}, options = {}) {
 }
 
 export function getSubscriptionStatus(options = {}) {
-  return subscriptionRequest('/api/subscriptions/status', {}, options)
+  const body = options.reconcile ? { reconcile: true, kind: options.kind } : {}
+  return subscriptionRequest('/api/subscriptions/status', body, options)
 }
 
 export function activateProfessionalTrial() {

@@ -226,10 +226,10 @@ export function assessFirebaseEnvironment(env = process.env, options = {}) {
   })
 }
 
-export function assessMercadoPagoCheckoutConfiguration(env = process.env) {
+export function assessMercadoPagoCheckoutConfiguration(env = process.env, { requireCheckoutEnabled = true } = {}) {
   const issues = []
   const enabled = envText(env.MERCADO_PAGO_CHECKOUT_ENABLED) === 'true'
-  if (!enabled) issues.push('checkout_flag_not_enabled')
+  if (requireCheckoutEnabled && !enabled) issues.push('checkout_flag_not_enabled')
 
   const accessToken = envText(env.MERCADO_PAGO_ACCESS_TOKEN)
   const webhookSecret = envText(env.MERCADO_PAGO_WEBHOOK_SECRET)
