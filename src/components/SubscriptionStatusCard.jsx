@@ -347,10 +347,13 @@ export default function SubscriptionStatusCard() {
             </>
           ) : professional.status === 'trial' ? (
             <>
-              <StatusBadge tone="emerald">Período grátis</StatusBadge>
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge tone="emerald">Período grátis</StatusBadge>
+                {professional.renewalStatus === 'canceled' ? <StatusBadge tone="amber">Renovação automática cancelada</StatusBadge> : null}
+              </div>
               <div className="mt-3 text-2xl font-black">{professional.daysRemaining} dias restantes</div>
               <p className="mt-2 text-sm font-black">Grátis até {dateLabel(professional.trialEndsAt)}</p>
-              <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Primeira cobrança em {dateLabel(professional.trialEndsAt)}; depois, {professionalPrice} a cada 3 meses.</p>
+              <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">Se autorizar a renovação, o plano de {professionalPrice} a cada 3 meses começa após o período grátis.</p>
               <ConsentControl checked={consent.professional} onChange={(checked) => setConsent((value) => ({ ...value, professional: checked }))} price={professionalPrice} />
               <PlanButton tone="emerald" loading={checkoutLoading === PROFESSIONAL_QUARTERLY_PRODUCT_ID} disabled={checkoutDisabled || !consent.professional} onClick={() => checkout(PROFESSIONAL_QUARTERLY_PRODUCT_ID)}>Autorizar após o período grátis</PlanButton>
             </>

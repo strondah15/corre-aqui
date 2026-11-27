@@ -1060,6 +1060,9 @@ const subscriptionStatusCardSource = await readFile(new URL('../src/components/S
 assert.match(subscriptionStatusCardSource, /Válida até:/)
 assert.match(subscriptionStatusCardSource, /dias restantes/)
 assert.match(subscriptionStatusCardSource, /Cancelar renovação automática/)
+assert.match(subscriptionStatusCardSource, /professional\.renewalStatus === 'canceled'[^\n]*Renovação automática cancelada/)
+assert.match(subscriptionStatusCardSource, /Se autorizar a renovação,[^\n]*após o período grátis/)
+assert.doesNotMatch(subscriptionStatusCardSource, /Primeira cobrança em \{dateLabel\(professional\.trialEndsAt\)\}/)
 
 const subscriptionClientSource = await readFile(new URL('../src/lib/subscriptionClient.js', import.meta.url), 'utf8')
 assert.match(subscriptionClientSource, /baselineExpiresAt/)
