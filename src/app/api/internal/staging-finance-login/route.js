@@ -76,7 +76,7 @@ export async function GET(request) {
   try {
     const database = getCommercialDatabase()
     const context = await readRecurringReconciliationContext({ database, uid: scope.uid, kind: 'client' })
-    if (!context) return respond({ status: 'no_test_subscription' })
+    if (!context) return respond({ status: 'no_test_subscription', allowTestCheckout: identity.uid === scope.uid })
     const { preapprovalId, attempt } = context
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(10_000)])
     const subscription = await readMercadoPagoResource('/preapproval', preapprovalId, signal)

@@ -22,10 +22,10 @@ const stubModules = {
   '@/lib/firebaseAdmin': `export const getFirebaseAdminAuth = () => globalThis.financeLoginAuth;`,
   '@/lib/commercialProducts': `export const getCommercialProduct = () => ({});`,
   '@/lib/subscriptionReconciliation': `
-    export const readRecurringReconciliationContext = async () => ({
+    export const readRecurringReconciliationContext = async () => globalThis.financeTestHasPlan ? ({
       preapprovalId: 'test-preapproval',
       attempt: { amountInCents: 1990, collectorId: 'sandbox-collector', productId: 'CLIENT_QUARTERLY' },
-    });
+    }) : null;
   `,
   '@/lib/recurringSubscriptions': `
     export const resolveAuthorizedPaymentId = (invoice) => String(invoice.payment?.id || '');
@@ -77,6 +77,7 @@ Object.assign(process.env, {
 delete process.env.FIREBASE_DATABASE_EMULATOR_HOST
 delete process.env.FIREBASE_AUTH_EMULATOR_HOST
 globalThis.assertForFinanceLogin = assert.ok
+globalThis.financeTestHasPlan = true
 let saved
 let creations = 0
 globalThis.financeLoginAuth = {
@@ -128,4 +129,7 @@ assert.equal(outcome.invoices[0].payment.amountInCents, 1990)
 assert.equal(outcome.invoices[0].payment.liveMode, false)
 assert.equal(outcome.token, undefined)
 assert.equal(creations, 1)
+globalThis.financeTestHasPlan = false
+assert.equal((await (await GET(request(operator, 'GET'))).json()).allowTestCheckout, false)
+assert.equal((await (await GET(request(uid, 'GET'))).json()).allowTestCheckout, true)
 console.log('Isolated test identity, expiry, ownership and read-only provider checks passed.')

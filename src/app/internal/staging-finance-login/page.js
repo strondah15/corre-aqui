@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { browserSessionPersistence, setPersistence, signInWithCustomToken } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
+import { announceSubscriptionRequired } from '@/lib/subscriptionClient'
 
 function maskId(value) {
   return typeof value === 'string' && /^\d{5,30}$/.test(value) ? `…${value.slice(-4)}` : null
@@ -46,6 +47,7 @@ export default function StagingFinanceLoginPage() {
   const [pending, setPending] = useState('')
   const [message, setMessage] = useState('')
   const [report, setReport] = useState(null)
+  const [checkoutUid, setCheckoutUid] = useState('')
 
   if (auth.app.options.projectId !== 'corre-aqui-staging') return null
 
@@ -56,6 +58,7 @@ export default function StagingFinanceLoginPage() {
     setPending(action)
     setMessage('')
     setReport(null)
+    setCheckoutUid('')
     try {
       await auth.authStateReady()
       const currentUser = auth.currentUser
@@ -84,6 +87,7 @@ export default function StagingFinanceLoginPage() {
       }
       if (!login) {
         setReport(safeReport(payload))
+        if (payload.allowTestCheckout === true && payload.status === 'no_test_subscription') setCheckoutUid(currentUser.uid)
         return
       }
       const { token } = payload
@@ -126,6 +130,19 @@ export default function StagingFinanceLoginPage() {
       >
         {pending === 'inspect' ? 'Consultando o Mercado Pago…' : 'Consultar faturas no Mercado Pago'}
       </button>
+      {checkoutUid ? (
+        <button
+          type="button"
+          onClick={() => {
+            if (auth.currentUser?.uid !== checkoutUid) return
+            setCheckoutUid('')
+            announceSubscriptionRequired({ kind: 'client' })
+          }}
+          className="rounded-2xl bg-blue-700 px-5 py-3 font-semibold text-white"
+        >
+          Abrir checkout de teste do Plano Cliente
+        </button>
+      ) : null}
       {message ? <p role="alert">{message}</p> : null}
       {report ? <pre className="overflow-x-auto rounded-xl bg-slate-100 p-4 text-sm">{JSON.stringify(report, null, 2)}</pre> : null}
     </main>
