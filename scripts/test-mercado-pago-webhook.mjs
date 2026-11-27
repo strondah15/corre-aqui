@@ -175,6 +175,13 @@ try {
   assert.deepEqual(state.calls.at(-1), ['payment', 456, preapproval])
 
   state.calls.length = 0
+  state.provider.set('/v1/payments/456', { id: 457 })
+  const wrongPayment = await POST(makeRequest(invoiceId, invoiceQuery, { data: { id: invoiceId } }))
+  assert.equal(wrongPayment.status, 503)
+  assert.equal(warnings.at(-1).stage, 'read_invoice_payment')
+  assert.deepEqual(state.calls.at(-1), ['provider', '/v1/payments/456'])
+
+  state.calls.length = 0
   state.provider.set('/authorized_payments/88', { id: 89, preapproval_id: preapproval, payment: { id: 456 } })
   const wrongInvoice = await POST(makeRequest(invoiceId, invoiceQuery, { data: { id: invoiceId } }))
   assert.equal(wrongInvoice.status, 503)

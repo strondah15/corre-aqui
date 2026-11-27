@@ -45,7 +45,7 @@
     "test:rewards": "node scripts/test-attendance-rewards.mjs",
     "test:commercial-config": "node scripts/test-commercial-runtime-config.mjs",
     "test:subscriptions": "node scripts/test-subscriptions.mjs",
-    "test:subscriptions:recurring": "node scripts/test-recurring-subscriptions.mjs && node scripts/test-mercado-pago-webhook.mjs",
+    "test:subscriptions:recurring": "node scripts/test-recurring-subscriptions.mjs && node scripts/test-mercado-pago-webhook.mjs && node scripts/test-subscription-schedule-adapter.mjs",
     "test:subscriptions:emulator": "firebase emulators:exec --only database --project demo-corre-aqui-subscriptions \"node scripts/test-subscription-reconciliation-emulator.mjs\"",
     "test:staging-subscription-fixtures": "node scripts/test-staging-subscription-fixtures.mjs",
     "test:professional-portfolio-v2-runtime": "node scripts/test-professional-portfolio-v2-runtime.mjs",

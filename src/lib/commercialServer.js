@@ -36,6 +36,7 @@ import {
 import { commercialAuditKey } from '@/lib/commercialAuditKey'
 import { verifyMercadoPagoHmacSignature } from '@/lib/mercadoPagoWebhookSignature'
 import { assessMercadoPagoCheckoutConfiguration, resolveMercadoPagoRecurringBuyer } from '@/lib/commercialRuntimeConfig'
+import { isScheduledSubscriptionStaging } from '@/lib/scheduledSubscriptionRuntime'
 import { materializeSubscriptionNotification } from '@/lib/subscriptionNotifications'
 import { ensureProfessionalTrial } from '@/lib/subscriptionServer'
 
@@ -52,9 +53,8 @@ export const normalizeText = (value) => safeText(value)
 async function notifySubscriptionEventSafely({ database, ...event }) {
   try {
     return await materializeSubscriptionNotification({ database, ...event })
-  } catch (error) {
+  } catch {
     console.error('[commercial] subscription notification failed', {
-      code: safeText(error?.code || error?.message || 'unknown').slice(0, 120),
       type: safeText(event.type).slice(0, 64),
     })
     return { ok: false, reason: 'subscription_notification_failed' }
@@ -426,6 +426,11 @@ export async function mercadoPagoApiRequest(path, { method = 'GET', body, signal
       ? mercadoPagoRecurringCheckoutError(data, response.status, fallback)
       : mercadoPagoError(data, response.status, fallback)
     error.providerHttpStatus = response.status
+    if (response.status === 429) {
+      const retryAfter = response.headers?.get('Retry-After') || ''
+      const retryAt = /^\d{1,8}$/.test(retryAfter) ? Date.now() + Number(retryAfter) * 1000 : Date.parse(retryAfter)
+      if (Number.isFinite(retryAt)) error.retryAfterAt = retryAt
+    }
     throw error
   }
   return data
@@ -704,7 +709,10 @@ export async function createMercadoPagoRecurringCheckout({
       updatedAt: Date.now(),
     })
     await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update(providerData)
-    await database.ref(`commercialCheckoutAttemptsBySubscription/${referenceKey(preapprovalId)}`).set(attempt.id)
+    await database.ref().update({
+      [`commercialCheckoutAttemptsBySubscription/${referenceKey(preapprovalId)}`]: attempt.id,
+      ...(isScheduledSubscriptionStaging() && { [`subscriptionReconciliationSchedule/inbox/${attempt.id}`]: true }),
+    })
     await persistPendingRecurringSubscription({
       database,
       userId,
@@ -1069,7 +1077,8 @@ async function activateQuarterlySubscription({ database, attempt, payment }) {
   const now = Date.now()
   const paymentId = safeText(payment?.id)
   const paymentKey = referenceKey(paymentId)
-  const paidAt = asTimestamp(payment?.date_approved || payment?.date_created) || now
+  const approvedAt = asTimestamp(payment?.date_approved)
+  const paidAt = approvedAt || asTimestamp(payment?.date_created) || now
   const paymentEventAt = asTimestamp(payment?.date_last_updated || payment?.date_approved || payment?.date_created) || now
   let duplicatePayment = false
   let obsoletePayment = false
@@ -1080,8 +1089,12 @@ async function activateQuarterlySubscription({ database, attempt, payment }) {
     const processedPayments = plan.processedPayments && typeof plan.processedPayments === 'object'
       ? plan.processedPayments
       : {}
+    const canceledAt = asTimestamp(plan.canceledAt || plan.providerLastModifiedAt)
+    const afterCancellation = isTerminalRecurringCancellation(plan.providerStatus)
+      && (!approvedAt || !canceledAt || approvedAt > canceledAt)
     obsoletePayment = (Boolean(plan.preapprovalId) && safeText(plan.preapprovalId) !== safeText(attempt.preapprovalId))
       || ['refunded', 'charged_back'].includes(processedPayments[paymentKey]?.status)
+      || afterCancellation
     duplicatePayment = false
     earlierPaidPeriod = false
     if (obsoletePayment) return undefined
@@ -1181,12 +1194,13 @@ async function endCommercialEntitlement({ database, attempt, payment, status }) 
         next.processedPayments = { ...processed, [key]: { ...processed[key], paymentId, status } }
       }
       if (!ownsCurrentSubscription) return recurring ? next : undefined
+      const newerAgreement = recurring && current.preapprovalId && current.preapprovalId !== attempt.preapprovalId
       return {
         ...next,
         status: hasUnexpiredProfessionalTrial(next, kind, now) ? 'trial' : statusAfter,
         expiresAt: now,
-        autoRenew: false,
-        renewalStatus: statusAfter,
+        autoRenew: newerAgreement ? current.autoRenew === true : false,
+        renewalStatus: newerAgreement ? (current.renewalStatus || providerRenewalStatus(current.providerStatus)) : statusAfter,
         lastPaymentStatus: status,
         endedAt: now,
         endedReason: statusAfter,
@@ -1300,6 +1314,10 @@ export async function processApprovedCommercialPayment({ database, payment, recu
 
   const parsed = parseExternalReference(externalReference)
   if (!parsed) return { ok: false, reason: 'invalid_external_reference' }
+  if (isRecurringSubscriptionProduct(parsed.productId) && status === 'approved'
+    && (payment?.status_detail === 'partially_refunded' || Number(payment?.transaction_amount_refunded) > 0)) {
+    return { ok: true, activated: false, reason: 'payment_partially_refunded' }
+  }
 
   const lockRef = database.ref(`processedPaymentEvents/${referenceKey(`${paymentId}:${status || 'unknown'}`)}`)
   const processingToken = crypto.randomUUID()

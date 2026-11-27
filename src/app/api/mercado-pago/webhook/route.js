@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import {
   getCommercialDatabase,
-  mercadoPagoApiRequest,
   processApprovedCommercialPayment,
   processRecurringPreapprovalUpdate,
   safeText,
@@ -11,15 +10,16 @@ import {
 import { assessFirebaseEnvironment, CORRE_AQUI_ENVIRONMENTS } from '@/lib/commercialRuntimeConfig'
 import { buildMercadoPagoSignatureDiagnostic } from '@/lib/mercadoPagoWebhookSignature'
 import {
-  resolveAuthorizedPaymentId,
-  resolveInvoicePreapprovalId,
-} from '@/lib/recurringSubscriptions'
+  normalizeMercadoPagoResourceId,
+  processRecurringInvoicePayment,
+  readMercadoPagoResource,
+} from '@/lib/recurringPaymentProcessing'
+import { resolveInvoicePreapprovalId } from '@/lib/recurringSubscriptions'
 
 export const runtime = 'nodejs'
 
 const responseHeaders = { 'Cache-Control': 'private, no-store' }
 const supportedTypes = new Set(['payment', 'subscription_preapproval', 'subscription_authorized_payment'])
-const RESOURCE_ID = /^[A-Za-z0-9_-]{1,128}$/
 const MAX_BODY_BYTES = 64 * 1024
 
 function webhookEnvironmentReady(env) {
@@ -44,11 +44,6 @@ function webhookType(query, body) {
   return types.every((type) => type === types[0]) ? types[0] || '' : null
 }
 
-function resourceId(value) {
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value)
-  return typeof value === 'string' && RESOURCE_ID.test(value) ? value : ''
-}
-
 async function readWebhookBody(request) {
   if (!request.body) return ''
   const chunks = []
@@ -66,12 +61,6 @@ async function readWebhookBody(request) {
     void reader.cancel().catch(() => {})
     reader.releaseLock()
   }
-}
-
-async function readProviderResource(endpoint, id, signal) {
-  const record = await mercadoPagoApiRequest(`${endpoint}/${encodeURIComponent(id)}`, { signal })
-  if (resourceId(record?.id) !== id) throw new Error('webhook_provider_resource_id_mismatch')
-  return record
 }
 
 function webhookRetry(type, stage, status = null) {
@@ -104,7 +93,7 @@ export async function POST(request) {
 
   const query = request.nextUrl.searchParams
   const signatureDataId = query.get('data.id') || ''
-  if (signatureDataId && (!RESOURCE_ID.test(signatureDataId) || query.getAll('data.id').length !== 1)) {
+  if (signatureDataId && (!normalizeMercadoPagoResourceId(signatureDataId) || query.getAll('data.id').length !== 1)) {
     return rejectMalformedWebhook('invalid_signed_resource_id')
   }
 
@@ -153,7 +142,7 @@ export async function POST(request) {
   if (type === null) {
     return rejectMalformedWebhook('inconsistent_webhook_topic', true)
   }
-  if (Object.hasOwn(body.data || {}, 'id') && resourceId(body.data.id) !== signature.paymentId) {
+  if (Object.hasOwn(body.data || {}, 'id') && normalizeMercadoPagoResourceId(body.data.id) !== signature.paymentId) {
     return rejectMalformedWebhook('inconsistent_webhook_resource', true)
   }
   if (!supportedTypes.has(type)) {
@@ -173,7 +162,7 @@ export async function POST(request) {
 
     if (type === 'payment') {
       stage = 'read_payment'
-      const payment = await readProviderResource('/v1/payments', signature.paymentId, signal)
+      const payment = await readMercadoPagoResource('/v1/payments', signature.paymentId, signal)
       stage = 'apply_payment'
       const result = await processApprovedCommercialPayment({ database, payment })
       if (result.retryable) return webhookRetry(type, stage)
@@ -182,12 +171,11 @@ export async function POST(request) {
 
     const invoiceRequested = type === 'subscription_authorized_payment'
     let preapprovalId = signature.paymentId
-    let paymentId = ''
+    let invoice = null
     if (invoiceRequested) {
       stage = 'read_invoice'
-      const invoice = await readProviderResource('/authorized_payments', signature.paymentId, signal)
-      preapprovalId = resourceId(resolveInvoicePreapprovalId(invoice))
-      paymentId = resourceId(resolveAuthorizedPaymentId(invoice))
+      invoice = await readMercadoPagoResource('/authorized_payments', signature.paymentId, signal)
+      preapprovalId = normalizeMercadoPagoResourceId(resolveInvoicePreapprovalId(invoice))
       if (!preapprovalId) {
         return NextResponse.json({
           ok: true,
@@ -198,13 +186,18 @@ export async function POST(request) {
     }
 
     stage = 'read_subscription'
-    const subscription = await readProviderResource('/preapproval', preapprovalId, signal)
+    const subscription = await readMercadoPagoResource('/preapproval', preapprovalId, signal)
     stage = 'apply_subscription'
     const subscriptionResult = await processRecurringPreapprovalUpdate({ database, subscription })
     if (subscriptionResult.retryable) return webhookRetry(type, stage)
     if (!invoiceRequested) return NextResponse.json(subscriptionResult, { headers: responseHeaders })
 
-    if (!paymentId || subscriptionResult.ok !== true) {
+    const paymentResult = subscriptionResult.ok === true
+      ? await processRecurringInvoicePayment({
+        database, invoice, preapprovalId, signal, onStage: (nextStage) => { stage = nextStage },
+      })
+      : null
+    if (!paymentResult) {
       return NextResponse.json({
         ok: subscriptionResult.ok === true,
         invoiceProcessed: true,
@@ -212,14 +205,6 @@ export async function POST(request) {
         subscription: subscriptionResult,
       }, { headers: responseHeaders })
     }
-    stage = 'read_invoice_payment'
-    const payment = await readProviderResource('/v1/payments', paymentId, signal)
-    stage = 'apply_invoice_payment'
-    const paymentResult = await processApprovedCommercialPayment({
-      database,
-      payment,
-      recurringInvoicePreapprovalId: preapprovalId,
-    })
     if (paymentResult.retryable) return webhookRetry(type, stage)
     return NextResponse.json({
       ok: paymentResult.ok !== false,
