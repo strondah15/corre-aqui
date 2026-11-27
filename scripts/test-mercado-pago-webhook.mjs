@@ -110,13 +110,18 @@ try {
   assert.equal((await POST(makeRequest('123', paymentQuery, { ...payment, data: { id: '124' } }))).status, 400)
   assert.equal(warnings.at(-1).reason, 'inconsistent_webhook_resource')
   assert.equal((await POST(makeRequest('123', 'data.id=123&type=subscription_preapproval', payment))).status, 400)
+  const simulatorId = 'PRE-SIMULATOR'
+  const conflictingRecurringTopic = await POST(makeRequest(
+    simulatorId,
+    `data.id=${simulatorId}&type=subscription_authorized_payment`,
+    { type: 'subscription_preapproval', entity: 'preapproval', data: { id: simulatorId } },
+  ))
+  assert.equal(conflictingRecurringTopic.status, 400)
+  assert.equal((await conflictingRecurringTopic.json()).error, 'inconsistent_webhook_topic')
   assert.deepEqual(warnings.at(-1), {
     event: 'mercado_pago_webhook_malformed',
     reason: 'inconsistent_webhook_topic',
     signatureVerified: true,
-    bodyType: 'payment',
-    queryType: 'subscription_preapproval',
-    queryTopic: 'absent',
   })
   assert.equal((await POST(makeRequest('123', paymentQuery, { ...payment, padding: 'x'.repeat(70_000) }))).status, 413)
   const unknown = await POST(makeRequest('123', 'data.id=123&type=subscription_preapproval_plan', { data: { id: 123 } }))
@@ -150,7 +155,9 @@ try {
   const preapproval = 'PRE-MiXeD'
   const recurringQuery = `data.id=${preapproval}&type=subscription_preapproval`
   state.provider.set(`/preapproval/${preapproval}`, { id: preapproval })
-  assert.equal((await POST(makeRequest(preapproval, recurringQuery, { data: { id: preapproval } }))).status, 200)
+  assert.equal((await POST(makeRequest(preapproval, recurringQuery, {
+    type: 'subscription_preapproval', data: { id: preapproval },
+  }))).status, 200)
   assert.ok(state.calls.some((call) => Array.isArray(call) && call[0] === 'subscription' && call[1] === preapproval))
 
   const invoiceId = '88'

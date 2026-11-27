@@ -21,10 +21,6 @@ const responseHeaders = { 'Cache-Control': 'private, no-store' }
 const supportedTypes = new Set(['payment', 'subscription_preapproval', 'subscription_authorized_payment'])
 const RESOURCE_ID = /^[A-Za-z0-9_-]{1,128}$/
 const MAX_BODY_BYTES = 64 * 1024
-const diagnosticTopics = new Set([
-  ...supportedTypes, 'payments', 'preapproval', 'subscription', 'subscriptions',
-  'subscription_preapproval_plan', 'authorized_payment', 'plans_and_subscriptions',
-])
 
 function webhookEnvironmentReady(env) {
   const firebase = assessFirebaseEnvironment(env)
@@ -86,16 +82,12 @@ function webhookRetry(type, stage, status = null) {
   }, { status: 503, headers: responseHeaders })
 }
 
-function rejectMalformedWebhook(reason, { signatureVerified = false, query, body } = {}) {
+function rejectMalformedWebhook(reason, signatureVerified = false) {
   if (process.env.CORRE_AQUI_ENV === 'staging' && process.env.VERCEL_ENV === 'preview') {
-    const label = (topic) => diagnosticTopics.has(topic) ? topic : topic ? 'unknown' : 'absent'
     console.warn(JSON.stringify({
       event: 'mercado_pago_webhook_malformed',
       reason,
       signatureVerified,
-      bodyType: label(body?.type),
-      queryType: label(query?.get('type')),
-      queryTopic: label(query?.get('topic')),
     }))
   }
   return NextResponse.json({ ok: false, error: reason }, { status: 400, headers: responseHeaders })
@@ -113,7 +105,7 @@ export async function POST(request) {
   const query = request.nextUrl.searchParams
   const signatureDataId = query.get('data.id') || ''
   if (signatureDataId && (!RESOURCE_ID.test(signatureDataId) || query.getAll('data.id').length !== 1)) {
-    return rejectMalformedWebhook('invalid_signed_resource_id', { query })
+    return rejectMalformedWebhook('invalid_signed_resource_id')
   }
 
   // The provider signs the query ID and headers. Read the bounded body after authentication.
@@ -154,15 +146,15 @@ export async function POST(request) {
     body = rawBody ? JSON.parse(rawBody) : {}
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('invalid_json')
   } catch {
-    return rejectMalformedWebhook('invalid_json', { signatureVerified: true, query })
+    return rejectMalformedWebhook('invalid_json', true)
   }
 
   const type = webhookType(query, body)
   if (type === null) {
-    return rejectMalformedWebhook('inconsistent_webhook_topic', { signatureVerified: true, query, body })
+    return rejectMalformedWebhook('inconsistent_webhook_topic', true)
   }
   if (Object.hasOwn(body.data || {}, 'id') && resourceId(body.data.id) !== signature.paymentId) {
-    return rejectMalformedWebhook('inconsistent_webhook_resource', { signatureVerified: true, query, body })
+    return rejectMalformedWebhook('inconsistent_webhook_resource', true)
   }
   if (!supportedTypes.has(type)) {
     return NextResponse.json({ ok: true, ignored: true, reason: 'unsupported_webhook_type' }, { headers: responseHeaders })
