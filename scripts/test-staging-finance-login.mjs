@@ -5,7 +5,10 @@ import { NextRequest } from 'next/server.js'
 
 const stubModules = {
   '@/lib/commercialServer': `
-    export const getCommercialDatabase = () => ({});
+    export const getCommercialDatabase = () => ({ ref: (path) => {
+      assertForFinanceLogin(path === 'commercialAuditLogs/webhook_received_subscription_authorized_payment_2');
+      return { get: async () => ({ val: () => null }) };
+    } });
     export const getAuthenticatedIdentity = async (request) => {
       const uid = request.headers.get('authorization');
       if (!uid) throw new Error('missing_token');
@@ -15,28 +18,30 @@ const stubModules = {
       assertForFinanceLogin(path.startsWith('/authorized_payments/search?'));
       return { results: [
         { id: 1, preapproval_id: 'another', payment: { id: 123 } },
-        { id: 2, preapproval_id: 'test-preapproval', payment: { id: 456 } },
+        { id: 2, preapproval_id: globalThis.financeTestApproval, payment: { id: 456 } },
       ] };
     };
   `,
   '@/lib/firebaseAdmin': `export const getFirebaseAdminAuth = () => globalThis.financeLoginAuth;`,
   '@/lib/commercialProducts': `export const getCommercialProduct = () => ({});`,
   '@/lib/subscriptionReconciliation': `
-    export const readRecurringReconciliationContext = async () => globalThis.financeTestHasPlan ? ({
-      preapprovalId: 'test-preapproval',
-      attempt: { amountInCents: 1990, collectorId: 'sandbox-collector', productId: 'CLIENT_QUARTERLY' },
-    }) : null;
+    export const readRecurringReconciliationContext = async () => ({
+      preapprovalId: globalThis.financeTestApproval,
+      attempt: { amountInCents: 1990, collectorId: '10000', payerId: '20000', productId: 'CLIENT_QUARTERLY' },
+      plan: { providerStatus: globalThis.financeTestStatus, autoRenew: globalThis.financeTestStatus === 'authorized' },
+    });
   `,
   '@/lib/recurringSubscriptions': `
     export const resolveAuthorizedPaymentId = (invoice) => String(invoice.payment?.id || '');
     export const resolveInvoicePreapprovalId = (invoice) => invoice.preapproval_id;
     export const validateRecurringPreapproval = () => ({ valid: true });
+    export const isTerminalRecurringCancellation = (status) => ['canceled','cancelled'].includes(status);
   `,
   '@/lib/recurringPaymentProcessing': `
     export const readMercadoPagoResource = async (path, id) => {
-      if (path === '/preapproval') return { status: 'authorized', auto_recurring: { frequency: 3 } };
+      if (path === '/preapproval') return { status: globalThis.financeTestStatus, auto_recurring: { frequency: 3 }, payer_id: 20000 };
       assertForFinanceLogin(path === '/v1/payments' && id === '456');
-      return { id, status: 'approved', transaction_amount: 19.90, currency_id: 'BRL', live_mode: false, collector_id: 'sandbox-collector' };
+      return { id, status: 'approved', transaction_amount: 19.90, currency_id: 'BRL', live_mode: true, collector_id: 10000, payer: { id: 20000 }, card: { first_six_digits: '423564', last_four_digits: '5682' } };
     };
   `,
 }
@@ -53,8 +58,8 @@ registerHooks({
   },
 })
 
-const { POST, GET } = await import('../src/app/api/internal/staging-finance-login/route.js')
-const uid = 'staging-finance-abcdefabcdefabcdefabcdef'
+const { POST, GET, DELETE } = await import('../src/app/api/internal/staging-finance-login/route.js')
+const uid = 'staging-finance-abcdefabcdefabcdef7d6714'
 const operator = 'test-operator'
 const scope = { uid, operatorHash: createHash('sha256').update(operator).digest('hex'), expiresAt: Date.now() + 60_000 }
 Object.assign(process.env, {
@@ -77,23 +82,31 @@ Object.assign(process.env, {
 delete process.env.FIREBASE_DATABASE_EMULATOR_HOST
 delete process.env.FIREBASE_AUTH_EMULATOR_HOST
 globalThis.assertForFinanceLogin = assert.ok
-globalThis.financeTestHasPlan = true
-let saved
-let creations = 0
+const linkedApproval = '41f2b159e9f04467898f4612800d2960'
+globalThis.financeTestApproval = linkedApproval
+globalThis.financeTestStatus = 'authorized'
+globalThis.fetch = async (url, options) => {
+  assert.ok(['https://api.mercadolibre.com/users/me', 'https://api.mercadolibre.com/users/20000'].includes(url))
+  assert.equal(options.redirect, 'error')
+  assert.equal(options.method, undefined)
+  assert.equal(options.headers.Authorization, 'Bearer provider-test-placeholder')
+  return Response.json({ id: url.endsWith('/me') ? 10000 : 20000, tags: ['test_user'], email: 'omit-from-report@example.test' })
+}
+let accountExists = true
+let revocations = 0
 globalThis.financeLoginAuth = {
   async getUser(requestedUid) {
     assert.equal(requestedUid, uid)
-    if (saved) return saved
+    if (accountExists) return { email: `${uid}@example.test`, emailVerified: true, providerData: [] }
     throw Object.assign(new Error('test_account_absent'), { code: 'auth/user-not-found' })
-  },
-  async createUser(data) {
-    creations++
-    saved = { ...data, providerData: [] }
-    return saved
   },
   async createCustomToken(requestedUid) {
     assert.equal(requestedUid, uid)
     return 'test-only-synthetic-token'
+  },
+  async revokeRefreshTokens(requestedUid) {
+    assert.equal(requestedUid, uid)
+    revocations++
   },
 }
 
@@ -112,24 +125,33 @@ process.env.VERCEL_ENV = 'preview'
 process.env.STAGING_FINANCE_TEST_SCOPE = JSON.stringify({ ...scope, expiresAt: Date.now() - 1 })
 assert.equal((await POST(request(operator))).status, 404)
 process.env.STAGING_FINANCE_TEST_SCOPE = JSON.stringify(scope)
-assert.equal(creations, 0)
-
+accountExists = false
+assert.equal((await POST(request(operator))).status, 503)
+accountExists = true
 assert.equal((await POST(request(operator))).status, 200)
-assert.equal((await POST(request(operator))).status, 200)
-assert.equal(creations, 1)
-assert.equal(saved.emailVerified, true)
-assert.equal(saved.email, `${uid}@example.test`)
 assert.equal((await GET(request('another-user', 'GET'))).status, 403)
+assert.equal((await DELETE(request('another-user', 'DELETE'))).status, 403)
+assert.equal((await DELETE(request(uid, 'DELETE'))).status, 409)
 const response = await GET(request(uid, 'GET'))
 assert.equal(response.status, 200)
 const outcome = await response.json()
 assert.equal(outcome.intervalMonths, 3)
 assert.deepEqual(outcome.invoices.map((item) => item.payment.id), ['456'])
 assert.equal(outcome.invoices[0].payment.amountInCents, 1990)
-assert.equal(outcome.invoices[0].payment.liveMode, false)
+assert.equal(outcome.invoices[0].payment.liveMode, true)
+assert.equal(outcome.invoices[0].payment.officialTestCard, true)
+assert.equal(outcome.invoices[0].payment.payerMatches, true)
+assert.equal(outcome.invoices[0].signedReceiptAt, null)
+assert.deepEqual(outcome.seller, { collectorMatches: true, testUser: true })
+assert.deepEqual(outcome.buyer, { payerMatches: true, testUser: true })
 assert.equal(outcome.token, undefined)
-assert.equal(creations, 1)
-globalThis.financeTestHasPlan = false
-assert.equal((await (await GET(request(operator, 'GET'))).json()).allowTestCheckout, false)
-assert.equal((await (await GET(request(uid, 'GET'))).json()).allowTestCheckout, true)
-console.log('Isolated test identity, expiry, ownership and read-only provider checks passed.')
+globalThis.financeTestApproval = 'different-preapproval'
+assert.equal((await POST(request(operator))).status, 409)
+assert.equal((await GET(request(uid, 'GET'))).status, 409)
+assert.equal((await DELETE(request(uid, 'DELETE'))).status, 409)
+globalThis.financeTestApproval = linkedApproval
+globalThis.financeTestStatus = 'cancelled'
+assert.equal((await POST(request(operator))).status, 409)
+assert.equal((await DELETE(request(uid, 'DELETE'))).status, 200)
+assert.equal(revocations, 1)
+console.log('Isolated existing identity, exact approval, read-only provider checks and final session revocation passed.')
