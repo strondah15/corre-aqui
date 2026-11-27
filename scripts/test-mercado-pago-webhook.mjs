@@ -106,8 +106,18 @@ try {
   assert.equal(duplicateTimestamp.status, 401, 'timestamp ambíguo é rejeitado')
   assert.equal((await POST(makeRequest('123', 'id=123&topic=payment', payment))).status, 401, 'IPN sem data.id assinado permanece bloqueado')
   assert.equal((await POST(makeRequest('123', 'data.id=123&data.id=124&type=payment', payment))).status, 400)
+  assert.equal(warnings.at(-1).signatureVerified, false)
   assert.equal((await POST(makeRequest('123', paymentQuery, { ...payment, data: { id: '124' } }))).status, 400)
+  assert.equal(warnings.at(-1).reason, 'inconsistent_webhook_resource')
   assert.equal((await POST(makeRequest('123', 'data.id=123&type=subscription_preapproval', payment))).status, 400)
+  assert.deepEqual(warnings.at(-1), {
+    event: 'mercado_pago_webhook_malformed',
+    reason: 'inconsistent_webhook_topic',
+    signatureVerified: true,
+    bodyType: 'payment',
+    queryType: 'subscription_preapproval',
+    queryTopic: 'absent',
+  })
   assert.equal((await POST(makeRequest('123', paymentQuery, { ...payment, padding: 'x'.repeat(70_000) }))).status, 413)
   const unknown = await POST(makeRequest('123', 'data.id=123&type=subscription_preapproval_plan', { data: { id: 123 } }))
   assert.equal(unknown.status, 200)

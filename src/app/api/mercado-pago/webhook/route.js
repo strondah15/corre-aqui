@@ -21,6 +21,10 @@ const responseHeaders = { 'Cache-Control': 'private, no-store' }
 const supportedTypes = new Set(['payment', 'subscription_preapproval', 'subscription_authorized_payment'])
 const RESOURCE_ID = /^[A-Za-z0-9_-]{1,128}$/
 const MAX_BODY_BYTES = 64 * 1024
+const diagnosticTopics = new Set([
+  ...supportedTypes, 'payments', 'preapproval', 'subscription', 'subscriptions',
+  'subscription_preapproval_plan', 'authorized_payment', 'plans_and_subscriptions',
+])
 
 function webhookEnvironmentReady(env) {
   const firebase = assessFirebaseEnvironment(env)
@@ -82,6 +86,21 @@ function webhookRetry(type, stage, status = null) {
   }, { status: 503, headers: responseHeaders })
 }
 
+function rejectMalformedWebhook(reason, { signatureVerified = false, query, body } = {}) {
+  if (process.env.CORRE_AQUI_ENV === 'staging' && process.env.VERCEL_ENV === 'preview') {
+    const label = (topic) => diagnosticTopics.has(topic) ? topic : topic ? 'unknown' : 'absent'
+    console.warn(JSON.stringify({
+      event: 'mercado_pago_webhook_malformed',
+      reason,
+      signatureVerified,
+      bodyType: label(body?.type),
+      queryType: label(query?.get('type')),
+      queryTopic: label(query?.get('topic')),
+    }))
+  }
+  return NextResponse.json({ ok: false, error: reason }, { status: 400, headers: responseHeaders })
+}
+
 export async function POST(request) {
   if (!safeText(process.env.MERCADO_PAGO_WEBHOOK_SECRET)
     || !safeText(process.env.MERCADO_PAGO_ACCESS_TOKEN) || !webhookEnvironmentReady(process.env)) {
@@ -91,9 +110,10 @@ export async function POST(request) {
     }, { status: 503, headers: responseHeaders })
   }
 
-  const signatureDataId = request.nextUrl.searchParams.get('data.id') || ''
-  if (signatureDataId && (!RESOURCE_ID.test(signatureDataId) || request.nextUrl.searchParams.getAll('data.id').length !== 1)) {
-    return NextResponse.json({ ok: false, error: 'invalid_signed_resource_id' }, { status: 400, headers: responseHeaders })
+  const query = request.nextUrl.searchParams
+  const signatureDataId = query.get('data.id') || ''
+  if (signatureDataId && (!RESOURCE_ID.test(signatureDataId) || query.getAll('data.id').length !== 1)) {
+    return rejectMalformedWebhook('invalid_signed_resource_id', { query })
   }
 
   // The provider signs the query ID and headers. Read the bounded body after authentication.
@@ -107,8 +127,8 @@ export async function POST(request) {
       reason: signature.reason,
       headers: request.headers,
       queryDataId: signatureDataId,
-      legacyQueryId: request.nextUrl.searchParams.get('id'),
-      legacyQueryTopic: request.nextUrl.searchParams.get('topic'),
+      legacyQueryId: query.get('id'),
+      legacyQueryTopic: query.get('topic'),
     })
     console.warn(JSON.stringify(signatureDiagnostic))
     return NextResponse.json({
@@ -134,12 +154,15 @@ export async function POST(request) {
     body = rawBody ? JSON.parse(rawBody) : {}
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('invalid_json')
   } catch {
-    return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400, headers: responseHeaders })
+    return rejectMalformedWebhook('invalid_json', { signatureVerified: true, query })
   }
 
-  const type = webhookType(request.nextUrl.searchParams, body)
-  if (type === null || (Object.hasOwn(body.data || {}, 'id') && resourceId(body.data.id) !== signature.paymentId)) {
-    return NextResponse.json({ ok: false, error: 'inconsistent_webhook_notification' }, { status: 400, headers: responseHeaders })
+  const type = webhookType(query, body)
+  if (type === null) {
+    return rejectMalformedWebhook('inconsistent_webhook_topic', { signatureVerified: true, query, body })
+  }
+  if (Object.hasOwn(body.data || {}, 'id') && resourceId(body.data.id) !== signature.paymentId) {
+    return rejectMalformedWebhook('inconsistent_webhook_resource', { signatureVerified: true, query, body })
   }
   if (!supportedTypes.has(type)) {
     return NextResponse.json({ ok: true, ignored: true, reason: 'unsupported_webhook_type' }, { headers: responseHeaders })
