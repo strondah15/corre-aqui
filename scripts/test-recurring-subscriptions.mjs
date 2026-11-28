@@ -480,6 +480,7 @@ for (const amountInCents of [4990, 5000]) {
     targetId: 'user-b',
     preapprovalId: 'professional-pay',
     collectorId: '321',
+    payerId: '123',
     amountInCents,
   }
   const database = createMemoryDatabase({ commercialCheckoutAttempts: { [attempt.id]: attempt } })
@@ -489,7 +490,17 @@ for (const amountInCents of [4990, 5000]) {
   assert.equal(invalid.reason, 'invalid_amount_or_currency')
   assert.equal(database.read('users/user-b/subscriptions/professional'), undefined)
 
-  const chargedAmount = { ...payment, transaction_amount: amountInCents / 100 }
+  const chargedAmount = { ...payment, transaction_amount: amountInCents / 100, payer: { id: attempt.payerId } }
+  const mismatched = { ...chargedAmount, id: 'wrong-payer', payer: { id: '456' } }
+  for (const source of [{}, { recurringInvoicePreapprovalId: attempt.preapprovalId }]) {
+    const blocked = await processApprovedCommercialPayment({ database, payment: mismatched, ...source })
+    assert.equal(blocked.reason, 'payment_subscription_identity_mismatch')
+    assert.equal(database.read('users/user-b/subscriptions/professional'), undefined)
+    assert.equal(database.read('subscriptionPaymentHistory/user-b/professional'), undefined)
+  }
+  const blockedLedger = database.read(`processedPaymentEvents/${referenceKey('wrong-payer:approved')}`)
+  assert.equal(blockedLedger.status, 'failed')
+  assert.equal(blockedLedger.reason, 'payment_subscription_identity_mismatch')
   assert.equal((await processApprovedCommercialPayment({ database, payment: chargedAmount })).activated, true)
   assert.equal((await processApprovedCommercialPayment({ database, payment: chargedAmount })).duplicate, true)
   const payments = Object.values(database.read('subscriptionPaymentHistory/user-b/professional'))

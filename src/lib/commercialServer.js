@@ -1650,7 +1650,9 @@ export async function cancelMercadoPagoRecurringSubscription({ database, userId,
     if (current?.expiresAt > now) return undefined
     return { owner, expiresAt: now + SUBSCRIPTION_CANCEL_LEASE_MS }
   })
-  if (!lease.committed) throw cancellationConflict('subscription_cancellation_in_progress')
+  if (!lease.committed || lease.snapshot.val()?.owner !== owner) {
+    throw cancellationConflict('subscription_cancellation_in_progress')
+  }
 
   try {
     return await cancelOwnedRecurringSubscription({
@@ -1659,7 +1661,7 @@ export async function cancelMercadoPagoRecurringSubscription({ database, userId,
     })
   } finally {
     try {
-      await leaseRef.transaction((current) => current?.owner === owner ? null : undefined)
+      await leaseRef.transaction((current) => current === null || current.owner === owner ? null : undefined)
     } catch {
       console.warn('[subscriptions/cancel] release_lease_failed')
     }
