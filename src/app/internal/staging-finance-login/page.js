@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { browserSessionPersistence, setPersistence, signInWithCustomToken, signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
+import { announceSubscriptionRequired } from '@/lib/subscriptionClient'
 
 const errors = {
   operator_required: 'Esta sessão não pode acessar a homologação.',
@@ -17,6 +18,7 @@ export default function StagingFinanceLoginPage() {
   const [pending, setPending] = useState('')
   const [message, setMessage] = useState('')
   const [report, setReport] = useState(null)
+  const [checkoutUid, setCheckoutUid] = useState('')
 
   if (auth.app.options.projectId !== 'corre-aqui-staging') return null
 
@@ -26,6 +28,7 @@ export default function StagingFinanceLoginPage() {
     setPending(action)
     setMessage('')
     setReport(null)
+    setCheckoutUid('')
     try {
       await auth.authStateReady()
       const user = auth.currentUser
@@ -48,6 +51,7 @@ export default function StagingFinanceLoginPage() {
       if (auth.currentUser?.uid !== user.uid) return
       if (action === 'GET') {
         setReport(payload)
+        if (payload.canOpenCheckout === true) setCheckoutUid(user.uid)
       } else if (action === 'DELETE') {
         if (payload.revoked !== true) throw new Error('revocation_unconfirmed')
         if (payload.signOut === true) await signOut(auth)
@@ -76,6 +80,19 @@ export default function StagingFinanceLoginPage() {
       <button type="button" disabled={Boolean(pending)} onClick={() => run('POST')} className="rounded-xl bg-blue-700 px-5 py-3 text-white">
         Abrir sessão de teste
       </button>
+      {checkoutUid ? (
+        <button
+          type="button"
+          className="rounded-xl bg-blue-700 px-5 py-3 text-white"
+          onClick={() => {
+            if (auth.currentUser?.uid !== checkoutUid) return
+            setCheckoutUid('')
+            announceSubscriptionRequired({ kind: 'client' })
+          }}
+        >
+          Abrir checkout de teste do Plano Cliente
+        </button>
+      ) : null}
       {report?.canRevoke === true ? (
         <button type="button" disabled={Boolean(pending)} onClick={() => run('DELETE')} className="rounded-xl border border-blue-700 px-5 py-3 text-blue-700">
           Revogar acesso temporário

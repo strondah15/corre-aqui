@@ -163,7 +163,8 @@ async function readReceipt(database, topic, id) {
 export async function GET(request) {
   const scope = getScope(request)
   if (!scope) return respond({ error: 'unavailable' }, 404)
-  if (!mayInspect(await getAuthenticatedIdentity(request).catch(() => null), scope)) {
+  const identity = await getAuthenticatedIdentity(request).catch(() => null)
+  if (!mayInspect(identity, scope)) {
     return respond({ error: 'operator_required' }, 403)
   }
   try {
@@ -181,7 +182,16 @@ export async function GET(request) {
     }
     const database = getCommercialDatabase()
     const state = await readTestState(database, scope.uid)
-    if (state.empty) return respond({ ...verified, status: 'no_test_subscription', attempts: 0, canRevoke: true, invoices: [] })
+    if (state.empty) {
+      return respond({
+        ...verified,
+        status: 'no_test_subscription',
+        attempts: 0,
+        canOpenCheckout: identity.uid === scope.uid,
+        canRevoke: true,
+        invoices: [],
+      })
+    }
     const context = state.context
     if (!validateTestAttempt(context, scope, sandbox)) return respond({ error: 'test_subscription_mismatch' }, 409)
     const { preapprovalId, attempt, plan } = context
