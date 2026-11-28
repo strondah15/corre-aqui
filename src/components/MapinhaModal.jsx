@@ -492,7 +492,8 @@ export default function MapinhaModal({
     const mm = (e) => onDragMove(e.clientY);
     const mu = () => onDragEnd();
     const tm = (e) => {
-      e.preventDefault();
+      if (!draggingRef.current) return;
+      if (e.cancelable) e.preventDefault();
       onDragMove(e.touches?.[0]?.clientY ?? 0);
     };
     const tu = () => onDragEnd();
@@ -501,12 +502,14 @@ export default function MapinhaModal({
     window.addEventListener("mouseup", mu);
     window.addEventListener("touchmove", tm, { passive: false });
     window.addEventListener("touchend", tu);
+    window.addEventListener("touchcancel", tu);
 
     return () => {
       window.removeEventListener("mousemove", mm);
       window.removeEventListener("mouseup", mu);
       window.removeEventListener("touchmove", tm);
       window.removeEventListener("touchend", tu);
+      window.removeEventListener("touchcancel", tu);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);

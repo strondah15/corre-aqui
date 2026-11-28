@@ -2,6 +2,7 @@ import { signOut } from 'firebase/auth'
 import { ref, remove } from './firebaseDebug'
 
 const SESSION_END_EVENT = 'corre-aqui:session-ending'
+const REMOTE_CLEANUP_TIMEOUT_MS = 2_000
 const SESSION_LOCAL_KEYS = [
   'meuId',
   'meuNome',
@@ -54,36 +55,64 @@ export function subscribeSessionEnding(uid, handler) {
 export function clearSessionLocalState(uid) {
   if (!isBrowser()) return
 
-  for (const key of SESSION_LOCAL_KEYS) window.localStorage.removeItem(key)
-  if (uid) {
-    window.localStorage.removeItem(`cadastroCompleto:${uid}`)
-    window.localStorage.removeItem(`correAqui:pushTokenKey:${uid}`)
-  }
-
-  for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
-    const key = window.sessionStorage.key(index)
-    if (key === 'correAqui:returningToList' || key?.startsWith('correAqui:listState:v2:')) {
-      window.sessionStorage.removeItem(key)
+  try {
+    for (const key of SESSION_LOCAL_KEYS) window.localStorage.removeItem(key)
+    if (uid) {
+      window.localStorage.removeItem(`cadastroCompleto:${uid}`)
+      window.localStorage.removeItem(`correAqui:pushTokenKey:${uid}`)
     }
-  }
+  } catch {}
+
+  try {
+    for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.sessionStorage.key(index)
+      if (key === 'correAqui:returningToList' || key?.startsWith('correAqui:listState:v2:')) {
+        window.sessionStorage.removeItem(key)
+      }
+    }
+  } catch {}
 }
 
 export async function logoutFirebaseSession({ auth, database, uid, removePushToken } = {}) {
   if (!auth || !database) throw new TypeError('logout exige auth e database')
 
-  const currentUid = String(auth.currentUser?.uid || uid || '').trim()
-  await notifySessionEnding(currentUid)
+  const user = auth.currentUser
+  const currentUid = String(user?.uid || '').trim()
+  const expectedUid = String(uid || currentUid).trim()
+  const sessionChanged = () => new Error('A conta ativa mudou. Tente sair novamente na conta atual.')
+  if (user && currentUid !== expectedUid) throw sessionChanged()
 
   if (currentUid) {
-    await Promise.allSettled([
-      remove(ref(database, `publicAvailability/${currentUid}`)),
-      remove(ref(database, `presence/${currentUid}`)),
-      remove(ref(database, `usuariosOnline/${currentUid}`)),
-      typeof removePushToken === 'function' ? removePushToken(currentUid) : Promise.resolve(),
-    ])
+    let allowCleanup = true
+    let timer
+    const canContinue = () => allowCleanup && auth.currentUser === user
+    // RTDB writes wait for a server response even after updating the local cache.
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(resolve, REMOTE_CLEANUP_TIMEOUT_MS)
+    })
+    const cleanup = async () => {
+      await notifySessionEnding(currentUid).catch(() => {})
+      const operations = [
+        () => remove(ref(database, `publicAvailability/${currentUid}`)),
+        () => remove(ref(database, `presence/${currentUid}`)),
+        () => remove(ref(database, `usuariosOnline/${currentUid}`)),
+        () => removePushToken?.(currentUid, { canContinue }),
+      ]
+      await Promise.allSettled(operations.map((operation) => Promise.resolve().then(() => {
+        if (canContinue()) return operation()
+      })))
+    }
+    try {
+      await Promise.race([cleanup(), timeout])
+    } finally {
+      allowCleanup = false
+      clearTimeout(timer)
+    }
   }
 
-  await signOut(auth)
-  clearSessionLocalState(currentUid)
-  return currentUid
+  if (auth.currentUser && auth.currentUser !== user) throw sessionChanged()
+  if (auth.currentUser) await signOut(auth)
+  if (auth.currentUser) throw sessionChanged()
+  clearSessionLocalState(expectedUid)
+  return expectedUid
 }

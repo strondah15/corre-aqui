@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { resolveActiveConversationContext } from '../src/lib/conversationActivityServer.js'
 
 async function importSource(path, transform = (source) => source) {
   const source = transform(await readFile(new URL(path, import.meta.url), 'utf8'))
@@ -11,6 +12,7 @@ const policy = await importSource('../src/lib/notificationPolicy.js', (source) =
   'const consumeFixedWindowLimit = async () => ({ allowed: true, retryAfterMs: 0 });\n',
 ))
 const rules = JSON.parse(await readFile(new URL('../database.rules.json', import.meta.url), 'utf8')).rules
+const { buildPushPayload } = await importSource('../src/lib/pushPayload.js')
 
 const publicOrder = {
   status: 'aceito',
@@ -35,6 +37,38 @@ const responseMarker = {
   status: 'aceito',
   committed: true,
 }
+
+const notificationContexts = new Map([
+  ['pedidos/pedido-1', { ...publicOrder, status: 'finalizado' }],
+  ['privateRequests/agenda-1', { ...privateRequest, tipo: 'agendamento', status: 'agendado' }],
+  ['privateRequestResponses/agenda-1', {
+    ...responseMarker, requestId: 'agenda-1', previousStatus: 'pendente', status: 'agendado',
+  }],
+  ['privateRequests/private-1', { ...privateRequest, status: 'cancelado' }],
+  ['privateRequestResponses/private-1', { ...responseMarker, previousStatus: 'pendente' }],
+])
+const notificationContextDatabase = {
+  ref: (path) => ({
+    get: async () => ({ exists: () => notificationContexts.has(path), val: () => notificationContexts.get(path) ?? null }),
+  }),
+}
+for (const [payload, id, kind] of [
+  [{ type: 'atendimento_finalizado', pedidoId: 'pedido-1', action: { screen: 'ver_historico' } }, 'pedido-1', 'pedido'],
+  [{ type: 'agendamento_aceito', privateRequestId: 'agenda-1' }, 'agenda-1', 'privateRequest'],
+  [{ type: 'pedido_cancelado', privateRequestId: 'private-1', action: { screen: 'myorders' } }, 'private-1', 'privateRequest'],
+]) {
+  const push = buildPushPayload(payload)
+  assert.equal(push.url, `/chat/${id}`)
+  assert.equal(push.data.url, push.url)
+  assert.equal(push.actions[0].url, push.url)
+  for (const participant of ['client-A', 'worker-B']) {
+    const context = await resolveActiveConversationContext(notificationContextDatabase, id, participant)
+    assert.equal(context.ok, true, 'o destino recupera o histórico para o participante')
+    assert.equal(context.kind, kind)
+  }
+  assert.equal((await resolveActiveConversationContext(notificationContextDatabase, id, 'outsider-C')).ok, false)
+}
+assert.equal(buildPushPayload({ action: { screen: 'myorders' } }).url, '/pedidos', 'permanece a lista quando não existe pedido')
 
 assert.equal(policy.normalizeNotificationType('mensagem_chat'), 'nova_mensagem')
 assert.equal(policy.normalizeNotificationType('atendimento_cancelado'), 'pedido_cancelado')

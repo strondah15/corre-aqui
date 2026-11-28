@@ -132,7 +132,7 @@ export async function POST(request) {
     ? validateAttendanceCancellation({ reasonCode: body?.reasonCode, reason: body?.reason })
     : null
   if (cancellation && !cancellation.ok) return reject(400, cancellation.reason, diagnostic)
-  const context = await readConversationContext(database, requestId, { kind: 'privateRequest' })
+  const context = await readConversationContext(database, requestId, { kind: 'privateRequest', participantUid: actorUid })
   if (!context.ok || context.privateResponseAuthorized !== true) {
     return reject(403, 'private_response_unverified', diagnostic)
   }

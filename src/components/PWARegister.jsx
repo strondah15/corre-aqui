@@ -69,13 +69,14 @@ function logPushDiagnostic(data = {}, deduplicated = false) {
 
 async function markPushEventAsRead(uid, rawEventId) {
   const eventId = safePushEventId(rawEventId)
-  if (!uid || !eventId) return
+  const user = auth.currentUser
+  if (!uid || !eventId || user?.uid !== uid) return
 
   const now = Date.now()
   await Promise.allSettled(['notifications', 'notificacoes'].map(async (root) => {
     const target = ref(database, `${root}/${uid}/${eventId}`)
     const snapshot = await get(target)
-    if (!snapshot.exists()) return
+    if (!snapshot.exists() || auth.currentUser !== user) return
     await update(target, { lida: true, read: true, lidaEm: now, vistoEm: now })
   }))
 }
@@ -127,9 +128,12 @@ export default function PWARegister() {
   }, [])
 
   useEffect(() => {
+    let active = true
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!active || auth.currentUser !== user) return
       const previousUid = currentUid.current
       const nextUid = user?.uid || ''
+      const isCurrent = () => active && auth.currentUser === user && currentUid.current === nextUid
 
       currentUid.current = nextUid
 
@@ -138,16 +142,20 @@ export default function PWARegister() {
         setPushPrompt(null)
         setPushPromptError('')
         setAtivandoPush(false)
+        setForegroundToast(null)
+        activeChatId.current = ''
+        if (toastTimer.current) window.clearTimeout(toastTimer.current)
       }
 
       if (previousUid && previousUid !== nextUid) {
-        await removerPushTokenDoDispositivo(previousUid).catch((error) => {
+        await removerPushTokenDoDispositivo(previousUid, { canContinue: isCurrent }).catch((error) => {
           if (process.env.NODE_ENV !== 'production') {
             console.debug('[PUSH] limpeza do aparelho na troca de conta falhou:', error?.message || error)
           }
         })
       }
 
+      if (!isCurrent()) return
       setInstallAppReady(Boolean(nextUid))
       if (!user?.uid) {
         setPushPrompt(null)
@@ -157,9 +165,9 @@ export default function PWARegister() {
       const openedEventId = consumeOpenedPushEventId()
       if (openedEventId) await markPushEventAsRead(user.uid, openedEventId)
 
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      if (isCurrent() && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         const caps = await getPushCapabilities().catch(() => null)
-        if (caps?.notificationsV2Enabled) return
+        if (!isCurrent() || !caps?.supported || caps.notificationsV2Enabled) return
         sincronizarPushNotifications(user.uid).catch((error) => {
           if (process.env.NODE_ENV !== 'production') {
             console.debug('[PUSH] sincronizacao silenciosa falhou:', error?.message || error)
@@ -168,7 +176,10 @@ export default function PWARegister() {
       }
     })
 
-    return unsubscribe
+    return () => {
+      active = false
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {

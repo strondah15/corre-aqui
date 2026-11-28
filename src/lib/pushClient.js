@@ -15,6 +15,7 @@ import {
 
 export const MESSAGING_SW_PATH = '/firebase-messaging-sw.js'
 const TOKEN_KEY_STORAGE = 'correAqui:pushTokenKey'
+const PUSH_CONFIG_RETRY_MESSAGE = 'Não foi possível consultar as notificações. Verifique a conexão e tente novamente.'
 let resolvedVapidConfig = null
 let resolvedVapidConfigPromise = null
 const removedTokenUids = new Set()
@@ -192,27 +193,30 @@ async function getVapidConfig() {
   if (!resolvedVapidConfigPromise) {
     resolvedVapidConfigPromise = fetch('/api/firebase-config', { cache: 'no-store' })
       .then(async (response) => {
-        if (!response.ok) return { key: '', configured: false, notificationsV2Enabled: false }
-        const data = await response.json().catch(() => ({}))
-        const key = String(data?.vapidKey || '').trim()
-        const configured = Boolean(data?.vapidKeyConfigured && key)
+        if (!response.ok) throw new Error('push_config_response_error')
+        const data = await response.json()
+        if (typeof data?.vapidKey !== 'string' || typeof data.vapidKeyConfigured !== 'boolean'
+          || typeof data.notificationsV2Enabled !== 'boolean') throw new Error('push_config_invalid')
+        const key = data.vapidKey.trim()
+        const configured = Boolean(data.vapidKeyConfigured && key)
         if (process.env.NODE_ENV !== 'production') {
           console.log('[PUSH CONFIG]', {
             vapidKeyConfigured: data?.vapidKeyConfigured,
             hasVapidKey: Boolean(key),
           })
         }
-        return {
+        resolvedVapidConfig = {
           key,
           configured,
-          notificationsV2Enabled: data?.notificationsV2Enabled === true,
+          notificationsV2Enabled: data.notificationsV2Enabled,
         }
+        return resolvedVapidConfig
       })
-      .catch(() => ({ key: '', configured: false, notificationsV2Enabled: false }))
+      .catch(() => { throw new Error(PUSH_CONFIG_RETRY_MESSAGE) })
+      .finally(() => { resolvedVapidConfigPromise = null })
   }
 
-  resolvedVapidConfig = await resolvedVapidConfigPromise
-  return resolvedVapidConfig
+  return resolvedVapidConfigPromise
 }
 
 async function getVapidKey() {
@@ -259,7 +263,15 @@ export async function getPushCapabilities() {
     }
   }
 
-  const vapidConfig = await getVapidConfig()
+  const vapidConfig = await getVapidConfig().catch(() => null)
+  if (!vapidConfig) {
+    return {
+      supported: false,
+      permission: Notification.permission,
+      reason: PUSH_CONFIG_RETRY_MESSAGE,
+      vapidConfigured: false,
+    }
+  }
   if (!vapidConfig.configured || !vapidConfig.key) {
     return {
       supported: false,
@@ -363,6 +375,7 @@ export async function sincronizarPushNotifications(uid) {
   await requireCurrentPushSession(uid, 'silent_sync')
 
   const caps = await getPushCapabilities()
+  if (!caps.supported) return { synced: false, reason: caps.reason || 'unsupported' }
   if (caps.notificationsV2Enabled) {
     const state = await consultarEstadoPushNotifications(uid)
     return {
@@ -376,8 +389,6 @@ export async function sincronizarPushNotifications(uid) {
   if (configuredState?.exists?.() && configuredState.val()?.enabled === false) {
     return { synced: false, reason: 'disabled_by_user' }
   }
-
-  if (!caps.supported) return { synced: false, reason: caps.reason || 'unsupported' }
 
   const registration = await getServiceWorkerRegistration()
   const vapidKey = await getVapidKey()
@@ -491,19 +502,23 @@ export async function testarPushNotification(uid) {
   return data
 }
 
-export async function removerPushTokenDoDispositivo(uid) {
-  if (!uid) return
+export async function removerPushTokenDoDispositivo(uid, { canContinue = () => true } = {}) {
+  if (!uid || !canContinue()) return
   if (removedTokenUids.has(uid)) return
 
   let key = readLocalTokenKey(uid)
   const vapidConfig = await getVapidConfig()
+  if (!canContinue()) return
   const messagingSupported = await isSupported().catch(() => false)
+  if (!canContinue()) return
   const messaging = messagingSupported ? getMessaging(app) : null
 
   if (!key && messaging && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     const vapidKey = await getVapidKey()
+    if (!canContinue()) return
     if (vapidKey) {
       const registration = await getServiceWorkerRegistration().catch(() => null)
+      if (!canContinue()) return
       const token = registration
         ? await pushRegistration.request(messaging, { vapidKey, serviceWorkerRegistration: registration }).catch(() => '')
         : ''
@@ -511,6 +526,7 @@ export async function removerPushTokenDoDispositivo(uid) {
     }
   }
 
+  if (!canContinue()) return
   if (vapidConfig.notificationsV2Enabled) {
     let remoteRemovalError = null
     if (key && shouldRemoveRemotePushToken(uid, auth.currentUser?.uid)) {
@@ -521,7 +537,9 @@ export async function removerPushTokenDoDispositivo(uid) {
         logPushFlowFailure(error, 'device_api_disable')
       }
     }
+    if (!canContinue()) return
     if (messaging) await deleteToken(messaging).catch(() => {})
+    if (!canContinue()) return
     clearLocalTokenKey(uid)
     removedTokenUids.add(uid)
     if (remoteRemovalError) throw remoteRemovalError
@@ -530,6 +548,7 @@ export async function removerPushTokenDoDispositivo(uid) {
 
   if (messaging) await deleteToken(messaging).catch(() => {})
 
+  if (!canContinue()) return
   let remoteRemovalError = null
   if (key && shouldRemoveRemotePushToken(uid, auth.currentUser?.uid)) {
     try {
@@ -540,6 +559,7 @@ export async function removerPushTokenDoDispositivo(uid) {
     }
   }
 
+  if (!canContinue()) return
   clearLocalTokenKey(uid)
   removedTokenUids.add(uid)
 

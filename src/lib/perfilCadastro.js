@@ -1,4 +1,4 @@
-import { database } from '@/lib/firebase'
+import { auth, database } from '@/lib/firebase'
 import { ref, serverTimestamp, update } from './firebaseDebug'
 import { resolveLegacyAccountState } from './legacyAccountState'
 
@@ -64,7 +64,12 @@ export function syncPerfilLocal({ uid, nome, tipoConta, visivel = true }) {
 }
 
 export async function salvarCadastroPerfil({ uid, authUser, form }) {
-  if (!uid) throw new Error('Usuario sem ID.')
+  const checkSession = () => {
+    if (!uid || authUser?.uid !== uid || auth.currentUser !== authUser) {
+      throw new Error('A conta ativa mudou. Abra novamente o cadastro na conta atual.')
+    }
+  }
+  checkSession()
 
   const nome = String(form?.nome || authUser?.displayName || '').trim()
   const cidade = String(form?.cidade || '').trim()
@@ -142,6 +147,7 @@ export async function salvarCadastroPerfil({ uid, authUser, form }) {
 
   await update(ref(database, `users/${uid}/profile`), profilePayload)
 
+  checkSession()
   await update(ref(database, `users/${uid}`), {
     nome,
     email,
@@ -171,10 +177,7 @@ export async function salvarCadastroPerfil({ uid, authUser, form }) {
     atualizadoEm: serverTimestamp(),
   })
 
-  console.warn('[PRESENCE] caminho legado detectado', {
-    path: `usuariosOnline/${uid}`,
-    origem: 'perfilCadastro',
-  })
+  checkSession()
   await update(ref(database, `usuariosOnline/${uid}`), {
     nome,
     cidade,
@@ -191,6 +194,7 @@ export async function salvarCadastroPerfil({ uid, authUser, form }) {
     atualizadoEm: serverTimestamp(),
   })
 
+  checkSession()
   syncPerfilLocal({ uid, nome, tipoConta, visivel })
 
   return {

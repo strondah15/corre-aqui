@@ -74,6 +74,15 @@ function responseError({ error, status, reason, diagnostic = {} }) {
   }, { status })
 }
 
+function rejectUnauthorizedResponse(requestId, actorUid) {
+  return responseError({
+    error: 'private_request_response_not_authorized',
+    status: 403,
+    reason: 'not_authorized',
+    diagnostic: { requestId, authUid: actorUid },
+  })
+}
+
 export async function POST(request) {
   if (!isFirebaseAdminConfigured()) {
     return NextResponse.json({ ok: false, error: 'firebase_admin_not_configured' }, { status: 503 })
@@ -100,42 +109,13 @@ export async function POST(request) {
   }
 
   const actorUid = text(decoded?.uid, 128)
-  if (decision === 'accept') {
-    try {
-      await ensureProfessionalFeatureAccess(database, actorUid)
-    } catch (subscriptionError) {
-      return NextResponse.json({
-        ok: false,
-        error: 'professional_subscription_required',
-        reason: 'professional_subscription_required',
-      }, { status: subscriptionError?.status || 402 })
-    }
-  }
   const requestRef = database.ref(`privateRequests/${requestId}`)
-  const [requestSnapshot, accountSnapshot] = await Promise.all([
-    requestRef.get(),
-    database.ref(`users/${actorUid}`).get(),
-  ])
-  const stored = requestSnapshot.val()
-  if (!stored || typeof stored !== 'object') {
-    return responseError({
-      error: 'private_request_not_found',
-      status: 404,
-      reason: 'request_missing',
-      diagnostic: { requestId, authUid: actorUid, requestExists: false },
-    })
-  }
-
-  const clienteId = text(stored.clienteId, 128)
-  const profissionalId = text(stored.profissionalId, 128)
+  const stored = (await requestRef.get()).val()
+  const profissionalId = text(stored?.profissionalId, 128)
+  if (!actorUid || actorUid !== profissionalId) return rejectUnauthorizedResponse(requestId, actorUid)
+  const clienteId = text(stored?.clienteId, 128)
   const currentStatus = text(stored.status, 40).toLowerCase()
   const nextStatus = decision === 'accept' ? acceptedStatus(stored) : 'recusado'
-  const markerRef = database.ref(`privateRequestResponses/${requestId}`)
-  const [clienteInboxSnapshot, profissionalInboxSnapshot, markerSnapshot] = await Promise.all([
-    clienteId ? database.ref(`privateRequestInbox/${clienteId}/${requestId}`).get() : Promise.resolve(null),
-    profissionalId ? database.ref(`privateRequestInbox/${profissionalId}/${requestId}`).get() : Promise.resolve(null),
-    markerRef.get(),
-  ])
   const diagnostic = {
     requestId,
     authUid: actorUid,
@@ -143,28 +123,16 @@ export async function POST(request) {
     status: currentStatus,
     clienteId,
     profissionalId,
-    actorIsParticipant: actorUid === clienteId || actorUid === profissionalId,
-    actorIsProfessional: actorUid === profissionalId,
-    clienteInboxExists: clienteInboxSnapshot?.exists() === true,
-    profissionalInboxExists: profissionalInboxSnapshot?.exists() === true,
+    actorIsParticipant: true,
+    actorIsProfessional: true,
     expectedStatus: nextStatus,
     foundStatus: currentStatus,
-    responseMarkerExists: markerSnapshot.exists(),
-    responseMarkerCommitted: markerSnapshot.val()?.committed === true,
   }
   if (!clienteId || !profissionalId || clienteId === profissionalId) {
     return responseError({
       error: 'private_request_response_incompatible',
       status: 409,
       reason: 'legacy_request_incompatible',
-      diagnostic,
-    })
-  }
-  if (actorUid !== profissionalId) {
-    return responseError({
-      error: 'private_request_response_not_authorized',
-      status: 403,
-      reason: actorUid === clienteId ? 'wrong_responder' : 'not_participant',
       diagnostic,
     })
   }
@@ -177,6 +145,30 @@ export async function POST(request) {
       diagnostic,
     })
   }
+  if (decision === 'accept' && currentStatus === 'pendente') {
+    try {
+      await ensureProfessionalFeatureAccess(database, actorUid)
+    } catch (subscriptionError) {
+      return NextResponse.json({
+        ok: false,
+        error: 'professional_subscription_required',
+        reason: 'professional_subscription_required',
+      }, { status: subscriptionError?.status || 402 })
+    }
+  }
+  const markerRef = database.ref(`privateRequestResponses/${requestId}`)
+  const [accountSnapshot, clienteInboxSnapshot, profissionalInboxSnapshot, markerSnapshot] = await Promise.all([
+    database.ref(`users/${actorUid}`).get(),
+    database.ref(`privateRequestInbox/${clienteId}/${requestId}`).get(),
+    database.ref(`privateRequestInbox/${profissionalId}/${requestId}`).get(),
+    markerRef.get(),
+  ])
+  Object.assign(diagnostic, {
+    clienteInboxExists: clienteInboxSnapshot.exists(),
+    profissionalInboxExists: profissionalInboxSnapshot.exists(),
+    responseMarkerExists: markerSnapshot.exists(),
+    responseMarkerCommitted: markerSnapshot.val()?.committed === true,
+  })
 
   const now = Date.now()
   const markerBase = {
@@ -222,7 +214,7 @@ export async function POST(request) {
     // servidor devolva o valor autoritativo; undefined abortaria cedo demais.
     if (current == null) return null
     if (!current || typeof current !== 'object') return undefined
-    if (text(current.clienteId, 128) !== clienteId || text(current.profissionalId, 128) !== profissionalId) return undefined
+    if (text(current.clienteId, 128) !== clienteId || text(current.profissionalId, 128) !== actorUid) return undefined
     const status = text(current.status, 40).toLowerCase()
     if (status === nextStatus && markerIdentityMatches(marker, markerBase)) return current
     if (status !== 'pendente') return undefined
@@ -240,6 +232,7 @@ export async function POST(request) {
   if (!responseResult.committed || !updated || text(updated.status, 40).toLowerCase() !== nextStatus) {
     const latestSnapshot = await requestRef.get()
     const latest = latestSnapshot.val()
+    if (latest && text(latest.profissionalId, 128) !== actorUid) return rejectUnauthorizedResponse(requestId, actorUid)
     const latestStatus = text(latest?.status, 40).toLowerCase()
     let reason = 'request_transaction_conflict'
     if (!latest || typeof latest !== 'object') reason = 'request_missing'
@@ -266,7 +259,7 @@ export async function POST(request) {
 
   const committedMarker = { ...marker, committed: true }
   await markerRef.set(committedMarker)
-  if (!isPrivateResponseMarkerValid(committedMarker, requestId, updated)) {
+  if (decision === 'accept' && !isPrivateResponseMarkerValid(committedMarker, requestId, updated)) {
     return NextResponse.json({ ok: false, error: 'private_request_response_not_confirmed' }, { status: 500 })
   }
 

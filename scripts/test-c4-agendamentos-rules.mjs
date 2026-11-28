@@ -110,7 +110,7 @@ assert.match(responseRouteSource, /markerRef\.transaction[\s\S]*requestRef\.tran
 assert.match(responseRouteSource, /if \(current == null\) return null/, 'cache inicial nulo não aborta a transação antes da leitura autoritativa')
 assert.match(responseRouteSource, /replaceableUncommittedMarker[\s\S]*currentStatus === 'pendente'/, 'marcador incompleto do mesmo A\/B pode ser recuperado somente enquanto o pedido continua pendente')
 assert.match(responseRouteSource, /\[AGENDA_RESPONSE\]/, 'API registra diagnóstico sanitizado por estágio')
-for (const reason of ['request_missing', 'not_participant', 'wrong_responder', 'already_responded', 'invalid_current_status', 'response_marker_conflict', 'request_transaction_conflict', 'legacy_request_incompatible']) {
+for (const reason of ['request_missing', 'not_authorized', 'already_responded', 'invalid_current_status', 'response_marker_conflict', 'request_transaction_conflict', 'legacy_request_incompatible']) {
   assert.match(responseRouteSource, new RegExp(reason), `API distingue ${reason}`)
 }
 const responseDiagnosticSource = responseRouteSource.slice(

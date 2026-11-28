@@ -49,7 +49,7 @@ export function isPrivateResponseMarkerValid(marker, conversationId, record) {
     && isPrivateAttendanceStatus(status)
 }
 
-export async function readConversationContext(database, conversationId, { kind } = {}) {
+export async function readConversationContext(database, conversationId, { kind, participantUid } = {}) {
   if (kind !== 'pedido' && kind !== 'privateRequest') {
     return { ok: false, error: 'conversation_context_kind_required' }
   }
@@ -61,6 +61,12 @@ export async function readConversationContext(database, conversationId, { kind }
   }
 
   const context = { ok: true, kind, record: snapshot.val() }
+  if (participantUid !== undefined) {
+    const participants = kind === 'pedido' ? pedidoParticipants(context.record) : privateRequestParticipants(context.record)
+    if (!participantUid || (participantUid !== participants.clienteId && participantUid !== participants.profissionalId)) {
+      return { ok: false, error: 'conversation_context_not_authorized' }
+    }
+  }
   if (kind === 'pedido') return context
 
   const participants = privateRequestParticipants(context.record)

@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { onAuthStateChanged, signOut } from 'firebase/auth'
+import { onAuthStateChanged } from 'firebase/auth'
 import { get, ref } from '@/lib/firebaseDebug'
 import CadastroPerfilInicial from '@/components/CadastroPerfilInicial'
 import { auth, database } from '@/lib/firebase'
 import { perfilMinimoCompleto } from '@/lib/perfilCadastro'
 import { removerPushTokenDoDispositivo } from '@/lib/pushClient'
+import { logoutFirebaseSession } from '@/lib/sessionLogout'
 
 function esperar(ms, valor = null) {
   return new Promise((resolve) => {
@@ -20,18 +21,19 @@ export default function CadastroPage() {
   const [uid, setUid] = useState('')
   const [authUser, setAuthUser] = useState(null)
   const [userData, setUserData] = useState(null)
+  const [saindo, setSaindo] = useState(false)
+  const [erroSaida, setErroSaida] = useState('')
 
   useEffect(() => {
     let active = true
 
     const off = onAuthStateChanged(auth, async (user) => {
-      if (!active) return
-      if (!user?.uid) {
-        setUid('')
-        setAuthUser(null)
-        setUserData(null)
-        return
-      }
+      if (!active || auth.currentUser !== user) return
+      setUid('')
+      setAuthUser(null)
+      setUserData(null)
+      setErroSaida('')
+      if (!user?.uid) return
 
       const snap = await Promise.race([
         get(ref(database, `users/${user.uid}`)).catch(() => null),
@@ -39,7 +41,7 @@ export default function CadastroPage() {
       ])
       const data = snap?.val?.() || {}
 
-      if (!active) return
+      if (!active || auth.currentUser !== user) return
 
       if (perfilMinimoCompleto(data)) {
         router.replace('/')
@@ -58,23 +60,17 @@ export default function CadastroPage() {
   }, [router])
 
   async function sair() {
-    if (uid) await removerPushTokenDoDispositivo(uid).catch(() => {})
-    await signOut(auth).catch(() => {})
+    if (saindo) return
+    setSaindo(true)
+    setErroSaida('')
     try {
-      ;[
-        'meuId',
-        'meuNome',
-        'cadastroCompleto',
-        'fotoURL',
-        'fotoUrl',
-        'avatarURL',
-        'avatarEmoji',
-        'visivelNoMapa',
-        'notifsAtivas',
-      ].forEach((key) => window.localStorage.removeItem(key))
-      if (uid) window.localStorage.removeItem(`cadastroCompleto:${uid}`)
-    } catch {}
-    router.replace('/')
+      await logoutFirebaseSession({ auth, database, uid, removePushToken: removerPushTokenDoDispositivo })
+      router.replace('/')
+    } catch (error) {
+      if (auth.currentUser === authUser) setErroSaida(error?.message || 'Não foi possível sair agora. Tente novamente.')
+    } finally {
+      setSaindo(false)
+    }
   }
 
   if (!uid) {
@@ -103,11 +99,14 @@ export default function CadastroPage() {
 
   return (
     <CadastroPerfilInicial
+      key={uid}
       uid={uid}
       authUser={authUser}
       userData={userData}
-      onSaved={() => router.replace('/')}
+      onSaved={() => { if (auth.currentUser === authUser) router.replace('/') }}
       onSair={sair}
+      saindo={saindo}
+      erroSaida={erroSaida}
     />
   )
 }

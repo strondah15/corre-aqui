@@ -167,7 +167,7 @@ assert.match(systemRoute, /transaction\(/, 'criação automática é idempotente
 assert.doesNotMatch(systemRoute, /body\?\.texto|body\.texto/, 'endpoint não recebe texto livre do cliente')
 assert.match(systemRoute, /applyConversationActivity/, 'mensagem de sistema materializa os dois índices pelo servidor')
 assert.match(privateTransitionRoute, /verifyIdToken/, 'transição privada valida Firebase Auth')
-assert.match(privateTransitionRoute, /readConversationContext\(database, requestId, \{ kind: 'privateRequest' \}\)/, 'transição lê o pedido privado autoritativo')
+assert.match(privateTransitionRoute, /readConversationContext\(database, requestId, \{ kind: 'privateRequest', participantUid: actorUid \}\)/, 'transição valida o participante na leitura autoritativa do pedido privado')
 assert.match(privateTransitionRoute, /privateResponseAuthorized/, 'transição falha fechado sem marcador ou par legado C6 válido')
 assert.match(privateTransitionRoute, /authorizePrivateAttendanceTransition/, 'transição aplica matriz A/B/C compartilhada')
 assert.match(privateTransitionRoute, /requestRef\.transaction/, 'status é revalidado no commit')

@@ -117,12 +117,13 @@ export function resolvePushRoute(input = {}) {
   const base = ROUTE_BY_SCREEN[selectedScreen] || '/'
 
   if (!id) return base
-  if (selectedScreen === 'chat') return `${base}/${encodeURIComponent(id)}`
+  if (selectedScreen === 'chat' || selectedScreen === 'myorders' || selectedScreen === 'ver_historico') {
+    return `${ROUTE_BY_SCREEN.chat}/${encodeURIComponent(id)}`
+  }
   if (selectedScreen === 'agenda') return `${base}?requestId=${encodeURIComponent(id)}`
   if (selectedScreen === 'pedido' || selectedScreen === 'pedido_details' || selectedScreen === 'privaterequestdetails' || selectedScreen === 'private_request_details') {
     return `${base}/${encodeURIComponent(id)}`
   }
-  if (selectedScreen === 'myorders' || selectedScreen === 'ver_historico') return `${base}?pedidoId=${encodeURIComponent(id)}`
   if (selectedScreen === 'avaliacoes') return `${base}?tab=profissional&section=avaliacoes&pedidoId=${encodeURIComponent(id)}`
   if (selectedScreen === 'portfolio') return `${base}?screen=portfolio&servicoId=${encodeURIComponent(input.servicoId || id)}`
   return base

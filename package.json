@@ -39,7 +39,7 @@
     "test:audit:orphans": "node scripts/test-public-request-orphan-audit.mjs",
     "test:audit:unpublished": "node scripts/test-unpublished-private-audit.mjs",
     "test:claims:ui": "node scripts/test-public-request-list-state.mjs",
-    "test:experience": "node scripts/test-attendance-experience.mjs",
+    "test:experience": "node scripts/test-attendance-experience.mjs && node scripts/test-private-attendance-authorization.mjs",
     "test:corre-communication": "node scripts/test-corre-communication-center.mjs",
     "test:light-theme": "node scripts/test-light-theme-only.mjs",
     "test:rewards": "node scripts/test-attendance-rewards.mjs",

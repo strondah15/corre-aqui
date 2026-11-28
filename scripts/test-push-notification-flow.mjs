@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { registerHooks } from 'node:module'
 
 async function importSource(path) {
   const source = await readFile(new URL(path, import.meta.url), 'utf8')
@@ -181,11 +182,91 @@ const permissionBranch = pushClientSource.slice(
 assert.doesNotMatch(permissionBranch, /update\(|remove\(/, 'negacao do navegador nao dispara escrita RTDB')
 
 const assignCurrentUid = registerSource.indexOf('currentUid.current = nextUid')
-const cleanupPreviousUid = registerSource.indexOf('await removerPushTokenDoDispositivo(previousUid)')
+const cleanupPreviousUid = registerSource.indexOf('await removerPushTokenDoDispositivo(previousUid, { canContinue: isCurrent })')
 assert.ok(assignCurrentUid > 0 && assignCurrentUid < cleanupPreviousUid, 'UID visual e invalidado antes da limpeza assincrona')
+assert.ok(registerSource.indexOf('if (!isCurrent()) return', cleanupPreviousUid) < registerSource.indexOf('const openedEventId = consumeOpenedPushEventId()'),
+  'sessão antiga não consome o destino da notificação após aguardar limpeza')
 assert.match(registerSource, /setPushPrompt\(null\)[\s\S]*setPushPromptError\(''\)[\s\S]*setAtivandoPush\(false\)/)
 assert.match(registerSource, /pushActivationId\.current !== activationId/, 'resultado antigo nao altera a conta nova')
 assert.match(registerSource, /shouldOfferPushPrompt\(/)
 assert.match(registerSource, /describePushFlowError\(error, 'activation'\)/)
 
-console.log('Push notifications: permissao, sessao A/B, cooldown, erro amigavel e persistencia atomica OK')
+const pushMocks = new Map([
+  ['@/lib/firebase', 'export default {}; export const auth = globalThis.__testPushAuth; export const database = {}'],
+  ['./firebaseDebug', 'const unexpected = () => { throw new Error("RTDB legado foi chamado") }; export { unexpected as get, unexpected as ref, unexpected as serverTimestamp, unexpected as update, unexpected as remove }'],
+  ['firebase/messaging', 'export const isSupported = async () => true; const unexpected = () => { throw new Error("FCM foi chamado") }; export { unexpected as deleteToken, unexpected as getMessaging, unexpected as getToken, unexpected as onMessage }'],
+])
+const helpers = new Set(['./pushDeviceApiClient', './pushRegistrationControl', './pushNotificationPolicy'])
+const hooks = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    const stub = pushMocks.get(specifier)
+    if (stub) return { url: 'data:text/javascript,' + encodeURIComponent(stub), shortCircuit: true }
+    return nextResolve(helpers.has(specifier) ? `${specifier}.js` : specifier, context)
+  },
+})
+
+const originals = Object.fromEntries(['window', 'Notification', 'navigator', 'fetch'].map((key) => (
+  [key, Object.getOwnPropertyDescriptor(globalThis, key)]
+)))
+try {
+  const browser = {
+    isSecureContext: true,
+    PushManager: class {},
+    localStorage: { getItem: () => null },
+  }
+  browser.Notification = {
+    permission: 'granted',
+    requestPermission: async () => {
+      assert.fail('A falha de conexão não deve abrir o pedido de permissão')
+    },
+  }
+  globalThis.__testPushAuth = { currentUser: { uid: uidA, getIdToken: async () => 'synthetic-session' } }
+  globalThis.window = browser
+  globalThis.Notification = browser.Notification
+  Object.defineProperty(globalThis, 'navigator', { value: { serviceWorker: {} }, configurable: true })
+  const configAttempts = [
+    () => { throw new TypeError('Sem conexão') },
+    () => Response.json({}, { status: 503 }),
+    () => Response.json({ vapidKey: 'fake-key', vapidKeyConfigured: true }),
+    () => Response.json({ vapidKey: 'fake-key', vapidKeyConfigured: true, notificationsV2Enabled: true }),
+  ]
+  let configCalls = 0
+  let deviceCalls = 0
+  globalThis.fetch = async (url) => {
+    if (url === '/api/firebase-config') {
+      configCalls += 1
+      return configAttempts.shift()()
+    }
+    assert.equal(url, '/api/push/devices')
+    deviceCalls += 1
+    return Response.json({ ok: true, data: { registered: false } })
+  }
+
+  const client = await import('../src/lib/pushClient.js')
+  await assert.rejects(client.ativarPushNotifications(uidA), /Verifique a conexão/)
+  await assert.rejects(client.consultarEstadoPushNotifications(uidA), /Verifique a conexão/)
+  const unavailable = await client.sincronizarPushNotifications(uidA)
+  assert.equal(unavailable.synced, false)
+  assert.match(unavailable.reason, /Verifique a conexão/)
+  assert.equal(deviceCalls, 0)
+
+  const [caps, recovered] = await Promise.all([
+    client.getPushCapabilities(),
+    client.sincronizarPushNotifications(uidA),
+  ])
+  assert.equal(caps.supported, true)
+  assert.equal(caps.notificationsV2Enabled, true)
+  assert.equal(recovered.registry, 'api_v2')
+  assert.equal(recovered.reason, 'explicit_activation_required')
+  assert.equal(configCalls, 4, 'falhas não entram no cache e chamadas concorrentes compartilham uma única requisição')
+  assert.equal(deviceCalls, 1)
+} finally {
+  hooks.deregister()
+  for (const [key, descriptor] of Object.entries(originals)) {
+    if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+    else delete globalThis[key]
+  }
+  delete globalThis.__testPushAuth
+}
+
+console.log('Push notifications: permissao, sessao A/B, recuperação de rede, cooldown, erro amigavel e persistencia atomica OK')

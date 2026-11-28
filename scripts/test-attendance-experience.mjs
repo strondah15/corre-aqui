@@ -560,6 +560,29 @@ assert.match(chat, /attendanceActionLockRef\.current = true/, 'transições do a
 assert.match(chat, /overlayAberto[\s\S]*fecharOverlays\(\)[\s\S]*return/, 'voltar visual fecha overlay antes de navegar')
 assert.match(chat, /addEventListener\('popstate'/, 'back do navegador fecha overlay do Chat antes de sair')
 assert.match(map, /authoritativeAcceptLockRef\.current = actionKey/, 'aceite no mapa possui trava síncrona')
+const mapModal = await readFile(new URL('../src/components/MapinhaModal.jsx', import.meta.url), 'utf8')
+const mapRoute = await readFile(new URL('../src/app/mapa/page.js', import.meta.url), 'utf8')
+const touchMoveSource = mapModal.match(/const tm = \(e\) => \{([\s\S]*?)\n    \};/)?.[1]
+assert.ok(touchMoveSource, 'o modal tem tratamento de movimento por toque')
+const createTouchMoveHandler = new Function('draggingRef', 'onDragMove', `return (e) => {${touchMoveSource}}`)
+const draggingRef = { current: false }
+const positions = []
+const target = new EventTarget()
+target.addEventListener('touchmove', createTouchMoveHandler(draggingRef, (position) => positions.push(position)))
+function dispatchMapTouchMove(cancelable) {
+  const event = new Event('touchmove', { cancelable })
+  Object.defineProperty(event, 'touches', { value: [{ clientY: 120 }] })
+  target.dispatchEvent(event)
+  return event.defaultPrevented
+}
+assert.equal(dispatchMapTouchMove(true), false, 'deslizar o conteúdo preserva a rolagem natural')
+assert.deepEqual(positions, [])
+draggingRef.current = true
+assert.equal(dispatchMapTouchMove(true), true, 'arrastar o painel continua controlado pelo aplicativo')
+assert.equal(dispatchMapTouchMove(false), false, 'evento não cancelável continua seguro durante o arraste')
+assert.deepEqual(positions, [120, 120])
+assert.match(mapModal, /addEventListener\("touchcancel", tu\)[\s\S]*removeEventListener\("touchcancel", tu\)/)
+assert.doesNotMatch(mapRoute, /UsuariosOnline/, 'a rota do mapa não monta um segundo leitor invisível de presença')
 assert.match(agenda, /authoritativeActionLockRef\.current = actionKey/, 'resposta da Agenda possui trava síncrona')
 assert.match(chat, /O cancelamento não aplica penalidade automática de reputação/, 'cancelamento não altera reputação automaticamente')
 assert.match(rulesSource, /"conversas"[\s\S]*root\.child\('pedidos'\).*auth\.uid[\s\S]*root\.child\('pedidos'\).*\$uid/, 'Rule de conversa permite somente o participante gravar o índice do outro')

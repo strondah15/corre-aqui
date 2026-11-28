@@ -134,21 +134,7 @@ export function authorizePrivateAttendanceTransition({
     return { ok: false, reason: 'participant_identity_invalid' }
   }
 
-  const currentStatus = normalizeServiceAttendanceStatus({
-    status: record?.status,
-    kind: 'privateRequest',
-    type: record?.tipo,
-    record,
-  })
-  const expected = normalizeAtendimentoStatus(expectedStatus)
   const next = normalizeAtendimentoStatus(nextStatus)
-  if (currentStatus !== expected) {
-    return { ok: false, reason: 'status_mismatch', currentStatus, clienteId, profissionalId }
-  }
-  if (!canTransitionAtendimento(currentStatus, next)) {
-    return { ok: false, reason: 'invalid_transition', currentStatus, clienteId, profissionalId }
-  }
-
   const actor = String(actorUid || '').trim()
   const actorAuthorized = next === ATENDIMENTO_STATUS.CANCELADO
     ? actor === clienteId || actor === profissionalId
@@ -156,7 +142,20 @@ export function authorizePrivateAttendanceTransition({
       ? actor === clienteId
       : actor === profissionalId
   if (!actorAuthorized) {
-    return { ok: false, reason: 'wrong_actor', currentStatus, clienteId, profissionalId }
+    return { ok: false, reason: 'wrong_actor' }
+  }
+  const currentStatus = normalizeServiceAttendanceStatus({
+    status: record?.status,
+    kind: 'privateRequest',
+    type: record?.tipo,
+    record,
+  })
+  const expected = normalizeAtendimentoStatus(expectedStatus)
+  if (currentStatus !== expected) {
+    return { ok: false, reason: 'status_mismatch', currentStatus, clienteId, profissionalId }
+  }
+  if (!canTransitionAtendimento(currentStatus, next)) {
+    return { ok: false, reason: 'invalid_transition', currentStatus, clienteId, profissionalId }
   }
 
   return { ok: true, currentStatus, clienteId, profissionalId }

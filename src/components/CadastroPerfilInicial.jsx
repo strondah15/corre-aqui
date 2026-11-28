@@ -29,6 +29,8 @@ export default function CadastroPerfilInicial({
   userData,
   onSaved,
   onSair,
+  saindo = false,
+  erroSaida = '',
 }) {
   const initial = useMemo(() => perfilInicialFromAuth(userData, authUser), [userData, authUser])
   const [form, setForm] = useState(initial)
@@ -41,7 +43,7 @@ export default function CadastroPerfilInicial({
 
   const nomeOk = String(form.nome || '').trim().length >= 2
   const cidadeOk = String(form.cidade || '').trim().length >= 2
-  const podeSalvar = nomeOk && cidadeOk && !salvando
+  const podeSalvar = nomeOk && cidadeOk && !salvando && !saindo
 
   const setCampo = (campo, valor) => {
     setErro('')
@@ -198,9 +200,9 @@ export default function CadastroPerfilInicial({
               />
             </Field>
 
-            {erro ? (
-              <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-500/12 px-4 py-3 text-sm font-bold text-rose-100">
-                {erro}
+            {erro || erroSaida ? (
+              <div role="alert" className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800">
+                {erroSaida || erro}
               </div>
             ) : null}
 
@@ -217,9 +219,10 @@ export default function CadastroPerfilInicial({
                 <button
                   type="button"
                   onClick={onSair}
-                  className="h-11 rounded-[16px] border border-blue-100 bg-blue-50 px-5 text-sm font-black text-blue-700 transition hover:bg-blue-100 sm:h-14 sm:rounded-[22px]"
+                  disabled={salvando || saindo}
+                  className="h-11 rounded-[16px] border border-blue-100 bg-blue-50 px-5 text-sm font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-55 sm:h-14 sm:rounded-[22px]"
                 >
-                  Sair
+                  {saindo ? 'Saindo...' : 'Sair'}
                 </button>
               ) : null}
             </div>
