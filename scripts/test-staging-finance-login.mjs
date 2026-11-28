@@ -118,7 +118,8 @@ globalThis.financeDatabase = {
     let value
     if (path === `commercialCheckoutAttemptsByUser/${uid}`) value = attemptIndex
     else if (path === `subscriptionPaymentHistory/${uid}`) value = paymentHistory
-    else if (path === `processedPaymentEvents/${key(`${approvedPaymentId}:approved`)}`) value = ledger
+    else if (path === `processedPaymentEvents/${key(`${approvedPaymentId}:approved`)}`) return { get: async () => ({ val: () => ledger }) }
+    else if (path === `users/${uid}/subscriptions/professional`) return { get: async () => ({ val: () => currentUser?.subscriptions?.professional }) }
     else if (path === 'commercialCheckoutAttempts/allowed-attempt') {
       return {
         async transaction(update) {

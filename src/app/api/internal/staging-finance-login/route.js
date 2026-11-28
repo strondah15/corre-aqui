@@ -283,6 +283,13 @@ function matchesBoundAttempt(attempt, context, scope) {
     && String(attempt.collectorId) === scope.collectorId && String(attempt.applicationId) === applicationId
 }
 
+function confirmedActivation(ledger, plan, paymentId, externalReference) {
+  return ledger?.status === 'processed' && ledger.paymentId === paymentId && ledger.externalReference === externalReference
+    && ledger.identityReview?.resolvedAt && plan?.paymentId === paymentId
+    && plan.processedPayments?.[referenceKey(paymentId)]?.paymentId === paymentId
+    && Object.keys(plan.processedPayments).length === 1 && Boolean(safeDate(plan.expiresAt))
+}
+
 async function readPayerFinalizationProof({ database, context, scope, sandbox, subscription, rows, signal }) {
   const { attempt, plan, preapprovalId } = context
   const parsed = parseExternalReference(attempt.externalReference)
@@ -310,10 +317,11 @@ async function readPayerFinalizationProof({ database, context, scope, sandbox, s
   const invoiceId = String(linked[0].id || '')
   const paymentId = resolveAuthorizedPaymentId(linked[0])
   if (!numericId.test(invoiceId) || !numericId.test(paymentId)) return null
+  const ledgerRef = database.ref(`processedPaymentEvents/${referenceKey(`${paymentId}:approved`)}`)
   const [invoice, payment, ledgerSnapshot] = await Promise.all([
     readMercadoPagoResource('/authorized_payments', invoiceId, signal),
     readMercadoPagoResource('/v1/payments', paymentId, signal),
-    database.ref(`processedPaymentEvents/${referenceKey(`${paymentId}:approved`)}`).get(),
+    ledgerRef.get(),
   ])
   if (String(invoice.id) !== invoiceId || invoice.status !== 'processed'
     || resolveInvoicePreapprovalId(invoice) !== preapprovalId || resolveAuthorizedPaymentId(invoice) !== paymentId
@@ -332,10 +340,8 @@ async function readPayerFinalizationProof({ database, context, scope, sandbox, s
   if (ledger?.paymentId !== paymentId || ledger.externalReference !== attempt.externalReference || ledger.paymentStatus !== 'approved'
     || ledger.identityReview?.payer !== true || ledger.identityReview.application !== false || ledger.identityReview.invoice !== false) return null
   const hash = digest(JSON.stringify([scope.uid, applicationId, attempt.externalReference, preapprovalId, invoiceId, paymentId, pendingPayer, sandbox.payerId]))
-  const proof = { hash, pendingPayer, finalPayer: sandbox.payerId, invoice }
-  const settled = priorMarker && ledger.status === 'processed' && ledger.identityReview.resolvedAt
-    && plan.paymentId === paymentId && plan.processedPayments?.[referenceKey(paymentId)]?.paymentId === paymentId
-    && Object.keys(plan.processedPayments).length === 1 && safeDate(plan.expiresAt)
+  const proof = { hash, pendingPayer, finalPayer: sandbox.payerId, invoice, paymentId, ledgerRef }
+  const settled = priorMarker && confirmedActivation(ledger, plan, paymentId, attempt.externalReference)
   if (priorMarker && !sameFinalPayer(attempt, proof)) return null
   if (settled) return { ...proof, settled: true }
   const held = ledger.status === 'failed' && ledger.reason === payerReviewReason && !ledger.identityReview.resolvedAt
@@ -514,6 +520,13 @@ export async function PATCH(request) {
     }
     const payment = await processRecurringInvoicePayment({ database, invoice: proof.invoice, preapprovalId, signal })
     if (!payment?.ok || payment.retryable || (!payment.activated && !payment.duplicate)) {
+      return respond({ error: 'payer_finalization_pending' }, 503)
+    }
+    const [ledger, plan] = await Promise.all([
+      proof.ledgerRef.get(),
+      database.ref(`users/${scope.uid}/subscriptions/${kind}`).get(),
+    ])
+    if (!confirmedActivation(ledger.val(), plan.val(), proof.paymentId, attempt.externalReference)) {
       return respond({ error: 'payer_finalization_pending' }, 503)
     }
     return respond({ finalized: true, alreadyProcessed: payment.duplicate === true })
