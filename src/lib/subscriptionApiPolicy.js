@@ -27,6 +27,9 @@ const operationErrors = {
     invalid_subscription_kind: [400, 'Escolha uma assinatura válida.'],
     recurring_subscription_not_found: [409, 'Nenhuma assinatura com renovação foi encontrada para este plano.'],
     subscription_ownership_mismatch: [409, 'Não foi possível validar esta assinatura para cancelamento.'],
+    subscription_cancellation_in_progress: [409, 'O cancelamento já está em andamento. Aguarde e confira o estado em Assinatura.'],
+    subscription_cancellation_target_changed: [409, 'A assinatura mudou durante a solicitação. Confira o plano atual em Assinatura.'],
+    subscription_provider_read_unavailable: [502, 'Não foi possível consultar a assinatura no Mercado Pago. Aguarde e tente novamente.'],
     subscription_cancellation_not_confirmed: [502, 'O Mercado Pago ainda não confirmou o cancelamento. Confira o estado em Assinatura.'],
     subscription_cancellation_sync_failed: [502, 'Não foi possível atualizar o estado da assinatura. Confira os detalhes em Assinatura.'],
   },
@@ -71,6 +74,11 @@ export async function getSubscriptionRateLimit(database, uid, operation) {
 export function getSubscriptionApiError(error, operation) {
   const operationMap = operationErrors[operation]
   const code = invalidAuthCodes.has(error?.code) ? 'invalid_auth_token' : error?.message
+  if (operation === 'cancel' && typeof code === 'string' && (
+    code.startsWith('invalid_recurring_preapproval:') || code === 'preapproval_id_mismatch'
+  )) {
+    return { code: 'subscription_provider_mismatch', status: 409, message: 'O Mercado Pago retornou dados diferentes dos registrados na assinatura. Confira o plano atual em Assinatura.' }
+  }
   if (typeof code === 'string') {
     const known = Object.hasOwn(commonErrors, code)
       ? commonErrors[code]

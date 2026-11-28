@@ -46,6 +46,7 @@ const {
   referenceKey,
 } = await import('../src/lib/commercialServer.js')
 const { defaultClientSubscription, ensureProfessionalTrial, readSubscriptionAccessSummary } = await import('../src/lib/subscriptionServer.js')
+const { getSubscriptionApiError } = await import('../src/lib/subscriptionApiPolicy.js')
 
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
@@ -68,8 +69,18 @@ function createMemoryDatabase(initial = {}) {
       cursor = cursor[key]
     })
     const key = pathParts.at(-1)
-    if (value === null) delete cursor[key]
-    else cursor[key] = clone(value)
+    if (value !== null) {
+      cursor[key] = clone(value)
+      return
+    }
+    delete cursor[key]
+    // RTDB removes empty ancestors.
+    for (let i = pathParts.length - 1; i > 0; i -= 1) {
+      const parent = read(pathParts.slice(0, i - 1).join('/'))
+      const childKey = pathParts[i - 1]
+      if (Object.keys(parent[childKey]).length) break
+      delete parent[childKey]
+    }
   }
   const snapshot = (value) => ({ val: () => clone(value), exists: () => value !== undefined && value !== null })
   const ref = (path = '') => ({
@@ -676,6 +687,11 @@ const cancellationCases = [
     steps: [['GET', 'authorized', 200, { payer_id: 321 }]],
     error: 'invalid_recurring_preapproval:payer_mismatch',
   },
+  {
+    name: 'a failed initial provider read is localized and never writes',
+    steps: [['GET', { message: 'provider detail is private' }, 404]],
+    error: 'subscription_provider_read_unavailable',
+  },
 ]
 
 for (const { name, env, steps, expectedStatus, error, alreadyCanceled = false } of cancellationCases) {
@@ -721,6 +737,57 @@ for (const { name, env, steps, expectedStatus, error, alreadyCanceled = false } 
       assert.equal(canceledPlan.expiresAt, paidUntil, name)
     })
     assert.deepEqual(actualSteps, steps.map(([method]) => method), name)
+  } finally {
+    globalThis.fetch = cancelFetch
+  }
+}
+
+assert.equal(getSubscriptionApiError(new Error('invalid_recurring_preapproval:amount_mismatch'), 'cancel').code, 'subscription_provider_mismatch')
+assert.equal(getSubscriptionApiError(new Error('subscription_provider_read_unavailable'), 'cancel').status, 502)
+
+for (const scenario of ['concurrent calls', 'replacement before PUT', 'replacement during PUT', 'deletion during PUT', 'paid renewal during PUT']) {
+  const database = createMemoryDatabase(originalCancelData)
+  const attempt = database.read('commercialCheckoutAttempts/attempt-cancel')
+  const planPath = 'users/cancel-user/subscriptions/professional'
+  const plan = database.read(planPath)
+  const replacement = { ...plan, preapprovalId: 'new-authorization', autoRenew: true, expiresAt: paidUntil + 86_400_000 }
+  const request = { database, userId: 'cancel-user', kind: 'professional' }
+  let putCount = 0
+  globalThis.fetch = async (_url, options) => {
+    if (options.method === 'GET' && scenario === 'replacement before PUT') await database.ref(planPath).set(replacement)
+    if (options.method === 'PUT') {
+      putCount += 1
+      if (scenario === 'concurrent calls') {
+        await assert.rejects(cancelMercadoPagoRecurringSubscription(request), { message: 'subscription_cancellation_in_progress' })
+      }
+      if (scenario === 'replacement during PUT') await database.ref(planPath).set(replacement)
+      if (scenario === 'deletion during PUT') await database.ref(planPath).set(null)
+      if (scenario === 'paid renewal during PUT') await database.ref(planPath).update({ expiresAt: paidUntil + 86_400_000 })
+    }
+    return Response.json({
+      id: attempt.preapprovalId,
+      external_reference: attempt.externalReference,
+      status: options.method === 'PUT' ? 'cancelled' : 'authorized',
+      collector_id: 321,
+      application_id: 654,
+      payer_id: 789,
+      auto_recurring: { frequency: 3, frequency_type: 'months', transaction_amount: 50, currency_id: 'BRL' },
+    })
+  }
+  try {
+    await withEnvironment(stagingEnvironment(), async () => {
+      if (scenario === 'concurrent calls' || scenario === 'paid renewal during PUT') {
+        const result = await cancelMercadoPagoRecurringSubscription(request)
+        assert.equal(result.canceled, true, scenario)
+        assert.equal(result.accessUntil, database.read(`${planPath}/expiresAt`), scenario)
+        assert.equal(database.read(`${planPath}/autoRenew`), false, scenario)
+        return
+      }
+      await assert.rejects(cancelMercadoPagoRecurringSubscription(request), { message: 'subscription_cancellation_target_changed' }, scenario)
+      assert.deepEqual(database.read(planPath), scenario === 'deletion during PUT' ? undefined : replacement, scenario)
+    })
+    assert.equal(putCount, scenario === 'replacement before PUT' ? 0 : 1, scenario)
+    assert.equal(database.read('serverUsage'), undefined, scenario)
   } finally {
     globalThis.fetch = cancelFetch
   }

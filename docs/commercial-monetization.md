@@ -136,9 +136,22 @@ O checkout reutiliza `/api/planos/checkout` e cria uma autorização oficial em 
 
 Para testar assinaturas, configure `MERCADO_PAGO_STAGING_BUYER_EMAIL` somente no Preview da branch `codex/staging/consolidated-2026-09-07`, com o e-mail da conta compradora de teste do Mercado Pago, do mesmo país e distinta do vendedor de teste. Entre no Corre Aqui com a conta Firebase que deve receber o benefício e conclua o checkout no Mercado Pago com a conta compradora e um cartão de teste. A tentativa e a assinatura continuam vinculadas ao UID verificado no servidor.
 
-A autorização recorrente não libera benefícios. A liberação ocorre exclusivamente depois de um pagamento `approved` consultado diretamente na API do Mercado Pago pelo webhook `/api/mercado-pago/webhook`. O webhook aceita os tópicos `payment`, `subscription_preapproval` e `subscription_authorized_payment`, sempre com HMAC válido, e confere referência, tentativa, produto, valor, moeda, recebedor e idempotência.
+A autorização recorrente registra o estado da renovação. O benefício pago exige um pagamento `approved` consultado diretamente no Mercado Pago. Webhook e reconciliação por demanda ou agendada usam o mesmo processamento de pagamentos. O webhook `/api/mercado-pago/webhook` aceita `payment`, `subscription_preapproval` e `subscription_authorized_payment` com HMAC válido. O processamento confere referência, tentativa, produto, valor, moeda e recebedor. O ledger `processedPaymentEvents` e a transação do plano impedem que o mesmo pagamento estenda a vigência duas vezes. O histórico fica em `subscriptionPaymentHistory/{uid}/{kind}`.
 
-O cancelamento passa por `/api/subscriptions/cancel`, cancela futuras cobranças no `/preapproval/{id}` e preserva o acesso até o fim do período já pago. Estorno ou contestação do último pagamento encerram a vigência correspondente. Impulsionamentos e destaques existentes permanecem produtos independentes das assinaturas.
+O cancelamento passa por `/api/subscriptions/cancel`. Uma trava transacional por UID e tipo de plano evita envios concorrentes. O servidor confere a autorização e a tentativa, consulta `/preapproval/{id}` e pede o cancelamento no provedor quando necessário. Uma resposta incerta exige confirmação por leitura. O resultado só é sincronizado no plano associado à mesma autorização e preserva o fim da vigência paga. Estorno ou contestação do último pagamento encerram a vigência correspondente. Impulsionamentos e destaques continuam independentes.
+
+## Reconciliação
+
+- A consulta autenticada de Assinatura pode atualizar autorizações e pesquisar faturas do próprio usuário. A periodicidade server-side do Staging faz a recuperação sem sessão aberta, com agenda de 30 minutos vinculada à branch Staging e autenticação do job por segredo. A rota e o adaptador atuais exigem explicitamente Preview Staging.
+- A fila `subscriptionReconciliationSchedule` recebe tentativas de checkout, prioriza autorizações pendentes e vencimentos e limita cada execução a oito autorizações. Ela mantém o cursor da página de faturas e reage a falhas transitórias e limites do provedor com novas tentativas espaçadas.
+- A confirmação nativa deve reunir o ID da autorização, a fatura e o pagamento aprovado consultado no provedor, o HTTP da entrega, a auditoria gravada após o HMAC e a vigência no RTDB. Um `next_payment_date` comprova programação. Uma segunda cobrança efetiva exige fatura e pagamento com IDs próprios, vinculados à mesma autorização, com o pagamento `approved`.
+
+## Ativação futura em Production
+
+1. Validar a versão candidata, preservar backup e pontos de rollback de código e configuração e confirmar Firebase Client, Admin e RTDB no projeto `corre-aqui-3f9ec`. Manter o checkout fechado durante o preflight.
+2. Confirmar manualmente o vendedor comercial, a aplicação, o token e o segredo HMAC do ambiente de produção. Configurar o webhook no domínio oficial para os três tópicos e testar a autenticação da entrega. Guardar credenciais exclusivamente no servidor e manter o comprador sandbox fora do escopo Production.
+3. Validar reversão do deployment, desativação de novos checkouts e continuidade da reconciliação de pagamentos já iniciados. Antes de prometer recuperação com o app fechado também em Production, implementar e homologar explicitamente o agendamento para esse ambiente com credencial e alvo próprios.
+4. Com autorização de lançamento, abrir o checkout de forma controlada. Monitorar entregas HMAC, fila de reconciliação, tempo até concessão, duplicidade, disputas e cancelamentos. Para recuar, fechar primeiro a criação de novos checkouts e preservar consulta, webhook e cancelamento das autorizações existentes.
 
 ## Notificacoes financeiras
 

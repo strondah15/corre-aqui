@@ -49,7 +49,10 @@ export async function POST(request) {
     }, { headers })
   } catch (error) {
     const { code, status, message } = getSubscriptionApiError(error, 'cancel')
-    if (status >= 500) console.error('[subscriptions/cancel] cancelamento falhou', { code, status })
+    if (status === 409 || status >= 500) {
+      const providerStatus = Number.isInteger(error?.providerHttpStatus) ? error.providerHttpStatus : null
+      console.warn('[subscriptions/cancel] cancelamento não confirmado', { code, status, providerStatus })
+    }
 
     return NextResponse.json({
       ok: false,

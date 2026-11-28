@@ -356,7 +356,7 @@ assert.ok(
 )
 const rejectedSignatureBlock = webhookSecurityRouteSource.slice(webhookSignatureGuardAt, webhookBodyParseAt)
 assert.doesNotMatch(rejectedSignatureBlock, /getCommercialDatabase|writeCommercialAudit/, 'assinatura invalida nao toca a RTDB')
-assert.match(webhookSecurityRouteSource, /readProviderResource\('\/v1\/payments', signature\.paymentId, signal\)/, 'consulta do pagamento usa o ID autenticado da query')
+assert.match(webhookSecurityRouteSource, /readMercadoPagoResource\('\/v1\/payments', signature\.paymentId, signal\)/, 'consulta do pagamento usa o ID autenticado da query')
 
 const paymentNow = Date.UTC(2026, 9, 3, 12)
 const approvedClient = commercialPaymentScenario()
@@ -972,9 +972,9 @@ assert.match(
   /console\.warn\(JSON\.stringify\(signatureDiagnostic\)\)/,
   'rejeicao registra somente diagnostico seguro serializado',
 )
-assert.match(webhookRouteSource, /request\.nextUrl\.searchParams\.get\('data\.id'\)/, 'webhook le o data.id autoritativo da query')
+assert.match(webhookRouteSource, /const query = request\.nextUrl\.searchParams\s+const signatureDataId = query\.get\('data\.id'\)/, 'webhook le o data.id autoritativo da query')
 assert.match(webhookRouteSource, /dataId:\s*signatureDataId/, 'webhook passa explicitamente o data.id da query para validacao')
-assert.match(webhookRouteSource, /readProviderResource\('\/v1\/payments',/, 'webhook consulta o pagamento no Mercado Pago')
+assert.match(webhookRouteSource, /readMercadoPagoResource\('\/v1\/payments',/, 'webhook consulta o pagamento no Mercado Pago')
 assert.ok(
   commercialSource.indexOf("if (status !== 'approved')") < commercialSource.indexOf('const activation = isRecurringSubscriptionProduct'),
   'pagamento pendente ou rejeitado nao chega a ativacao',

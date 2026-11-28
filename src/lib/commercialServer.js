@@ -42,6 +42,7 @@ import { ensureProfessionalTrial } from '@/lib/subscriptionServer'
 
 export const COMMERCIAL_SOURCE = 'mercado_pago'
 const PAYMENT_EVENT_LEASE_MS = 5 * 60 * 1000
+const SUBSCRIPTION_CANCEL_LEASE_MS = 60_000
 
 export const safeText = (value) => String(value || '').trim()
 
@@ -1532,11 +1533,14 @@ export async function processRecurringPreapprovalUpdate({ database, subscription
   const incomingModifiedAt = asTimestamp(subscription.last_modified || subscription.date_created)
   const result = await subscriptionRef.transaction((current) => {
     const plan = current && typeof current === 'object' ? current : {}
-    const matchesCurrent = !plan.preapprovalId || safeText(plan.preapprovalId) === safeText(subscription.id)
+    const matchesCurrent = safeText(plan.preapprovalId) === safeText(subscription.id)
+      || (!force && !plan.preapprovalId)
     const forceConfirmedCancellation = force && isTerminalRecurringCancellation(providerStatus)
     ignoredOutOfOrder = !matchesCurrent || (!forceConfirmedCancellation && !shouldApplyProviderUpdate(plan, subscription))
     duplicate = false
-    if (ignoredOutOfOrder) return undefined
+    // RTDB may first provide null from local cache. Compare without creating
+    // a missing plan, allowing the transaction to retry against a stored plan.
+    if (ignoredOutOfOrder) return force && current === null ? null : undefined
     duplicate = !force && Boolean(plan.preapprovalId)
       && plan.providerStatus === providerStatus
       && incomingModifiedAt === asTimestamp(plan.providerLastModifiedAt)
@@ -1590,7 +1594,18 @@ export async function processRecurringPreapprovalUpdate({ database, subscription
     paymentReference: externalReference,
     statusAfter: providerStatus,
   })
-  return { ok: true, updated: !ignoredOutOfOrder, ignoredOutOfOrder, subscriptionKind: kind, providerStatus }
+  return {
+    ok: true,
+    updated: !ignoredOutOfOrder,
+    ignoredOutOfOrder,
+    subscriptionKind: kind,
+    providerStatus,
+    ...(force && !ignoredOutOfOrder && { accessUntil: asTimestamp(result.snapshot.val()?.expiresAt) || null }),
+  }
+}
+
+function cancellationConflict(code) {
+  return Object.assign(new Error(code), { status: 409 })
 }
 
 export async function cancelMercadoPagoRecurringSubscription({ database, userId, kind }) {
@@ -1599,17 +1614,17 @@ export async function cancelMercadoPagoRecurringSubscription({ database, userId,
     error.status = 400
     throw error
   }
-  const planSnapshot = await database.ref(`users/${userId}/subscriptions/${kind}`).get()
+  const planRef = database.ref(`users/${userId}/subscriptions/${kind}`)
+  const planSnapshot = await planRef.get()
   const plan = planSnapshot.val() || {}
   const preapprovalId = safeText(plan.preapprovalId)
   const productId = safeText(plan.recurringProductId)
   if (!preapprovalId || !isRecurringSubscriptionProduct(productId) || subscriptionKindForProduct(productId) !== kind) {
-    const error = new Error('recurring_subscription_not_found')
-    error.status = 409
-    throw error
+    throw cancellationConflict('recurring_subscription_not_found')
   }
   const attemptId = safeText(plan.checkoutAttemptId)
     || safeText((await database.ref(`commercialCheckoutAttemptsBySubscription/${referenceKey(preapprovalId)}`).get()).val())
+  if (!attemptId) throw cancellationConflict('subscription_ownership_mismatch')
   const attemptSnapshot = await database.ref(`commercialCheckoutAttempts/${attemptId}`).get()
   const attempt = attemptSnapshot.val()
   const reference = parseExternalReference(attempt?.externalReference)
@@ -1624,10 +1639,36 @@ export async function cancelMercadoPagoRecurringSubscription({ database, userId,
     || reference?.productId !== productId
     || reference?.targetId !== safeText(attempt.targetId || 'profile')
   ) {
-    const error = new Error('subscription_ownership_mismatch')
-    error.status = 409
-    throw error
+    throw cancellationConflict('subscription_ownership_mismatch')
   }
+
+  const userKey = crypto.createHash('sha256').update(userId).digest('hex')
+  const leaseRef = database.ref(`serverUsage/subscriptions/${userKey}/cancelLease/${kind}`)
+  const owner = crypto.randomUUID()
+  const now = Date.now()
+  const lease = await leaseRef.transaction((current) => {
+    if (current?.expiresAt > now) return undefined
+    return { owner, expiresAt: now + SUBSCRIPTION_CANCEL_LEASE_MS }
+  })
+  if (!lease.committed) throw cancellationConflict('subscription_cancellation_in_progress')
+
+  try {
+    return await cancelOwnedRecurringSubscription({
+      database, userId, kind, planRef, preapprovalId, attempt, productId,
+      leaseEndsAt: now + SUBSCRIPTION_CANCEL_LEASE_MS,
+    })
+  } finally {
+    try {
+      await leaseRef.transaction((current) => current?.owner === owner ? null : undefined)
+    } catch {
+      console.warn('[subscriptions/cancel] release_lease_failed')
+    }
+  }
+}
+
+async function cancelOwnedRecurringSubscription({
+  database, userId, kind, planRef, preapprovalId, attempt, productId, leaseEndsAt,
+}) {
   const product = getCommercialProduct(productId)
   const providerPath = `/preapproval/${encodeURIComponent(preapprovalId)}`
   const invalidProviderReason = (subscription) => {
@@ -1636,16 +1677,29 @@ export async function cancelMercadoPagoRecurringSubscription({ database, userId,
     if (safeText(subscription.id) !== preapprovalId) return 'preapproval_id_mismatch'
     return ''
   }
-  let providerSubscription = await mercadoPagoApiRequest(providerPath)
+  let providerSubscription
+  try {
+    providerSubscription = await mercadoPagoApiRequest(providerPath)
+  } catch (cause) {
+    throw Object.assign(new Error('subscription_provider_read_unavailable'), {
+      status: 502,
+      providerHttpStatus: cause?.providerHttpStatus,
+    })
+  }
   const invalidInitialReason = invalidProviderReason(providerSubscription)
   if (invalidInitialReason) {
-    const error = new Error(invalidInitialReason)
-    error.status = 409
-    throw error
+    throw cancellationConflict(invalidInitialReason)
   }
   const alreadyCanceled = isTerminalRecurringCancellation(providerSubscription.status)
   if (!alreadyCanceled) {
-    const cancelAtProvider = (status) => mercadoPagoApiRequest(providerPath, { method: 'PUT', body: { status } })
+    const latestPlan = (await planRef.get()).val()
+    if (safeText(latestPlan?.preapprovalId) !== preapprovalId || safeText(latestPlan?.recurringProductId) !== productId) {
+      throw cancellationConflict('subscription_cancellation_target_changed')
+    }
+    // Leave enough time for the provider request before the lease can be taken over.
+    const cancelAtProvider = (status) => Date.now() + 9_000 < leaseEndsAt
+      ? mercadoPagoApiRequest(providerPath, { method: 'PUT', body: { status } })
+      : null
     try {
       providerSubscription = await cancelAtProvider('canceled')
     } catch (error) {
@@ -1653,9 +1707,14 @@ export async function cancelMercadoPagoRecurringSubscription({ database, userId,
         && error.message === 'Invalid preapproval status param: canceled'
         && safeText(process.env.CORRE_AQUI_ENV) === 'staging'
         && safeText(process.env.MERCADO_PAGO_CREDENTIAL_ENV) === 'test'
-      providerSubscription = rejectedSandboxSpelling
-        ? await cancelAtProvider('cancelled').catch(() => null)
-        : null
+      providerSubscription = null
+      if (rejectedSandboxSpelling) {
+        try {
+          providerSubscription = await cancelAtProvider('cancelled')
+        } catch {
+          // The outcome of the fallback is also confirmed by reading.
+        }
+      }
     }
     if (!isTerminalRecurringCancellation(providerSubscription?.status) || invalidProviderReason(providerSubscription)) {
       // A write with an uncertain outcome must only be reconciled by reading the provider.
@@ -1677,6 +1736,7 @@ export async function cancelMercadoPagoRecurringSubscription({ database, userId,
     error.status = 502
     throw error
   }
+  if (result.ignoredOutOfOrder) throw cancellationConflict('subscription_cancellation_target_changed')
   await notifySubscriptionEventSafely({
     database,
     uid: userId,
@@ -1684,12 +1744,12 @@ export async function cancelMercadoPagoRecurringSubscription({ database, userId,
     type: 'cancellation_confirmed',
     reference: preapprovalId,
     occurredAt: asTimestamp(providerSubscription.last_modified) || Date.now(),
-    accessUntil: asTimestamp(plan.expiresAt),
+    accessUntil: result.accessUntil,
   })
   return {
     canceled: true,
     alreadyCanceled,
-    accessUntil: asTimestamp(plan.expiresAt) || null,
+    accessUntil: result.accessUntil,
     providerStatus: safeText(providerSubscription.status),
   }
 }
