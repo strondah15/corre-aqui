@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto'
-import { getAuthenticatedIdentity, getCommercialDatabase, mercadoPagoApiRequest } from '@/lib/commercialServer'
+import {
+  getAuthenticatedIdentity, getCommercialDatabase, mercadoPagoApiRequest, parseExternalReference,
+  processRecurringPreapprovalUpdate, referenceKey,
+} from '@/lib/commercialServer'
 import { getCommercialProduct } from '@/lib/commercialProducts'
 import { getFirebaseAdminAuth } from '@/lib/firebaseAdmin'
-import { readMercadoPagoResource } from '@/lib/recurringPaymentProcessing'
+import { processRecurringInvoicePayment, readMercadoPagoResource } from '@/lib/recurringPaymentProcessing'
 import {
   isTerminalRecurringCancellation, resolveAuthorizedPaymentId, resolveInvoicePreapprovalId, validateRecurringPreapproval,
 } from '@/lib/recurringSubscriptions'
@@ -24,6 +27,8 @@ const hashFormat = /^[a-f0-9]{64}$/
 const anchorIdFormat = /^[a-f0-9]{32}$/
 const anchorReference = /^CLIENT_QUARTERLY:(staging-finance-[a-f0-9]{24}):\1:[A-Za-z0-9_-]+:[a-f0-9]{16}$/
 const checkoutOrigins = new Set(['https://www.mercadopago.com.br', 'https://sandbox.mercadopago.com.br'])
+const payerReviewReason = 'payment_subscription_identity_mismatch'
+const unsafePaymentDetails = new Set(['partially_refunded', 'refunded', 'charged_back', 'in_dispute', 'in_mediation', 'disputed'])
 const digest = (value) => createHash('sha256').update(value).digest('hex')
 const sandboxBuyer = () => (process.env.MERCADO_PAGO_STAGING_BUYER_EMAIL || '').trim().toLowerCase()
 
@@ -80,6 +85,12 @@ function compareBuyer(left, right) {
   const actual = String(left || '')
   const expected = String(right || '')
   return numericId.test(actual) && numericId.test(expected) ? actual === expected : null
+}
+
+function isOfficialTestCard(payment) {
+  return payment.card?.first_six_digits && payment.card?.last_four_digits
+    ? String(payment.card.first_six_digits) === '423564' && String(payment.card.last_four_digits) === '5682'
+    : null
 }
 
 function pendingCheckoutUrl({ subscription, preapprovalId, paid, isOwner, buyerConfirmed }) {
@@ -252,6 +263,85 @@ async function readReceipt(database, topic, id) {
   return safeDate(receipt?.createdAt)
 }
 
+async function listAttemptInvoices(preapprovalId, signal) {
+  const params = new URLSearchParams({ preapproval_id: preapprovalId, limit: '5' })
+  const result = await mercadoPagoApiRequest(`/authorized_payments/search?${params}`, { signal })
+  if (!Array.isArray(result?.results) || result.results.length > 5) throw new Error('invalid_invoice_response')
+  return result.results
+}
+
+function sameFinalPayer(attempt, proof) {
+  const marker = attempt?.stagingPayerFinalization
+  return marker?.proofHash === proof.hash && Number.isSafeInteger(marker?.finalizedAt) && marker.finalizedAt > 0
+    && String(attempt.payerId) === proof.finalPayer && String(attempt.pendingPayerId) === proof.pendingPayer
+}
+
+function matchesBoundAttempt(attempt, context, scope) {
+  return attempt?.id === context.attempt.id && attempt.userId === scope.uid && attempt.targetId === scope.uid
+    && attempt.preapprovalId === context.preapprovalId && attempt.externalReference === context.attempt.externalReference
+    && attempt.productId === productId && attempt.amountInCents === amountInCents && attempt.currency === 'BRL'
+    && String(attempt.collectorId) === scope.collectorId && String(attempt.applicationId) === applicationId
+}
+
+async function readPayerFinalizationProof({ database, context, scope, sandbox, subscription, rows, signal }) {
+  const { attempt, plan, preapprovalId } = context
+  const parsed = parseExternalReference(attempt.externalReference)
+  const product = getCommercialProduct(productId)
+  const validation = validateRecurringPreapproval({ subscription, attempt, product })
+  const priorMarker = attempt.stagingPayerFinalization
+  const pendingPayer = String(priorMarker ? attempt.pendingPayerId || '' : attempt.payerId || '')
+  if (!anchorIdFormat.test(preapprovalId) || String(subscription.id) !== preapprovalId
+    || !matchesBoundAttempt(attempt, context, scope) || !/^[A-Za-z0-9_-]{1,128}$/.test(attempt.id)
+    || parsed?.attemptId !== attempt.id || parsed.userId !== scope.uid || parsed.targetId !== scope.uid || parsed.productId !== productId
+    || subscription.status !== 'authorized' || compareBuyer(subscription.payer_id, sandbox.payerId) !== true
+    || compareBuyer(pendingPayer, sandbox.payerId) !== false
+    || (priorMarker ? !validation.valid : validation.errors.length !== 1 || validation.errors[0] !== 'payer_mismatch')
+    || plan.preapprovalId !== preapprovalId || plan.checkoutAttemptId !== attempt.id || plan.canceledAt) return null
+
+  const hasExistingBenefit = Boolean(plan.paymentId || plan.expiresAt || Object.keys(plan.processedPayments || {}).length)
+  const pendingPlan = ['pending_authorization', 'pending_payment'].includes(plan.status)
+    && ['pending', 'authorized'].includes(plan.providerStatus) && !hasExistingBenefit
+  if (!pendingPlan && !(priorMarker && plan.status === 'active' && hasExistingBenefit)) return null
+  if (!priorMarker && (attempt.providerStatus !== 'pending' || attempt.status !== 'checkout_created'
+    || attempt.paymentId || attempt.pendingPayerId)) return null
+
+  const linked = rows.filter((invoice) => resolveInvoicePreapprovalId(invoice) === preapprovalId)
+  if (linked.length !== 1) return null
+  const invoiceId = String(linked[0].id || '')
+  const paymentId = resolveAuthorizedPaymentId(linked[0])
+  if (!numericId.test(invoiceId) || !numericId.test(paymentId)) return null
+  const [invoice, payment, ledgerSnapshot] = await Promise.all([
+    readMercadoPagoResource('/authorized_payments', invoiceId, signal),
+    readMercadoPagoResource('/v1/payments', paymentId, signal),
+    database.ref(`processedPaymentEvents/${referenceKey(`${paymentId}:approved`)}`).get(),
+  ])
+  if (String(invoice.id) !== invoiceId || invoice.status !== 'processed'
+    || resolveInvoicePreapprovalId(invoice) !== preapprovalId || resolveAuthorizedPaymentId(invoice) !== paymentId
+    || [invoice.payer_id, invoice.payer?.id].some((payer) => payer != null && compareBuyer(payer, sandbox.payerId) !== true)
+    || String(payment.id) !== paymentId || payment.status !== 'approved' || unsafePaymentDetails.has(payment.status_detail)
+    || Number(payment.transaction_amount) !== amountInCents / 100 || payment.currency_id !== 'BRL'
+    || String(payment.collector_id) !== scope.collectorId
+    || (payment.application_id && String(payment.application_id) !== applicationId)
+    || (payment.external_reference && payment.external_reference !== attempt.externalReference)
+    || compareBuyer(payment.payer?.id, sandbox.payerId) !== true || isOfficialTestCard(payment) !== true
+    || !safeDate(payment.date_approved) || Number(payment.transaction_amount_refunded ?? 0) !== 0
+    || (payment.refunds != null && (!Array.isArray(payment.refunds) || payment.refunds.length > 0))
+    || (payment.chargebacks != null && (!Array.isArray(payment.chargebacks) || payment.chargebacks.length > 0))) return null
+
+  const ledger = ledgerSnapshot.val()
+  if (ledger?.paymentId !== paymentId || ledger.externalReference !== attempt.externalReference || ledger.paymentStatus !== 'approved'
+    || ledger.identityReview?.payer !== true || ledger.identityReview.application !== false || ledger.identityReview.invoice !== false) return null
+  const hash = digest(JSON.stringify([scope.uid, applicationId, attempt.externalReference, preapprovalId, invoiceId, paymentId, pendingPayer, sandbox.payerId]))
+  const proof = { hash, pendingPayer, finalPayer: sandbox.payerId, invoice }
+  const settled = priorMarker && ledger.status === 'processed' && ledger.identityReview.resolvedAt
+    && plan.paymentId === paymentId && plan.processedPayments?.[referenceKey(paymentId)]?.paymentId === paymentId
+    && Object.keys(plan.processedPayments).length === 1 && safeDate(plan.expiresAt)
+  if (priorMarker && !sameFinalPayer(attempt, proof)) return null
+  if (settled) return { ...proof, settled: true }
+  const held = ledger.status === 'failed' && ledger.reason === payerReviewReason && !ledger.identityReview.resolvedAt
+  return held || (priorMarker && ['failed', 'processing'].includes(ledger.status) && !ledger.identityReview.resolvedAt) ? proof : null
+}
+
 export async function GET(request) {
   const scope = getScope(request)
   if (!scope) return respond({ error: 'unavailable' }, 404)
@@ -297,11 +387,9 @@ export async function GET(request) {
     const authorizationPayer = subscription.payer_id
     const authorizationMatchesSandbox = compareBuyer(authorizationPayer, sandbox.payerId)
     const attemptMatchesSandbox = compareBuyer(attempt.payerId, sandbox.payerId)
-    const params = new URLSearchParams({ preapproval_id: preapprovalId, limit: '5' })
-    const result = await mercadoPagoApiRequest(`/authorized_payments/search?${params}`, { signal })
-    if (!Array.isArray(result?.results) || result.results.length > 5) return respond({ error: 'invalid_invoice_response' }, 502)
+    const rows = await listAttemptInvoices(preapprovalId, signal)
     const invoices = []
-    for (const invoice of result.results) {
+    for (const invoice of rows) {
       const invoiceId = String(invoice.id || '')
       if (resolveInvoicePreapprovalId(invoice) !== preapprovalId || !numericId.test(invoiceId)) continue
       const paymentId = resolveAuthorizedPaymentId(invoice)
@@ -323,6 +411,7 @@ export async function GET(request) {
         payment: payment && {
           id: maskId(paymentId),
           state: safeStatus(payment.status),
+          statusDetail: safeStatus(payment.status_detail),
           amountInCents: Math.round(Number(payment.transaction_amount) * 100),
           currency: payment.currency_id === 'BRL' ? 'BRL' : null,
           approvedAt: safeDate(payment.date_approved),
@@ -331,9 +420,7 @@ export async function GET(request) {
           payerMatches: compareBuyer(payment.payer?.id, sandbox.payerId),
           buyerMatchesAuthorization: compareBuyer(payment.payer?.id, authorizationPayer),
           buyerMatchesInvoice: compareBuyer(payment.payer?.id, invoicePayer),
-          officialTestCard: payment.card?.first_six_digits && payment.card?.last_four_digits
-            ? String(payment.card.first_six_digits) === '423564' && String(payment.card.last_four_digits) === '5682'
-            : null,
+          officialTestCard: isOfficialTestCard(payment),
           signedReceiptAt: await readReceipt(database, 'payment', paymentId),
         },
       })
@@ -346,6 +433,9 @@ export async function GET(request) {
       buyerConfirmed: authorizationMatchesSandbox === true && attemptMatchesSandbox === true
         && plan.providerStatus === 'pending' && plan.autoRenew === false,
     })
+    const proof = identity.uid === scope.uid
+      ? await readPayerFinalizationProof({ database, context, scope, sandbox, subscription, rows, signal }).catch(() => null)
+      : null
     return respond({
       ...verified,
       status: safeStatus(subscription.status),
@@ -354,6 +444,7 @@ export async function GET(request) {
       providerPayerMatches: authorizationMatchesSandbox,
       attemptBuyerMatchesSandbox: attemptMatchesSandbox,
       authorizationBuyerMatchesAttempt: compareBuyer(authorizationPayer, attempt.payerId),
+      canFinalizeSandboxPayer: Boolean(proof && !proof.settled),
       ...(resumeCheckoutUrl ? { resumeCheckoutUrl } : {}),
       approval: `…${preapprovalId.slice(-4)}`,
       signedAuthorizationReceiptAt: await readReceipt(database, 'subscription_preapproval', preapprovalId),
@@ -375,6 +466,59 @@ export async function GET(request) {
     })
   } catch {
     return respond({ error: 'provider_status_unavailable' }, 503)
+  }
+}
+
+export async function PATCH(request) {
+  const scope = getScope(request)
+  if (!scope) return respond({ error: 'unavailable' }, 404)
+  const identity = await getAuthenticatedIdentity(request).catch(() => null)
+  if (identity?.uid !== scope.uid) return respond({ error: 'test_owner_required' }, 403)
+  try {
+    if (!await getTestAccount(getFirebaseAdminAuth(), scope.uid, false)) return respond({ error: 'test_owner_required' }, 403)
+    const signal = scopedSignal(request, scope)
+    const sandbox = await verifySandbox(scope, signal)
+    const database = getCommercialDatabase()
+    const { context } = await readTestState(database, scope.uid)
+    if (!sandbox || !validateTestAttempt(context, scope)) return respond({ error: 'payer_finalization_not_confirmed' }, 409)
+    const { preapprovalId, attempt } = context
+    const [subscription, rows] = await Promise.all([
+      readMercadoPagoResource('/preapproval', preapprovalId, signal),
+      listAttemptInvoices(preapprovalId, signal),
+    ])
+    const proof = await readPayerFinalizationProof({ database, context, scope, sandbox, subscription, rows, signal })
+    if (!proof) return respond({ error: 'payer_finalization_not_confirmed' }, 409)
+    if (proof.settled) return respond({ finalized: true, alreadyProcessed: true })
+    signal.throwIfAborted()
+    const attemptRef = database.ref(`commercialCheckoutAttempts/${attempt.id}`)
+    const result = await attemptRef.transaction((current) => {
+      // A null cache value must still compare against the actual stored attempt.
+      if (current === null) return null
+      if (Date.now() >= scope.expiresAt || !matchesBoundAttempt(current, context, scope) || current.stagingPayerFinalization
+        || current.providerStatus !== 'pending' || current.status !== 'checkout_created'
+        || String(current.payerId) !== proof.pendingPayer || current.pendingPayerId || current.paymentId) return undefined
+      const now = Date.now()
+      return {
+        ...current,
+        pendingPayerId: proof.pendingPayer,
+        payerId: proof.finalPayer,
+        stagingPayerFinalization: { proofHash: proof.hash, finalizedAt: now },
+        updatedAt: now,
+      }
+    })
+    if (!sameFinalPayer(result.snapshot.val(), proof)) return respond({ error: 'payer_finalization_conflict' }, 409)
+    signal.throwIfAborted()
+    const providerUpdate = await processRecurringPreapprovalUpdate({ database, subscription })
+    if (!providerUpdate.ok || providerUpdate.ignoredOutOfOrder || providerUpdate.retryable) {
+      return respond({ error: 'payer_finalization_pending' }, 503)
+    }
+    const payment = await processRecurringInvoicePayment({ database, invoice: proof.invoice, preapprovalId, signal })
+    if (!payment?.ok || payment.retryable || (!payment.activated && !payment.duplicate)) {
+      return respond({ error: 'payer_finalization_pending' }, 503)
+    }
+    return respond({ finalized: true, alreadyProcessed: payment.duplicate === true })
+  } catch {
+    return respond({ error: 'payer_finalization_pending' }, 503)
   }
 }
 

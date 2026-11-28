@@ -12,6 +12,12 @@ const modules = {
       return { uid, email: operatorEmails[uid], emailVerified: uid !== 'unverified' };
     };
     export const getCommercialDatabase = () => globalThis.financeDatabase;
+    export const parseExternalReference = (value) => {
+      const [productId, userId, targetId, attemptId] = value.split(':');
+      return attemptId ? { productId, userId, targetId, attemptId } : null;
+    };
+    export const referenceKey = (value) => Buffer.from(value).toString('base64url');
+    export const processRecurringPreapprovalUpdate = (args) => globalThis.financeProcessAuthorization(args);
     export const mercadoPagoApiRequest = async (path, options) => {
       if (!path.startsWith('/authorized_payments/search?') || options.method || options.body) throw new Error('unauthorized provider write');
       return { results: globalThis.financeInvoices };
@@ -19,7 +25,10 @@ const modules = {
   `,
   '@/lib/commercialProducts': `export const getCommercialProduct = (id) => ({ id });`,
   '@/lib/firebaseAdmin': `export const getFirebaseAdminAuth = () => globalThis.financeAuth;`,
-  '@/lib/recurringPaymentProcessing': `export const readMercadoPagoResource = (path, id) => globalThis.financeProviderRead(path, id);`,
+  '@/lib/recurringPaymentProcessing': `
+    export const readMercadoPagoResource = (path, id) => globalThis.financeProviderRead(path, id);
+    export const processRecurringInvoicePayment = (args) => globalThis.financeProcessInvoice(args);
+  `,
   '@/lib/subscriptionReconciliation': `export const readRecurringReconciliationContext = async () => globalThis.financeContext;`,
 }
 
@@ -82,6 +91,11 @@ let currentUser = null
 let paymentHistory = null
 let concurrentProfile = null
 let seedCommits = 0
+let payerCommits = 0
+let ledger = null
+let refundedAmount = 0
+let providerExternalReference = 'synthetic-reference'
+let payerTransactionConflict = false
 let providerStatus = 'authorized'
 let checkoutUrl = currentCheckoutUrl
 let authorizationPayer = '20000'
@@ -96,12 +110,30 @@ const invoice = {
   id: '987654', preapproval_id: pendingPreapprovalId, status: 'processed',
   payer_id: '20000', payer: { id: '20000' }, payment: { id: '555555' },
 }
+const approvedPaymentId = invoice.payment.id
+const key = (value) => Buffer.from(value).toString('base64url')
 globalThis.financeInvoices = [invoice]
 globalThis.financeDatabase = {
   ref(path) {
     let value
     if (path === `commercialCheckoutAttemptsByUser/${uid}`) value = attemptIndex
     else if (path === `subscriptionPaymentHistory/${uid}`) value = paymentHistory
+    else if (path === `processedPaymentEvents/${key(`${approvedPaymentId}:approved`)}`) value = ledger
+    else if (path === 'commercialCheckoutAttempts/allowed-attempt') {
+      return {
+        async transaction(update) {
+          assert.equal(update(null), null)
+          const attempt = globalThis.financeContext.attempt
+          const current = payerTransactionConflict ? { ...attempt, payerId: '77777' } : attempt
+          const next = update(current)
+          if (next !== undefined) {
+            globalThis.financeContext.attempt = next
+            payerCommits++
+          }
+          return { committed: next !== undefined, snapshot: { val: () => next ?? current } }
+        },
+      }
+    }
     else if (path === `users/${uid}`) {
       return {
         get: async () => ({ val: () => currentUser }),
@@ -139,15 +171,20 @@ globalThis.financeProviderRead = async (path, id) => {
     assert.equal(id, pendingPreapprovalId)
     return {
       id, status: providerStatus, collector_id: scope.collectorId, application_id: '680095240238234',
-      payer_id: authorizationPayer, external_reference: 'synthetic-reference', init_point: checkoutUrl,
+      payer_id: authorizationPayer, external_reference: providerExternalReference, init_point: checkoutUrl,
       auto_recurring: { frequency: 3, frequency_type: 'months', transaction_amount: 49.9, currency_id: 'BRL' },
     }
   }
+  if (path === '/authorized_payments') {
+    assert.equal(id, invoice.id)
+    return invoice
+  }
   assert.equal(path, '/v1/payments')
-  assert.equal(id, '555555')
+  assert.equal(id, approvedPaymentId)
   return {
     id, status: 'approved', transaction_amount: 49.9, currency_id: 'BRL', live_mode: true, collector_id: scope.collectorId,
     payer: { id: paymentPayer }, card: { first_six_digits: '423564', last_four_digits: '5682' },
+    date_approved: '2026-11-28T10:00:00.000Z', status_detail: 'accredited', transaction_amount_refunded: refundedAmount,
   }
 }
 globalThis.financeAuth = {
@@ -173,7 +210,7 @@ globalThis.financeAuth = {
   },
 }
 
-const { GET, POST, DELETE } = await import('../src/app/api/internal/staging-finance-login/route.js')
+const { GET, POST, PATCH, DELETE } = await import('../src/app/api/internal/staging-finance-login/route.js')
 const request = (method, actor, origin = canonical) => new NextRequest(
   `${origin}/api/internal/staging-finance-login`,
   { method, headers: actor ? { authorization: actor } : {}, ...(method === 'POST' && { body: '{"uid":"ignored"}' }) },
@@ -336,6 +373,86 @@ assert.equal(revocations, 1)
 assert.equal(seedCommits, 1)
 assert.equal(currentUser.subscriptions.professional.trialEndsAt, seededPlan.trialEndsAt)
 
+providerStatus = 'authorized'
+providerExternalReference = `PROFESSIONAL_QUARTERLY:${uid}:${uid}:allowed-attempt:001122aabbccddff`
+const pendingPlan = {
+  ...seededPlan, status: 'pending_authorization', providerStatus: 'pending', autoRenew: false,
+  checkoutAttemptId: 'allowed-attempt', preapprovalId: pendingPreapprovalId,
+}
+currentUser.subscriptions.professional = pendingPlan
+globalThis.financeContext = {
+  preapprovalId: pendingPreapprovalId,
+  plan: pendingPlan,
+  attempt: {
+    id: 'allowed-attempt', userId: uid, targetId: uid, preapprovalId: pendingPreapprovalId,
+    applicationId: anchorApp, collectorId: scope.collectorId, productId: 'PROFESSIONAL_QUARTERLY', amountInCents: 4990,
+    currency: 'BRL', externalReference: providerExternalReference, payerId: '30000', providerStatus: 'pending', status: 'checkout_created',
+  },
+}
+ledger = {
+  paymentId: approvedPaymentId, externalReference: providerExternalReference, paymentStatus: 'approved', status: 'failed',
+  reason: 'payment_subscription_identity_mismatch', identityReview: { payer: true, application: false, invoice: false },
+}
+assert.equal((await (await GET(request('GET', uid))).json()).canFinalizeSandboxPayer, true)
+assert.equal((await (await GET(request('GET', operator))).json()).canFinalizeSandboxPayer, false)
+assert.equal((await PATCH(request('PATCH', operator))).status, 403)
+assert.equal((await PATCH(request('PATCH', uid, 'https://unrelated.vercel.app'))).status, 404)
+ledger.identityReview.application = true
+assert.equal((await PATCH(request('PATCH', uid))).status, 409)
+ledger.identityReview.application = false
+refundedAmount = 0.01
+assert.equal((await PATCH(request('PATCH', uid))).status, 409)
+refundedAmount = 0
+payerTransactionConflict = true
+assert.equal((await PATCH(request('PATCH', uid))).status, 409)
+payerTransactionConflict = false
+assert.equal(payerCommits, 0)
+
+let authorizationProcessing = 0
+let paymentProcessing = 0
+globalThis.financeProcessAuthorization = async ({ database, subscription }) => {
+  assert.equal(database, globalThis.financeDatabase)
+  assert.equal(subscription.id, pendingPreapprovalId)
+  assert.equal(globalThis.financeContext.attempt.payerId, '20000')
+  authorizationProcessing++
+  pendingPlan.status = 'pending_payment'
+  pendingPlan.providerStatus = 'authorized'
+  globalThis.financeContext.attempt.providerStatus = 'authorized'
+  return { ok: true }
+}
+globalThis.financeProcessInvoice = async ({ database, invoice: providerInvoice, preapprovalId }) => {
+  assert.equal(database, globalThis.financeDatabase)
+  assert.equal(providerInvoice, invoice)
+  assert.equal(preapprovalId, pendingPreapprovalId)
+  paymentProcessing++
+  if (paymentProcessing === 1) {
+    ledger.reason = 'processing_error'
+    return { ok: false, retryable: true }
+  }
+  pendingPlan.status = 'active'
+  pendingPlan.paymentId = approvedPaymentId
+  pendingPlan.expiresAt = Date.parse('2027-02-28T10:00:00.000Z')
+  pendingPlan.processedPayments = { [key(approvedPaymentId)]: { paymentId: approvedPaymentId } }
+  ledger.status = 'processed'
+  ledger.identityReview.resolvedAt = Date.now()
+  return { ok: true, activated: true }
+}
+
+assert.equal((await PATCH(request('PATCH', uid))).status, 503)
+assert.equal(payerCommits, 1)
+const finalizedAttempt = globalThis.financeContext.attempt
+assert.equal(finalizedAttempt.pendingPayerId, '30000')
+assert.equal(finalizedAttempt.payerId, '20000')
+assert.match(finalizedAttempt.stagingPayerFinalization.proofHash, /^[a-z0-9]{64}$/)
+assert.deepEqual(await (await PATCH(request('PATCH', uid))).json(), { finalized: true, alreadyProcessed: false })
+assert.deepEqual(await (await PATCH(request('PATCH', uid))).json(), { finalized: true, alreadyProcessed: true })
+assert.equal((await (await GET(request('GET', uid))).json()).canFinalizeSandboxPayer, false)
+assert.equal(payerCommits, 1)
+assert.equal(authorizationProcessing, 2)
+assert.equal(paymentProcessing, 2)
+assert.equal(pendingPlan.expiresAt, Date.parse('2027-02-28T10:00:00.000Z'))
+assert.equal(pendingPlan.trialEndsAt, seededPlan.trialEndsAt)
+
 process.env.STAGING_FINANCE_TEST_SCOPE = JSON.stringify({ ...scope, expiresAt: Date.now() - 1 })
 assert.equal((await GET(request('GET', operator))).status, 404)
-console.log('Isolated professional trial, provider binding, stale-state protection and guarded revocation passed.')
+console.log('Isolated professional trial, guarded revocation, one-time payer binding, payment proof and retry passed.')
