@@ -194,7 +194,9 @@ export async function POST(request) {
 
     const paymentResult = subscriptionResult.ok === true
       ? await processRecurringInvoicePayment({
-        database, invoice, preapprovalId, signal, onStage: (nextStage) => { stage = nextStage },
+        database, invoice, preapprovalId,
+        subscription: subscriptionResult.payerBindingPending ? subscription : null,
+        signal, onStage: (nextStage) => { stage = nextStage },
       })
       : null
     if (!paymentResult) {

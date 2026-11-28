@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { registerHooks } from 'node:module'
 import { deleteApp, initializeApp } from 'firebase-admin/app'
 import { getDatabase } from 'firebase-admin/database'
@@ -44,6 +44,7 @@ const originalToken = process.env.MERCADO_PAGO_ACCESS_TOKEN
 const originalNotifications = process.env.SUBSCRIPTION_NOTIFICATIONS_ENABLED
 const mockToken = 'subscription-emulator-test-token'
 const providerOrigin = 'https://api.mercadopago.com'
+const providerAccountOrigin = 'https://api.mercadolibre.com'
 const calls = []
 const responses = new Map()
 const warnings = []
@@ -57,9 +58,10 @@ globalThis.fetch = async (input, options = {}) => {
   if (url.origin === `http://${emulatorHost}`) return originalFetch(input, options)
   const key = url.pathname + url.search
   calls.push(key)
-  assert.equal(url.origin, providerOrigin, 'all non-emulator network calls are mocked')
-  assert.equal(options.method, 'GET', 'reconciliation does not mutate Mercado Pago')
-  assert.equal(options.headers?.Authorization, `Bearer ${mockToken}`)
+  assert.equal(url.origin, key === '/users/me' ? providerAccountOrigin : providerOrigin,
+    'all non-emulator network calls are mocked')
+  assert.equal(options.method || 'GET', 'GET', 'reconciliation does not mutate Mercado Pago')
+  assert.equal(new Headers(options.headers).get('Authorization'), `Bearer ${mockToken}`)
   assert.ok(responses.has(key), `unexpected provider lookup: ${key}`)
   const response = responses.get(key)
   if (response instanceof Error) throw response
@@ -73,7 +75,7 @@ function notifyWarning(...values) {
 }
 
 async function seedSubscription(label, planOverrides = {}, providerOverrides = {}, {
-  targetDatabase = database, kind = 'professional',
+  targetDatabase = database, kind = 'professional', attemptOverrides = {},
 } = {}) {
   const uid = `reconcile-${label}-${runId}`
   const attemptId = `attempt-${label}-${runId}`
@@ -109,6 +111,7 @@ async function seedSubscription(label, planOverrides = {}, providerOverrides = {
       collectorId: '100',
       applicationId: '200',
       payerId: '300',
+      ...attemptOverrides,
     },
     [`commercialCheckoutAttemptsBySubscription/${referenceKey(preapprovalId)}`]: attemptId,
   })
@@ -128,8 +131,8 @@ async function seedSubscription(label, planOverrides = {}, providerOverrides = {
   return { uid, plan, planPath, historyPath, attemptId, attemptPath, amountInCents, preapprovalId, preapprovalPath }
 }
 
-function reconcile(uid) {
-  return reconcileOwnedSubscriptions({ database, uid, kind: 'professional', log: notifyWarning })
+function reconcile(uid, kind = 'professional', log = notifyWarning) {
+  return reconcileOwnedSubscriptions({ database, uid, kind, log })
 }
 
 const scheduleRoot = 'subscriptionReconciliationSchedule'
@@ -315,6 +318,184 @@ async function testScheduledReconciliation() {
   console.log('Scheduled reconciliation Emulator: closed app, overlap, pagination, rate limit, retry, cancellation, refund, chargeback and idempotent ledger PASS (provider mocked)')
 }
 
+async function testAutomaticStagingPayerBinding() {
+  // Create an isolated queue in the demo emulator before exercising the exact
+  // Vercel runtime gate. The SDK clients are passed explicitly, never created
+  // from the mocked Staging credentials below.
+  const bindingProject = `${projectId}-payer-binding`
+  const bindingApp = initializeApp({
+    projectId: bindingProject,
+    databaseURL: `http://${emulatorHost}?ns=${bindingProject}`,
+  }, `payer-binding-${runId}`)
+  const bindingDatabase = getDatabase(bindingApp)
+  const buyerEmail = 'binding-buyer@testuser.com'
+  const buyerBindingSha256 = createHash('sha256').update(`${buyerEmail}\n300`).digest('hex')
+  const stageDatabaseURL = 'https://corre-aqui-staging-default-rtdb.firebaseio.com'
+  const stageOrigin = 'https://corre-aqui-git-codex-stagingc-155cef-rgstrondahh-2784s-projects.vercel.app'
+  const environment = {
+    CORRE_AQUI_ENV: 'staging',
+    VERCEL_ENV: 'preview',
+    VERCEL_TARGET_ENV: 'preview',
+    VERCEL_GIT_COMMIT_REF: 'codex/staging/consolidated-2026-09-07',
+    VERCEL_PROJECT_ID: 'prj_M3gKqNx4UkEzAEgL4pcyoYG5kTUB',
+    SITE_URL: stageOrigin,
+    NEXT_PUBLIC_SITE_URL: stageOrigin,
+    MERCADO_PAGO_CREDENTIAL_ENV: 'test',
+    MERCADO_PAGO_WEBHOOK_SECRET: 'fake-payer-binding-webhook-secret',
+    MERCADO_PAGO_STAGING_BUYER_EMAIL: buyerEmail,
+    MERCADO_PAGO_STAGING_BUYER_BINDING_SHA256: buyerBindingSha256,
+    FIREBASE_ADMIN_CREDENTIALS: '',
+    FIREBASE_ADMIN_PROJECT_ID: 'corre-aqui-staging',
+    FIREBASE_ADMIN_CLIENT_EMAIL: 'emulator-test@corre-aqui-staging.iam.gserviceaccount.com',
+    FIREBASE_ADMIN_PRIVATE_KEY: 'sandbox-binding-emulator-placeholder',
+    FIREBASE_ADMIN_DATABASE_URL: stageDatabaseURL,
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID: 'corre-aqui-staging',
+    NEXT_PUBLIC_FIREBASE_DATABASE_URL: stageDatabaseURL,
+    FIREBASE_DATABASE_EMULATOR_HOST: undefined,
+    FIREBASE_AUTH_EMULATOR_HOST: undefined,
+  }
+  const previous = Object.fromEntries(Object.keys(environment).map((key) => [key, process.env[key]]))
+  const installEnvironment = (values) => {
+    for (const [key, value] of Object.entries(values)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  }
+  const paidAt = now - 1_000
+  const seedBinding = (label, options = {}) => seedSubscription(label, { firstChargeAt: now - day }, {
+    summarized: { charged_quantity: 1 },
+  }, {
+    attemptOverrides: {
+      payerId: '301', providerStatus: 'pending', status: 'checkout_created',
+      payerBinding: { initialPayerId: '301', buyerBindingSha256 },
+    },
+    ...options,
+  })
+  const registerInvoice = (fixture, paymentId, invoiceId, limit) => {
+    const invoice = { ...providerPayment(fixture, paymentId, paidAt), id: invoiceId, status: 'processed' }
+    responses.set(invoiceSearch(fixture, 0, limit), { results: [invoice] })
+    responses.set(`/authorized_payments/${invoiceId}`, invoice)
+  }
+  const assertBound = async (get, fixture, paymentId) => {
+    const attempt = await get(fixture.attemptPath)
+    assert.equal(attempt.payerBinding.finalPayerId, '300', 'only the independently configured buyer becomes the final payer')
+    assert.equal(attempt.payerBinding.initialPayerId, '301')
+    assert.equal(attempt.payerId, '301', 'provider observation at checkout is preserved')
+    const plan = await get(fixture.planPath)
+    assert.equal(plan.status, 'active')
+    assert.equal(plan.expiresAt, nextQuarterlyExpiration(paidAt))
+    assert.deepEqual(Object.keys(plan.processedPayments), [referenceKey(paymentId)])
+    assert.deepEqual(Object.keys(await get(fixture.historyPath)), [referenceKey(paymentId)])
+    assert.equal(await get(`processedPaymentEvents/${referenceKey(`${paymentId}:approved`)}/status`), 'processed')
+  }
+
+  try {
+    installEnvironment(environment)
+    responses.set('/users/me', { id: 100, tags: ['test_user'], site_id: 'MLB' })
+    const owned = await seedBinding('binding-owned')
+    const ownedPaymentId = '940000000001'
+    const ownedInvoiceId = '941000000001'
+    registerInvoice(owned, ownedPaymentId, ownedInvoiceId, 8)
+    await Promise.all(Array.from({ length: 4 }, () => reconcile(owned.uid)))
+    const ownedCalls = calls.splice(0)
+    for (const path of [owned.preapprovalPath, invoiceSearch(owned, 0, 8), '/users/me',
+      `/authorized_payments/${ownedInvoiceId}`, `/v1/payments/${ownedPaymentId}`]) {
+      assert.ok(ownedCalls.includes(path), `the owned reconciliation must read ${path}`)
+    }
+    await assertBound(read, owned, ownedPaymentId)
+    const settled = await read(owned.planPath)
+    await reconcileRecurringInvoicePage({
+      database, preapprovalId: owned.preapprovalId, subscription: responses.get(owned.preapprovalPath),
+    })
+    assert.deepEqual(await read(owned.planPath), settled, 'a duplicate approved report does not add a quarter')
+    calls.splice(0)
+
+    const blockedCases = ['wrong-payment-buyer', 'wrong-product-reference', 'wrong-invoice-link', 'real-seller', 'unmarked-attempt']
+    for (const [index, label] of blockedCases.entries()) {
+      const fixture = await seedBinding(label, label === 'unmarked-attempt' ? {
+        attemptOverrides: { payerId: '301', providerStatus: 'pending', status: 'checkout_created' },
+      } : {})
+      const paymentId = `94000000001${index}`
+      const invoiceId = `94100000001${index}`
+      registerInvoice(fixture, paymentId, invoiceId, 8)
+      if (label === 'wrong-payment-buyer') {
+        const path = `/v1/payments/${paymentId}`
+        responses.set(path, { ...responses.get(path), payer: { id: 302 } })
+      }
+      if (label === 'wrong-product-reference') {
+        const provider = responses.get(fixture.preapprovalPath)
+        responses.set(fixture.preapprovalPath, {
+          ...provider,
+          external_reference: provider.external_reference.replace(PROFESSIONAL_QUARTERLY_PRODUCT_ID, CLIENT_QUARTERLY_PRODUCT_ID),
+        })
+      }
+      if (label === 'wrong-invoice-link') {
+        const path = `/authorized_payments/${invoiceId}`
+        responses.set(path, { ...responses.get(path), preapproval_id: 'unrelated-preapproval' })
+      }
+      if (label === 'real-seller') responses.set('/users/me', { id: 100, tags: [], site_id: 'MLB' })
+      const before = await read(fixture.attemptPath)
+      await reconcile(fixture.uid, 'professional', () => {})
+      if (label === 'real-seller') responses.set('/users/me', { id: 100, tags: ['test_user'], site_id: 'MLB' })
+      assert.deepEqual(await read(fixture.attemptPath), before, `${label} must not replace the original payer`)
+      assert.deepEqual(await read(fixture.planPath), fixture.plan, `${label} must not alter subscription state`)
+      assert.equal(await read(fixture.historyPath), null)
+      calls.splice(0)
+    }
+
+    const scheduled = await seedBinding('binding-scheduled-client', { targetDatabase: bindingDatabase, kind: 'client' })
+    const scheduledPaymentId = '940000000003'
+    const scheduledInvoiceId = '941000000003'
+    registerInvoice(scheduled, scheduledPaymentId, scheduledInvoiceId, 4)
+    const entered = Promise.withResolvers()
+    const competingEntered = Promise.withResolvers()
+    const release = Promise.withResolvers()
+    const invoicePath = `/authorized_payments/${scheduledInvoiceId}`
+    const scheduledInvoice = responses.get(invoicePath)
+    let invoiceReads = 0
+    responses.set(invoicePath, async () => {
+      if (++invoiceReads === 1) entered.resolve()
+      else competingEntered.resolve()
+      await release.promise
+      return Response.json(scheduledInvoice)
+    })
+    const run = () => runScheduledSubscriptionReconciliation({
+      database: bindingDatabase, now: () => now, log() {},
+    })
+    const first = run()
+    let competingInvoice
+    try {
+      assert.equal(await Promise.race([
+        entered.promise.then(() => 'entered'), first.then(() => 'finished'),
+      ]), 'entered', 'the closed-app queue must verify the exact invoice')
+      assert.deepEqual(await run(), { status: 'busy' }, 'an overlapping worker cannot bind an installment twice')
+      competingInvoice = reconcileRecurringInvoicePage({
+        database: bindingDatabase,
+        preapprovalId: scheduled.preapprovalId,
+        subscription: responses.get(scheduled.preapprovalPath),
+        limit: 4,
+      }).then(() => null, (error) => error)
+      assert.equal(await Promise.race([
+        competingEntered.promise.then(() => 'entered'), competingInvoice.then(() => 'finished'),
+      ]), 'entered', 'an independent reconciliation races on the same provider-confirmed invoice')
+    } finally {
+      release.resolve()
+    }
+    const [scheduledResult, competingResult] = await Promise.all([first, competingInvoice])
+    assert.equal(scheduledResult.checked, 1)
+    assert.ok(scheduledResult.deferred === 0 || competingResult === null, 'one reconciliation must finish')
+    if (competingResult) assert.equal(competingResult.message, 'recovery_payment_not_applied')
+    await assertBound(async (path) => (await bindingDatabase.ref(path).get()).val(), scheduled, scheduledPaymentId)
+    assert.equal((await run()).checked, 0)
+    calls.splice(0)
+    console.log('Staging payer binding Emulator: exact buyer and invoice, one grant, product and seller isolation, legacy and overlapping worker PASS')
+  } finally {
+    installEnvironment(previous)
+    responses.delete('/users/me')
+    await deleteApp(bindingApp)
+  }
+}
+
 try {
   const trial = await seedSubscription('trial', {
     trialStartedAt: now - day,
@@ -424,6 +605,8 @@ try {
   assert.equal(await page(), 0)
   assert.deepEqual(await read(review.planPath), recoveredPlan, 'a corrected payment never extends access twice')
   console.log('Payment identity review Emulator: valid sibling, corrected payment and deduplication PASS')
+  calls.splice(0)
+  await testAutomaticStagingPayerBinding()
 } finally {
   globalThis.fetch = originalFetch
   if (originalToken === undefined) delete process.env.MERCADO_PAGO_ACCESS_TOKEN

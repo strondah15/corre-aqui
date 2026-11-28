@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { registerHooks } from 'node:module'
 import { NextRequest } from 'next/server.js'
 
@@ -10,7 +10,16 @@ const state = globalThis.commercialWebhookTestState
 export function safeText(value) { return String(value || '').trim() }
 export function getCommercialDatabase() {
   state.calls.push('database')
-  return {}
+  return state.database || {}
+}
+export function parseExternalReference(reference) {
+  return reference === state.binding?.attempt.externalReference
+    ? { attemptId: state.binding.attempt.id, userId: state.binding.attempt.userId, targetId: state.binding.attempt.targetId, productId: state.binding.attempt.productId }
+    : null
+}
+export async function readRecurringSandboxSeller(id) {
+  state.calls.push(['seller', id])
+  return { id, tags: ['test_user'] }
 }
 export function verifyMercadoPagoSignature(input) {
   return verifyMercadoPagoHmacSignature({ ...input, secret: process.env.MERCADO_PAGO_WEBHOOK_SECRET })
@@ -27,10 +36,11 @@ export async function mercadoPagoApiRequest(path, { signal }) {
 }
 export async function processRecurringPreapprovalUpdate({ subscription }) {
   state.calls.push(['subscription', subscription.id])
-  return { ok: state.acceptSubscription }
+  return { ok: state.acceptSubscription, payerBindingPending: Boolean(state.binding && !state.binding.attempt.payerBinding.finalPayerId) }
 }
 export async function processApprovedCommercialPayment({ payment, recurringInvoicePreapprovalId }) {
   state.calls.push(['payment', payment.id, recurringInvoicePreapprovalId || null])
+  if (state.binding && !state.binding.attempt.payerBinding.finalPayerId) return { ok: false, reason: 'unbound_test_payment' }
   if (state.paymentLeaseActive) return { ok: true, duplicate: true, retryable: true }
   if (state.processed.has(payment.id)) return { ok: true, duplicate: true }
   state.processed.add(payment.id)
@@ -57,6 +67,8 @@ const timestamp = '1795731300'
 const environment = {
   CORRE_AQUI_ENV: 'staging',
   VERCEL_ENV: 'preview',
+  VERCEL_GIT_COMMIT_REF: 'codex/staging/consolidated-2026-09-07',
+  VERCEL_PROJECT_ID: 'prj_M3gKqNx4UkEzAEgL4pcyoYG5kTUB',
   FIREBASE_ADMIN_PROJECT_ID: 'corre-aqui-staging',
   FIREBASE_ADMIN_CREDENTIALS: '',
   FIREBASE_ADMIN_CLIENT_EMAIL: 'owner@fixture.test',
@@ -186,6 +198,53 @@ try {
   const wrongInvoice = await POST(makeRequest(invoiceId, invoiceQuery, { data: { id: invoiceId } }))
   assert.equal(wrongInvoice.status, 503)
   assert.deepEqual(state.calls.at(-1), ['provider', '/authorized_payments/88'])
+
+  const buyer = 'webhook_fixture@testuser.com'
+  const pin = createHash('sha256').update(`${buyer}\n902`).digest('hex')
+  process.env.MERCADO_PAGO_STAGING_BUYER_EMAIL = buyer
+  process.env.MERCADO_PAGO_STAGING_BUYER_BINDING_SHA256 = pin
+  const attempt = {
+    id: 'native-fixture', userId: 'fake-user', targetId: 'fake-user', productId: 'PROFESSIONAL_QUARTERLY',
+    preapprovalId: preapproval, externalReference: 'native-ref', amountInCents: 4990,
+    currency: 'BRL', collectorId: '100', applicationId: '101', payerId: '901',
+    payerBinding: { initialPayerId: '901', buyerBindingSha256: pin },
+  }
+  state.binding = { attempt }
+  state.database = { ref: (path) => ({
+    get: async () => ({ val: () => path === 'commercialCheckoutAttempts/native-fixture' ? state.binding.attempt : {
+      preapprovalId: preapproval, checkoutAttemptId: attempt.id, recurringProductId: attempt.productId,
+    } }),
+    transaction: async (callback) => {
+      assert.equal(path, 'commercialCheckoutAttempts/native-fixture')
+      state.binding.attempt = callback(state.binding.attempt) ?? state.binding.attempt
+      return { snapshot: { val: () => state.binding.attempt } }
+    },
+  }) }
+  state.provider.set(`/preapproval/${preapproval}`, {
+    id: preapproval, external_reference: attempt.externalReference, payer_id: 902, payer_email: buyer,
+    status: 'authorized', collector_id: 100, application_id: 101,
+    auto_recurring: { frequency: 3, frequency_type: 'months', currency_id: 'BRL', transaction_amount: 49.90 },
+  })
+  state.provider.set('/authorized_payments/88', { id: 88, status: 'processed', preapproval_id: preapproval, payment: { id: 789 } })
+  state.provider.set('/v1/payments/789', {
+    id: 789, status: 'approved', date_approved: '2026-11-27T18:05:00.000Z', payer: { id: 902 },
+    collector_id: 100, application_id: 101, transaction_amount: 49.90, currency_id: 'BRL',
+  })
+  const beforeSignature = state.calls.length
+  assert.equal((await POST(makeRequest(invoiceId, invoiceQuery, { data: { id: invoiceId } }, (value) => value + '00'))).status, 401)
+  assert.equal(state.calls.length, beforeSignature, 'uma fatura sem HMAC valido nao inicia a recuperacao')
+  const recovered = await POST(makeRequest(invoiceId, invoiceQuery, { data: { id: invoiceId } }))
+  assert.equal(recovered.status, 200)
+  assert.equal((await recovered.json()).paymentProcessed, true)
+  assert.equal(state.binding.attempt.payerId, '901')
+  assert.equal(state.binding.attempt.payerBinding.finalPayerId, '902')
+  assert.equal(state.binding.attempt.payerBinding.paymentId, '789')
+  const bindingWitness = state.binding.attempt.payerBinding
+  await POST(makeRequest(invoiceId, invoiceQuery, { data: { id: invoiceId } }))
+  assert.strictEqual(state.binding.attempt.payerBinding, bindingWitness)
+  assert.equal(state.processed.has(789), true)
+  delete state.binding
+  delete state.database
 
   state.provider.set('/v1/payments/123', Object.assign(new Error('upstream-sensitive-detail'), { status: 429 }))
   const upstreamFailure = await POST(makeRequest('123', paymentQuery, payment))

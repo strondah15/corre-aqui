@@ -33,6 +33,12 @@ import {
   shouldApplyProviderUpdate,
   validateRecurringPreapproval,
 } from '@/lib/recurringSubscriptions'
+import {
+  createRecurringPayerBinding,
+  getRecurringPayerBindingSubmissionPin,
+  getVerifiedRecurringPayerId,
+  validateRecurringPayerBindingCandidate,
+} from '@/lib/recurringPayerBinding'
 import { commercialAuditKey } from '@/lib/commercialAuditKey'
 import { verifyMercadoPagoHmacSignature } from '@/lib/mercadoPagoWebhookSignature'
 import { assessMercadoPagoCheckoutConfiguration, resolveMercadoPagoRecurringBuyer } from '@/lib/commercialRuntimeConfig'
@@ -438,6 +444,22 @@ export async function mercadoPagoApiRequest(path, { method = 'GET', body, signal
   return data
 }
 
+export async function readRecurringSandboxSeller(collectorId, signal) {
+  if (!isScheduledSubscriptionStaging()) return null
+  const response = await globalThis.fetch('https://api.mercadolibre.com/users/me', {
+    headers: { Authorization: `Bearer ${safeText(process.env.MERCADO_PAGO_ACCESS_TOKEN)}`, Accept: 'application/json' },
+    cache: 'no-store',
+    redirect: 'error',
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(9_000)]) : AbortSignal.timeout(9_000),
+  })
+  if (!response.ok) {
+    throw Object.assign(new Error('mercado_pago_seller_unavailable'), { providerHttpStatus: response.status })
+  }
+  const seller = await response.json()
+  return safeText(seller?.id) === safeText(collectorId) && Array.isArray(seller?.tags)
+    && seller.tags.includes('test_user') ? seller : null
+}
+
 async function findRecurringPreapprovalByReference(externalReference) {
   const data = await mercadoPagoApiRequest(`/preapproval/search?q=${encodeURIComponent(externalReference)}`)
   return Array.isArray(data?.results)
@@ -463,7 +485,14 @@ async function loadReusableRecurringCheckout({ database, lock, product, userId }
   }
   const subscription = await mercadoPagoApiRequest(`/preapproval/${encodeURIComponent(preapprovalId)}`)
   const validation = validateRecurringPreapproval({ subscription, attempt, product })
-  if (!validation.valid) throw pendingRecurringCheckoutError()
+  if (!validation.valid) {
+    const closedWithVerifiedBuyer = !attempt.payerBinding?.finalPayerId
+      && isTerminalRecurringCancellation(attempt.providerStatus)
+      && isTerminalRecurringCancellation(subscription?.status)
+      && validateRecurringPayerBindingCandidate({ attempt, subscription, product, allowTerminal: true })
+      && await readRecurringSandboxSeller(attempt.collectorId)
+    if (!closedWithVerifiedBuyer) throw pendingRecurringCheckoutError()
+  }
   if (isTerminalRecurringCancellation(subscription?.status)) return null
   assertCurrentRecurringCheckoutPrice(attempt, product)
   const checkoutUrl = safeText(subscription?.init_point || subscription?.sandbox_init_point || lock?.checkoutUrl)
@@ -649,7 +678,8 @@ export async function createMercadoPagoRecurringCheckout({
     }
 
     const now = Date.now()
-    const firstChargeAt = subscriptionCheckoutFirstChargeAt({ currentPlan, kind, now })
+    let firstChargeAt = asTimestamp(attempt.firstChargeAt) || subscriptionCheckoutFirstChargeAt({ currentPlan, kind, now })
+    let submissionPin = safeText(attempt.buyerBindingSubmissionPin)
     let subscription = safeText(attempt.preapprovalId)
       ? await mercadoPagoApiRequest(`/preapproval/${encodeURIComponent(attempt.preapprovalId)}`)
       : await findRecurringPreapprovalByReference(attempt.externalReference)
@@ -658,6 +688,7 @@ export async function createMercadoPagoRecurringCheckout({
       if (subscription || recurringCheckoutAmountInCents(attempt, product.id) !== product.amountInCents) {
         if (attempt.providerSubmissionState !== 'unsubmitted' && !subscription) throw pendingRecurringCheckoutError()
         attempt = await createLockedRecurringAttempt({ database, lockRef, userId, product })
+        firstChargeAt = subscriptionCheckoutFirstChargeAt({ currentPlan, kind, now })
       }
       const payload = buildRecurringPreapprovalPayload({
         product,
@@ -671,12 +702,18 @@ export async function createMercadoPagoRecurringCheckout({
       const attemptRef = database.ref(`commercialCheckoutAttempts/${attempt.id}`)
       // The search can lag a successful POST. Mark the attempt before sending
       // it so a timeout or lost response cannot create a second subscription.
-      await attemptRef.update({ providerSubmissionState: 'submitted', providerSubmissionAt: Date.now(), firstChargeAt })
+      submissionPin = getRecurringPayerBindingSubmissionPin(payerEmail)
+      await attemptRef.update({
+        providerSubmissionState: 'submitted',
+        providerSubmissionAt: Date.now(),
+        firstChargeAt,
+        buyerBindingSubmissionPin: submissionPin || null,
+      })
       try {
         subscription = await mercadoPagoApiRequest('/preapproval', { method: 'POST', body: payload })
       } catch (error) {
         if ([400, 401, 403, 422].includes(error?.providerHttpStatus)) {
-          await attemptRef.update({ providerSubmissionState: 'unsubmitted', providerSubmissionAt: null })
+          await attemptRef.update({ providerSubmissionState: 'unsubmitted', providerSubmissionAt: null, firstChargeAt: null, buyerBindingSubmissionPin: null })
         }
         throw error
       }
@@ -700,17 +737,22 @@ export async function createMercadoPagoRecurringCheckout({
     }
 
     const preapprovalId = safeText(subscription.id)
+    const payerBinding = submissionPin && createRecurringPayerBinding({ subscription, payerEmail })
+    if (submissionPin && payerBinding?.buyerBindingSha256 !== submissionPin) throw pendingRecurringCheckoutError()
     const providerData = cleanFirebasePayload({
       preapprovalId,
       collectorId: safeText(subscription.collector_id),
       applicationId: safeText(subscription.application_id),
-      payerId: safeText(subscription.payer_id),
+      payerId: attempt.payerBinding?.initialPayerId || safeText(subscription.payer_id),
       providerStatus: safeText(subscription.status),
       checkoutUrl,
       firstChargeAt,
       updatedAt: Date.now(),
     })
-    await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update(providerData)
+    await database.ref(`commercialCheckoutAttempts/${attempt.id}`).update({
+      ...providerData,
+      ...(payerBinding && { payerBinding, buyerBindingSubmissionPin: null }),
+    })
     await database.ref().update({
       [`commercialCheckoutAttemptsBySubscription/${referenceKey(preapprovalId)}`]: attempt.id,
       ...(isScheduledSubscriptionStaging() && { [`subscriptionReconciliationSchedule/inbox/${attempt.id}`]: true }),
@@ -1094,12 +1136,14 @@ async function activateQuarterlySubscription({ database, attempt, payment }) {
     const canceledAt = asTimestamp(plan.canceledAt || plan.providerLastModifiedAt)
     const afterCancellation = isTerminalRecurringCancellation(plan.providerStatus)
       && (!approvedAt || !canceledAt || approvedAt > canceledAt)
-    obsoletePayment = (Boolean(plan.preapprovalId) && safeText(plan.preapprovalId) !== safeText(attempt.preapprovalId))
+    obsoletePayment = ((Boolean(plan.preapprovalId) || Boolean(attempt.payerBinding))
+      && safeText(plan.preapprovalId) !== safeText(attempt.preapprovalId))
+      || (Boolean(attempt.payerBinding) && plan.checkoutAttemptId !== attempt.id)
       || ['refunded', 'charged_back'].includes(processedPayments[paymentKey]?.status)
       || afterCancellation
     duplicatePayment = false
     earlierPaidPeriod = false
-    if (obsoletePayment) return undefined
+    if (obsoletePayment) return attempt.payerBinding && current === null ? null : undefined
     const currentExpiresAt = asTimestamp(plan.expiresAt)
     if (processedPayments[paymentKey]?.paymentId === paymentId || safeText(plan.paymentId) === paymentId) {
       duplicatePayment = true
@@ -1141,7 +1185,7 @@ async function activateQuarterlySubscription({ database, attempt, payment }) {
     })
   })
 
-  if (!result.committed) {
+  if (!result.committed || obsoletePayment) {
     if (!obsoletePayment) throw new Error('subscription_transaction_failed')
     await writeSubscriptionPaymentHistory({ database, attempt, payment })
     return { activated: false, reason: 'obsolete_subscription_payment' }
@@ -1396,9 +1440,13 @@ export async function processApprovedCommercialPayment({ database, payment, recu
   )
   const providerApplicationMismatch = recurring && safeText(payment?.application_id)
     && safeText(attempt.applicationId) && safeText(attempt.applicationId) !== safeText(payment.application_id)
-  const providerPayerMismatch = recurring && safeText(payment?.payer?.id)
-    && safeText(attempt.payerId) && safeText(attempt.payerId) !== safeText(payment.payer.id)
-  if (invoiceMismatch || providerApplicationMismatch || providerPayerMismatch) {
+  const verifiedPayerId = getVerifiedRecurringPayerId(attempt)
+  const paymentPayerId = safeText(payment?.payer?.id)
+  const providerPayerMismatch = recurring && paymentPayerId && verifiedPayerId && verifiedPayerId !== paymentPayerId
+  const payerProofMissing = recurring && status === 'approved' && attempt.payerBinding && (
+    !isScheduledSubscriptionStaging() || !attempt.payerBinding.finalPayerId || !paymentPayerId || paymentPayerId !== verifiedPayerId
+  )
+  if (invoiceMismatch || providerApplicationMismatch || providerPayerMismatch || payerProofMissing) {
     const seenAt = Date.now()
     const firstSeenAt = ledgerEntry.identityReview?.firstSeenAt
       || (ledgerEntry.reason === PAYMENT_SUBSCRIPTION_IDENTITY_MISMATCH ? ledgerEntry.createdAt : seenAt)
@@ -1411,7 +1459,7 @@ export async function processApprovedCommercialPayment({ database, payment, recu
           lastSeenAt: seenAt,
           invoice: Boolean(invoiceMismatch),
           application: Boolean(providerApplicationMismatch),
-          payer: Boolean(providerPayerMismatch),
+          payer: Boolean(providerPayerMismatch || payerProofMissing),
         },
       }),
       updatedAt: seenAt,
@@ -1533,7 +1581,9 @@ export async function processApprovedCommercialPayment({ database, payment, recu
   }
 }
 
-export async function processRecurringPreapprovalUpdate({ database, subscription, force = false }) {
+export async function processRecurringPreapprovalUpdate({
+  database, subscription, force = false, requireCurrent = false, cancellationPayerId = '',
+}) {
   const externalReference = safeText(subscription?.external_reference)
   const parsed = parseExternalReference(externalReference)
   if (!parsed) return { ok: false, reason: 'invalid_external_reference' }
@@ -1548,29 +1598,43 @@ export async function processRecurringPreapprovalUpdate({ database, subscription
   ) return { ok: false, reason: 'attempt_identity_mismatch' }
   const product = getCommercialProduct(attempt.productId)
   if (!product || !isRecurringSubscriptionProduct(product.id)) return { ok: false, reason: 'invalid_recurring_product' }
-  const validation = validateRecurringPreapproval({ subscription, attempt, product })
+  const providerStatus = safeText(subscription.status).toLowerCase()
+  const validatedCancellation = force && cancellationPayerId && isTerminalRecurringCancellation(providerStatus)
+  if (attempt.payerBinding?.finalPayerId != null && !getVerifiedRecurringPayerId(attempt)) {
+    return { ok: false, reason: 'payer_binding_invalid' }
+  }
+  if (attempt.payerBinding && !attempt.payerBinding.finalPayerId && !validatedCancellation
+    && (providerStatus === 'authorized' || isTerminalRecurringCancellation(providerStatus))) {
+    if (validateRecurringPayerBindingCandidate({ attempt, subscription, product, allowTerminal: true })) {
+      return { ok: true, updated: false, payerBindingPending: true, providerStatus }
+    }
+    return { ok: false, reason: 'payer_mismatch' }
+  }
+  const expected = validatedCancellation && !attempt.payerBinding?.finalPayerId
+    ? { ...attempt, payerId: cancellationPayerId } : attempt
+  const validation = validateRecurringPreapproval({ subscription, attempt: expected, product })
   if (!validation.valid) return { ok: false, reason: validation.errors[0] || 'invalid_recurring_preapproval' }
 
   const kind = subscriptionKindForProduct(product.id)
   const now = Date.now()
-  const providerStatus = safeText(subscription.status).toLowerCase()
   if (!['pending', 'authorized', 'paused', 'canceled', 'cancelled'].includes(providerStatus)) {
     return { ok: false, reason: 'invalid_provider_status' }
   }
   const subscriptionRef = database.ref(`users/${attempt.userId}/subscriptions/${kind}`)
+  const strictCurrent = force || requireCurrent || Boolean(attempt.payerBinding)
   let ignoredOutOfOrder = false
   let duplicate = false
   const incomingModifiedAt = asTimestamp(subscription.last_modified || subscription.date_created)
   const result = await subscriptionRef.transaction((current) => {
     const plan = current && typeof current === 'object' ? current : {}
-    const matchesCurrent = safeText(plan.preapprovalId) === safeText(subscription.id)
-      || (!force && !plan.preapprovalId)
+    const matchesCurrent = (safeText(plan.preapprovalId) === safeText(subscription.id)
+      && (!attempt.payerBinding || plan.checkoutAttemptId === attempt.id)) || (!strictCurrent && !plan.preapprovalId)
     const forceConfirmedCancellation = force && isTerminalRecurringCancellation(providerStatus)
     ignoredOutOfOrder = !matchesCurrent || (!forceConfirmedCancellation && !shouldApplyProviderUpdate(plan, subscription))
     duplicate = false
     // RTDB may first provide null from local cache. Compare without creating
     // a missing plan, allowing the transaction to retry against a stored plan.
-    if (ignoredOutOfOrder) return force && current === null ? null : undefined
+    if (ignoredOutOfOrder) return strictCurrent && current === null ? null : undefined
     duplicate = !force && Boolean(plan.preapprovalId)
       && plan.providerStatus === providerStatus
       && incomingModifiedAt === asTimestamp(plan.providerLastModifiedAt)
@@ -1612,7 +1676,7 @@ export async function processRecurringPreapprovalUpdate({ database, subscription
       providerStatus,
       collectorId: safeText(subscription.collector_id),
       applicationId: safeText(subscription.application_id),
-      ...(safeText(subscription.payer_id) ? { payerId: safeText(subscription.payer_id) } : {}),
+      ...(!attempt.payerBinding && safeText(subscription.payer_id) ? { payerId: safeText(subscription.payer_id) } : {}),
       updatedAt: now,
     }))
   }
@@ -1703,8 +1767,10 @@ async function cancelOwnedRecurringSubscription({
 }) {
   const product = getCommercialProduct(productId)
   const providerPath = `/preapproval/${encodeURIComponent(preapprovalId)}`
+  let cancellationPayerId = ''
   const invalidProviderReason = (subscription) => {
-    const validation = validateRecurringPreapproval({ subscription, attempt, product })
+    const expected = cancellationPayerId ? { ...attempt, payerId: cancellationPayerId } : attempt
+    const validation = validateRecurringPreapproval({ subscription, attempt: expected, product })
     if (!validation.valid) return `invalid_recurring_preapproval:${validation.errors.join(',')}`
     if (safeText(subscription.id) !== preapprovalId) return 'preapproval_id_mismatch'
     return ''
@@ -1717,6 +1783,18 @@ async function cancelOwnedRecurringSubscription({
       status: 502,
       providerHttpStatus: cause?.providerHttpStatus,
     })
+  }
+  // Cancelling a verified authorization does not establish entitlement or
+  // finalize its payer. The first charge still needs an official invoice.
+  if (attempt.payerBinding && !attempt.payerBinding.finalPayerId
+    && (providerSubscription?.status === 'authorized' || isTerminalRecurringCancellation(providerSubscription?.status))) {
+    const expectedPayer = validateRecurringPayerBindingCandidate({
+      attempt, subscription: providerSubscription, product, allowTerminal: true,
+    })
+    if (!expectedPayer || !await readRecurringSandboxSeller(attempt.collectorId)) {
+      throw cancellationConflict('subscription_ownership_mismatch')
+    }
+    cancellationPayerId = expectedPayer
   }
   const invalidInitialReason = invalidProviderReason(providerSubscription)
   if (invalidInitialReason) {
@@ -1762,6 +1840,7 @@ async function cancelOwnedRecurringSubscription({
     database,
     subscription: providerSubscription,
     force: true,
+    cancellationPayerId,
   })
   if (!result.ok) {
     const error = new Error(result.reason || 'subscription_cancellation_sync_failed')

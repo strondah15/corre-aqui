@@ -33,7 +33,7 @@ export function hasDueRecurringInvoices(plan, provider, now = Date.now()) {
 }
 
 export async function reconcileRecurringInvoicePage({
-  database, preapprovalId, signal, offset = 0, limit = MAX_INVOICES, checkedPaymentId,
+  database, preapprovalId, subscription, signal, offset = 0, limit = MAX_INVOICES, checkedPaymentId,
 }) {
   const query = new URLSearchParams({ preapproval_id: preapprovalId, limit: String(limit) })
   if (offset) query.set('offset', String(offset))
@@ -58,7 +58,7 @@ export async function reconcileRecurringInvoicePage({
     if (!/^\d{1,30}$/.test(paymentId) || seen.has(paymentId) || paymentId === checkedPaymentId) continue
     seen.add(paymentId)
     signal?.throwIfAborted()
-    const applied = await processRecurringInvoicePayment({ database, invoice, preapprovalId, signal })
+    const applied = await processRecurringInvoicePayment({ database, invoice, preapprovalId, subscription, signal })
     if (applied?.reason === 'payment_subscription_identity_mismatch') {
       identityReviewPending = true
       continue
@@ -125,9 +125,12 @@ async function reconcileKind({ database, uid, kind, signal }) {
   const context = await readRecurringReconciliationContext({ database, uid, kind })
   if (!context || !await consume(database, uid, `reconcile_${kind}`, 20_000)) return
   const { provider, state } = await reconcileRecurringProviderState({ database, context, signal })
-  if (state.ignoredOutOfOrder || !hasDueRecurringInvoices(context.plan, provider)
+  if (state.ignoredOutOfOrder || (!state.payerBindingPending && !hasDueRecurringInvoices(context.plan, provider))
     || !await consume(database, uid, `invoices_${kind}`, 5 * 60_000)) return
-  await reconcileRecurringInvoicePage({ database, preapprovalId: context.preapprovalId, signal })
+  await reconcileRecurringInvoicePage({
+    database, preapprovalId: context.preapprovalId,
+    subscription: state.payerBindingPending ? provider : null, signal,
+  })
 }
 
 export async function reconcileOwnedSubscriptions({ database, uid, kind, signal, log = console.warn }) {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { registerHooks } from 'node:module'
 
@@ -328,6 +329,42 @@ try {
   })
 } finally {
   globalThis.fetch = originalFetch
+}
+
+{
+  const database = createMemoryDatabase()
+  const input = { ...checkoutInput, database }
+  const pin = createHash('sha256').update(`${sandboxBuyerEmail}\n790`).digest('hex')
+  let providerRecord = null
+  let posts = 0
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes('/preapproval/search')) return Response.json({ results: providerRecord ? [providerRecord] : [] })
+    assert.equal(options.method, 'POST')
+    posts += 1
+    const body = JSON.parse(options.body)
+    assert.equal(database.read('commercialCheckoutAttempts/push-1/buyerBindingSubmissionPin'), pin)
+    providerRecord = {
+      id: 'pending-after-timeout', external_reference: body.external_reference, status: 'pending', collector_id: 321,
+      application_id: 654, auto_recurring: body.auto_recurring, init_point: 'https://www.mercadopago.com.br/subscriptions/checkout',
+    }
+    throw new Error('simulated failure after provider accepted')
+  }
+  try {
+    await withEnvironment({ ...stagingEnvironment(), MERCADO_PAGO_STAGING_BUYER_BINDING_SHA256: pin }, async () => {
+      await assert.rejects(createMercadoPagoRecurringCheckout(input))
+      await assert.rejects(createMercadoPagoRecurringCheckout(input), { message: 'subscription_checkout_pending_confirmation' })
+      providerRecord = { ...providerRecord, payer_id: 789 }
+      const recovered = await createMercadoPagoRecurringCheckout(input)
+      assert.equal(recovered.checkout.preapprovalId, providerRecord.id)
+      assert.deepEqual(database.read('commercialCheckoutAttempts/push-1/payerBinding'), {
+        initialPayerId: '789', buyerBindingSha256: pin,
+      })
+      assert.equal(posts, 1)
+      assert.ok(!JSON.stringify(database.dump()).includes(sandboxBuyerEmail))
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 }
 
 globalThis.fetch = async () => Response.json({
@@ -772,6 +809,50 @@ for (const { name, env, steps, expectedStatus, error, alreadyCanceled = false } 
 
 assert.equal(getSubscriptionApiError(new Error('invalid_recurring_preapproval:amount_mismatch'), 'cancel').code, 'subscription_provider_mismatch')
 assert.equal(getSubscriptionApiError(new Error('subscription_provider_read_unavailable'), 'cancel').status, 502)
+
+for (const finalPayer of [790, 791]) {
+  const database = createMemoryDatabase(originalCancelData)
+  const attemptPath = 'commercialCheckoutAttempts/attempt-cancel'
+  const planPath = 'users/cancel-user/subscriptions/professional'
+  const pin = createHash('sha256').update(`${sandboxBuyerEmail}\n790`).digest('hex')
+  await database.ref(attemptPath).update({ payerId: '789', payerBinding: { initialPayerId: '789', buyerBindingSha256: pin } })
+  await database.ref(planPath).update({ checkoutAttemptId: 'attempt-cancel' })
+  const attempt = database.read(attemptPath)
+  let puts = 0
+  globalThis.fetch = async (url, options) => {
+    if (String(url) === 'https://api.mercadolibre.com/users/me') {
+      return Response.json({ id: 321, tags: ['test_user'] })
+    }
+    assert.ok(String(url).endsWith('/preapproval/preapproval-cancel'))
+    if (options.method === 'PUT') puts += 1
+    return Response.json({
+      id: attempt.preapprovalId, external_reference: attempt.externalReference,
+      status: options.method === 'PUT' ? 'cancelled' : 'authorized',
+      last_modified: new Date().toISOString(),
+      collector_id: 321, application_id: 654, payer_id: finalPayer, payer_email: sandboxBuyerEmail,
+      auto_recurring: { frequency: 3, frequency_type: 'months', transaction_amount: 50, currency_id: 'BRL' },
+    })
+  }
+  try {
+    await withEnvironment({ ...stagingEnvironment(), MERCADO_PAGO_STAGING_BUYER_BINDING_SHA256: pin }, async () => {
+      const request = { database, userId: 'cancel-user', kind: 'professional' }
+      if (finalPayer !== 790) {
+        await assert.rejects(cancelMercadoPagoRecurringSubscription(request), { message: 'subscription_ownership_mismatch' })
+        assert.equal(puts, 0, 'a conflicting buyer cannot change the provider authorization')
+        return
+      }
+      assert.equal((await cancelMercadoPagoRecurringSubscription(request)).canceled, true)
+      assert.equal(puts, 1)
+      assert.equal(database.read(`${planPath}/expiresAt`), paidUntil)
+      assert.equal(database.read(`${planPath}/autoRenew`), false)
+    })
+    assert.deepEqual(database.read(`${attemptPath}/payerBinding`), attempt.payerBinding,
+      'canceling is separate from binding a buyer or granting a benefit')
+    assert.equal(database.read(`${attemptPath}/payerId`), '789')
+  } finally {
+    globalThis.fetch = cancelFetch
+  }
+}
 
 for (const scenario of ['concurrent calls', 'replacement before PUT', 'replacement during PUT', 'deletion during PUT', 'paid renewal during PUT']) {
   const database = createMemoryDatabase(originalCancelData)

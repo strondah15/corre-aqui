@@ -93,10 +93,11 @@ async function processJob({ database, id, job, signal, now }) {
   const knownStatus = state.ignoredOutOfOrder ? plan.providerStatus : state.providerStatus
   let invoiceOffset = 0
   const checkedPaymentId = await reconcilePaidInstallment({ database, context, signal })
-  if (!state.ignoredOutOfOrder && hasDueRecurringInvoices(plan, provider, now)) {
+  if (!state.ignoredOutOfOrder && (state.payerBindingPending || hasDueRecurringInvoices(plan, provider, now))) {
     invoiceOffset = await reconcileRecurringInvoicePage({
       database,
       preapprovalId,
+      subscription: state.payerBindingPending ? provider : null,
       signal,
       offset: job.invoiceOffset || 0,
       limit: job.failures ? 1 : invoicePageSize,
