@@ -1,7 +1,5 @@
 // src/lib/pedidos.js
-import { ref, push, update, serverTimestamp } from './firebaseDebug'
-import { database } from './firebase' // ajuste se seu firebase estiver em outro caminho
-import { synchronizePublicRequest } from './pedidoProjectionClient'
+import { createAuthorizedClientOrder } from './clientOrders'
 
 export const toNum = (v) => {
   const n = Number(v)
@@ -57,10 +55,7 @@ export async function criarPedido({ draft = {}, mapRef, meuId, meuNome }) {
 
   const local = (lat != null && lng != null) ? { lat, lng } : null
 
-  // 2) gera ID primeiro para UI otimista
-  const novoRef = push(ref(database, 'pedidos'))
-  const payload = {
-    id: novoRef.key,
+  const draftPayload = {
     criador: { id: meuId || 'anon', nome: meuNome || 'Anônimo' },
     titulo: (draft.titulo || '(sem título)').trim(),
     tipo: (draft.tipo || 'outro').toLowerCase(),
@@ -71,20 +66,17 @@ export async function criarPedido({ draft = {}, mapRef, meuId, meuNome }) {
     urgencia: (draft.urgencia || 'normal').toLowerCase(),
     local,
     status: 'aberto',
-    criadoEm: serverTimestamp?.() || Date.now(),
   }
 
-  // 3) UI OTIMISTA: avisa o mapa imediatamente
+  let payload = null
   try {
-    window?.dispatchEvent?.(new CustomEvent('correaqui:pedido-criado', {
-      detail: { pedido: payload, otimista: true }
-    }))
-  } catch {}
+    payload = await createAuthorizedClientOrder(draftPayload)
 
-  try {
-    // 4) grava no Firebase
-    await update(ref(database, `pedidos/${payload.id}`), payload)
-    await synchronizePublicRequest(payload.id)
+    try {
+      window?.dispatchEvent?.(new CustomEvent('correaqui:pedido-criado', {
+        detail: { pedido: payload, otimista: false }
+      }))
+    } catch {}
 
     // 5) confirma (opcional)
     try {
@@ -98,7 +90,7 @@ export async function criarPedido({ draft = {}, mapRef, meuId, meuNome }) {
     // 6) erro → remove do otimista
     try {
       window?.dispatchEvent?.(new CustomEvent('correaqui:pedido-erro', {
-        detail: { id: payload.id, error: String(error) }
+        detail: { id: payload?.id || '', error: String(error) }
       }))
     } catch {}
     throw error

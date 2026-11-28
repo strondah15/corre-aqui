@@ -2,12 +2,14 @@
 
 import { auth } from './firebase'
 import {
+  equalTo,
   get as firebaseGet,
   limitToLast,
   onDisconnect as firebaseOnDisconnect,
   onValue as firebaseOnValue,
   push as firebasePush,
   query,
+  orderByChild,
   ref as firebaseRef,
   remove as firebaseRemove,
   runTransaction as firebaseRunTransaction,
@@ -90,16 +92,20 @@ function logSuccess(operation, type, target, extra = {}) {
 }
 
 function logFailure(operation, type, target, error, extra = {}) {
+  const authState = getAuthState()
   if (!DEBUG_DATABASE) {
     console.error('[RTDB] operation:error', {
       operation,
       type,
+      path: getPath(target),
+      uid: authState.uid,
+      authenticated: authState.authenticated,
+      authStatus: authState.authStatus,
       code: error?.code || null,
       message: error?.message || String(error),
     })
     return
   }
-  const authState = getAuthState()
   console.error('[RTDB DEBUG] operation:error', {
     operation,
     type,
@@ -114,6 +120,26 @@ function logFailure(operation, type, target, error, extra = {}) {
     extra,
     callSite: getCallSite(),
     error: getErrorDetails(error),
+  })
+}
+
+function isPermissionDenied(error) {
+  return String(error?.code || '').toUpperCase().includes('PERMISSION_DENIED')
+}
+
+function logExpectedPermissionDenied(operation, type, target, error, extra = {}) {
+  if (!DEBUG_DATABASE) return
+  const authState = getAuthState()
+  console.info('[RTDB DEBUG] operation:stale-index-skip', {
+    operation,
+    type,
+    path: getPath(target),
+    uid: authState.uid,
+    authenticated: authState.authenticated,
+    authStatus: authState.authStatus,
+    code: error?.code || null,
+    message: error?.message || String(error),
+    extra,
   })
 }
 
@@ -176,6 +202,27 @@ export function onValue(target, callback, cancelCallbackOrListenOptions, options
 
 export function get(target) {
   return withLoggedPromise('get', 'read', target, () => firebaseGet(target))
+}
+
+export async function getIfReadable(target, extra = {}) {
+  logStart('get', 'read', target, { ...extra, expectedPermissionDenied: true })
+
+  try {
+    const snapshot = await firebaseGet(target)
+    logSuccess('get', 'read', target, {
+      ...extra,
+      expectedPermissionDenied: true,
+      exists: snapshot.exists(),
+    })
+    return snapshot
+  } catch (error) {
+    if (isPermissionDenied(error)) {
+      logExpectedPermissionDenied('get', 'read', target, error, extra)
+      return null
+    }
+    logFailure('get', 'read', target, error, extra)
+    throw error
+  }
 }
 
 export function set(target, value) {
@@ -247,4 +294,4 @@ export function onDisconnect(target) {
   }
 }
 
-export { limitToLast, query, serverTimestamp }
+export { equalTo, limitToLast, orderByChild, query, serverTimestamp }

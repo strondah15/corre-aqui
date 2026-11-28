@@ -26,6 +26,8 @@ import {
   projectPublicProfileForWrite,
   safePublicText,
 } from '@/lib/publicWorkProfile'
+import { resolveLegacyAccountState } from '@/lib/legacyAccountState'
+import { activateProfessionalTrial } from '@/lib/subscriptionClient'
 
 const modes = {
   cliente: {
@@ -111,12 +113,12 @@ function ModeCard({ id, mode, selected, onSelect, tutorialTarget }) {
       whileHover={{ y: -4 }}
       whileTap={{ scale: 0.98 }}
       className={[
-        'group relative flex min-h-[280px] flex-col overflow-hidden rounded-[22px] border bg-white p-1.5 text-left shadow-[0_18px_45px_rgba(80,83,160,0.12)] backdrop-blur-xl transition sm:grid sm:min-h-[184px] sm:grid-cols-[150px_minmax(0,1fr)] sm:rounded-[28px] sm:p-3',
+        'group relative flex min-h-[248px] min-w-0 flex-col overflow-hidden rounded-[22px] border bg-white p-1.5 text-left shadow-[0_18px_45px_rgba(80,83,160,0.12)] backdrop-blur-xl transition dark:border-white/10 dark:bg-slate-900 dark:shadow-[0_18px_45px_rgba(2,6,23,0.38)] min-[390px]:min-h-[258px] sm:grid sm:min-h-[184px] sm:grid-cols-[150px_minmax(0,1fr)] sm:rounded-[28px] sm:p-3',
         selected
           ? isClient
-            ? 'border-violet-400 ring-4 ring-violet-100'
-            : 'border-orange-400 ring-4 ring-orange-100'
-          : 'border-white/85 hover:border-blue-200',
+            ? 'border-violet-400 ring-4 ring-violet-100 dark:border-violet-400 dark:ring-violet-500/20'
+            : 'border-orange-400 ring-4 ring-orange-100 dark:border-orange-400 dark:ring-orange-500/20'
+          : 'border-white/85 hover:border-blue-200 dark:border-white/10 dark:hover:border-blue-400/50',
       ].join(' ')}
       aria-pressed={selected}
       aria-label={mode.title}
@@ -135,8 +137,8 @@ function ModeCard({ id, mode, selected, onSelect, tutorialTarget }) {
       ].join(' ')} />
 
       <div className={[
-        'relative h-[130px] min-h-[130px] overflow-hidden rounded-[17px] bg-[linear-gradient(145deg,rgba(255,255,255,.96),rgba(241,235,255,.92))] sm:row-span-1 sm:h-full sm:min-h-[158px] sm:rounded-[21px]',
-        isClient ? '' : 'bg-[linear-gradient(145deg,rgba(255,255,255,.96),rgba(255,241,225,.94))]',
+        'relative h-[108px] min-h-[108px] overflow-hidden rounded-[17px] bg-[linear-gradient(145deg,rgba(255,255,255,.96),rgba(241,235,255,.92))] dark:bg-[linear-gradient(145deg,rgba(30,41,59,.98),rgba(48,35,75,.96))] min-[390px]:h-[118px] min-[390px]:min-h-[118px] sm:row-span-1 sm:h-full sm:min-h-[158px] sm:rounded-[21px]',
+        isClient ? '' : 'bg-[linear-gradient(145deg,rgba(255,255,255,.96),rgba(255,241,225,.94))] dark:bg-[linear-gradient(145deg,rgba(30,41,59,.98),rgba(75,45,24,.94))]',
       ].join(' ')}>
         <PinArtwork isClient={isClient} />
         <span className={[
@@ -150,8 +152,8 @@ function ModeCard({ id, mode, selected, onSelect, tutorialTarget }) {
           'mb-1 w-fit rounded-full px-1.5 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] sm:mb-1.5 sm:px-2 sm:text-[9px] sm:tracking-[0.12em]',
           isClient ? 'bg-violet-50 text-violet-700' : 'bg-orange-50 text-orange-700',
         ].join(' ')}>{isClient ? 'Cliente' : 'Corre / Pro'}</span>
-        <h2 className="min-h-[42px] text-[20px] font-black leading-[1.08] tracking-tight text-[#102451] sm:min-h-0 sm:text-xl">{mode.title}</h2>
-        <p className="mt-1 line-clamp-3 max-w-none overflow-hidden text-[12px] font-semibold leading-[1.3] text-slate-600 sm:max-w-[240px] sm:text-xs sm:leading-relaxed">{mode.description}</p>
+        <h2 className="min-h-[40px] text-[19px] font-black leading-[1.08] tracking-tight text-[#102451] dark:text-white sm:min-h-0 sm:text-xl">{mode.title}</h2>
+        <p className="mt-1 line-clamp-3 max-w-none overflow-hidden text-[11px] font-semibold leading-[1.3] text-slate-600 dark:text-slate-300 min-[390px]:text-[12px] sm:max-w-[240px] sm:text-xs sm:leading-relaxed">{mode.description}</p>
         <div className="mt-auto flex min-h-[18px] flex-wrap gap-1 pt-2 sm:mt-3 sm:pt-0">
           {mode.tags.map((tag) => (
             <span key={tag} className={[
@@ -213,6 +215,10 @@ function pickProfessionFromSources(publicProfile = {}, accountData = {}) {
 
 function getInitialWorkForm(accountData = {}, authUser = null, publicProfile = {}) {
   const profile = accountData?.profile || {}
+  const accountState = resolveLegacyAccountState({
+    uid: authUser?.uid,
+    sources: [accountData, publicProfile],
+  })
   const profession = pickProfessionFromSources(publicProfile, accountData)
   const categoria =
     findProfessionById(profession.professionId)?.categoryId ||
@@ -226,11 +232,9 @@ function getInitialWorkForm(accountData = {}, authUser = null, publicProfile = {
 
   return {
     nome: safePublicText(publicProfile?.nome || accountData?.nome || profile?.nome || authUser?.displayName),
-    profileType:
-      publicProfile?.profileType === PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL ||
-      publicProfile?.isProfissional === true
-        ? PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
-        : PUBLIC_WORK_PROFILE_TYPES.CORRE,
+    profileType: accountState.isProfissional
+      ? PUBLIC_WORK_PROFILE_TYPES.PROFESSIONAL
+      : PUBLIC_WORK_PROFILE_TYPES.CORRE,
     categoriaId: safePublicText(categoria),
     professionId: profession.professionId,
     professionName: profession.professionName,
@@ -926,6 +930,9 @@ export default function ModoGate() {
 
   useEffect(() => {
     if (stage !== 'app' || selectedMode !== 'corre' || typeof window === 'undefined') return
+    activateProfessionalTrial().catch((error) => {
+      console.warn('[ASSINATURA] não foi possível iniciar/verificar o período profissional:', error?.message || error)
+    })
     window.dispatchEvent(new CustomEvent('correaqui:push-context', {
       detail: { context: 'modo_trabalhar' },
     }))
@@ -1048,38 +1055,40 @@ export default function ModoGate() {
   }
 
   return (
-    <main className="relative z-[1] isolate h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#f7fbff] px-3 py-2 text-[#102451] sm:h-auto sm:min-h-[100dvh] sm:max-h-none sm:px-6 sm:py-5 md:py-8">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,#e7f6ff_0%,#f7fbff_42%,#ffffff_100%)]" />
+    <main data-mode-selection-screen className="relative z-[1] isolate min-h-[100dvh] w-full overflow-x-hidden overflow-y-auto bg-[#f7fbff] px-3 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] pt-[calc(env(safe-area-inset-top)_+_0.75rem)] text-[#102451] dark:bg-slate-950 dark:text-slate-50 sm:px-6 sm:pb-6 sm:pt-5 md:py-8">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,#e7f6ff_0%,#f7fbff_42%,#ffffff_100%)] dark:bg-[linear-gradient(180deg,#0b1930_0%,#0f172a_46%,#020617_100%)]" />
       <div className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.16]" style={{ backgroundImage: "url('/cliente-home-map-bg-v3.png')" }} />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.72)_70%,rgba(255,255,255,.9))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.72)_70%,rgba(255,255,255,.9))] dark:bg-[linear-gradient(180deg,rgba(15,23,42,.08),rgba(2,6,23,.55)_70%,rgba(2,6,23,.82))]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[46%] bg-[linear-gradient(180deg,rgba(184,225,245,.18),rgba(255,255,255,0))]" />
       <div className="pointer-events-none absolute -left-20 top-24 h-64 w-64 rounded-full bg-blue-100/35 blur-3xl" />
       <div className="pointer-events-none absolute -right-24 bottom-10 h-80 w-80 rounded-full bg-cyan-100/40 blur-3xl" />
       <div className="pointer-events-none absolute right-[18%] top-16 h-20 w-20 rounded-full bg-white/60 blur-2xl" />
 
-      <div className="relative mx-auto flex h-full min-h-0 w-full max-w-[780px] flex-col justify-start py-1 sm:h-auto sm:min-h-[calc(100vh-4rem)] sm:justify-center sm:py-0">
-        <header className="mx-auto mt-0 max-w-[620px] text-center sm:mt-2">
-          <div className="flex items-center justify-center gap-1.5 sm:gap-2">
-            <Image
-              src="/corre-logo-mark.png"
-              width={512}
-              height={512}
-              alt="Corre Aqui"
-              priority
-              unoptimized
-              className="h-11 w-11 object-contain drop-shadow-[0_12px_22px_rgba(15,23,42,0.20)] sm:h-20 sm:w-20"
-            />
-            <div className="text-xl font-black tracking-tight text-[#102451] sm:text-3xl">
+      <div className="relative mx-auto flex min-h-[calc(100dvh_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)_-_1.75rem)] w-full max-w-[780px] flex-col justify-center">
+        <header className="mx-auto w-full max-w-[620px] text-center">
+          <div data-mode-selection-brand className="flex items-center justify-center gap-0.5 min-[390px]:gap-1 sm:gap-1.5">
+            <div data-mode-selection-logo className="grid h-[54px] w-[54px] shrink-0 place-items-center overflow-hidden min-[390px]:h-[62px] min-[390px]:w-[62px] sm:h-[68px] sm:w-[68px]">
+              <Image
+                src="/corre-logo-mark.png"
+                width={512}
+                height={512}
+                alt="Corre Aqui"
+                priority
+                unoptimized
+                className="h-full w-full translate-y-[6%] scale-[1.66] object-contain drop-shadow-[0_12px_22px_rgba(15,23,42,0.20)]"
+              />
+            </div>
+            <div className="whitespace-nowrap text-[clamp(1.35rem,6.2vw,1.9rem)] font-black leading-none tracking-[-0.04em] text-[#102451] dark:text-white sm:text-[1.95rem]">
               CORRE <span className="text-violet-600">AQUI</span>
             </div>
           </div>
-          <h1 className="mt-2 text-[28px] font-black leading-[0.96] tracking-tight sm:mt-5 sm:text-5xl">
-            Como voc&ecirc; quer usar<br className="hidden sm:block" /> o Corre Aqui hoje?
+          <h1 data-mode-selection-title className="mx-auto mt-2 max-w-[21rem] text-balance text-[clamp(1.3rem,5.7vw,1.75rem)] font-extrabold leading-[1.14] tracking-[-0.025em] text-[#102451] dark:text-white min-[390px]:max-w-[23rem] sm:mt-3.5 sm:max-w-[600px] sm:text-[2.2rem]">
+            Como voc&ecirc; quer usar o Corre Aqui?
           </h1>
-          <p className="mt-1.5 text-[13px] font-semibold text-slate-600 sm:mt-3 sm:text-base">Escolha uma op&ccedil;&atilde;o para continuar</p>
+          <p className="mt-1.5 text-[13px] font-semibold text-slate-600 dark:text-slate-300 sm:mt-2 sm:text-base">Escolha como deseja continuar</p>
         </header>
 
-        <section data-tutorial="modo" className="mt-2.5 grid grid-cols-2 gap-2 sm:mt-9 sm:gap-5" aria-label="Escolha como usar o Corre Aqui">
+        <section data-tutorial="modo" className="mt-3 grid min-w-0 grid-cols-2 gap-2 min-[390px]:gap-2.5 sm:mt-7 sm:gap-5" aria-label="Escolha como usar o Corre Aqui">
           {Object.entries(modes).map(([id, mode]) => (
             <ModeCard
               key={id}
@@ -1093,18 +1102,18 @@ export default function ModoGate() {
         </section>
 
         {workProfileError ? (
-          <div className="mt-2 rounded-2xl border border-rose-100 bg-white/85 px-4 py-3 text-center text-xs font-bold text-rose-700 sm:mt-4 sm:text-sm">
+          <div className="mt-2 rounded-2xl border border-rose-100 bg-white/85 px-4 py-3 text-center text-xs font-bold text-rose-700 dark:border-rose-400/25 dark:bg-rose-500/10 dark:text-rose-200 sm:mt-4 sm:text-sm">
             {workProfileError}
           </div>
         ) : null}
 
         {checkingWorkProfile ? (
-          <div className="mt-2 rounded-2xl border border-blue-100 bg-white/70 px-4 py-3 text-center text-xs font-black uppercase tracking-[0.14em] text-blue-700 sm:mt-4">
+          <div className="mt-2 rounded-2xl border border-blue-100 bg-white/70 px-4 py-3 text-center text-xs font-black uppercase tracking-[0.14em] text-blue-700 dark:border-blue-400/25 dark:bg-blue-500/10 dark:text-blue-200 sm:mt-4">
             Verificando perfil publico...
           </div>
         ) : null}
 
-        <div className="mt-2 grid grid-cols-2 gap-x-1.5 gap-y-1 rounded-[18px] border border-white/95 bg-white/88 px-2 py-2 shadow-[0_12px_30px_rgba(80,83,160,0.06)] sm:mt-5 sm:grid-cols-5 sm:gap-1 sm:rounded-[20px] sm:px-3 sm:py-3">
+        <div className="mt-2 grid grid-cols-2 gap-x-1.5 gap-y-1 rounded-[18px] border border-white/95 bg-white/88 px-2 py-2 shadow-[0_12px_30px_rgba(80,83,160,0.06)] dark:border-white/10 dark:bg-slate-900/88 dark:shadow-[0_12px_30px_rgba(2,6,23,0.24)] sm:mt-5 sm:grid-cols-5 sm:gap-1 sm:rounded-[20px] sm:px-3 sm:py-3">
           {[
             ['\u26a1', 'Pedido r\u00e1pido', 'text-orange-500'],
             ['\ud83d\udcac', 'Chat integrado', 'text-blue-600'],
@@ -1114,7 +1123,7 @@ export default function ModoGate() {
           ].map(([icon, label, color]) => (
             <div key={label} className="flex items-center justify-center gap-1.5 px-1 text-center sm:flex-col sm:gap-0.5">
               <span className={['text-base leading-none', color].join(' ')} aria-hidden="true">{icon}</span>
-              <span className="text-[11px] font-black leading-tight text-slate-600 sm:text-[11px]">{label}</span>
+              <span className="text-[11px] font-black leading-tight text-slate-600 dark:text-slate-300 sm:text-[11px]">{label}</span>
             </div>
           ))}
         </div>
@@ -1123,7 +1132,8 @@ export default function ModoGate() {
           type="button"
           onClick={() => setOpenPerfilGlobal(true)}
           data-tutorial="perfil"
-          className="mx-auto mt-1.5 flex min-h-10 w-full max-w-[260px] items-center justify-center gap-2 rounded-[16px] border border-white/95 bg-white/82 px-5 text-sm font-black text-[#102451] shadow-[0_10px_24px_rgba(80,83,160,0.06)] backdrop-blur-xl transition hover:bg-white/95 active:scale-[0.98] sm:mt-4 sm:min-h-12 sm:rounded-[18px] sm:text-sm"
+          data-mode-selection-settings
+          className="mx-auto mb-1 mt-3 flex min-h-11 w-full max-w-[300px] items-center justify-center gap-2 rounded-full border border-blue-100 bg-white/92 px-5 text-sm font-black text-[#102451] shadow-[0_12px_28px_rgba(80,83,160,0.10)] backdrop-blur-xl transition hover:border-blue-200 hover:bg-white active:scale-[0.98] dark:border-white/10 dark:bg-slate-900/90 dark:text-white dark:hover:border-blue-400/40 dark:hover:bg-slate-900 sm:mt-4 sm:min-h-12 sm:text-sm"
         >
           <span className="grid h-7 w-7 place-items-center rounded-full bg-[#102451] text-xs text-white" aria-hidden="true">&#9881;</span>
           Configura&ccedil;&otilde;es

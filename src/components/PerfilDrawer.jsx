@@ -1,27 +1,41 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import { ref, get, onValue, update, set, runTransaction, serverTimestamp } from '@/lib/firebaseDebug';
 import { auth, database } from "@/lib/firebase";
 import { uploadProfilePhotoToImgBB } from "@/lib/imgbbClient";
 import {
+  getPortfolioReadErrorMessage,
+  resolveUserPortfolioMap,
+  sanitizePortfolioErrorCode,
+  withoutPortfolioFields,
+} from "@/lib/portfolioPersistence";
+import {
   ativarPushNotifications,
+  consultarEstadoPushNotifications,
   desativarPushNotifications,
   getPushCapabilities,
   removerPushTokenDoDispositivo,
   testarPushNotification,
 } from "@/lib/pushNotifications";
+import { getPushTestReadiness } from "@/lib/pushNotificationPolicy";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import ProfessionalReputationSummary from "./ProfessionalReputationSummary";
-import { CATEGORIES, getCategoryById } from "@/constants/categories";
+import { getCategoryById } from "@/constants/categories";
 import { normalizeAtendimentoStatus, ATENDIMENTO_STATUS } from "@/lib/atendimento";
 import { openAssistantHelpCenter, startClientTutorial, startWorkerTutorial } from "@/components/tutorial/TutorialProvider";
 import { normalizeProfileStatus, projectPublicProfileForWrite, safePublicImageUrl } from "@/lib/publicWorkProfile";
 import { normalizePublicRequest } from "@/lib/publicRequests";
+import { logoutFirebaseSession } from "@/lib/sessionLogout";
+import { ListPanelSkeleton } from "@/components/LoadingSkeletons";
+import ProfessionalPortfolioSection from "@/components/ProfessionalPortfolioSection";
 
 const PlanosCorreAqui = dynamic(() => import("@/components/PlanosCorreAqui"), {
+  ssr: false,
+});
+const SubscriptionStatusCard = dynamic(() => import("@/components/SubscriptionStatusCard"), {
   ssr: false,
 });
 
@@ -31,6 +45,7 @@ const defaultPrivacy = {
   profileVisible: true,
   profileVisibilityExplicit: false,
   shareLocationDuringActiveJob: true,
+  sharePhoneDuringActiveJob: false,
   showOnlineStatus: true,
   allowPublicContact: false,
 };
@@ -77,7 +92,6 @@ function getConfigSnapshot(profile = {}) {
     mapLimiteOnline: Math.max(5, Math.min(80, Number(profile.mapLimiteOnline || 30))),
     animacoes: profile.animacoes !== false,
     modoEconomico: profile.modoEconomico === true,
-    aparencia: profile.aparencia || "sistema",
     notificationPreferences: normalizeNotificationPreferences(profile.notificationPreferences),
     privacy: normalizePrivacy(profile.privacy),
   };
@@ -96,6 +110,8 @@ function normalizePrivacy(value = {}, fallback = {}) {
     profileVisibilityExplicit,
     shareLocationDuringActiveJob:
       value.shareLocationDuringActiveJob ?? fallback.shareLocationDuringActiveJob ?? true,
+    sharePhoneDuringActiveJob:
+      value.sharePhoneDuringActiveJob ?? fallback.sharePhoneDuringActiveJob ?? false,
     showOnlineStatus: value.showOnlineStatus ?? fallback.showOnlineStatus ?? true,
     allowPublicContact: value.allowPublicContact ?? fallback.allowPublicContact ?? false,
   };
@@ -138,7 +154,6 @@ const initialProfile = {
   mapLimiteOnline: 30,
   animacoes: true,
   modoEconomico: false,
-  aparencia: "sistema",
   notificationPreferences: defaultNotificationPreferences,
   privacy: defaultPrivacy,
 };
@@ -443,9 +458,6 @@ function ConfiguracoesOrganizadas({
   onStartWorkerTutorial,
 }) {
   const preferences = normalizeNotificationPreferences(profile.notificationPreferences);
-  const friendlyPushAviso = /vapid|service worker|messaging|token|firebase/i.test(String(pushAviso || ""))
-    ? "Nao foi possivel enviar a notificacao de teste."
-    : pushAviso;
   const setMapLimit = (delta) => {
     const current = Number(profile.mapLimiteOnline || 30);
     const next = Math.max(5, Math.min(80, current + delta));
@@ -472,6 +484,7 @@ function ConfiguracoesOrganizadas({
       </header>
 
       <main className="mx-auto flex w-full max-w-[1120px] flex-col gap-4 px-3 py-5 md:gap-5 md:px-6 md:py-6">
+        <SubscriptionStatusCard />
         <ConfigSection id="presenca" title="Presen&ccedil;a e mapa" description="Controle sua visibilidade e como voc&ecirc; aparece no mapa." icon="M" tone="blue" open={sections.presenca} onToggle={onToggleSection}>
           <ConfigRow icon="P" title="Aparecer dispon&iacute;vel para clientes" description="Permita que outros vejam que voc&ecirc; est&aacute; dispon&iacute;vel." tone="blue">
             <ConfigToggle checked={profile.visivel !== false} onChange={(checked) => onProfileChange({ visivel: checked })} label="Aparecer disponivel para clientes" tone="blue" />
@@ -493,7 +506,7 @@ function ConfiguracoesOrganizadas({
 
         <ConfigSection id="notificacoes" title="Notifica&ccedil;&otilde;es" description="Escolha o que voc&ecirc; deseja receber." icon="!" tone="violet" open={sections.notificacoes} onToggle={onToggleSection}>
           <ConfigRow icon="!" title="Receber notifica&ccedil;&otilde;es" description="Pedidos, mensagens, agendamentos e atendimentos importantes." tone="violet">
-            <ConfigToggle checked={pushAtivo || profile.notificacoes !== false} onChange={onTogglePush} label="Receber notificacoes" tone="violet" />
+            <ConfigToggle checked={pushAtivo} onChange={onTogglePush} label="Receber notificacoes" tone="violet" />
           </ConfigRow>
           <div className="grid grid-cols-2 gap-2 px-2 py-3 sm:grid-cols-3 md:grid-cols-5 md:gap-3 md:px-3">
             {categoryItems.map(([key, label, color, symbol]) => (
@@ -511,10 +524,10 @@ function ConfiguracoesOrganizadas({
               </button>
             ))}
           </div>
-          <ConfigRow icon="&gt;" title="Testar notifica&ccedil;&atilde;o" description="Envie uma notifica&ccedil;&atilde;o de teste para este dispositivo." tone="violet" onClick={pushCanUse ? onTestPush : undefined}>
+          <ConfigRow icon="&gt;" title="Testar notifica&ccedil;&atilde;o" description={pushAtivo ? "Envie uma notifica&ccedil;&atilde;o de teste para este dispositivo." : "Ative as notifica&ccedil;&otilde;es neste aparelho antes de testar."} tone="violet" onClick={pushCanUse && pushAtivo ? onTestPush : undefined}>
             <span className="text-xl font-black text-violet-600">&rarr;</span>
           </ConfigRow>
-          {!pushCanUse && !pushAviso ? null : friendlyPushAviso ? <div className="mx-3 mb-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-800">{friendlyPushAviso}</div> : null}
+          {!pushCanUse && !pushAviso ? null : pushAviso ? <div className="mx-3 mb-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-800">{pushAviso}</div> : null}
           {pushSalvando || pushTestando ? <div className="px-3 pb-2 text-xs font-bold text-slate-500">Aguarde um momento...</div> : null}
         </ConfigSection>
 
@@ -537,11 +550,11 @@ function ConfiguracoesOrganizadas({
           <ConfigRow icon="C" title="Permitir contato p&uacute;blico" description="Outros usu&aacute;rios poder&atilde;o entrar em contato com voc&ecirc;." tone="emerald">
             <ConfigToggle checked={privacy.allowPublicContact} onChange={(checked) => onPrivacyChange("allowPublicContact", checked)} label="Permitir contato publico" tone="emerald" />
           </ConfigRow>
+          <ConfigRow icon="T" title="Telefone durante atendimento" description="Compartilhe somente com cliente ou profissional aceito enquanto o atendimento estiver ativo." tone="emerald">
+            <ConfigToggle checked={privacy.sharePhoneDuringActiveJob} onChange={(checked) => onPrivacyChange("sharePhoneDuringActiveJob", checked)} label="Compartilhar telefone durante atendimento" tone="emerald" />
+          </ConfigRow>
           <ConfigRow icon="D" title="Ver meus dados" description="Veja e gerencie suas informa&ccedil;&otilde;es." tone="emerald" onClick={onOpenDados}>
             <span className="text-xl font-black text-slate-500">&rarr;</span>
-          </ConfigRow>
-          <ConfigRow icon="S" title="Sair da conta" description="Encerre sua sess&atilde;o neste dispositivo." danger onClick={onLogout}>
-            <span className="text-xl font-black text-rose-500">&rarr;</span>
           </ConfigRow>
         </ConfigSection>
 
@@ -552,20 +565,6 @@ function ConfiguracoesOrganizadas({
           <ConfigRow icon="E" title="Modo econ&ocirc;mico" description="Reduz anima&ccedil;&otilde;es e atualiza&ccedil;&otilde;es em segundo plano." tone="amber">
             <ConfigToggle checked={profile.modoEconomico === true} onChange={(checked) => onProfileChange({ modoEconomico: checked })} label="Modo economico" tone="amber" />
           </ConfigRow>
-          <div className="flex flex-col gap-3 px-3 py-4 md:flex-row md:items-center md:justify-between md:px-4">
-            <div className="flex items-center gap-3">
-              <ConfigIcon tone="amber">A</ConfigIcon>
-              <div>
-                <div className="text-sm font-black text-slate-900">Apar&ecirc;ncia</div>
-                <div className="mt-1 text-xs font-semibold text-slate-500">Escolha o tema do aplicativo.</div>
-              </div>
-            </div>
-            <div className="grid w-full grid-cols-3 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:w-auto">
-              {[["sistema", "Sistema"], ["claro", "Claro"], ["escuro", "Escuro"]].map(([value, label]) => (
-                <button key={value} type="button" onClick={() => onProfileChange({ aparencia: value })} className={["min-h-11 rounded-xl px-3 text-xs font-black transition", (profile.aparencia || "sistema") === value ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-200" : "text-slate-500 hover:text-slate-800"].join(" ")}>{label}</button>
-              ))}
-            </div>
-          </div>
         </ConfigSection>
 
         <div className="flex items-center gap-3 rounded-[22px] border border-blue-100 bg-blue-50/70 px-4 py-3 text-blue-950 shadow-[0_10px_26px_rgba(37,99,235,0.05)]">
@@ -575,6 +574,27 @@ function ConfiguracoesOrganizadas({
             <div className="mt-0.5 text-xs font-semibold text-slate-500">Todas as configura&ccedil;&otilde;es s&atilde;o aplicadas em tempo real.</div>
           </div>
           {configAviso ? <span className="ml-auto shrink-0 text-xs font-black text-emerald-700">{configAviso}</span> : null}
+        </div>
+
+        <div className="mt-2 border-t border-slate-200 pt-5">
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex min-h-12 w-full items-center gap-3 rounded-2xl border border-rose-200/80 bg-rose-50/70 px-4 py-3 text-left text-rose-700 transition hover:border-rose-300 hover:bg-rose-100/80 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-200 sm:w-auto sm:min-w-64"
+            aria-label="Sair da conta"
+          >
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-rose-600 shadow-sm" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 17l5-5-5-5" />
+                <path d="M15 12H3" />
+                <path d="M14 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+              </svg>
+            </span>
+            <span>
+              <span className="block text-sm font-black">Sair da conta</span>
+              <span className="mt-0.5 block text-xs font-semibold text-rose-700/70">Encerrar esta sess&atilde;o com seguran&ccedil;a.</span>
+            </span>
+          </button>
         </div>
       </main>
     </div>
@@ -817,19 +837,6 @@ function normalizePublicWhatsapp(value) {
   return digits.length >= 10 && digits.length <= 15 ? digits : "";
 }
 
-function normalizePublicPortfolioFotos(data = {}) {
-  const raw = [
-    ...(Array.isArray(data.fotos) ? data.fotos : []),
-    data.fotoURL,
-  ];
-
-  return Array.from(new Set(raw.map((foto) => safePublicImageUrl(foto)).filter(Boolean))).slice(0, 5);
-}
-
-function isPublicPortfolioId(value) {
-  return /^[A-Za-z0-9_-]{1,120}$/.test(String(value || "").trim());
-}
-
 function pickFoto(...vals) {
   return vals.map((v) => String(v || "").trim()).find(isFotoValor) || "";
 }
@@ -902,29 +909,6 @@ function normalizePortfolioFotos(data = {}) {
   return Array.from(new Set(raw.map((foto) => String(foto || "").trim()).filter(isFotoValor))).slice(0, 5);
 }
 
-function createEmptyPortfolioDraft() {
-  return {
-    id: "",
-    nome: "",
-    titulo: "",
-    descricao: "",
-    valor: "",
-    preco: "",
-    faixaPreco: "",
-    categoria: "",
-    categoriaId: "",
-    categoriaNome: "",
-    tempoMedio: "",
-    regiao: "",
-    atendeDomicilio: true,
-    urgente: false,
-    ativo: true,
-    fotoURL: "",
-    fotos: [],
-    fotoImgBbId: "",
-  };
-}
-
 function normalizePortfolio(value) {
   const list = Array.isArray(value)
     ? value
@@ -969,116 +953,7 @@ function normalizePortfolio(value) {
     .slice(0, 12);
 }
 
-function toPortfolioFirebaseItem(item = {}) {
-  const id = String(item.id || `portfolio_${Date.now()}`).trim();
-  const categoriaMeta = getCategoryById(item.categoriaId || item.categoria);
-  const categoriaId = String(item.categoriaId || categoriaMeta?.id || "").trim();
-  const categoriaNome = String(item.categoriaNome || categoriaMeta?.label || item.categoria || "").trim();
-  const nome = String(item.nome || item.titulo || "").trim();
-  const preco = String(item.preco || "").trim();
-  const faixaPreco = String(item.faixaPreco || item.valor || preco || "").trim();
-
-  return {
-    id,
-    nome,
-    titulo: nome,
-    categoriaId,
-    categoriaNome,
-    categoria: categoriaNome,
-    preco,
-    faixaPreco,
-    valor: faixaPreco || preco,
-    descricao: String(item.descricao || "").trim(),
-    tempoMedio: String(item.tempoMedio || "").trim(),
-    fotos: normalizePortfolioFotos(item),
-    fotoURL: normalizePortfolioFotos(item)[0] || "",
-    regiao: String(item.regiao || "").trim(),
-    atendeDomicilio: item.atendeDomicilio !== false,
-    urgente: item.urgente === true,
-    ativo: item.ativo !== false,
-    createdAt: item.createdAt || serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-}
-
-function portfolioListToMap(items = []) {
-  return normalizePortfolio(items).reduce((acc, item) => {
-    const normalized = toPortfolioFirebaseItem(item);
-    if (normalized.id) acc[normalized.id] = normalized;
-    return acc;
-  }, {});
-}
-
-function toPublicPortfolioService(item = {}) {
-  const normalized = toPortfolioFirebaseItem(item);
-  const id = String(normalized.id || "").trim();
-  const nome = String(normalized.nome || "").trim();
-  const fotos = normalizePublicPortfolioFotos(normalized);
-
-  if (!isPublicPortfolioId(id) || !nome) return null;
-
-  return {
-    id,
-    nome,
-    titulo: nome,
-    descricao: String(normalized.descricao || "").trim(),
-    categoriaId: String(normalized.categoriaId || "").trim(),
-    categoriaNome: String(normalized.categoriaNome || "").trim(),
-    categoria: String(normalized.categoria || "").trim(),
-    preco: String(normalized.preco || "").trim(),
-    faixaPreco: String(normalized.faixaPreco || "").trim(),
-    valor: String(normalized.valor || "").trim(),
-    tempoMedio: String(normalized.tempoMedio || "").trim(),
-    fotos,
-    fotoURL: fotos[0] || "",
-    regiao: String(normalized.regiao || "").trim(),
-    atendeDomicilio: normalized.atendeDomicilio !== false,
-    urgente: normalized.urgente === true,
-    ativo: normalized.ativo !== false,
-    createdAt: normalized.createdAt || Date.now(),
-    updatedAt: serverTimestamp(),
-  };
-}
-
-function portfolioListToPublicProfileMap(items = []) {
-  return normalizePortfolio(items).reduce((acc, item) => {
-    const service = toPublicPortfolioService(item);
-    if (service?.ativo === true) acc[service.id] = service;
-    return acc;
-  }, {});
-}
-
-function portfolioListToPublicMap(items = [], profile = {}, uid = "", fotoPrincipal = "") {
-  const nome = String(profile.nome || "").trim();
-  const cidade = String(profile.cidade || profile.profRegiao || profile.correRegiao || "").trim();
-  const isCorre = !!profile.isCorre;
-  const isProfissional = !!profile.isProfissional;
-  const fotoProfissional = safePublicImageUrl(fotoPrincipal);
-
-  return normalizePortfolio(items).reduce((acc, item) => {
-    const service = toPublicPortfolioService(item);
-    if (!service || service.ativo !== true) return acc;
-
-    acc[service.id] = {
-      ...service,
-      regiao: service.regiao || cidade,
-      ativo: true,
-      profissionalId: uid,
-      uid,
-      profissionalNome: nome,
-      providerName: nome,
-      profissionalFotoURL: fotoProfissional,
-      providerFotoURL: fotoProfissional,
-      cidade,
-      isCorre,
-      isProfissional,
-    };
-
-    return acc;
-  }, {});
-}
-
-function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", privacySettings = defaultPrivacy, profPortfolio = []) {
+function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", privacySettings = defaultPrivacy) {
   const corre = {
     ativo: !!profile.isCorre,
     titulo: profile.correTitulo || "Corre rapido",
@@ -1149,7 +1024,6 @@ function profileToPublicProfile(profile = {}, uid = "", fotoPrincipal = "", priv
     profExperiencia: profissional.experiencia,
     corre,
     profissional: publicProfissional,
-    portfolio: portfolioListToPublicProfileMap(profPortfolio),
     createdAt: profile.createdAt || profile.criadoEm || null,
     statusProfissional: profile.statusProfissional || "disponivel",
     ocupadoAte: profissional.ocupadoAte,
@@ -1170,17 +1044,15 @@ function promiseComTimeout(promise, ms, message = "tempo_esgotado") {
 }
 
 export default function PerfilDrawer({ open, onClose, uid, initialTab = "config", initialProfSection = "" }) {
+  const router = useRouter();
   const [tab, setTab] = useState("config");
   const [profSection, setProfSection] = useState("");
   const [professionalProfileStep, setProfessionalProfileStep] = useState("choice");
 
   const [profile, setProfile] = useState(initialProfile);
-  const [portfolioDraft, setPortfolioDraft] = useState(createEmptyPortfolioDraft);
-  const [portfolioEditingId, setPortfolioEditingId] = useState("");
-  const [portfolioSaving, setPortfolioSaving] = useState(false);
-  const [portfolioPhotoUploading, setPortfolioPhotoUploading] = useState(false);
-  const [portfolioPhotoError, setPortfolioPhotoError] = useState("");
+  const [portfolioReadStatus, setPortfolioReadStatus] = useState({ uid: "", loaded: false, error: "" });
   const [addresses, setAddresses] = useState([]);
+  const [addressesStatus, setAddressesStatus] = useState({ uid: "", loaded: false, error: "" });
   const [addressDraft, setAddressDraft] = useState(createEmptyAddressDraft);
   const [addressEditingId, setAddressEditingId] = useState("");
   const [addressSaving, setAddressSaving] = useState(false);
@@ -1198,7 +1070,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     permission: "default",
     reason: "Verificando push...",
   });
-  const [vapidKey, setVapidKey] = useState("");
   const [vapidConfigured, setVapidConfigured] = useState(false);
   const [pushSalvando, setPushSalvando] = useState(false);
   const [pushTestando, setPushTestando] = useState(false);
@@ -1208,6 +1079,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const [cpfAviso, setCpfAviso] = useState("");
   const [privacyAviso, setPrivacyAviso] = useState("");
   const [configAviso, setConfigAviso] = useState("");
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [logoutSubmitting, setLogoutSubmitting] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
   const [configSecoesAbertas, setConfigSecoesAbertas] = useState(() => createConfigSectionsState("presenca"));
   const [serviceStats, setServiceStats] = useState({
     total: 0,
@@ -1230,16 +1104,24 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     amostrasResposta: 0,
     clientesRecorrentes: 0,
   });
+  const [serviceStatsStatus, setServiceStatsStatus] = useState({ uid: "", loaded: false, error: "" });
   const settingsLoadedRef = useRef(false);
   const drawerScrollRef = useRef(null);
-  const portfolioFormRef = useRef(null);
-  const portfolioFirstInputRef = useRef(null);
-  const portfolioSavingRef = useRef(false);
   const configSaveTimerRef = useRef(null);
   const configSnapshotRef = useRef("");
   const configLastSavedRef = useRef(null);
+  const logoutCancelButtonRef = useRef(null);
 
   const userBasePath = useMemo(() => (uid ? `users/${uid}` : ""), [uid]);
+  const currentAddressesStatus = addressesStatus.uid === String(uid || "")
+    ? addressesStatus
+    : { uid: String(uid || ""), loaded: false, error: "" };
+  const currentServiceStatsStatus = serviceStatsStatus.uid === String(uid || "")
+    ? serviceStatsStatus
+    : { uid: String(uid || ""), loaded: false, error: "" };
+  const currentPortfolioReadStatus = portfolioReadStatus.uid === String(uid || "")
+    ? portfolioReadStatus
+    : { uid: String(uid || ""), loaded: false, error: "" };
 
   useEffect(() => {
     settingsLoadedRef.current = false;
@@ -1260,12 +1142,27 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     setAddressAviso("");
     setSupportAviso("");
     setConfigAviso("");
+    setLogoutConfirmOpen(false);
+    setLogoutSubmitting(false);
+    setLogoutError("");
     setConfigSecoesAbertas(createConfigSectionsState("presenca"));
-  }, [open, initialTab, initialProfSection]);
+  }, [open, initialTab, initialProfSection, uid]);
+
+  useEffect(() => {
+    if (!logoutConfirmOpen) return undefined;
+    logoutCancelButtonRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !logoutSubmitting) setLogoutConfirmOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [logoutConfirmOpen, logoutSubmitting]);
 
   useEffect(() => {
     if (!open || !uid) return;
 
+    const effectUid = String(uid);
+    setPortfolioReadStatus({ uid: effectUid, loaded: false, error: "" });
     const userRef = ref(database, userBasePath);
     return onValue(userRef, (snap) => {
       const data = snap.val() || {};
@@ -1278,14 +1175,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       const mapVisible = data.visivel ?? data.profile?.visivel ?? true;
 
       const profileData = data.profile || {};
-      const portfolioSalvo = normalizePortfolio(
-        profileData.profPortfolio ||
-          data.profPortfolio ||
-          profileData.portfolio ||
-          data.portfolio ||
-          profileData.profissional?.portfolio ||
-          data.profissional?.portfolio,
-      );
+      const portfolioSalvo = normalizePortfolio(resolveUserPortfolioMap(data));
       const fotoPrincipal = pickFoto(
         data.fotoURL,
         profileData.fotoURL,
@@ -1315,7 +1205,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         photoURL: prev.photoURL || fotoPrincipal,
         avatar: prev.avatar || fotoPrincipal || avatarEmoji || "",
         avatarEmoji: prev.avatarEmoji || avatarEmoji,
-        profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
+        profPortfolio: portfolioSalvo,
         visivel: mapVisible,
         notificacoes: data.notificacoes ?? profileData.notificacoes ?? prev.notificacoes,
         notificationPreferences: normalizeNotificationPreferences(
@@ -1323,9 +1213,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           prev.notificationPreferences,
         ),
         modoEconomico: settingsUi.modoEconomico ?? profileData.modoEconomico ?? prev.modoEconomico,
-        aparencia: settingsUi.aparencia ?? profileData.aparencia ?? prev.aparencia,
         privacy: privacyData,
       }));
+      setPortfolioReadStatus({ uid: effectUid, loaded: true, error: "" });
 
       if (!settingsLoadedRef.current) {
         setProfile((prev) => ({
@@ -1335,7 +1225,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           mapLimiteOnline: Math.max(5, Math.min(80, Number(settingsMapa.limiteOnline ?? prev.mapLimiteOnline))),
           animacoes: settingsUi.animacoes ?? prev.animacoes,
           modoEconomico: settingsUi.modoEconomico ?? prev.modoEconomico,
-          aparencia: settingsUi.aparencia ?? prev.aparencia,
           notificationPreferences: normalizeNotificationPreferences(
             settingsUi.notificationPreferences ?? prev.notificationPreferences,
             prev.notificationPreferences,
@@ -1346,6 +1235,17 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         }));
         settingsLoadedRef.current = true;
       }
+    }, (error) => {
+      const code = sanitizePortfolioErrorCode(error, "portfolio_private_read_failed");
+      console.warn("[PORTFOLIO] operação não concluída", {
+        stage: "private_read",
+        code,
+      });
+      setPortfolioReadStatus({
+        uid: effectUid,
+        loaded: false,
+        error: getPortfolioReadErrorMessage(error),
+      });
     });
   }, [open, uid, userBasePath]);
 
@@ -1358,14 +1258,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       if (snap.exists()) {
         setProfile((prev) => {
           const data = snap.val() || {};
-          const corre = data.corre || {};
-          const profissional = data.profissional || {};
-          const portfolioSalvo = normalizePortfolio(
-            data.profPortfolio ||
-              data.portfolio ||
-              profissional.portfolio ||
-              profissional.profPortfolio,
-          );
+          const dataWithoutPortfolio = withoutPortfolioFields(data);
+          delete dataWithoutPortfolio.aparencia;
+          const corre = dataWithoutPortfolio.corre || {};
+          const profissional = dataWithoutPortfolio.profissional || {};
           const fotoPrincipal = pickFoto(
             data.fotoURL,
             data.avatar,
@@ -1377,7 +1273,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
           return {
             ...prev,
-            ...data,
+            ...dataWithoutPortfolio,
             bairro: data.bairro || prev.bairro || "",
             telefone: data.telefone || data.phone || prev.telefone || "",
             email: data.email || prev.email || auth.currentUser?.email || "",
@@ -1388,7 +1284,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
               prev.notificationPreferences,
             ),
             modoEconomico: data.modoEconomico ?? prev.modoEconomico,
-            aparencia: data.aparencia || prev.aparencia || "sistema",
             isCorre: data.isCorre ?? corre.ativo ?? prev.isCorre,
             correTitulo: data.correTitulo || corre.titulo || "",
             correBio: data.correBio || corre.bio || "",
@@ -1414,25 +1309,34 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             statusProfissional: data.statusProfissional || data.profissional?.statusProfissional || prev.statusProfissional || "disponivel",
             ocupadoAte: data.ocupadoAte || data.profissional?.ocupadoAte || prev.ocupadoAte || "",
             agendaAberta: data.agendaAberta ?? data.profissional?.agendaAberta ?? prev.agendaAberta ?? true,
-            profPortfolio: portfolioSalvo.length ? portfolioSalvo : prev.profPortfolio || [],
             privacy: prev.privacy || defaultPrivacy,
           };
         });
       }
+    }, (error) => {
+      console.warn("[PORTFOLIO] operação não concluída", {
+        stage: "legacy_profile_read",
+        code: sanitizePortfolioErrorCode(error, "portfolio_legacy_read_failed"),
+      });
     });
   }, [open, uid, userBasePath]);
 
   useEffect(() => {
     if (!open || !uid) {
       setAddresses([]);
+      setAddressesStatus({ uid: "", loaded: false, error: "" });
       return undefined;
     }
 
+    const effectUid = String(uid);
+    setAddressesStatus({ uid: effectUid, loaded: false, error: "" });
     const addressesRef = ref(database, `enderecos/${uid}`);
     return onValue(addressesRef, (snap) => {
       setAddresses(normalizeAddresses(snap.val() || {}));
+      setAddressesStatus({ uid: effectUid, loaded: true, error: "" });
     }, () => {
       setAddresses([]);
+      setAddressesStatus({ uid: effectUid, loaded: true, error: "Não foi possível carregar os endereços agora." });
     });
   }, [open, uid, userBasePath]);
 
@@ -1449,8 +1353,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   }, [open, uid]);
 
   useEffect(() => {
-    if (!open || !uid) return;
+    if (!open || !uid) {
+      setServiceStatsStatus({ uid: "", loaded: false, error: "" });
+      return undefined;
+    }
 
+    const effectUid = String(uid);
+    setServiceStatsStatus({ uid: effectUid, loaded: false, error: "" });
     const pedidosRef = ref(database, "publicRequests");
     return onValue(pedidosRef, (snap) => {
       const data = snap.val() || {};
@@ -1550,6 +1459,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         amostrasResposta: temposResposta.length,
         clientesRecorrentes,
       });
+      setServiceStatsStatus({ uid: effectUid, loaded: true, error: "" });
+    }, () => {
+      setServiceStatsStatus({ uid: effectUid, loaded: true, error: "Não foi possível carregar o histórico agora." });
     });
   }, [open, uid]);
 
@@ -1558,50 +1470,47 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     let active = true;
 
     async function carregarPushConfig() {
-      const suportaNotification = typeof window !== "undefined" && "Notification" in window;
       const suportaServiceWorker = typeof navigator !== "undefined" && "serviceWorker" in navigator;
-      const permission = suportaNotification ? Notification.permission : "unsupported";
 
       try {
-        const response = await fetch("/api/firebase-config", { cache: "no-store" });
-        const data = await response.json().catch(() => ({}));
-        const hasVapidKey = Boolean(data.vapidKey);
-        const vapidConfigured = Boolean(data.vapidKeyConfigured && data.vapidKey);
+        const capabilities = await getPushCapabilities();
+        if (!active) return;
+        setVapidConfigured(capabilities.vapidConfigured === true);
 
-        console.log("[PUSH CONFIG]", {
-          vapidKeyConfigured: data.vapidKeyConfigured,
-          hasVapidKey,
-        });
+        const notificationsV2Enabled = capabilities.notificationsV2Enabled === true;
+        let deviceState = null;
+        if (notificationsV2Enabled && uid) {
+          try {
+            deviceState = await consultarEstadoPushNotifications(uid);
+          } catch (error) {
+            if (active) setPushAviso(error?.message || "Não foi possível consultar este dispositivo agora.");
+          }
+        }
 
         if (!active) return;
-
-        setVapidKey(data.vapidKey || "");
-        setVapidConfigured(Boolean(data.vapidKeyConfigured && data.vapidKey));
-
-        const supported = suportaNotification && suportaServiceWorker && vapidConfigured;
-        const reason = !suportaNotification
-          ? "Este navegador nao suporta notificacoes web."
-          : !suportaServiceWorker
-            ? "Service worker indisponivel neste navegador."
-            : !vapidConfigured
-              ? "Chave VAPID de notificacoes nao esta configurada no servidor."
-              : "";
-
         setPushInfo((current) => ({
           ...current,
-          supported,
-          permission,
-          reason,
-          vapidConfigured,
+          ...capabilities,
+          notificationsV2Enabled,
+          deviceRegistered: deviceState ? deviceState.registered === true : current.deviceRegistered,
           serviceWorkerAvailable: suportaServiceWorker,
         }));
+        if (deviceState) {
+          setProfile((current) => ({
+            ...current,
+            pushNotifications: {
+              ...(current.pushNotifications || {}),
+              enabled: deviceState.registered === true,
+              registry: deviceState.registry,
+            },
+          }));
+        }
       } catch (error) {
         if (!active) return;
-        setVapidKey("");
         setVapidConfigured(false);
         setPushInfo({
           supported: false,
-          permission,
+          permission: typeof Notification !== "undefined" ? Notification.permission : "unsupported",
           reason: error?.message || "Nao foi possivel carregar a configuracao de notificacoes.",
           serviceWorkerAvailable: suportaServiceWorker,
         });
@@ -1613,7 +1522,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     return () => {
       active = false;
     };
-  }, [open]);
+  }, [open, uid]);
 
   async function ativarPush() {
     if (!uid || pushSalvando) return;
@@ -1631,12 +1540,17 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           tokenKey: result.tokenKey,
         },
       }));
-      setPushInfo((p) => ({ ...p, supported: true, permission: result.permission }));
+      setPushInfo((p) => ({
+        ...p,
+        supported: true,
+        permission: result.permission,
+        deviceRegistered: result.registered === true || p.notificationsV2Enabled !== true,
+      }));
       setPushAviso("Notificações ativadas neste aparelho.");
     } catch (error) {
       setPushAviso(error?.message || "Não consegui ativar notificações agora.");
       const info = await getPushCapabilities().catch(() => null);
-      if (info) setPushInfo(info);
+      if (info) setPushInfo((current) => ({ ...current, ...info }));
     } finally {
       setPushSalvando(false);
     }
@@ -1650,13 +1564,14 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       await desativarPushNotifications(uid);
       setProfile((p) => ({
         ...p,
-        notificacoes: false,
+        ...(pushInfo.notificationsV2Enabled ? {} : { notificacoes: false }),
         pushNotifications: {
           ...(p.pushNotifications || {}),
           enabled: false,
         },
       }));
-      setPushAviso("Push desativado neste perfil.");
+      setPushInfo((p) => ({ ...p, deviceRegistered: false }));
+      setPushAviso("Notificações desativadas neste aparelho.");
     } catch (error) {
       setPushAviso(error?.message || "Não consegui desativar notificações agora.");
     } finally {
@@ -1667,25 +1582,26 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   async function testarPush() {
     if (!uid || pushTestando) return;
 
+    const readiness = getPushTestReadiness({
+      uid,
+      authenticatedUid: auth.currentUser?.uid,
+      supported: pushCanUse,
+      permission: pushInfo.permission,
+      pushEnabled: pushAtivo,
+    });
+    if (!readiness.allowed) {
+      setPushAviso(readiness.message);
+      return;
+    }
+
     try {
       setPushTestando(true);
       setPushAviso("Enviando teste...");
-      const result = await ativarPushNotifications(uid);
-      setProfile((p) => ({
-        ...p,
-        notificacoes: true,
-        pushNotifications: {
-          enabled: true,
-          permission: result.permission,
-          tokenKey: result.tokenKey,
-        },
-      }));
-      setPushInfo((p) => ({ ...p, supported: true, permission: result.permission }));
       await testarPushNotification(uid);
       setPushAviso("Notificação de teste enviada.");
     } catch (error) {
       const info = await getPushCapabilities().catch(() => null);
-      if (info) setPushInfo(info);
+      if (info) setPushInfo((current) => ({ ...current, ...info }));
       const permissionDenied =
         typeof Notification !== "undefined" &&
         (Notification.permission === "denied" || /bloquead|negad|permiss/i.test(String(error?.message || "")));
@@ -1696,26 +1612,27 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   }
 
   async function sairDaConta() {
-    if (!window.confirm("Deseja realmente sair da sua conta?")) return;
+    if (logoutSubmitting) return;
 
     try {
-      if (uid) await removerPushTokenDoDispositivo(uid).catch(() => {})
-      await signOut(auth);
-      [
-        "meuId",
-        "meuNome",
-        "cadastroCompleto",
-        "fotoURL",
-        "fotoUrl",
-        "avatarURL",
-        "avatarEmoji",
-        "visivelNoMapa",
-        "notifsAtivas",
-      ].forEach((key) => window.localStorage.removeItem(key));
-      if (uid) window.localStorage.removeItem(`cadastroCompleto:${uid}`);
-      window.location.href = "/";
-    } catch {
-      window.location.href = "/";
+      setLogoutSubmitting(true);
+      setLogoutError("");
+      await logoutFirebaseSession({
+        auth,
+        database,
+        uid,
+        removePushToken: removerPushTokenDoDispositivo,
+      });
+      setLogoutConfirmOpen(false);
+      setProfile(initialProfile);
+      setAddresses([]);
+      onClose?.();
+      router.replace("/login");
+      router.refresh();
+    } catch (error) {
+      setLogoutError(error?.message || "Nao foi possivel sair agora. Tente novamente.");
+    } finally {
+      setLogoutSubmitting(false);
     }
   }
 
@@ -1819,8 +1736,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       console.warn("[PerfilDrawer] upload foto:", error?.code || error?.message || error);
       const code = String(error?.code || error?.message || "");
       const msg =
-        error?.message === "foto_upload_timeout"
+        error?.message === "foto_upload_timeout" || code === "imgbb_request_timeout"
           ? "A foto demorou para enviar. Tente novamente em uma rede melhor."
+          : code === "imgbb_request_aborted"
+            ? "O envio da foto foi interrompido. Tente novamente."
           : error?.message === "foto_grande"
             ? "Escolha uma imagem de ate 2 MB."
             : error?.message === "tipo_invalido"
@@ -1860,170 +1779,66 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     await handleProfilePhotoUpload(file);
   }
 
-  async function handlePortfolioPhotoUpload(file) {
-    const currentUser = auth.currentUser;
-    const currentUid = currentUser?.uid || "";
-    const currentFotos = Array.isArray(portfolioDraft.fotos)
-      ? portfolioDraft.fotos
-      : normalizePortfolioFotos(portfolioDraft);
-
-    setPortfolioPhotoError("");
-
-    if (!currentUid) {
-      setPortfolioPhotoError("Entre novamente para anexar a foto.");
-      return;
-    }
-
-    if (uid && currentUid !== uid) {
-      setPortfolioPhotoError("Sessao diferente do perfil aberto. Entre novamente.");
-      return;
-    }
-
-    if (!file?.type?.startsWith("image/")) {
-      setPortfolioPhotoError("Escolha um arquivo de imagem.");
-      return;
-    }
-
-    if (file.size > PHOTO_SOURCE_MAX_BYTES) {
-      setPortfolioPhotoError("Escolha uma imagem de ate 8 MB. O app comprime antes de enviar.");
-      return;
-    }
-
-    if (currentFotos.length >= 5) {
-      setPortfolioPhotoError("Voce pode anexar ate 5 fotos por trabalho.");
-      return;
-    }
-
-    try {
-      setPortfolioPhotoUploading(true);
-      const idToken = await currentUser.getIdToken(true);
-      const uploaded = await promiseComTimeout(
-        uploadProfilePhotoToImgBB(file, {
-          uid: currentUid,
-          idToken,
-        }),
-        30000,
-        "portfolio_upload_timeout",
-      );
-
-      setPortfolioDraft((prev) => ({
-        ...prev,
-        fotoURL: prev.fotoURL || uploaded.url,
-        fotos: [...new Set([...(Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)), uploaded.url])].slice(0, 5),
-        fotoImgBbId: uploaded.imageId || "",
-      }));
-    } catch (error) {
-      const code = String(error?.code || error?.message || "");
-      setPortfolioPhotoError(
-        error?.message === "portfolio_upload_timeout"
-          ? "A foto demorou para enviar. Tente novamente."
-          : error?.message === "foto_grande"
-            ? "Escolha uma imagem de ate 2 MB."
-            : code.toLowerCase().includes("permission") || code.toLowerCase().includes("auth")
-              ? "Entre novamente para anexar a foto."
-              : "Nao foi possivel anexar a foto.",
-      );
-    } finally {
-      setPortfolioPhotoUploading(false);
-    }
-  }
-
-  async function alterarFotoPortfolio(event) {
-    const files = Array.from(event.target.files || []);
-    event.target.value = "";
-    if (!files.length) return;
-
-    const currentFotos = Array.isArray(portfolioDraft.fotos)
-      ? portfolioDraft.fotos
-      : normalizePortfolioFotos(portfolioDraft);
-    const vagas = Math.max(0, 5 - currentFotos.length);
-
-    if (vagas <= 0) {
-      setPortfolioPhotoError("Voce pode anexar ate 5 fotos por trabalho.");
-      return;
-    }
-
-    for (const file of files.slice(0, vagas)) {
-      await handlePortfolioPhotoUpload(file);
-    }
-  }
-
-  function removerFotoPortfolioDraft(fotoURL) {
-    setPortfolioDraft((prev) => {
-      const fotos = (Array.isArray(prev.fotos) ? prev.fotos : normalizePortfolioFotos(prev)).filter((foto) => foto !== fotoURL);
-      return {
-        ...prev,
-        fotos,
-        fotoURL: fotos[0] || "",
-      };
-    });
-    setPortfolioPhotoError("");
-  }
-
-  const salvar = async () => {
+  const salvar = async (profileOverride = null) => {
     if (!uid) return;
+
+    const profileToSave = profileOverride && typeof profileOverride === "object" && !profileOverride.nativeEvent
+      ? profileOverride
+      : profile;
 
     setSalvando(true);
     setSalvo(false);
 
     try {
-      const profPortfolio = normalizePortfolio(profile.profPortfolio);
-      const portfolioMap = portfolioListToMap(profPortfolio);
-
       const corre = {
-        ativo: !!profile.isCorre,
-        titulo: profile.correTitulo || "Corre rápido",
-        bio: profile.correBio || "",
-        transporte: profile.correTransporte || "",
-        regiao: profile.correRegiao || profile.cidade || "",
-        disponibilidade: profile.correDisponibilidade || "",
-        experiencia: profile.correExperiencia || "",
+        ativo: !!profileToSave.isCorre,
+        titulo: profileToSave.correTitulo || "Corre rápido",
+        bio: profileToSave.correBio || "",
+        transporte: profileToSave.correTransporte || "",
+        regiao: profileToSave.correRegiao || profileToSave.cidade || "",
+        disponibilidade: profileToSave.correDisponibilidade || "",
+        experiencia: profileToSave.correExperiencia || "",
       };
 
       const profissional = {
-        ativo: !!profile.isProfissional,
-        titulo: profile.titulo || "",
-        descricao: profile.descricao || "",
-        preco: profile.preco || "",
-        whatsapp: profile.whatsapp || "",
-        regiao: profile.profRegiao || profile.cidade || "",
-        experiencia: profile.profExperiencia || "",
-        statusProfissional: profile.statusProfissional || "disponivel",
-        ocupadoAte: profile.ocupadoAte || "",
-        agendaAberta: profile.agendaAberta !== false,
-        portfolio: portfolioMap,
-        profPortfolio,
+        ativo: !!profileToSave.isProfissional,
+        titulo: profileToSave.titulo || "",
+        descricao: profileToSave.descricao || "",
+        preco: profileToSave.preco || "",
+        whatsapp: profileToSave.whatsapp || "",
+        regiao: profileToSave.profRegiao || profileToSave.cidade || "",
+        experiencia: profileToSave.profExperiencia || "",
+        statusProfissional: profileToSave.statusProfissional || "disponivel",
+        ocupadoAte: profileToSave.ocupadoAte || "",
+        agendaAberta: profileToSave.agendaAberta !== false,
       };
 
       const mapSettings = {
-        mostrarOnline: !!profile.mapMostrarOnline,
-        aoVivo: !!profile.mapAoVivo,
-        limiteOnline: Math.max(5, Math.min(80, Number(profile.mapLimiteOnline || 30))),
+        mostrarOnline: !!profileToSave.mapMostrarOnline,
+        aoVivo: !!profileToSave.mapAoVivo,
+        limiteOnline: Math.max(5, Math.min(80, Number(profileToSave.mapLimiteOnline || 30))),
         atualizadoEm: serverTimestamp(),
       };
 
       const uiSettings = {
-        animacoes: profile.animacoes !== false,
-        modoEconomico: profile.modoEconomico === true,
-        aparencia: profile.aparencia || "sistema",
-        notificationPreferences: normalizeNotificationPreferences(profile.notificationPreferences),
+        animacoes: profileToSave.animacoes !== false,
+        modoEconomico: profileToSave.modoEconomico === true,
+        notificationPreferences: normalizeNotificationPreferences(profileToSave.notificationPreferences),
         atualizadoEm: serverTimestamp(),
       };
-      const privacySettings = normalizePrivacy(profile.privacy);
+      const privacySettings = normalizePrivacy(profileToSave.privacy);
       const privacyPayload = {
         ...privacySettings,
         atualizadoEm: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
-      const fotoPrincipal = pickFoto(profile.fotoURL, profile.photoURL, profile.avatar);
+      const fotoPrincipal = pickFoto(profileToSave.fotoURL, profileToSave.photoURL, profileToSave.avatar);
       const publicProfileSnap = await get(ref(database, `publicProfiles/${uid}`)).catch(() => null);
       const shouldSyncPublicWorkProfile = !!(publicProfileSnap?.exists?.() && publicProfileSnap.val());
-      const publicPortfolioMap = privacySettings.profileVisible
-        ? portfolioListToPublicMap(profPortfolio, profile, uid, fotoPrincipal)
-        : {};
-      const publicProfilePayload = profileToPublicProfile(profile, uid, fotoPrincipal, privacySettings, profPortfolio);
-      const profilePublic = { ...profile };
+      const publicProfilePayload = profileToPublicProfile(profileToSave, uid, fotoPrincipal, privacySettings);
+      const profilePublic = withoutPortfolioFields(profileToSave);
+      delete profilePublic.aparencia;
       delete profilePublic.privacy;
       delete profilePublic.cpf;
       delete profilePublic.cpfDigits;
@@ -2049,9 +1864,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         documentoVerificacao: null,
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
-        avatar: fotoPrincipal || profile.avatarEmoji || "",
-        profPortfolio,
-        portfolio: portfolioMap,
+        avatar: fotoPrincipal || profileToSave.avatarEmoji || "",
         corre: {
           ...corre,
           fotoURL: fotoPrincipal || null,
@@ -2088,7 +1901,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       await update(ref(database, `${userBasePath}/settings/ui`), uiSettings);
 
       await update(ref(database, `${userBasePath}`), {
-        nome: profile.nome,
+        nome: profileToSave.nome,
         cpf: null,
         cpfDigits: null,
         cpfMasked: null,
@@ -2098,42 +1911,40 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         documentoVerificacao: null,
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
-        avatar: fotoPrincipal || profile.avatarEmoji || "",
-        avatarEmoji: profile.avatarEmoji || "",
-        profPortfolio,
-        portfolio: portfolioMap,
-        cidade: profile.cidade || "",
-        bairro: profile.bairro || "",
-        telefone: profile.telefone || "",
-        phone: profile.telefone || "",
-        email: profile.email || auth.currentUser?.email || "",
-        dataNascimento: profile.dataNascimento || "",
-        bio: profile.bio || "",
-        visivel: profile.visivel !== false,
-        notificacoes: profile.notificacoes !== false,
+        avatar: fotoPrincipal || profileToSave.avatarEmoji || "",
+        avatarEmoji: profileToSave.avatarEmoji || "",
+        cidade: profileToSave.cidade || "",
+        bairro: profileToSave.bairro || "",
+        telefone: profileToSave.telefone || "",
+        phone: profileToSave.telefone || "",
+        email: profileToSave.email || auth.currentUser?.email || "",
+        dataNascimento: profileToSave.dataNascimento || "",
+        bio: profileToSave.bio || "",
+        visivel: profileToSave.visivel !== false,
+        notificacoes: profileToSave.notificacoes !== false,
         privacy: privacyPayload,
-        isCorre: !!profile.isCorre,
+        isCorre: !!profileToSave.isCorre,
         corre: {
           ...corre,
           fotoURL: fotoPrincipal || null,
           photoURL: fotoPrincipal || null,
         },
-        isProfissional: !!profile.isProfissional,
-        profissional: profile.isProfissional
+        isProfissional: !!profileToSave.isProfissional,
+        profissional: profileToSave.isProfissional
           ? {
               ...profissional,
               fotoURL: fotoPrincipal || null,
               photoURL: fotoPrincipal || null,
             }
           : null,
-        plano: profile.plano || "Free",
-        statusProfissional: profile.statusProfissional || "disponivel",
-        ocupadoAte: profile.ocupadoAte || "",
-        agendaAberta: profile.agendaAberta !== false,
+        plano: profileToSave.plano || "Free",
+        statusProfissional: profileToSave.statusProfissional || "disponivel",
+        ocupadoAte: profileToSave.ocupadoAte || "",
+        agendaAberta: profileToSave.agendaAberta !== false,
         showOnlineStatus: privacySettings.showOnlineStatus,
         allowPublicContact: privacySettings.allowPublicContact,
         assinatura: {
-          plano: profile.plano || "Free",
+          plano: profileToSave.plano || "Free",
           origem: "perfil",
           atualizadoEm: serverTimestamp(),
         },
@@ -2142,10 +1953,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
       });
 
       if (shouldSyncPublicWorkProfile) {
-        await set(
-          ref(database, `publicPortfolio/${uid}`),
-          Object.keys(publicPortfolioMap).length ? publicPortfolioMap : null
-        );
         await runTransaction(ref(database, `publicProfiles/${uid}`), (current) => {
           const currentStatus = normalizeProfileStatus(current || {});
           if (blockedPublicProfileStatuses.has(currentStatus)) return current;
@@ -2169,30 +1976,30 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
         origem: "PerfilDrawer",
       });
       await update(ref(database, `usuariosOnline/${uid}`), {
-        nome: profile.nome || "",
+        nome: profileToSave.nome || "",
         fotoURL: fotoPrincipal || null,
         photoURL: fotoPrincipal || null,
-        avatar: fotoPrincipal || profile.avatarEmoji || "",
-        avatarEmoji: profile.avatarEmoji || "",
-        cidade: profile.cidade || "",
-        isCorre: !!profile.isCorre,
-        isProfissional: !!profile.isProfissional,
-        visivel: profile.visivel !== false,
+        avatar: fotoPrincipal || profileToSave.avatarEmoji || "",
+        avatarEmoji: profileToSave.avatarEmoji || "",
+        cidade: profileToSave.cidade || "",
+        isCorre: !!profileToSave.isCorre,
+        isProfissional: !!profileToSave.isProfissional,
+        visivel: profileToSave.visivel !== false,
         profileVisible: privacySettings.profileVisible,
         profileVisibilityExplicit: privacySettings.profileVisibilityExplicit === true,
         showOnlineStatus: privacySettings.showOnlineStatus,
         allowPublicContact: privacySettings.allowPublicContact,
-        plano: profile.plano || "Free",
-        statusProfissional: profile.statusProfissional || "disponivel",
-        ocupadoAte: profile.ocupadoAte || "",
-        agendaAberta: profile.agendaAberta !== false,
+        plano: profileToSave.plano || "Free",
+        statusProfissional: profileToSave.statusProfissional || "disponivel",
+        ocupadoAte: profileToSave.ocupadoAte || "",
+        agendaAberta: profileToSave.agendaAberta !== false,
         atualizadoEm: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
       try {
         if (fotoPrincipal) window.localStorage.setItem("fotoURL", fotoPrincipal);
-        if (profile.avatarEmoji) window.localStorage.setItem("avatarEmoji", profile.avatarEmoji);
+        if (profileToSave.avatarEmoji) window.localStorage.setItem("avatarEmoji", profileToSave.avatarEmoji);
       } catch {}
 
       setSalvo(true);
@@ -2237,7 +2044,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
           update(ref(database, `${userBasePath}/settings/ui`), {
             animacoes: configSnapshot.animacoes,
             modoEconomico: configSnapshot.modoEconomico,
-            aparencia: configSnapshot.aparencia,
             notificationPreferences: configSnapshot.notificationPreferences,
             atualizadoEm: serverTimestamp(),
           }),
@@ -2246,7 +2052,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             notificacoes: configSnapshot.notificacoes,
             notificationPreferences: configSnapshot.notificationPreferences,
             modoEconomico: configSnapshot.modoEconomico,
-            aparencia: configSnapshot.aparencia,
           }),
           update(ref(database, userBasePath), {
             visivel: configSnapshot.visivel,
@@ -2292,24 +2097,25 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     profile.perfilVerificado ||
     profile.trust?.verificado
   );
-  const pushAtivo = profile.pushNotifications?.enabled === true;
+  const pushAtivo = pushInfo.notificationsV2Enabled
+    ? pushInfo.deviceRegistered === true
+    : profile.pushNotifications?.enabled === true;
   const pushPermission = pushInfo.permission || "default";
   const pushStatusLabel =
-    pushPermission === "granted"
-      ? "Ativada"
-      : pushPermission === "denied"
-        ? "Bloqueada"
-        : "Não ativada";
+    pushPermission === "denied"
+      ? "Bloqueadas"
+      : pushAtivo
+        ? "Ativadas"
+        : "Desativadas";
   const pushStatusClass =
-    pushPermission === "granted"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : pushPermission === "denied"
-        ? "border-rose-200 bg-rose-50 text-rose-700"
+    pushPermission === "denied"
+      ? "border-rose-200 bg-rose-50 text-rose-700"
+      : pushAtivo
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
         : "border-amber-200 bg-amber-50 text-amber-700";
   const pushCanUse =
     pushInfo.supported &&
     pushInfo.serviceWorkerAvailable !== false &&
-    Boolean(vapidKey) &&
     vapidConfigured;
   const pushReason = vapidConfigured && /vapid/i.test(String(pushInfo.reason || "")) ? "" : pushInfo.reason;
   const privacy = normalizePrivacy(profile.privacy);
@@ -2360,7 +2166,6 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
     responseSamples: serviceStats.amostrasResposta,
     returningClients: serviceStats.clientesRecorrentes,
   };
-  const portfolioDraftFotos = normalizePortfolioFotos(portfolioDraft);
   const selectedWorkMode = profile.isCorre && profile.isProfissional
     ? "ambos"
     : profile.isProfissional
@@ -2445,92 +2250,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
   const drawerPage = drawerPages[tab] || drawerPages.config;
   const updatePortfolioDraft = (field, value) => {
     setPortfolioPhotoError("");
+    setPortfolioPhotoSuccess("");
     setPortfolioDraft((prev) => ({ ...prev, [field]: value }));
   };
-  const adicionarPortfolioItem = () => {
-    if (portfolioSavingRef.current) return;
-
-    portfolioSavingRef.current = true;
-    setPortfolioSaving(true);
-
-    const fotos = normalizePortfolioFotos(portfolioDraft);
-    const categoriaMeta = getCategoryById(portfolioDraft.categoriaId || portfolioDraft.categoria);
-    const categoriaId = String(portfolioDraft.categoriaId || categoriaMeta?.id || "").trim();
-    const categoriaNome = String(portfolioDraft.categoriaNome || categoriaMeta?.label || portfolioDraft.categoria || "").trim();
-    const id = portfolioEditingId || portfolioDraft.id || `portfolio_${Date.now()}`;
-    const item = {
-      id,
-      nome: String(portfolioDraft.nome || portfolioDraft.titulo || "").trim(),
-      titulo: String(portfolioDraft.nome || portfolioDraft.titulo || "").trim(),
-      descricao: portfolioDraft.descricao.trim(),
-      preco: portfolioDraft.preco.trim(),
-      faixaPreco: String(portfolioDraft.faixaPreco || portfolioDraft.valor || portfolioDraft.preco || "").trim(),
-      valor: String(portfolioDraft.faixaPreco || portfolioDraft.valor || portfolioDraft.preco || "").trim(),
-      categoriaId,
-      categoriaNome,
-      categoria: categoriaNome,
-      tempoMedio: portfolioDraft.tempoMedio.trim(),
-      regiao: String(portfolioDraft.regiao || profile.profRegiao || profile.cidade || "").trim(),
-      atendeDomicilio: portfolioDraft.atendeDomicilio !== false,
-      urgente: portfolioDraft.urgente === true,
-      ativo: portfolioDraft.ativo !== false,
-      fotoURL: fotos[0] || "",
-      fotos,
-      fotoImgBbId: portfolioDraft.fotoImgBbId || "",
-      createdAt: portfolioDraft.createdAt || Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    if (!item.nome && !item.descricao && !item.valor && !item.categoria && !item.fotos.length) {
-      setPortfolioPhotoError("Preencha pelo menos o nome do serviço para adicionar.");
-      portfolioFirstInputRef.current?.focus();
-      portfolioSavingRef.current = false;
-      setPortfolioSaving(false);
-      return;
-    }
-
-    setProfile((prev) => ({
-      ...prev,
-      profPortfolio: [
-        ...normalizePortfolio(prev.profPortfolio).filter((current) => current.id !== id),
-        item,
-      ].slice(0, 12),
-    }));
-    setPortfolioDraft(createEmptyPortfolioDraft());
-    setPortfolioEditingId("");
-    setPortfolioPhotoError("");
-    window.setTimeout(() => {
-      portfolioSavingRef.current = false;
-      setPortfolioSaving(false);
-    }, 300);
-  };
-  const editarPortfolioItem = (item) => {
-    const normalized = normalizePortfolio([item])[0] || item;
-    setPortfolioDraft({
-      ...createEmptyPortfolioDraft(),
-      ...normalized,
-      nome: normalized.nome || normalized.titulo || "",
-      titulo: normalized.nome || normalized.titulo || "",
-      valor: normalized.valor || normalized.faixaPreco || normalized.preco || "",
-      faixaPreco: normalized.faixaPreco || normalized.valor || "",
-      categoria: normalized.categoria || normalized.categoriaNome || "",
-      categoriaNome: normalized.categoriaNome || normalized.categoria || "",
-      fotos: normalizePortfolioFotos(normalized),
-    });
-    setPortfolioEditingId(normalized.id || "");
-    setPortfolioPhotoError("");
-  };
-  const removerPortfolioItem = (id) => {
-    setProfile((prev) => ({
-      ...prev,
-      profPortfolio: normalizePortfolio(prev.profPortfolio).filter((item) => item.id !== id),
-    }));
-    if (portfolioEditingId === id) {
-      setPortfolioEditingId("");
-      setPortfolioDraft(createEmptyPortfolioDraft());
-    }
-  };
-
   const updateAddressDraft = (field, value) => {
     setAddressAviso("");
     setAddressDraft((prev) => ({ ...prev, [field]: value }));
@@ -2993,7 +2715,7 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
                 <button
                   type="button"
-                  onClick={salvar}
+                  onClick={() => void salvar()}
                   disabled={salvando || fotoSalvando}
                   className="mt-6 h-14 w-full rounded-2xl bg-blue-700 text-base font-black text-white shadow-[0_18px_42px_rgba(37,99,235,0.26)] transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] md:h-16 md:rounded-[24px]"
                 >
@@ -3138,13 +2860,21 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-base font-black text-blue-950">Enderecos salvos</div>
-                        <div className="mt-1 text-xs font-bold text-slate-500">{addresses.length} local(is)</div>
+                        <div className="mt-1 text-xs font-bold text-slate-500">
+                          {currentAddressesStatus.loaded ? `${addresses.length} local(is)` : "Carregando locais..."}
+                        </div>
                       </div>
                       <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-xl shadow-sm">📍</div>
                     </div>
 
                     <div className="mt-4 space-y-3">
-                      {addresses.length ? addresses.map((address) => (
+                      {!currentAddressesStatus.loaded ? (
+                        <ListPanelSkeleton label="Carregando endereços" rows={2} showHeader={false} />
+                      ) : currentAddressesStatus.error ? (
+                        <div role="alert" className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-bold text-amber-800">
+                          {currentAddressesStatus.error}
+                        </div>
+                      ) : addresses.length ? addresses.map((address) => (
                         <article key={address.id} className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
@@ -3668,6 +3398,15 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                             tone="blue"
                           />
                         </label>
+                        <label className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-white px-3 py-2.5 ring-1 ring-slate-200">
+                          <span className="text-xs font-black text-slate-700">Telefone durante atendimento ativo</span>
+                          <ToggleSwitch
+                            checked={privacy.sharePhoneDuringActiveJob}
+                            onChange={(checked) => setPrivacyPreference("sharePhoneDuringActiveJob", checked)}
+                            label="Compartilhar telefone durante atendimento ativo"
+                            tone="blue"
+                          />
+                        </label>
                         <div className="mt-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
                           Nunca compartilhar em segundo plano.
                         </div>
@@ -3961,8 +3700,13 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
                   <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5 text-xs font-bold text-slate-300">
                     <span className="rounded-full bg-[#ffd91a] px-2.5 py-1 font-black text-blue-950">
-                      {serviceStats.notaMedia ? `★ ${serviceStats.notaMedia.toFixed(1)}` : "Sem nota"}
-                      {serviceStats.avaliacoes ? ` (${serviceStats.avaliacoes})` : ""}
+                      {!currentServiceStatsStatus.loaded
+                        ? "Carregando histórico..."
+                        : currentServiceStatsStatus.error
+                          ? "Histórico indisponível"
+                        : serviceStats.notaMedia
+                          ? `★ ${serviceStats.notaMedia.toFixed(1)}${serviceStats.avaliacoes ? ` (${serviceStats.avaliacoes})` : ""}`
+                          : "Sem nota"}
                     </span>
                     <span>{profile.titulo || "Profissional local"}</span>
                   </div>
@@ -3974,10 +3718,10 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
 
                   <div className="mt-5 grid w-full grid-cols-2 gap-2 md:grid-cols-4">
                     {[
-                      ["Ganhos", formatMoneyBR(serviceStats.ganhosTotal)],
-                      ["Como Corre", formatMoneyBR(serviceStats.ganhosCorreTotal)],
-                      ["Como Pro", formatMoneyBR(serviceStats.ganhosProfTotal)],
-                      ["Serviços", serviceStats.comoCorre + serviceStats.comoProfissional],
+                      ["Ganhos", currentServiceStatsStatus.loaded && !currentServiceStatsStatus.error ? formatMoneyBR(serviceStats.ganhosTotal) : "…"],
+                      ["Como Corre", currentServiceStatsStatus.loaded && !currentServiceStatsStatus.error ? formatMoneyBR(serviceStats.ganhosCorreTotal) : "…"],
+                      ["Como Pro", currentServiceStatsStatus.loaded && !currentServiceStatsStatus.error ? formatMoneyBR(serviceStats.ganhosProfTotal) : "…"],
+                      ["Serviços", currentServiceStatsStatus.loaded && !currentServiceStatsStatus.error ? serviceStats.comoCorre + serviceStats.comoProfissional : "…"],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.06] px-2 py-2">
                         <div className="truncate text-base font-black md:text-lg">{value}</div>
@@ -3985,6 +3729,11 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                       </div>
                     ))}
                   </div>
+                  {currentServiceStatsStatus.error ? (
+                    <div role="alert" className="mt-3 w-full rounded-2xl border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-xs font-bold text-amber-100">
+                      {currentServiceStatsStatus.error}
+                    </div>
+                  ) : null}
                 </div>
               </section>
 
@@ -4068,11 +3817,19 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
                     </button>
                   </div>
 
-                  <ProfessionalReputationSummary
-                    data-tutorial="reputacao"
-                    reputation={professionalReputation}
-                    className="mt-4"
-                  />
+                  {!currentServiceStatsStatus.loaded ? (
+                    <ListPanelSkeleton label="Carregando reputação" rows={2} showHeader={false} className="mt-4" />
+                  ) : currentServiceStatsStatus.error ? (
+                    <div role="alert" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+                      {currentServiceStatsStatus.error}
+                    </div>
+                  ) : (
+                    <ProfessionalReputationSummary
+                      data-tutorial="reputacao"
+                      reputation={professionalReputation}
+                      className="mt-4"
+                    />
+                  )}
 
                   {professionalProfileStep === "choice" && (
                     <div className="pt-8">
@@ -4293,402 +4050,42 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
               )}
 
               {currentProfSection === "portfolio" && (
-                <section data-tutorial="portfolio" className="overflow-hidden rounded-[26px] border border-blue-950/12 bg-white p-3 shadow-[0_22px_70px_rgba(15,23,42,0.10)] ring-1 ring-blue-950/5 md:rounded-[34px] md:p-5">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <span className="grid h-16 w-20 shrink-0 place-items-center rounded-[22px] border border-blue-100 bg-blue-50 shadow-[0_14px_30px_rgba(37,99,235,0.14)]">
-                        <ServiceToolboxIllustration className="h-14 w-20" />
-                      </span>
-                      <div className="min-w-0">
-                        <h3 className="text-lg font-black leading-tight text-blue-950 md:text-2xl">Seu portfólio profissional</h3>
-                        <p className="mt-1 text-xs font-bold text-slate-500 md:text-sm">Mostre seus serviços, preços e trabalhos feitos.</p>
-                        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">
-                          <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-                          {portfolioItems.length} serviços cadastrados
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="rounded-[18px] border border-blue-100 bg-blue-50/70 p-3 md:w-[260px]">
-                      <div className="flex items-start gap-2">
-                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blue-700 shadow-sm">✧</span>
-                        <div>
-                          <div className="text-xs font-black text-blue-700">Dica rápida</div>
-                          <p className="mt-0.5 text-[11px] font-bold leading-snug text-slate-500">
-                            Perfis com fotos reais recebem até 3x mais contatos.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-                    {[
-                      {
-                        icon: "R$",
-                        label: "Preço base",
-                        value: profile.preco,
-                        placeholder: "R$ 50,00",
-                        hint: "Valor mínimo de referência",
-                        onChange: (value) => setProfile((p) => ({ ...p, preco: value })),
-                        tone: "bg-emerald-500 text-white",
-                        inputMode: "decimal",
-                      },
-                      {
-                        icon: "☎",
-                        label: "WhatsApp",
-                        value: profile.whatsapp,
-                        placeholder: "(21) 3778-1502",
-                        hint: "Para clientes te chamarem",
-                        onChange: (value) => setProfile((p) => ({ ...p, whatsapp: value })),
-                        tone: "bg-emerald-500 text-white",
-                        inputMode: "tel",
-                      },
-                      {
-                        icon: "⌖",
-                        label: "Região",
-                        value: profile.profRegiao,
-                        placeholder: "Nova Iguaçu - RJ",
-                        hint: "Onde você atua",
-                        onChange: (value) => setProfile((p) => ({ ...p, profRegiao: value })),
-                        tone: "bg-blue-600 text-white",
-                        inputMode: "text",
-                      },
-                      {
-                        icon: "★",
-                        label: "Experiência",
-                        value: profile.profExperiencia,
-                        placeholder: "5 anos",
-                        hint: "Na sua área de atuação",
-                        onChange: (value) => setProfile((p) => ({ ...p, profExperiencia: value })),
-                        tone: "bg-[#ffd91a] text-blue-950",
-                        inputMode: "text",
-                      },
-                    ].map((card) => (
-                      <label key={card.label} className="group block rounded-[18px] border border-slate-100 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)] transition focus-within:border-blue-300 focus-within:ring-4 focus-within:ring-blue-100">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={["grid h-9 w-9 place-items-center rounded-2xl text-xs font-black shadow-sm", card.tone].join(" ")}>
-                            {card.icon}
-                          </span>
-                          <span className="grid h-8 w-8 place-items-center rounded-full text-slate-300 transition group-focus-within:bg-blue-50 group-focus-within:text-blue-700">✎</span>
-                        </div>
-                        <div className="mt-2 text-[11px] font-black text-slate-500">{card.label}</div>
-                        <input
-                          value={card.value}
-                          onChange={(e) => card.onChange(e.target.value)}
-                          placeholder={card.placeholder}
-                          inputMode={card.inputMode}
-                          aria-label={`Editar ${card.label}`}
-                          className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-black text-blue-950 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                        />
-                        <div className="mt-1 text-[10px] font-bold text-slate-400">{card.hint}</div>
-                      </label>
-                    ))}
-                  </div>
-
-                  <div
-                    ref={portfolioFormRef}
-                    className={[
-                      "mt-4 scroll-mt-6 rounded-[22px] border bg-white p-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] transition md:p-4",
-                      "border-slate-100",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="grid h-10 w-10 place-items-center rounded-full bg-blue-700 text-white shadow-[0_12px_24px_rgba(37,99,235,0.24)]">
-                        <ServiceBriefcaseIcon className="h-5 w-5" />
-                      </span>
-                      <div>
-                        <div className="text-sm font-black text-blue-950">
-                          {portfolioEditingId ? "Editar serviço" : "Novo serviço"}
-                        </div>
-                        <div className="text-xs font-semibold text-slate-500">Preencha os dados do serviço que você oferece</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-1 gap-2.5 md:grid-cols-3">
-                      <Field label="Nome do serviço">
-                        <input
-                          ref={portfolioFirstInputRef}
-                          value={portfolioDraft.nome || portfolioDraft.titulo}
-                          onChange={(e) => updatePortfolioDraft("nome", e.target.value)}
-                          placeholder="Ex: Instalação elétrica"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                      <Field label="Categoria">
-                        <select
-                          value={portfolioDraft.categoriaId}
-                          onChange={(e) => {
-                            const cat = getCategoryById(e.target.value);
-                            setPortfolioDraft((prev) => ({
-                              ...prev,
-                              categoriaId: e.target.value,
-                              categoriaNome: cat?.label || "",
-                              categoria: cat?.label || "",
-                            }));
-                          }}
-                          className={inputClass("bg-white")}
-                        >
-                          <option value="" className="text-black">Selecione</option>
-                          {CATEGORIES.map((cat) => (
-                            <option key={cat.id} value={cat.id} className="text-black">{cat.emoji} {cat.label}</option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="Valor ou faixa">
-                        <input
-                          value={portfolioDraft.faixaPreco || portfolioDraft.valor}
-                          onChange={(e) => updatePortfolioDraft("faixaPreco", e.target.value)}
-                          placeholder="Ex: R$ 100 - R$ 200"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                      <Field label="Descrição curta">
-                        <input
-                          value={portfolioDraft.descricao}
-                          onChange={(e) => updatePortfolioDraft("descricao", e.target.value)}
-                          placeholder="Descreva seu serviço em poucas palavras"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                      <Field label="Tempo médio">
-                        <input
-                          value={portfolioDraft.tempoMedio}
-                          onChange={(e) => updatePortfolioDraft("tempoMedio", e.target.value)}
-                          placeholder="Ex: 2 horas"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                      <Field label="Região de atendimento">
-                        <input
-                          value={portfolioDraft.regiao}
-                          onChange={(e) => updatePortfolioDraft("regiao", e.target.value)}
-                          placeholder="Ex: Nova Iguaçu - RJ"
-                          className={inputClass("bg-white")}
-                        />
-                      </Field>
-                    </div>
-                    <div className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-[1fr_2.2fr]">
-                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 lg:grid-cols-1">
-                        {[
-                          ["atendeDomicilio", "Atende em domicílio?"],
-                          ["urgente", "Serviço urgente?"],
-                          ["ativo", "Ativo na vitrine?"],
-                        ].map(([field, label]) => (
-                          <div key={field} className="rounded-[16px] border border-slate-100 bg-slate-50 p-3">
-                            <div className="text-xs font-black text-blue-950">{label}</div>
-                            <div className="mt-2 grid grid-cols-2 gap-2">
-                              {[true, false].map((value) => (
-                                <button
-                                  key={String(value)}
-                                  type="button"
-                                  onClick={() => updatePortfolioDraft(field, value)}
-                                  className={[
-                                    "h-9 rounded-full border text-xs font-black transition active:scale-[0.98]",
-                                    portfolioDraft[field] === value
-                                      ? "border-blue-200 bg-blue-50 text-blue-700"
-                                      : "border-slate-200 bg-white text-slate-500",
-                                  ].join(" ")}
-                                >
-                                  {value ? "Sim" : "Não"}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="rounded-[16px] border border-slate-100 bg-slate-50 p-3">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <div className="text-xs font-black text-blue-950">Fotos do serviço (até 5)</div>
-                            <div className="text-[11px] font-semibold text-slate-500">Mostre fotos reais dos seus trabalhos</div>
-                          </div>
-                          <label className={["grid h-9 cursor-pointer place-items-center rounded-xl border border-blue-100 bg-white px-4 text-xs font-black text-blue-700 shadow-sm transition active:scale-[0.98]", portfolioPhotoUploading || portfolioDraftFotos.length >= 5 ? "pointer-events-none opacity-60" : ""].join(" ")}>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              disabled={portfolioPhotoUploading || portfolioDraftFotos.length >= 5}
-                              className="hidden"
-                              onChange={alterarFotoPortfolio}
-                            />
-                            {portfolioPhotoUploading ? "Enviando..." : "Fotos"}
-                          </label>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-5 gap-2">
-                          {Array.from({ length: 5 }).map((_, index) => {
-                            const foto = portfolioDraftFotos[index];
-                            return (
-                              <div key={foto || index} className={["relative grid aspect-square place-items-center overflow-hidden rounded-[14px] border text-[10px] font-black", foto ? "border-slate-200 bg-slate-100" : "border-dashed border-blue-200 bg-white text-blue-600"].join(" ")}>
-                                {foto ? (
-                                  <>
-                                    <span
-                                      className="h-full w-full bg-cover bg-center"
-                                      style={{ backgroundImage: `url(${foto})` }}
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => removerFotoPortfolioDraft(foto)}
-                                      className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-slate-950/80 text-[10px] font-black text-white"
-                                      aria-label="Remover foto"
-                                    >
-                                      ×
-                                    </button>
-                                  </>
-                                ) : (
-                                  index === 0 ? "+ Foto" : "▧"
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {portfolioPhotoError ? (
-                          <div className="mt-2 text-xs font-black text-rose-600">{portfolioPhotoError}</div>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                      {portfolioEditingId ? (
-                        <button
-                          type="button"
-                        onClick={() => {
-                          setPortfolioEditingId("");
-                          setPortfolioDraft(createEmptyPortfolioDraft());
-                        }}
-                          className="h-10 rounded-xl border border-slate-200 bg-white px-5 text-xs font-black text-slate-600 transition active:scale-[0.98]"
-                        >
-                          Cancelar
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={adicionarPortfolioItem}
-                        disabled={portfolioSaving || portfolioPhotoUploading}
-                        className={[
-                          "h-10 rounded-xl bg-blue-700 px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(37,99,235,0.24)] transition hover:bg-blue-800 active:scale-[0.98]",
-                          portfolioSaving || portfolioPhotoUploading ? "cursor-not-allowed opacity-60" : "",
-                        ].join(" ")}
-                      >
-                        {portfolioSaving ? "Salvando..." : portfolioEditingId ? "Salvar serviço" : "Adicionar"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {!portfolioItems.length ? (
-                    <div className="mt-4 flex flex-col gap-4 rounded-[22px] border border-slate-100 bg-white p-5 shadow-[0_14px_36px_rgba(15,23,42,0.07)] md:flex-row md:items-center md:px-8">
-                      <div className="relative grid h-32 w-44 shrink-0 place-items-center">
-                        <ServiceToolboxIllustration className="h-32 w-44" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-black text-blue-950">Você ainda não cadastrou serviços</div>
-                        <p className="mt-1 max-w-xl text-xs font-semibold leading-relaxed text-slate-500">
-                          Preencha o formulário acima e finalize pelo botão Adicionar para montar sua vitrine profissional.
-                        </p>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-4 rounded-[22px] border border-slate-100 bg-white p-3 shadow-[0_14px_36px_rgba(15,23,42,0.07)] md:p-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-black text-blue-950">Seus serviços cadastrados</div>
-                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">{portfolioItems.length} serviços</span>
-                      </div>
-                      <button type="button" className="h-8 w-fit rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-500">
-                        Mais recentes
-                      </button>
-                    </div>
-
-                    {portfolioItems.length ? (
-                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {portfolioItems.map((item) => {
-                          const cover = item.fotos?.[0] || "";
-                          const title = item.nome || item.titulo || "Serviço sem título";
-                          const category = item.categoriaNome || item.categoria || "Serviço";
-                          const price = item.faixaPreco || item.valor || item.preco || "A combinar";
-                          return (
-                            <article key={item.id} className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-                              <div className="relative h-32 bg-gradient-to-br from-blue-50 via-slate-100 to-emerald-50">
-                                {cover ? (
-                                  <span
-                                    className="block h-full w-full bg-cover bg-center"
-                                    style={{ backgroundImage: `url(${cover})` }}
-                                  />
-                                ) : (
-                                  <div className="grid h-full place-items-center text-3xl text-blue-200">▧</div>
-                                )}
-                                {item.urgente ? (
-                                  <span className="absolute left-2 top-2 rounded-full bg-[#ffd91a] px-2 py-1 text-[10px] font-black text-blue-950">Destaque</span>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => editarPortfolioItem(item)}
-                                  className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full bg-white/95 text-xs font-black text-slate-600 shadow-sm"
-                                  aria-label="Editar serviço"
-                                >
-                                  ⋮
-                                </button>
-                              </div>
-                              <div className="p-3">
-                                <div className="line-clamp-1 text-sm font-black text-blue-950">{title}</div>
-                                <div className="mt-0.5 text-[11px] font-bold text-slate-500">Em {category}</div>
-                                <div className="mt-2 text-sm font-black text-emerald-600">{price}</div>
-                                <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[10px] font-bold text-slate-500">
-                                  {item.regiao ? <span>{item.regiao}</span> : null}
-                                  {item.tempoMedio ? <span>{item.tempoMedio}</span> : null}
-                                  {item.ativo === false ? <span className="text-slate-400">Oculto</span> : null}
-                                </div>
-                                <div className="mt-3 grid grid-cols-2 gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => editarPortfolioItem(item)}
-                                    className="h-9 rounded-xl border border-blue-100 bg-blue-50 text-xs font-black text-blue-700"
-                                  >
-                                    Editar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => removerPortfolioItem(item.id)}
-                                    className="h-9 rounded-xl border border-rose-100 bg-rose-50 text-xs font-black text-rose-600"
-                                  >
-                                    Remover
-                                  </button>
-                                </div>
-                              </div>
-                            </article>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="mt-3 rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500">
-                        Nenhum serviço cadastrado ainda.
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-4 flex flex-col gap-2 rounded-[18px] border border-yellow-200 bg-yellow-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-xs font-bold text-yellow-900">
-                      <b>Dica para se destacar:</b> mantenha fotos reais e descrição objetiva para o cliente decidir mais rápido.
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProfSection("perfilProfissional");
-                        setProfessionalProfileStep("choice");
-                      }}
-                      className="h-9 rounded-xl bg-[#ffd91a] px-4 text-xs font-black text-blue-950 shadow-sm"
-                    >
-                      Ver meu perfil
-                    </button>
-                  </div>
-                </section>
+                <ProfessionalPortfolioSection
+                  uid={uid}
+                  user={auth.currentUser}
+                  legacyServices={portfolioItems}
+                  legacyReadStatus={currentPortfolioReadStatus}
+                  professionalDetails={{
+                    preco: profile.preco,
+                    whatsapp: profile.whatsapp,
+                    regiao: profile.profRegiao,
+                    experiencia: profile.profExperiencia,
+                  }}
+                  onProfessionalDetailChange={(field, value) => {
+                    const profileField = {
+                      preco: "preco",
+                      whatsapp: "whatsapp",
+                      regiao: "profRegiao",
+                      experiencia: "profExperiencia",
+                    }[field];
+                    if (profileField) setProfile((current) => ({ ...current, [profileField]: value }));
+                  }}
+                  onSaveProfessionalDetails={() => salvar()}
+                  profileSaving={salvando}
+                />
               )}
 
               {currentProfSection === "avaliacoes" && (
                 <section className="rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.08)] md:rounded-[30px] md:p-5">
-                  <ProfessionalReputationSummary reputation={professionalReputation} />
+                  {!currentServiceStatsStatus.loaded ? (
+                    <ListPanelSkeleton label="Carregando avaliações" rows={3} showHeader={false} />
+                  ) : currentServiceStatsStatus.error ? (
+                    <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+                      {currentServiceStatsStatus.error}
+                    </div>
+                  ) : (
+                    <ProfessionalReputationSummary reputation={professionalReputation} />
+                  )}
                   <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3 text-xs font-bold leading-relaxed text-slate-600">
                     As avaliações aparecem após serviços concluídos. Quanto mais histórico positivo, mais confiança o perfil transmite.
                   </div>
@@ -4789,9 +4186,9 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             </div>
           )}
 
-          {tab !== "dados" && tab !== "config" && (!professionalMode || (currentProfSection && currentProfSection !== "perfilProfissional")) && (
+          {tab !== "dados" && tab !== "config" && (!professionalMode || (currentProfSection && currentProfSection !== "perfilProfissional" && currentProfSection !== "portfolio")) && (
           <button
-            onClick={salvar}
+            onClick={() => void salvar()}
             disabled={salvando || fotoSalvando}
             className="
               w-full mt-3 py-3 md:mt-5 md:py-4 rounded-2xl md:rounded-3xl
@@ -4806,6 +4203,61 @@ export default function PerfilDrawer({ open, onClose, uid, initialTab = "config"
             {fotoSalvando ? "Salvando foto…" : salvando ? "Salvando…" : salvo ? "Salvo ✅" : "Salvar"}
           </button>
           )}
+
+          {logoutConfirmOpen ? (
+            <div
+              className="fixed inset-0 z-[100300] flex items-end justify-center bg-slate-950/65 p-3 backdrop-blur-sm sm:items-center sm:p-5"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget && !logoutSubmitting) setLogoutConfirmOpen(false);
+              }}
+            >
+              <motion.section
+                initial={{ opacity: 0, y: 18, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="logout-confirm-title"
+                aria-describedby="logout-confirm-description"
+                className="w-full max-w-sm rounded-[26px] border border-white/80 bg-white p-5 text-slate-950 shadow-[0_28px_90px_rgba(2,6,23,0.42)] sm:p-6"
+              >
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-rose-50 text-rose-600" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 17l5-5-5-5" />
+                    <path d="M15 12H3" />
+                    <path d="M14 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                  </svg>
+                </div>
+                <h2 id="logout-confirm-title" className="mt-4 text-xl font-black text-blue-950">Sair da conta?</h2>
+                <p id="logout-confirm-description" className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
+                  Voc&ecirc; precisar&aacute; entrar novamente para acessar o Corre Aqui.
+                </p>
+                {logoutError ? (
+                  <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700" role="alert">
+                    {logoutError}
+                  </div>
+                ) : null}
+                <div className="mt-5 grid grid-cols-2 gap-2.5">
+                  <button
+                    ref={logoutCancelButtonRef}
+                    type="button"
+                    onClick={() => setLogoutConfirmOpen(false)}
+                    disabled={logoutSubmitting}
+                    className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sairDaConta}
+                    disabled={logoutSubmitting}
+                    className="min-h-11 rounded-2xl bg-rose-600 px-4 text-sm font-black text-white shadow-[0_12px_26px_rgba(225,29,72,0.22)] transition hover:bg-rose-500 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-200"
+                  >
+                    {logoutSubmitting ? "Saindo..." : "Sair"}
+                  </button>
+                </div>
+              </motion.section>
+            </div>
+          ) : null}
 
           <div className="h-8" />
 

@@ -1,3 +1,14 @@
+import {
+  CLIENT_ANNUAL_PRICE_CENTS,
+  CLIENT_ANNUAL_PRODUCT_ID,
+  CLIENT_QUARTERLY_PRICE_CENTS,
+  CLIENT_QUARTERLY_PRODUCT_ID,
+  PROFESSIONAL_ANNUAL_PRICE_CENTS,
+  PROFESSIONAL_ANNUAL_PRODUCT_ID,
+  PROFESSIONAL_QUARTERLY_PRICE_CENTS,
+  PROFESSIONAL_QUARTERLY_PRODUCT_ID,
+} from '@/lib/subscriptions'
+
 export const COMMERCIAL_PRICE_CENTS = 999
 export const COMMERCIAL_CURRENCY = 'BRL'
 
@@ -5,6 +16,54 @@ export const PROFESSIONAL_FEATURED_PLAN_ID = 'corre_aqui_professional_featured'
 export const REQUEST_BOOST_PRODUCT_ID = 'corre_aqui_request_boost'
 
 export const COMMERCIAL_PRODUCTS = {
+  [CLIENT_QUARTERLY_PRODUCT_ID]: {
+    id: CLIENT_QUARTERLY_PRODUCT_ID,
+    name: 'Corre Aqui Cliente Trimestral',
+    displayPrice: 'R$ 19,90',
+    amountInCents: CLIENT_QUARTERLY_PRICE_CENTS,
+    currency: COMMERCIAL_CURRENCY,
+    type: 'client_subscription',
+    billingMode: 'quarterly_recurring',
+    durationMonths: 3,
+    frequency: 3,
+    frequencyType: 'months',
+    autoRenew: true,
+  },
+  [PROFESSIONAL_QUARTERLY_PRODUCT_ID]: {
+    id: PROFESSIONAL_QUARTERLY_PRODUCT_ID,
+    name: 'Corre Aqui Profissional Trimestral',
+    displayPrice: formatCommercialPrice(PROFESSIONAL_QUARTERLY_PRICE_CENTS),
+    amountInCents: PROFESSIONAL_QUARTERLY_PRICE_CENTS,
+    currency: COMMERCIAL_CURRENCY,
+    type: 'professional_subscription',
+    billingMode: 'quarterly_recurring',
+    durationMonths: 3,
+    frequency: 3,
+    frequencyType: 'months',
+    autoRenew: true,
+  },
+  [CLIENT_ANNUAL_PRODUCT_ID]: {
+    id: CLIENT_ANNUAL_PRODUCT_ID,
+    name: 'Corre Aqui Cliente Anual',
+    displayPrice: 'R$ 19,90',
+    amountInCents: CLIENT_ANNUAL_PRICE_CENTS,
+    currency: COMMERCIAL_CURRENCY,
+    type: 'client_subscription',
+    billingMode: 'annual_manual',
+    durationMonths: 12,
+    legacy: true,
+  },
+  [PROFESSIONAL_ANNUAL_PRODUCT_ID]: {
+    id: PROFESSIONAL_ANNUAL_PRODUCT_ID,
+    name: 'Corre Aqui Profissional Anual',
+    displayPrice: 'R$ 49,90',
+    amountInCents: PROFESSIONAL_ANNUAL_PRICE_CENTS,
+    currency: COMMERCIAL_CURRENCY,
+    type: 'professional_subscription',
+    billingMode: 'annual_manual',
+    durationMonths: 12,
+    legacy: true,
+  },
   [PROFESSIONAL_FEATURED_PLAN_ID]: {
     id: PROFESSIONAL_FEATURED_PLAN_ID,
     name: 'Corre Aqui Destaque',

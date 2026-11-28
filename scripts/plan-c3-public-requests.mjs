@@ -14,7 +14,7 @@ if (!inputPath) {
 
   for (const [id, pedido] of Object.entries(pedidos)) {
     try {
-      projections[id] = buildPublicRequest({ id, ...(pedido || {}) })
+      projections[id] = buildPublicRequest({ ...(pedido || {}), id })
     } catch (error) {
       failures.push({ id, reason: error?.message || String(error) })
     }

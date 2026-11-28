@@ -32,6 +32,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .codex-dev-server.*.log
+firebase-debug.log
+database-debug.log
 
 # env files (can opt-in for committing if needed)
 .env*

@@ -15,6 +15,9 @@ let loginRedirectPromise = null
 const DEBUG_AUTH =
   process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true'
 
+const LOGIN_PAGE_CLASS_NAME =
+  'relative z-[1] isolate grid min-h-[100dvh] place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white'
+
 function debugAuth(evento, dados = {}) {
   if (!DEBUG_AUTH) return
   console.log(`[CorreAqui Auth /login] ${evento}`, dados)
@@ -170,7 +173,7 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <main className="grid min-h-[100dvh] place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white">
+      <main className={LOGIN_PAGE_CLASS_NAME}>
         <div className="w-full max-w-sm rounded-[28px] border border-white/35 bg-white/92 p-5 text-center text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.22)] backdrop-blur-2xl">
           <LogoCorreAqui className="mx-auto h-20 w-20 rounded-[22px] bg-white shadow-[0_14px_34px_rgba(37,99,235,0.18)]" />
           <h1 className="mt-4 text-xl font-black text-blue-950">
@@ -185,7 +188,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-[100dvh] place-items-center bg-[linear-gradient(135deg,#0b73ff_0%,#19b7c8_44%,#ffe36b_120%)] px-4 py-5 text-white">
+    <main className={LOGIN_PAGE_CLASS_NAME}>
       <div className="w-full max-w-md rounded-[32px] border border-white/35 bg-white/92 p-5 text-center text-slate-950 shadow-[0_22px_70px_rgba(37,99,235,0.22)] backdrop-blur-2xl sm:p-6">
         <LogoCorreAqui className="mx-auto h-24 w-24 rounded-[28px] bg-white shadow-[0_18px_55px_rgba(37,99,235,0.2)]" />
         <h1 className="mt-3 text-2xl font-black text-blue-950">Entrar no app</h1>
@@ -227,15 +230,15 @@ export default function LoginPage() {
         </div>
 
         {erro ? (
-          <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-3 py-3 text-left text-xs font-bold leading-relaxed text-amber-100">
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-left text-xs font-bold leading-relaxed text-amber-800">
             {erro}
           </div>
         ) : null}
 
         <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-500">
-          <a href="/termos" className="transition hover:text-slate-300">Termos</a>
-          <a href="/privacidade" className="transition hover:text-slate-300">Privacidade</a>
-          <a href="/seguranca" className="transition hover:text-slate-300">Segurança</a>
+          <a href="/termos" className="transition hover:text-blue-700">Termos</a>
+          <a href="/privacidade" className="transition hover:text-blue-700">Privacidade</a>
+          <a href="/seguranca" className="transition hover:text-blue-700">Segurança</a>
         </div>
 
         <button
@@ -243,7 +246,7 @@ export default function LoginPage() {
           onClick={() => {
             router.replace('/')
           }}
-          className="relative z-50 mt-3 h-12 w-full rounded-[20px] border border-white/10 bg-white/[0.04] text-sm font-bold text-white/70 transition hover:bg-white/[0.07] pointer-events-auto"
+          className="relative z-50 mt-3 h-12 w-full rounded-[20px] border border-slate-200 bg-slate-50 text-sm font-bold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 pointer-events-auto"
         >
           Voltar
         </button>

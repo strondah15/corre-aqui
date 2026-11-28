@@ -81,6 +81,11 @@ function getNeonDotIcon(kind = "me") {
   });
 }
 
+const neonDotIcons = {
+  me: getNeonDotIcon("me"),
+  dest: getNeonDotIcon("dest"),
+};
+
 /* =========================================================
    Utils
 ========================================================= */
@@ -790,7 +795,7 @@ export default function MapinhaModal({
           {start && (
             <Marker
               position={start}
-              icon={getNeonDotIcon("me")}
+              icon={neonDotIcons.me}
               eventHandlers={{
                 click: () =>
                   onClickUser?.({
@@ -815,7 +820,7 @@ export default function MapinhaModal({
           {dest && (
             <Marker
               position={dest}
-              icon={getNeonDotIcon("dest")}
+              icon={neonDotIcons.dest}
               eventHandlers={{
                 click: () =>
                   onClickUser?.({

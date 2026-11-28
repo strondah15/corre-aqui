@@ -1,11 +1,16 @@
 'use client'
 
-import { ATENDIMENTO_STATUS, getAtendimentoStep, normalizeAtendimentoStatus } from '@/lib/atendimento'
+import { ATENDIMENTO_STATUS, getAtendimentoStep, normalizeServiceAttendanceStatus } from '@/lib/atendimento'
 
-const STEP_LABELS = ['Aceito', 'Em andamento', 'Chegou', 'Finalizado']
+const STEP_LABELS = ['Aceito', 'Combinando', 'A caminho', 'Cheguei', 'Concluir', 'Finalizado']
 
 function getFluxoState(pedido) {
-  const status = normalizeAtendimentoStatus(pedido?.status)
+  const status = normalizeServiceAttendanceStatus({
+    status: pedido?.status,
+    kind: pedido?.privateRequest === true || pedido?.privateRequestId ? 'privateRequest' : 'pedido',
+    type: pedido?.tipo,
+    record: pedido,
+  })
   const avaliado = Boolean(pedido?.avaliacao?.nota || pedido?.avaliacao)
   const problema = Boolean(pedido?.problemaServico)
 
@@ -26,10 +31,12 @@ function getFluxoState(pedido) {
     return { activeStep: getAtendimentoStep(status), problema, cancelado: false, resumo: 'Confirmacao pendente' }
   }
 
-  if ([ATENDIMENTO_STATUS.ACEITO, ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU].includes(status)) {
-    const resumo = status === ATENDIMENTO_STATUS.ACEITO
-      ? 'Servico aceito'
-      : status === ATENDIMENTO_STATUS.CHEGOU
+  if ([ATENDIMENTO_STATUS.ACEITO, ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.A_CAMINHO, ATENDIMENTO_STATUS.CHEGOU].includes(status)) {
+    const resumo = status === ATENDIMENTO_STATUS.EM_ANDAMENTO
+      ? 'Combinando detalhes'
+      : status === ATENDIMENTO_STATUS.A_CAMINHO
+        ? 'Profissional a caminho'
+        : status === ATENDIMENTO_STATUS.CHEGOU
         ? 'Profissional chegou'
         : 'Atendimento em andamento'
     return { activeStep: getAtendimentoStep(status), problema, cancelado: false, resumo }
@@ -58,9 +65,9 @@ export default function StatusFluxoServico({ pedido, tone = 'light', compact = f
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-1.5 md:gap-2">
+      <div className="grid grid-cols-6 gap-1 md:gap-1.5">
         {STEP_LABELS.map((label, index) => {
-          const done = !cancelado && index <= activeStep
+          const done = !cancelado && (activeStep === STEP_LABELS.length - 1 || index < activeStep)
           const current = !cancelado && index === activeStep
           return (
             <div key={label} className="min-w-0">
@@ -74,7 +81,7 @@ export default function StatusFluxoServico({ pedido, tone = 'light', compact = f
                 {index < STEP_LABELS.length - 1 ? <div className={`h-1 min-w-0 flex-1 rounded-full ${done ? railActive : rail}`} /> : null}
               </div>
               <div className={[
-                'mt-1 truncate text-[9px] font-black uppercase tracking-[0.06em] md:text-[10px] md:tracking-[0.08em]',
+                'mt-1 text-center text-[8px] font-black uppercase leading-tight tracking-[0.02em] md:text-[9px] md:tracking-[0.04em]',
                 current ? (problema ? 'text-red-300' : 'text-emerald-300') : muted,
               ].join(' ')}>
                 {label}

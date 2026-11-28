@@ -4,6 +4,7 @@ import {
   getFirebaseAdminDatabase,
   isFirebaseAdminConfigured,
 } from '@/lib/firebaseAdmin'
+import { listPublicProfessionalServices } from '@/lib/professionalServiceCatalog'
 
 export const runtime = 'nodejs'
 
@@ -91,22 +92,25 @@ const profileRegion = (profile) => safeText(
     || profile?.cidade
 )
 
-const hasPublicOffering = (profile) => {
+const hasPublicOffering = (profile, services = []) => {
   const categories = [
     ...(Array.isArray(profile?.profCategorias) ? profile.profCategorias : []),
     ...(Array.isArray(profile?.correCategorias) ? profile.correCategorias : []),
   ].map(safeText).filter(Boolean)
-  const portfolio = profile?.portfolio && typeof profile.portfolio === 'object'
+  const portfolio = Number(profile?.portfolioSchemaVersion) === 2
+    ? []
+    : profile?.portfolio && typeof profile.portfolio === 'object'
     ? Object.values(profile.portfolio)
     : Array.isArray(profile?.profPortfolio)
       ? profile.profPortfolio
       : []
 
   return categories.length > 0
+    || (Array.isArray(services) && services.some((service) => service?.ativo === true))
     || portfolio.some((service) => service && service.ativo !== false && service.active !== false)
 }
 
-const isPreviewProfileEligible = ({ uid, profile, requesterUid }) => {
+const isPreviewProfileEligible = ({ uid, profile, requesterUid, services = [] }) => {
   if (!uid || uid === requesterUid || !profile || typeof profile !== 'object') return false
   if (!safeText(profile.nome)) return false
   if (profile.profileVisible === false || profile.visivel === false) return false
@@ -120,7 +124,7 @@ const isPreviewProfileEligible = ({ uid, profile, requesterUid }) => {
   ) {
     return false
   }
-  return hasPublicOffering(profile)
+  return hasPublicOffering(profile, services)
 }
 
 const regionMatches = (profile, viewerRegion) => {
@@ -132,9 +136,17 @@ const regionMatches = (profile, viewerRegion) => {
 }
 
 const buildPreviewEntitlements = async ({ database, requesterUid, viewerRegion, now }) => {
-  const publicProfilesSnapshot = await database.ref('publicProfiles').get()
-  const profiles = Object.entries(publicProfilesSnapshot.val() || {})
-    .filter(([uid, profile]) => isPreviewProfileEligible({ uid, profile, requesterUid }))
+  const publicProfilesSnapshot = await database.ref('publicProfiles').limitToFirst(50).get()
+  const candidates = Object.entries(publicProfilesSnapshot.val() || {})
+  const profiles = (await Promise.all(candidates.map(async ([uid, profile]) => {
+    const catalog = await listPublicProfessionalServices({ database, professionalId: uid, now })
+    return isPreviewProfileEligible({
+      uid,
+      profile,
+      requesterUid,
+      services: catalog.services,
+    }) ? [uid, profile] : null
+  }))).filter(Boolean)
   const regionCompatible = profiles.filter(([, profile]) => regionMatches(profile, viewerRegion))
 
   if (viewerRegion && regionCompatible.length !== profiles.length) {
@@ -208,7 +220,7 @@ export async function GET(request) {
     const rawEntitlements = Object.entries(snapshot.val() || {})
     featuredLog('entitlements encontrados', { count: rawEntitlements.length })
 
-    const entitlements = rawEntitlements.flatMap(([uid, value]) => {
+    const normalizedEntitlements = rawEntitlements.flatMap(([uid, value]) => {
       const result = normalizeEntitlement(uid, value, now)
       if (result.entitlement) return [result.entitlement]
 
@@ -221,6 +233,18 @@ export async function GET(request) {
       }
       return []
     })
+    const entitlements = (await Promise.all(normalizedEntitlements.map(async (entitlement) => {
+      const [profileSnapshot, catalog] = await Promise.all([
+        database.ref(`publicProfiles/${entitlement.uid}`).get(),
+        listPublicProfessionalServices({ database, professionalId: entitlement.uid, now }),
+      ])
+      return isPreviewProfileEligible({
+        uid: entitlement.uid,
+        profile: profileSnapshot.val(),
+        requesterUid: decodedToken.uid,
+        services: catalog.services,
+      }) ? entitlement : null
+    }))).filter(Boolean)
 
     const previewEntitlements = !entitlements.length && isTestModeEnabled
       ? await buildPreviewEntitlements({

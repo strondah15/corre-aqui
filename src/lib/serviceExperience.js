@@ -1,43 +1,41 @@
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus } from '@/lib/atendimento'
+import { getAuthorizedPhoneContact, sanitizePhoneDigits } from '@/lib/serviceContactPolicy'
 
 const PHONE_ENABLED_STATUSES = new Set([
   ATENDIMENTO_STATUS.ACEITO,
   ATENDIMENTO_STATUS.EM_ANDAMENTO,
+  ATENDIMENTO_STATUS.A_CAMINHO,
   ATENDIMENTO_STATUS.CHEGOU,
   ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO,
   'agendado',
 ])
 
-export function sanitizePhoneDigits(value) {
-  let digits = String(value || '').replace(/\D/g, '')
-  if (digits.length === 10 || digits.length === 11) digits = `55${digits}`
-  return digits.length >= 12 && digits.length <= 15 ? digits : ''
-}
+export { sanitizePhoneDigits }
 
-export function getAuthorizedPhoneHref({ publicProfile, pedidoStatus, isParticipant }) {
-  if (!isParticipant || publicProfile?.allowPublicContact !== true) return ''
+export function getAuthorizedPhoneHref({ publicProfile, serviceContact, pedidoStatus, isParticipant }) {
   if (!PHONE_ENABLED_STATUSES.has(normalizeAtendimentoStatus(pedidoStatus))) return ''
-
-  const digits = sanitizePhoneDigits(
-    publicProfile?.profWhats || publicProfile?.profissional?.whatsapp,
-  )
-  return digits ? `tel:+${digits}` : ''
+  return getAuthorizedPhoneContact({
+    publicProfile,
+    serviceContact,
+    pedidoStatus,
+    isParticipant,
+  }).href
 }
 
 export function getPrimaryAttendanceAction({ status, isClient, isWorker, hasRating = false }) {
   const normalized = normalizeAtendimentoStatus(status)
 
-  if (isWorker && normalized === ATENDIMENTO_STATUS.ACEITO) {
-    return { id: 'start', label: 'Estou a caminho', nextStatus: ATENDIMENTO_STATUS.EM_ANDAMENTO }
-  }
   if (isWorker && normalized === ATENDIMENTO_STATUS.EM_ANDAMENTO) {
-    return { id: 'arrived', label: 'Cheguei ao local', nextStatus: ATENDIMENTO_STATUS.CHEGOU }
+    return { id: 'en_route', label: 'Estou a caminho', nextStatus: ATENDIMENTO_STATUS.A_CAMINHO, confirm: true }
+  }
+  if (isWorker && normalized === ATENDIMENTO_STATUS.A_CAMINHO) {
+    return { id: 'arrived', label: 'Cheguei', nextStatus: ATENDIMENTO_STATUS.CHEGOU }
   }
   if (isWorker && normalized === ATENDIMENTO_STATUS.CHEGOU) {
-    return { id: 'request_completion', label: 'Finalizar serviço', nextStatus: ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO, confirm: true }
+    return { id: 'request_completion', label: 'Solicitar conclusão', nextStatus: ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO, confirm: true }
   }
   if (isClient && normalized === ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO) {
-    return { id: 'confirm_completion', label: 'Confirmar conclusão', nextStatus: ATENDIMENTO_STATUS.FINALIZADO, clientDecision: true }
+    return { id: 'confirm_completion', label: 'Confirmar serviço', nextStatus: ATENDIMENTO_STATUS.FINALIZADO, clientDecision: true }
   }
   if (isClient && normalized === ATENDIMENTO_STATUS.FINALIZADO && !hasRating) {
     return { id: 'rate', label: 'Avaliar atendimento' }

@@ -3,12 +3,39 @@
 import app, { auth, database } from '@/lib/firebase'
 import { get, ref, serverTimestamp, update, remove } from './firebaseDebug'
 import { deleteToken, getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
+import { createPushRegistrationController } from './pushRegistrationControl'
+import { createPushDeviceApiClient } from './pushDeviceApiClient'
+import {
+  createPushFlowError,
+  describePushFlowError,
+  isPushSessionCurrent,
+  runPushStorageWriteWithRecovery,
+  shouldRemoveRemotePushToken,
+} from './pushNotificationPolicy'
 
 export const MESSAGING_SW_PATH = '/firebase-messaging-sw.js'
 const TOKEN_KEY_STORAGE = 'correAqui:pushTokenKey'
 let resolvedVapidConfig = null
 let resolvedVapidConfigPromise = null
 const removedTokenUids = new Set()
+const pushDeviceApi = createPushDeviceApiClient({
+  getCurrentUser: () => auth.currentUser,
+  fetchImpl: (...args) => fetch(...args),
+})
+const pushRegistration = createPushRegistrationController({
+  requestToken: (messaging, options) => getToken(messaging, options),
+  onFailure: (failure) => {
+    const details = failure.safeDetails || {}
+    console.warn('[PUSH REGISTRATION]', {
+      phase: details.phase || 'token_registration',
+      reason: details.reason || 'fcm_registration_failed',
+      code: details.code || 'push/registration-failed',
+      httpStatus: details.httpStatus || null,
+      message: details.message || 'Falha sem detalhes.',
+      retryAfterMs: failure.retryAfterMs || 0,
+    })
+  },
+})
 
 function tokenKey(token) {
   return String(token || '')
@@ -47,63 +74,125 @@ function clearLocalTokenKey(uid) {
   } catch {}
 }
 
+function logPushFlowFailure(error, fallbackStage) {
+  const details = describePushFlowError(error, fallbackStage)
+  console.warn('[PUSH FLOW]', {
+    stage: details.stage,
+    code: details.code,
+  })
+  return details
+}
+
+async function requireCurrentPushSession(uid, stage, { forceRefresh = false } = {}) {
+  const currentUser = auth.currentUser
+  if (!isPushSessionCurrent(uid, currentUser?.uid) || typeof currentUser?.getIdToken !== 'function') {
+    throw createPushFlowError('push/session-changed', stage)
+  }
+
+  let idToken = ''
+  try {
+    idToken = await currentUser.getIdToken(forceRefresh)
+  } catch (error) {
+    throw createPushFlowError('push/session-changed', stage, error)
+  }
+
+  if (!idToken || currentUser !== auth.currentUser || !isPushSessionCurrent(uid, auth.currentUser?.uid)) {
+    throw createPushFlowError('push/session-changed', stage)
+  }
+
+  return Object.freeze({ user: currentUser, idToken })
+}
+
 async function persistPushRegistration(uid, token, permission = 'granted', { includeCreatedAt = false } = {}) {
   const key = tokenKey(token)
   if (!uid || !key) throw new Error('Token FCM invalido.')
 
+  await requireCurrentPushSession(uid, 'rtdb_persistence')
+
   const info = platformInfo()
-  const tokenPayload = {
-    token,
+  const publicPreference = {
     enabled: true,
-    active: true,
+    permission,
     provider: 'firebase_messaging',
+    tokenKey: key,
     updatedAt: serverTimestamp(),
     ...info,
   }
-  if (includeCreatedAt) tokenPayload.createdAt = serverTimestamp()
+  const profilePreference = {
+    enabled: true,
+    permission,
+    provider: 'firebase_messaging',
+    tokenKey: key,
+    updatedAt: serverTimestamp(),
+  }
+  const privatePreference = { ...publicPreference }
+  const tokenPath = `userPrivate/${uid}/pushTokens/${key}`
+  const updates = {
+    [`users/${uid}/notificacoes`]: true,
+    [`users/${uid}/push`]: publicPreference,
+    [`users/${uid}/profile/notificacoes`]: true,
+    [`users/${uid}/profile/pushNotifications`]: profilePreference,
+    [`userPrivate/${uid}/push`]: privatePreference,
+    [`${tokenPath}/token`]: token,
+    [`${tokenPath}/enabled`]: true,
+    [`${tokenPath}/active`]: true,
+    [`${tokenPath}/provider`]: 'firebase_messaging',
+    [`${tokenPath}/updatedAt`]: serverTimestamp(),
+    [`${tokenPath}/userAgent`]: info.userAgent || '',
+    [`${tokenPath}/standalone`]: Boolean(info.standalone),
+    [`${tokenPath}/language`]: info.language || 'pt-BR',
+    [`${tokenPath}/origin`]: info.origin || '',
+  }
+  if (includeCreatedAt) updates[`${tokenPath}/createdAt`] = serverTimestamp()
 
-  await update(ref(database, `users/${uid}`), { notificacoes: true })
-  await update(ref(database, `users/${uid}/push`), {
-    enabled: true,
-    permission,
-    provider: 'firebase_messaging',
-    tokenKey: key,
-    updatedAt: serverTimestamp(),
-    ...info,
-  })
-  await update(ref(database, `users/${uid}/profile`), { notificacoes: true })
-  await update(ref(database, `users/${uid}/profile/pushNotifications`), {
-    enabled: true,
-    permission,
-    provider: 'firebase_messaging',
-    tokenKey: key,
-    updatedAt: serverTimestamp(),
-  })
-  await update(ref(database, `userPrivate/${uid}`), {
-    push: {
-      enabled: true,
-      permission,
-      provider: 'firebase_messaging',
-      tokenKey: key,
-      updatedAt: serverTimestamp(),
-      ...info,
-    },
-    [`pushTokens/${key}`]: tokenPayload,
-  })
+  const writeRegistration = () => update(ref(database), updates)
+
+  try {
+    await runPushStorageWriteWithRecovery({
+      write: writeRegistration,
+      recoverSession: async () => {
+        await requireCurrentPushSession(uid, 'rtdb_auth_refresh', { forceRefresh: true })
+      },
+    })
+  } catch (error) {
+    const details = logPushFlowFailure(error, 'rtdb_persistence')
+    throw createPushFlowError(
+      details.code,
+      details.stage,
+      error,
+    )
+  }
 
   saveLocalTokenKey(uid, key)
   removedTokenUids.delete(uid)
   return { token, tokenKey: key, permission, swPath: MESSAGING_SW_PATH }
 }
 
+async function persistPushRegistrationV2(uid, token, permission = 'granted') {
+  await requireCurrentPushSession(uid, 'device_api_registration')
+  const result = await pushDeviceApi.register(uid, {
+    token,
+    device: platformInfo(),
+  })
+  saveLocalTokenKey(uid, result.deviceId)
+  removedTokenUids.delete(uid)
+  return {
+    ...result,
+    tokenKey: result.deviceId,
+    permission,
+    swPath: MESSAGING_SW_PATH,
+    registry: 'api_v2',
+  }
+}
+
 async function getVapidConfig() {
   if (resolvedVapidConfig) return resolvedVapidConfig
-  if (typeof window === 'undefined') return { key: '', configured: false }
+  if (typeof window === 'undefined') return { key: '', configured: false, notificationsV2Enabled: false }
 
   if (!resolvedVapidConfigPromise) {
     resolvedVapidConfigPromise = fetch('/api/firebase-config', { cache: 'no-store' })
       .then(async (response) => {
-        if (!response.ok) return { key: '', configured: false }
+        if (!response.ok) return { key: '', configured: false, notificationsV2Enabled: false }
         const data = await response.json().catch(() => ({}))
         const key = String(data?.vapidKey || '').trim()
         const configured = Boolean(data?.vapidKeyConfigured && key)
@@ -113,9 +202,13 @@ async function getVapidConfig() {
             hasVapidKey: Boolean(key),
           })
         }
-        return { key, configured }
+        return {
+          key,
+          configured,
+          notificationsV2Enabled: data?.notificationsV2Enabled === true,
+        }
       })
-      .catch(() => ({ key: '', configured: false }))
+      .catch(() => ({ key: '', configured: false, notificationsV2Enabled: false }))
   }
 
   resolvedVapidConfig = await resolvedVapidConfigPromise
@@ -182,6 +275,7 @@ export async function getPushCapabilities() {
     reason: '',
     vapidConfigured: true,
     vapidSource: 'server',
+    notificationsV2Enabled: vapidConfig.notificationsV2Enabled === true,
   }
 }
 
@@ -199,33 +293,63 @@ export async function getServiceWorkerRegistration() {
 export async function ativarPushNotifications(uid) {
   if (!uid) throw new Error('Entre no app antes de ativar notificacoes.')
 
+  await requireCurrentPushSession(uid, 'permission_request')
+
   const caps = await getPushCapabilities()
   if (!caps.supported) throw new Error(caps.reason || 'Push indisponivel neste navegador.')
 
-  const permission = await Notification.requestPermission()
-  if (permission !== 'granted') {
-    await update(ref(database, `users/${uid}/push`), {
-      enabled: false,
-      permission,
-      updatedAt: serverTimestamp(),
-    }).catch(() => {})
-
-    throw new Error(permission === 'denied' ? 'Notificacoes bloqueadas no navegador.' : 'Permissao de notificacao nao liberada.')
+  let permission
+  try {
+    permission = await Notification.requestPermission()
+  } catch (error) {
+    throw createPushFlowError('push/browser-permission-default', 'permission_request', error)
   }
+  if (permission !== 'granted') {
+    throw createPushFlowError(
+      permission === 'denied' ? 'push/browser-permission-denied' : 'push/browser-permission-default',
+      'permission_request',
+    )
+  }
+
+  await requireCurrentPushSession(uid, 'token_registration')
 
   const registration = await getServiceWorkerRegistration()
   const messaging = getMessaging(app)
   const vapidKey = await getVapidKey()
   if (!vapidKey) throw new Error('Chave VAPID de notificacoes nao esta configurada no servidor.')
 
-  const token = await getToken(messaging, {
+  const token = await pushRegistration.request(messaging, {
     vapidKey,
     serviceWorkerRegistration: registration,
   })
 
   if (!token) throw new Error('Firebase nao retornou token FCM.')
 
+  if (caps.notificationsV2Enabled) {
+    return persistPushRegistrationV2(uid, token, permission)
+  }
   return persistPushRegistration(uid, token, permission, { includeCreatedAt: true })
+}
+
+export async function consultarEstadoPushNotifications(uid) {
+  if (!uid) return { registered: false, activeDeviceCount: 0, registry: 'unavailable' }
+  await requireCurrentPushSession(uid, 'device_api_status')
+  const config = await getVapidConfig()
+  if (config.notificationsV2Enabled) {
+    const deviceId = readLocalTokenKey(uid)
+    const result = await pushDeviceApi.status(uid, deviceId)
+    if (result.deviceId && result.deviceId !== deviceId) saveLocalTokenKey(uid, result.deviceId)
+    return { ...result, registry: 'api_v2' }
+  }
+
+  const snapshot = await get(ref(database, `users/${uid}/push`)).catch(() => null)
+  const value = snapshot?.val?.() || {}
+  return {
+    deviceId: readLocalTokenKey(uid),
+    registered: value.enabled === true,
+    activeDeviceCount: value.enabled === true ? 1 : 0,
+    registry: 'legacy_client',
+  }
 }
 
 export async function sincronizarPushNotifications(uid) {
@@ -236,12 +360,23 @@ export async function sincronizarPushNotifications(uid) {
     return { synced: false, reason: Notification.permission }
   }
 
+  await requireCurrentPushSession(uid, 'silent_sync')
+
+  const caps = await getPushCapabilities()
+  if (caps.notificationsV2Enabled) {
+    const state = await consultarEstadoPushNotifications(uid)
+    return {
+      ...state,
+      synced: false,
+      reason: state.registered ? 'already_registered' : 'explicit_activation_required',
+    }
+  }
+
   const configuredState = await get(ref(database, `users/${uid}/push`)).catch(() => null)
   if (configuredState?.exists?.() && configuredState.val()?.enabled === false) {
     return { synced: false, reason: 'disabled_by_user' }
   }
 
-  const caps = await getPushCapabilities()
   if (!caps.supported) return { synced: false, reason: caps.reason || 'unsupported' }
 
   const registration = await getServiceWorkerRegistration()
@@ -249,7 +384,7 @@ export async function sincronizarPushNotifications(uid) {
   if (!vapidKey) return { synced: false, reason: 'missing_vapid' }
 
   const messaging = getMessaging(app)
-  const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
+  const token = await pushRegistration.request(messaging, { vapidKey, serviceWorkerRegistration: registration })
   if (!token) return { synced: false, reason: 'missing_token' }
 
   const previousKey = readLocalTokenKey(uid)
@@ -319,11 +454,7 @@ function mensagemErroPushApi(data, fallback = 'Nao consegui enviar o push de tes
 export async function testarPushNotification(uid) {
   if (!uid) throw new Error('Faça login para testar.')
 
-  const currentUser = auth.currentUser
-  if (!currentUser?.getIdToken) throw new Error('Faça login para testar.')
-  if (currentUser.uid !== uid) throw new Error('Usuario atual nao bate com o perfil aberto.')
-
-  const idToken = await currentUser.getIdToken()
+  const { idToken } = await requireCurrentPushSession(uid, 'test_auth', { forceRefresh: true })
   const response = await fetch('/api/push/send', {
     method: 'POST',
     headers: {
@@ -349,8 +480,12 @@ export async function testarPushNotification(uid) {
     data = { ok: false, reason: 'invalid_push_response', status: response.status }
   }
 
-  if (!response.ok || data?.ok === false) {
+  if (!response.ok || data?.ok === false || data?.skipped === true) {
     throw new Error(mensagemErroPushApi(data))
+  }
+
+  if (!isPushSessionCurrent(uid, auth.currentUser?.uid)) {
+    throw createPushFlowError('push/session-changed', 'test_response')
   }
 
   return data
@@ -361,6 +496,7 @@ export async function removerPushTokenDoDispositivo(uid) {
   if (removedTokenUids.has(uid)) return
 
   let key = readLocalTokenKey(uid)
+  const vapidConfig = await getVapidConfig()
   const messagingSupported = await isSupported().catch(() => false)
   const messaging = messagingSupported ? getMessaging(app) : null
 
@@ -368,34 +504,83 @@ export async function removerPushTokenDoDispositivo(uid) {
     const vapidKey = await getVapidKey()
     if (vapidKey) {
       const registration = await getServiceWorkerRegistration().catch(() => null)
-      const token = registration ? await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration }).catch(() => '') : ''
+      const token = registration
+        ? await pushRegistration.request(messaging, { vapidKey, serviceWorkerRegistration: registration }).catch(() => '')
+        : ''
       key = tokenKey(token)
     }
   }
 
+  if (vapidConfig.notificationsV2Enabled) {
+    let remoteRemovalError = null
+    if (key && shouldRemoveRemotePushToken(uid, auth.currentUser?.uid)) {
+      try {
+        await pushDeviceApi.disable(uid, key)
+      } catch (error) {
+        remoteRemovalError = error
+        logPushFlowFailure(error, 'device_api_disable')
+      }
+    }
+    if (messaging) await deleteToken(messaging).catch(() => {})
+    clearLocalTokenKey(uid)
+    removedTokenUids.add(uid)
+    if (remoteRemovalError) throw remoteRemovalError
+    return
+  }
+
   if (messaging) await deleteToken(messaging).catch(() => {})
 
-  if (key) await remove(ref(database, `userPrivate/${uid}/pushTokens/${key}`))
+  let remoteRemovalError = null
+  if (key && shouldRemoveRemotePushToken(uid, auth.currentUser?.uid)) {
+    try {
+      await remove(ref(database, `userPrivate/${uid}/pushTokens/${key}`))
+    } catch (error) {
+      remoteRemovalError = error
+      logPushFlowFailure(error, 'token_cleanup')
+    }
+  }
 
   clearLocalTokenKey(uid)
   removedTokenUids.add(uid)
+
+  if (remoteRemovalError) {
+    throw createPushFlowError(
+      describePushFlowError(remoteRemovalError, 'token_cleanup').code,
+      'token_cleanup',
+      remoteRemovalError,
+    )
+  }
 }
 
 export async function desativarPushNotifications(uid) {
   if (!uid) return
 
+  await requireCurrentPushSession(uid, 'disable_notifications')
+
   await removerPushTokenDoDispositivo(uid)
 
-  await update(ref(database, `users/${uid}`), { notificacoes: false })
-  await update(ref(database, `users/${uid}/push`), {
-    enabled: false,
-    disabledAt: serverTimestamp(),
-  })
-  await update(ref(database, `users/${uid}/profile`), { notificacoes: false })
-  await update(ref(database, `users/${uid}/profile/pushNotifications`), {
-    enabled: false,
-    disabledAt: serverTimestamp(),
-  })
+  const config = await getVapidConfig()
+  if (config.notificationsV2Enabled) return
+
+  try {
+    await update(ref(database), {
+      [`users/${uid}/notificacoes`]: false,
+      [`users/${uid}/push/enabled`]: false,
+      [`users/${uid}/push/disabledAt`]: serverTimestamp(),
+      [`users/${uid}/profile/notificacoes`]: false,
+      [`users/${uid}/profile/pushNotifications/enabled`]: false,
+      [`users/${uid}/profile/pushNotifications/disabledAt`]: serverTimestamp(),
+      [`userPrivate/${uid}/push/enabled`]: false,
+      [`userPrivate/${uid}/push/disabledAt`]: serverTimestamp(),
+    })
+  } catch (error) {
+    logPushFlowFailure(error, 'disable_notifications')
+    throw createPushFlowError(
+      describePushFlowError(error, 'disable_notifications').code,
+      'disable_notifications',
+      error,
+    )
+  }
 }
 
 export async function onForegroundPush(callback) {

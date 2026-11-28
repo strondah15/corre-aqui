@@ -103,6 +103,11 @@ function normalizePortfolioEntries(...values) {
 }
 
 function hasActivePortfolio(item = {}) {
+  if (
+    Number(item?.portfolioSchemaVersion) === 2
+    && item?.portfolioSource !== 'canonical'
+    && item?.portfolioCatalogResolved !== true
+  ) return false
   const profile = item?.profile || {}
   const prof = item?.profissional || profile?.profissional || {}
 

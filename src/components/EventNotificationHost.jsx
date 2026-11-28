@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { onAuthStateChanged } from 'firebase/auth'
 import { get, limitToLast, onValue, query, ref, update } from '@/lib/firebaseDebug'
 import { auth, database } from '@/lib/firebase'
@@ -14,6 +14,7 @@ import {
   getEventSourceId,
   isEssentialEventNotification,
 } from '@/lib/eventNotifications'
+import { getChatOriginFromContext } from '@/lib/chatNavigation'
 
 const DEBUG_EVENT_NOTIFICATIONS = process.env.NODE_ENV !== 'production'
 
@@ -46,6 +47,12 @@ function initials(name) {
 
 function getTimestamp(notification = {}) {
   return Number(notification.criadoEm || notification.createdAt || notification.aceitoEm || 0)
+}
+
+function isPrivateNotificationSource(notification = {}) {
+  return notification.privateRequest === true
+    || Boolean(text(notification.privateRequestId))
+    || text(notification.origem).toLowerCase() === 'privaterequest'
 }
 
 function formatEventTime(value) {
@@ -106,8 +113,9 @@ function EventAvatar({ name, url }) {
   )
 }
 
-function mergeNotificationRoots(modern = {}, legacy = {}) {
+function mergeNotificationRoots(uid, modern = {}, legacy = {}) {
   const merged = new Map()
+  const recipientUid = text(uid)
 
   const collect = (rootName, values) => {
     Object.entries(values || {}).forEach(([firebaseId, value]) => {
@@ -123,7 +131,10 @@ function mergeNotificationRoots(modern = {}, legacy = {}) {
         eventId: text(value.eventId, id),
         lida: read,
         read,
-        _paths: Array.from(new Set([...(previous._paths || []), `${rootName}/${firebaseId}`])),
+        _paths: Array.from(new Set([
+          ...(previous._paths || []),
+          ...(recipientUid ? [`${rootName}/${recipientUid}/${firebaseId}`] : []),
+        ])),
       })
     })
   }
@@ -200,36 +211,48 @@ function buildCardData(notification = {}, source = {}) {
 
 export default function EventNotificationHost() {
   const router = useRouter()
+  const pathname = usePathname()
+  const navigationLockRef = useRef('')
   const [uid, setUid] = useState('')
-  const [roots, setRoots] = useState({ modern: {}, legacy: {} })
+  const [roots, setRoots] = useState({ uid: '', modern: {}, legacy: {} })
   const [dismissed, setDismissed] = useState(() => new Set())
   const [source, setSource] = useState(null)
 
   useEffect(() => onAuthStateChanged(auth, (user) => setUid(user?.uid || '')), [])
 
   useEffect(() => {
-    setRoots({ modern: {}, legacy: {} })
+    const effectUid = uid
+    let active = true
+    setRoots({ uid: effectUid, modern: {}, legacy: {} })
     setDismissed(new Set())
-    if (!uid) return undefined
+    if (!effectUid) return undefined
 
-    const onError = (error) => logEventNotificationError('[EVENT NOTIFICATION] falha ao ouvir notificações:', error)
-    const modernRef = query(ref(database, `notifications/${uid}`), limitToLast(40))
-    const legacyRef = query(ref(database, `notificacoes/${uid}`), limitToLast(40))
+    const onError = (error) => {
+      if (active && auth.currentUser?.uid === effectUid) {
+        logEventNotificationError('[EVENT NOTIFICATION] falha ao ouvir notificações:', error)
+      }
+    }
+    const modernRef = query(ref(database, `notifications/${effectUid}`), limitToLast(40))
+    const legacyRef = query(ref(database, `notificacoes/${effectUid}`), limitToLast(40))
     const offModern = onValue(modernRef, (snapshot) => {
-      setRoots((current) => ({ ...current, modern: snapshot.val() || {} }))
+      if (!active || auth.currentUser?.uid !== effectUid) return
+      setRoots((current) => current.uid === effectUid ? { ...current, modern: snapshot.val() || {} } : current)
     }, onError)
     const offLegacy = onValue(legacyRef, (snapshot) => {
-      setRoots((current) => ({ ...current, legacy: snapshot.val() || {} }))
+      if (!active || auth.currentUser?.uid !== effectUid) return
+      setRoots((current) => current.uid === effectUid ? { ...current, legacy: snapshot.val() || {} } : current)
     }, onError)
 
     return () => {
+      active = false
       offModern()
       offLegacy()
     }
   }, [uid])
 
   const notification = useMemo(() => {
-    return mergeNotificationRoots(roots.modern, roots.legacy)
+    const currentRoots = roots.uid === uid ? roots : { modern: {}, legacy: {} }
+    return mergeNotificationRoots(uid, currentRoots.modern, currentRoots.legacy)
       .filter((item) => Boolean(getEventSourceId(item)))
       .filter((item) => !item.lida && !item.read && !dismissed.has(item.eventId || item.id))
       .filter((item) => {
@@ -237,50 +260,63 @@ export default function EventNotificationHost() {
         return !item.eventoStatus || ['pendente', 'aguardando'].includes(text(item.eventoStatus).toLowerCase())
       })
       .sort((a, b) => getTimestamp(b) - getTimestamp(a))[0] || null
-  }, [dismissed, roots.legacy, roots.modern])
+  }, [dismissed, roots, uid])
 
   useEffect(() => {
     let active = true
     setSource(null)
     const sourceId = getEventSourceId(notification || {})
-    if (!sourceId) return () => { active = false }
+    const effectUid = uid
+    if (!sourceId || !effectUid || auth.currentUser?.uid !== effectUid) return () => { active = false }
 
     void (async () => {
       try {
-        const privateSnapshot = await get(ref(database, `privateRequests/${sourceId}`))
-        if (privateSnapshot.exists()) {
-          if (active) setSource({ id: sourceId, ...(privateSnapshot.val() || {}), privateRequest: true })
-          return
-        }
-
-        const pedidoSnapshot = await get(ref(database, `pedidos/${sourceId}`))
-        if (active && pedidoSnapshot.exists()) {
-          setSource({ id: sourceId, ...(pedidoSnapshot.val() || {}) })
+        const privateSource = isPrivateNotificationSource(notification)
+        const sourcePath = privateSource ? `privateRequests/${sourceId}` : `pedidos/${sourceId}`
+        const snapshot = await get(ref(database, sourcePath))
+        if (active && auth.currentUser?.uid === effectUid && snapshot.exists()) {
+          setSource({
+            id: sourceId,
+            ...(snapshot.val() || {}),
+            ...(privateSource ? { privateRequest: true } : {}),
+          })
         }
       } catch (error) {
-        if (DEBUG_EVENT_NOTIFICATIONS) {
+        if (DEBUG_EVENT_NOTIFICATIONS && active && auth.currentUser?.uid === effectUid) {
           console.warn('[EVENT NOTIFICATION] detalhes indisponíveis; usando payload persistido:', error)
         }
       }
     })()
 
     return () => { active = false }
-  }, [notification])
+  }, [notification, uid])
 
   const markAsRead = useCallback(async (item) => {
-    if (!item) return
+    if (!item || !uid || auth.currentUser?.uid !== uid) return
     const eventId = item.eventId || item.id
     setDismissed((current) => new Set([...current, eventId]))
     const vistoEm = Date.now()
-    const results = await Promise.allSettled(
-      (item._paths || []).map((path) => update(ref(database, path), { lida: true, read: true, vistoEm })),
+    await Promise.all(
+      (item._paths || []).map(async (path) => {
+        try {
+          if (auth.currentUser?.uid !== uid) return
+          await update(ref(database, path), { lida: true, read: true, vistoEm })
+        } catch (error) {
+          if (DEBUG_EVENT_NOTIFICATIONS && auth.currentUser?.uid === uid) {
+            console.warn('[AGENDA_NOTIFICATION]', {
+              operation: 'update',
+              path,
+              authUid: auth.currentUser?.uid || null,
+              recipientUid: uid,
+              eventType: text(item.tipoEvento, item.tipo),
+              existingNotification: true,
+              error: { code: error?.code || null },
+            })
+          }
+        }
+      }),
     )
-    results.forEach((result) => {
-      if (result.status === 'rejected') {
-        logEventNotificationError('[EVENT NOTIFICATION] falha ao marcar como lida:', result.reason)
-      }
-    })
-  }, [])
+  }, [uid])
 
   useEffect(() => {
     if (!notification || !source) return
@@ -290,14 +326,22 @@ export default function EventNotificationHost() {
   }, [markAsRead, notification, source])
 
   const open = useCallback((href) => {
-    if (!notification || !href) return
+    if (!notification || !href || navigationLockRef.current) return
+    navigationLockRef.current = href
     void markAsRead(notification)
-    router.replace(href)
+    router.push(href)
+    window.setTimeout(() => {
+      if (navigationLockRef.current === href) navigationLockRef.current = ''
+    }, 1200)
   }, [markAsRead, notification, router])
 
   const card = notification ? buildCardData(notification, source || {}) : null
-  const primaryHref = notification ? getEventPrimaryHref(notification) : ''
-  const secondaryHref = notification ? getEventSecondaryHref(notification) : ''
+  const notificationOrigin = getChatOriginFromContext({
+    pathname,
+    fallback: 'cliente',
+  })
+  const primaryHref = notification ? getEventPrimaryHref(notification, { origin: notificationOrigin }) : ''
+  const secondaryHref = notification ? getEventSecondaryHref(notification, { origin: notificationOrigin }) : ''
 
   return (
     <AnimatePresence>

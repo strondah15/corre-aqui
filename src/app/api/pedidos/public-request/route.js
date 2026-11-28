@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getFirebaseAdminAuth, getFirebaseAdminDatabase, isFirebaseAdminConfigured } from '@/lib/firebaseAdmin'
 import { buildPublicRequest } from '@/lib/publicRequests'
-import { canSynchronizePublicRequest, createPublicationStamp, getPedidoAuthority } from '@/lib/pedidoPublication'
+import {
+  canSynchronizePublicRequest,
+  createPublicationStamp,
+  getPedidoAuthority,
+  getPedidoDeletionBlockReason,
+} from '@/lib/pedidoPublication'
 
 export const runtime = 'nodejs'
 
@@ -74,7 +79,6 @@ export async function POST(request) {
       ['publicRequests/' + pedidoId]: projection,
       ['pedidos/' + pedidoId + '/publicacao']: stamp,
     })
-
     return NextResponse.json({ ok: true, pedidoId, status: projection.status })
   } catch (error) {
     return jsonError(error?.message || 'Não foi possível publicar este pedido.', error?.status || 500)
@@ -88,12 +92,38 @@ export async function DELETE(request) {
     if (!authority.creatorId || uid !== authority.creatorId) {
       return jsonError('Você não pode remover esta publicação.', 403)
     }
+    const initialBlockReason = getPedidoDeletionBlockReason({ pedido, pedidoId, actorUid: uid })
+    if (initialBlockReason) {
+      return jsonError('Este pedido não pode mais ser excluído.', 409)
+    }
 
-    await database.ref().update({
-      ['publicRequests/' + pedidoId]: null,
-      ['pedidos/' + pedidoId + '/publicacao']: null,
+    const removedPaths = [`publicRequests/${pedidoId}`, `pedidos/${pedidoId}`]
+    let transactionBlockReason = ''
+    const deletion = await database.ref('pedidos/' + pedidoId).transaction((current) => {
+      transactionBlockReason = getPedidoDeletionBlockReason({
+        pedido: current,
+        pedidoId,
+        actorUid: uid,
+      })
+      if (transactionBlockReason) return undefined
+      return null
     })
-    return NextResponse.json({ ok: true, pedidoId })
+    if (!deletion.committed) {
+      return jsonError('O pedido mudou e não pode mais ser excluído.', 409)
+    }
+
+    await database.ref('publicRequests/' + pedidoId).remove()
+    const [publicAfter, privateAfter] = await Promise.all([
+      database.ref('publicRequests/' + pedidoId).get(),
+      database.ref('pedidos/' + pedidoId).get(),
+    ])
+    return NextResponse.json({
+      ok: true,
+      pedidoId,
+      removedPaths,
+      publicRemoved: !publicAfter.exists(),
+      privateRemoved: !privateAfter.exists(),
+    })
   } catch (error) {
     return jsonError(error?.message || 'Não foi possível remover esta publicação.', error?.status || 500)
   }

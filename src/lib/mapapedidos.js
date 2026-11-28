@@ -1,9 +1,7 @@
 // src/lib/mapapedidos.js
 // Serviço único para criar e normalizar pedidos (Realtime Database + UI otimista)
 
-import { ref, push, update, serverTimestamp } from './firebaseDebug'
-import { database } from '@/lib/firebase' // se não usar alias, troque para: import { database } from './firebase'
-import { synchronizePublicRequest } from '@/lib/pedidoProjectionClient'
+import { createAuthorizedClientOrder } from '@/lib/clientOrders'
 
 // Converte para número seguro
 export const toNum = (v) => {
@@ -64,10 +62,7 @@ export async function criarPedido({ draft = {}, mapRef, meuId, meuNome }) {
 
   const local = (lat != null && lng != null) ? { lat, lng } : null
 
-  // 2) gera ID primeiro para UI otimista
-  const novoRef = push(ref(database, 'pedidos'))
-  const payload = {
-    id: novoRef.key,
+  const draftPayload = {
     criador: { id: meuId || 'anon', nome: meuNome || 'Anônimo' },
     titulo: (draft.titulo || '(sem título)').trim(),
     tipo: (draft.tipo || 'outro').toLowerCase(),
@@ -78,20 +73,17 @@ export async function criarPedido({ draft = {}, mapRef, meuId, meuNome }) {
     urgencia: (draft.urgencia || 'normal').toLowerCase(),
     local,
     status: 'aberto',
-    criadoEm: serverTimestamp?.() || Date.now(),
   }
 
-  // 3) UI OTIMISTA
-  if (typeof window !== 'undefined' && window?.dispatchEvent) {
-    try {
-      window.dispatchEvent(new CustomEvent('correaqui:pedido-criado', { detail: { pedido: payload, otimista: true } }))
-    } catch {}
-  }
-
+  let payload = null
   try {
-    // 4) grava no Firebase
-    await update(ref(database, `pedidos/${payload.id}`), payload)
-    await synchronizePublicRequest(payload.id)
+    payload = await createAuthorizedClientOrder(draftPayload)
+
+    if (typeof window !== 'undefined' && window?.dispatchEvent) {
+      try {
+        window.dispatchEvent(new CustomEvent('correaqui:pedido-criado', { detail: { pedido: payload, otimista: false } }))
+      } catch {}
+    }
 
     // 5) confirma otimista (opcional)
     if (typeof window !== 'undefined' && window?.dispatchEvent) {
@@ -105,7 +97,7 @@ export async function criarPedido({ draft = {}, mapRef, meuId, meuNome }) {
     // erro → remove do otimista
     if (typeof window !== 'undefined' && window?.dispatchEvent) {
       try {
-        window.dispatchEvent(new CustomEvent('correaqui:pedido-erro', { detail: { id: payload.id, error: String(error) } }))
+        window.dispatchEvent(new CustomEvent('correaqui:pedido-erro', { detail: { id: payload?.id || '', error: String(error) } }))
       } catch {}
     }
     throw error

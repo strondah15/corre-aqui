@@ -8,7 +8,7 @@ import {
   signInWithRedirect,
 } from "firebase/auth";
 import { ref, update, serverTimestamp } from './firebaseDebug';
-import { getUserOnlinePreference } from "@/lib/presence";
+import { getUserOnlinePreference, updateOwnPresence } from "@/lib/presence";
 
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
@@ -78,7 +78,7 @@ async function salvarPerfilGoogle(user) {
       path: `presence/${user.uid}`,
     });
     await Promise.race([
-      update(ref(database, `presence/${user.uid}`), {
+      updateOwnPresence(database, user.uid, {
         uid: user.uid,
         id: user.uid,
         modoAtual: "",

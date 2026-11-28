@@ -117,3 +117,52 @@ e mostram selo `Previa`.
 Os nos comerciais possuem leitura e escrita negadas nas regras do Realtime
 Database. Somente rotas server-side com Firebase Admin criam checkout, validam
 webhook e ativam ou encerram entitlements.
+# Assinaturas trimestrais recorrentes
+
+O Corre Aqui oferece um pedido gratuito ao Cliente. A gratuidade é consumida somente quando a rota autenticada `/api/pedidos/create` grava o pedido e o marcador `users/{uid}/clientFreeOrderUsed` na mesma atualização atômica. Pedidos seguintes exigem `subscriptions/client/status = active` e `expiresAt` futuro.
+
+O período grátis de Profissional/Corre começa na primeira entrada no modo Trabalhar, pela rota `/api/subscriptions/status`, e dura exatamente 90 dias. Ações profissionais novas, como aceitar pedido ou responder solicitação privada, são verificadas no backend. Trabalhos, conversas e dados existentes não são apagados quando a gratuidade ou uma assinatura termina.
+
+Planos Mercado Pago:
+
+- `CLIENT_QUARTERLY`: R$ 19,90 a cada 3 meses, com renovação automática.
+- `PROFESSIONAL_QUARTERLY`: R$ 49,90 a cada 3 meses, com renovação automática.
+
+O preço do catálogo vale para novos checkouts. O webhook valida renovações pelo valor gravado na tentativa original, preservando o preço das autorizações existentes.
+
+Registros anuais existentes continuam reconhecidos até sua validade original, mas não são oferecidos para novas contratações.
+
+O checkout reutiliza `/api/planos/checkout` e cria uma autorização oficial em `/preapproval`, sem plano remoto associado. Preço, BRL, frequência de 3 meses e data inicial são definidos pelo servidor. O navegador precisa registrar consentimento explícito e nunca envia UID ou preço como autoridade.
+
+Para testar assinaturas, configure `MERCADO_PAGO_STAGING_BUYER_EMAIL` somente no Preview da branch `codex/staging/consolidated-2026-09-07`, com o e-mail da conta compradora de teste do Mercado Pago, do mesmo país e distinta do vendedor de teste. Entre no Corre Aqui com a conta Firebase que deve receber o benefício e conclua o checkout no Mercado Pago com a conta compradora e um cartão de teste. A tentativa e a assinatura continuam vinculadas ao UID verificado no servidor.
+
+A autorização recorrente registra o estado da renovação. O benefício pago exige um pagamento `approved` consultado diretamente no Mercado Pago. Webhook e reconciliação por demanda ou agendada usam o mesmo processamento de pagamentos. O webhook `/api/mercado-pago/webhook` aceita `payment`, `subscription_preapproval` e `subscription_authorized_payment` com HMAC válido. O processamento confere referência, tentativa, produto, valor, moeda e recebedor. O ledger `processedPaymentEvents` e a transação do plano impedem que o mesmo pagamento estenda a vigência duas vezes. O histórico fica em `subscriptionPaymentHistory/{uid}/{kind}`.
+
+O cancelamento passa por `/api/subscriptions/cancel`. Uma trava transacional por UID e tipo de plano evita envios concorrentes. O servidor confere a autorização e a tentativa, consulta `/preapproval/{id}` e pede o cancelamento no provedor quando necessário. Uma resposta incerta exige confirmação por leitura. O resultado só é sincronizado no plano associado à mesma autorização e preserva o fim da vigência paga. Estorno ou contestação do último pagamento encerram a vigência correspondente. Impulsionamentos e destaques continuam independentes.
+
+## Reconciliação
+
+- A consulta autenticada de Assinatura pode atualizar autorizações e pesquisar faturas do próprio usuário. A periodicidade server-side do Staging faz a recuperação sem sessão aberta, com agenda de 30 minutos vinculada à branch Staging e autenticação do job por segredo. A rota e o adaptador atuais exigem explicitamente Preview Staging.
+- A fila `subscriptionReconciliationSchedule` recebe tentativas de checkout, prioriza autorizações pendentes e vencimentos e limita cada execução a oito autorizações. Ela mantém o cursor da página de faturas e reage a falhas transitórias e limites do provedor com novas tentativas espaçadas.
+- A confirmação nativa deve reunir o ID da autorização, a fatura e o pagamento aprovado consultado no provedor, o HTTP da entrega, a auditoria gravada após o HMAC e a vigência no RTDB. Um `next_payment_date` comprova programação. Uma segunda cobrança efetiva exige fatura e pagamento com IDs próprios, vinculados à mesma autorização, com o pagamento `approved`.
+- Se o Mercado Pago retornar identificadores de comprador diferentes no pagamento e na autorização, a concessão fica bloqueada também na reconciliação. Confira os registros oficiais e preserve o histórico. O teste Profissional de 28/11/2026 foi concluído como convidado e apresentou essa divergência. A autorização foi cancelada. Para um novo teste, selecione **Entrar com a minha conta** no checkout e verifique a sessão do comprador fictício antes de informar o cartão. A atribuição dos identificadores precisa ser confirmada antes de qualquer ajuste na validação.
+
+### Pagamento aprovado com divergência de identidade
+
+O [checkout hospedado](https://www.mercadopago.com.br/developers/pt/docs/subscriptions/overview) aceita pagamento sem conta Mercado Pago. A [criação de assinatura sem plano](https://www.mercadopago.com.br/developers/pt/reference/online-payments/subscriptions/create-preapproval/post.md) documenta a conferência do e-mail informado no checkout com o e-mail do pagador cadastrado. A fatura contém o par autoritativo [`preapproval_id` e `payment.id`](https://www.mercadopago.com.br/developers/pt/reference/online-payments/subscriptions/get-authorized-payment/get.md). Para liberar acesso, o Corre Aqui também exige a correspondência da tentativa do UID com os dados financeiros do provedor.
+
+1. Acompanhar o aviso operacional `approved_payment_identity_review`. O ledger privado registra quais vínculos divergiram e quando a divergência foi observada. O reconciliador termina as verificações das outras faturas da página e mantém a fatura divergente pendente para releitura.
+2. Consultar fatura, autorização e pagamento pelas APIs oficiais do mesmo ambiente. Conferir IDs, aplicação, recebedor, comprador, referência original da tentativa, produto, centavos, moeda e situação de estorno ou contestação.
+3. Se uma resposta posterior do provedor confirmar todos os vínculos da **mesma tentativa**, executar a reconciliação existente e verificar uma única concessão. O ledger impede reaproveitar a revisão para associar esse pagamento a outra tentativa. O timestamp `identityReview.resolvedAt` registra que a divergência foi superada no processamento, e o estado do ledger indica se houve concessão.
+4. Se o provedor continuar retornando dados incompatíveis, encaminhar o caso ao suporte com IDs e datas pelo canal autorizado e orientar o cliente a não tentar pagar novamente durante a análise. Preservar a tentativa e as evidências. Um eventual estorno segue o procedimento de devolução aprovado separadamente.
+
+## Ativação futura em Production
+
+1. Validar a versão candidata, preservar backup e pontos de rollback de código e configuração e confirmar Firebase Client, Admin e RTDB no projeto `corre-aqui-3f9ec`. Manter o checkout fechado durante o preflight.
+2. Confirmar manualmente o vendedor comercial, a aplicação, o token e o segredo HMAC do ambiente de produção. Configurar o webhook no domínio oficial para os três tópicos e testar a autenticação da entrega. Guardar credenciais exclusivamente no servidor e manter o comprador sandbox fora do escopo Production.
+3. Validar reversão do deployment, desativação de novos checkouts e continuidade da reconciliação de pagamentos já iniciados. Antes de prometer recuperação com o app fechado também em Production, implementar e homologar explicitamente o agendamento para esse ambiente com credencial e alvo próprios.
+4. Com autorização de lançamento, abrir o checkout de forma controlada. Monitorar entregas HMAC, fila de reconciliação, tempo até concessão, duplicidade, disputas e cancelamentos. Para recuar, fechar primeiro a criação de novos checkouts e preservar consulta, webhook e cancelamento das autorizações existentes.
+
+## Notificacoes financeiras
+
+Pagamento aprovado, falha, cancelamento e encerramento reutilizam a Central de Avisos das Notificacoes 2.0, com IDs determinísticos e materializacao idempotente nas raizes existentes. A flag server-side `SUBSCRIPTION_NOTIFICATIONS_ENABLED` permanece `false` por padrao no sandbox, portanto os testes nao enviam avisos financeiros reais. O modulo tambem reconhece os eventos de fim proximo da gratuidade e renovacao proxima para integracao futura com um acionador agendado, sem criar cron de cobranca.

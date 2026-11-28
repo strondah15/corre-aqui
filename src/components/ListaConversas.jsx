@@ -1,12 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ref, onValue, update } from '@/lib/firebaseDebug'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ref, onValue, set } from '@/lib/firebaseDebug'
 import { motion } from 'framer-motion'
-import { database } from '@/lib/firebase'
+import { auth, database } from '@/lib/firebase'
 import LogoCorreAqui from '@/components/LogoCorreAqui'
+import { ListPanelSkeleton } from '@/components/LoadingSkeletons'
 import { ATENDIMENTO_STATUS, normalizeAtendimentoStatus } from '@/lib/atendimento'
-import { conversationTimestampMs, normalizeAndSortConversations } from '@/lib/conversations'
+import {
+  conversationTimestampMs,
+  createConversationSessionSnapshot,
+  selectConversationSessionItems,
+} from '@/lib/conversations'
 
 function timeShort(ts) {
   const ms = conversationTimestampMs(ts)
@@ -36,11 +41,14 @@ function getStatusConversa(c) {
 
 function statusMeta(c) {
   const s = getStatusConversa(c)
+  if (s === ATENDIMENTO_STATUS.A_CAMINHO) {
+    return { label: 'A caminho', tone: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-300', dot: 'bg-emerald-400', active: true }
+  }
   if ([ATENDIMENTO_STATUS.EM_ANDAMENTO, ATENDIMENTO_STATUS.CHEGOU, ATENDIMENTO_STATUS.AGUARDANDO_CONFIRMACAO].includes(s)) {
     return { label: 'Em atendimento', tone: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-300', dot: 'bg-emerald-400', active: true }
   }
   if (s === ATENDIMENTO_STATUS.ACEITO) {
-    return { label: 'Aguardando início', tone: 'border-yellow-300/25 bg-yellow-400/10 text-yellow-200', dot: 'bg-yellow-300', active: true }
+    return { label: 'Combinando', tone: 'border-yellow-300/25 bg-yellow-400/10 text-yellow-200', dot: 'bg-yellow-300', active: true }
   }
   if (s === ATENDIMENTO_STATUS.FINALIZADO) {
     return { label: 'Concluído', tone: 'border-blue-400/25 bg-blue-500/10 text-blue-200', dot: 'bg-blue-400', archived: true }
@@ -65,34 +73,63 @@ function safeAvatarUrl(value) {
 export default function ListaConversas({
   meuId,
   onAbrirChat,
+  onPreloadChat,
+  onUnreadCountChange,
   limit = 60,
   logoUrl,
+  compact = false,
 }) {
-  const [conversas, setConversas] = useState([])
+  const openConversationLockRef = useRef('')
+  const sessionUid = String(meuId || '')
+  const [conversationState, setConversationState] = useState(() => createConversationSessionSnapshot(''))
+  const [loadingState, setLoadingState] = useState(() => ({ uid: sessionUid, loading: true }))
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState('todas')
+  const conversas = selectConversationSessionItems(conversationState, sessionUid)
+  const loading = loadingState.uid === sessionUid ? loadingState.loading : true
 
   useEffect(() => {
-    if (!meuId) {
-      setConversas([])
+    const effectUid = String(meuId || '')
+    let active = true
+    setConversationState(createConversationSessionSnapshot(effectUid))
+    setLoadingState({ uid: effectUid, loading: true })
+    setBusca('')
+    setFiltro('todas')
+
+    if (!effectUid || auth.currentUser?.uid !== effectUid) {
+      setLoadingState({ uid: effectUid, loading: false })
       return undefined
     }
 
     const lim = clamp(toInt(limit, 60), 20, 200)
     // RTDB cannot order by a coalesced timestamp. Read the user's private index,
     // deduplicate legacy mirrors, then apply the limit after the canonical sort.
-    const cRef = ref(database, `conversas/${meuId}`)
+    const cRef = ref(database, `conversas/${effectUid}`)
 
     const off = onValue(cRef, (snap) => {
-      setConversas(normalizeAndSortConversations(snap.val() || {}, lim))
+      if (!active || auth.currentUser?.uid !== effectUid) return
+      setConversationState(createConversationSessionSnapshot(effectUid, snap.val() || {}, lim))
+      setLoadingState({ uid: effectUid, loading: false })
+    }, () => {
+      if (active && auth.currentUser?.uid === effectUid) {
+        setConversationState(createConversationSessionSnapshot(effectUid))
+        setLoadingState({ uid: effectUid, loading: false })
+      }
     })
 
-    return () => off()
+    return () => {
+      active = false
+      off()
+    }
   }, [meuId, limit])
 
   const totalNaoLidas = useMemo(() => {
     return (conversas || []).reduce((acc, c) => acc + (c?.unread === true ? 1 : 0), 0)
   }, [conversas])
+
+  useEffect(() => {
+    onUnreadCountChange?.(totalNaoLidas)
+  }, [onUnreadCountChange, totalNaoLidas])
 
   const conversasComIndex = useMemo(() => {
     return (conversas || []).map((c) => {
@@ -136,10 +173,12 @@ export default function ListaConversas({
 
   const marcarLidaOptimista = useCallback(
     (pedidoId) => {
-      if (!pedidoId) return
+      const expectedUid = String(sessionUid || '')
+      if (!pedidoId || !expectedUid || auth.currentUser?.uid !== expectedUid) return
 
-      setConversas((prev) => {
-        const arr = prev || []
+      setConversationState((current) => {
+        if (current.uid !== sessionUid) return current
+        const arr = current.items || []
         let changed = false
         const next = arr.map((c) => {
           if (c.pedidoId === pedidoId && c.unread === true) {
@@ -148,17 +187,169 @@ export default function ListaConversas({
           }
           return c
         })
-        return changed ? next : arr
+        return changed ? { ...current, items: next } : current
       })
 
-      if (!meuId) return
-      update(ref(database, `conversas/${meuId}/${pedidoId}`), {
-        unread: false,
-        abertoEm: Date.now(),
-      }).catch(() => {})
+      set(ref(database, `conversas/${expectedUid}/${pedidoId}/unread`), false).catch((error) => {
+        if (process.env.NODE_ENV !== 'production' && auth.currentUser?.uid === expectedUid) {
+          console.warn('[CONVERSATION_READ]', {
+            operation: 'set',
+            path: `conversas/${expectedUid}/${pedidoId}/unread`,
+            authUid: expectedUid,
+            error: { code: error?.code || null },
+          })
+        }
+      })
     },
-    [meuId]
+    [sessionUid]
   )
+
+  const abrirConversa = useCallback((pedidoId) => {
+    const id = String(pedidoId || '').trim()
+    if (!id || openConversationLockRef.current) return
+    openConversationLockRef.current = id
+    marcarLidaOptimista(id)
+    onAbrirChat?.(id)
+    window.setTimeout(() => {
+      if (openConversationLockRef.current === id) openConversationLockRef.current = ''
+    }, 1200)
+  }, [marcarLidaOptimista, onAbrirChat])
+
+  useEffect(() => {
+    openConversationLockRef.current = ''
+  }, [sessionUid])
+
+  if (compact) {
+    return (
+      <section className="bg-white text-slate-950 dark:bg-slate-950 dark:text-white" aria-label="Conversas">
+        <div className="border-b border-slate-200 bg-slate-50/90 px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.035] md:px-4">
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 shadow-sm dark:border-white/10 dark:bg-white/[0.06]">
+            <span className="text-sm text-slate-400" aria-hidden="true">⌕</span>
+            <span className="sr-only">Buscar conversa</span>
+            <input
+              value={busca}
+              onChange={(event) => setBusca(event.target.value)}
+              placeholder="Buscar conversa"
+              className="min-w-0 flex-1 bg-transparent text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500 md:text-sm"
+            />
+          </label>
+
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5" aria-label="Filtrar conversas">
+            {[
+              ['todas', 'Todas', totais.todas],
+              ['ativas', 'Ativas', totais.ativas],
+              ['arquivadas', 'Histórico', totais.arquivadas],
+            ].map(([id, label, count]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setFiltro(id)}
+                aria-pressed={filtro === id}
+                className={[
+                  'h-8 shrink-0 rounded-full border px-3 text-[11px] font-black transition active:scale-[0.98]',
+                  filtro === id
+                    ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.08]',
+                ].join(' ')}
+              >
+                {label} <span className="opacity-70">{count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="max-h-[min(62dvh,42rem)] overflow-y-auto overscroll-contain">
+          {loading ? (
+            <ListPanelSkeleton
+              label="Carregando conversas"
+              rows={4}
+              showHeader={false}
+              className="border-0 bg-transparent shadow-none"
+            />
+          ) : conversasFiltradas.length === 0 ? (
+            <div className="px-5 py-10 text-center">
+              <div className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-xl text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">💬</div>
+              <div className="mt-3 text-sm font-black text-slate-900 dark:text-white">Nenhuma conversa aqui</div>
+              <p className="mx-auto mt-1 max-w-xs text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+                Conversas de atendimentos aceitos aparecem nesta lista.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-200 dark:divide-white/10">
+              {conversasFiltradas.map((c) => {
+                const hora = timeShort(c._timestampMs)
+                const preview = String(c.preview || '').trim()
+                const pessoa = c.pessoa || 'Participante'
+                const enviadaPorMim = c.lastById && meuId && String(c.lastById) === String(meuId)
+                const meta = c._statusMeta || statusMeta(c)
+                const avatarUrl = safeAvatarUrl(c?.outroFotoURL || c?.outroPhotoURL || c?.outroFoto)
+                const inicial = pessoa.slice(0, 1).toUpperCase() || 'C'
+
+                return (
+                  <motion.button
+                    key={c.pedidoId}
+                    type="button"
+                    whileTap={{ scale: 0.99 }}
+                    onClick={() => abrirConversa(c.pedidoId)}
+                    onPointerEnter={() => onPreloadChat?.(c.pedidoId)}
+                    onPointerDown={() => onPreloadChat?.(c.pedidoId)}
+                    onFocus={() => onPreloadChat?.(c.pedidoId)}
+                    className={[
+                      'flex w-full items-center gap-3 px-3 py-2.5 text-left transition md:px-4 md:py-3',
+                      c.unread
+                        ? 'bg-blue-50/90 hover:bg-blue-100/80 dark:bg-blue-500/10 dark:hover:bg-blue-500/15'
+                        : 'bg-white hover:bg-slate-50 dark:bg-slate-950 dark:hover:bg-white/[0.04]',
+                    ].join(' ')}
+                  >
+                    <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-blue-600 to-cyan-500 text-sm font-black text-white shadow-sm md:h-11 md:w-11">
+                      {avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={avatarUrl}
+                          alt=""
+                          width="44"
+                          height="44"
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : inicial}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-black text-slate-950 dark:text-white">{pessoa}</span>
+                        {c.unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" aria-label="Mensagens não lidas" /> : null}
+                      </div>
+                      <div className="mt-0.5 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        {preview ? (
+                          <>{enviadaPorMim ? <span className="text-slate-400 dark:text-slate-500">Você: </span> : null}{preview}</>
+                        ) : 'Sem mensagens ainda'}
+                      </div>
+                    </div>
+
+                    <div className="flex w-[4.75rem] shrink-0 flex-col items-end gap-1 text-right">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{hora}</span>
+                      {c.unread ? (
+                        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-black text-white">
+                          {Math.min(99, Number(c.unreadCount || 1))}
+                        </span>
+                      ) : (
+                        <span className="inline-flex max-w-full items-center gap-1 truncate text-[9px] font-black uppercase tracking-[0.04em] text-slate-400 dark:text-slate-500">
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} />
+                          <span className="truncate">{meta.label}</span>
+                        </span>
+                      )}
+                    </div>
+                  </motion.button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <div className="overflow-hidden rounded-[24px] border border-white/10 bg-[#050b14] text-white shadow-[0_26px_80px_rgba(0,0,0,0.35)] md:rounded-[32px]">
@@ -232,7 +423,15 @@ export default function ListaConversas({
       </div>
 
       <div className="max-h-[calc(100dvh-13rem)] overflow-y-auto bg-[#050b14] p-2 md:max-h-[calc(100dvh-15rem)] md:p-3">
-        {conversasFiltradas.length === 0 ? (
+        {loading ? (
+          <ListPanelSkeleton
+            label="Carregando conversas"
+            dark
+            rows={4}
+            showHeader={false}
+            className="border-0 bg-transparent shadow-none"
+          />
+        ) : conversasFiltradas.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-white/12 bg-white/[0.04] p-5 text-slate-300">
             <div className="font-black text-white">Nenhuma conversa aqui</div>
             <div className="mt-1 text-sm leading-relaxed text-slate-400">
@@ -248,7 +447,7 @@ export default function ListaConversas({
               const pessoa = c.pessoa || 'Participante'
               const enviadaPorMim = c.lastById && meuId && String(c.lastById) === String(meuId)
               const meta = c._statusMeta || statusMeta(c)
-              const avatarUrl = safeAvatarUrl(c?.outroFotoURL || c?.outroPhotoURL || c?.outroFoto || c?.photoURL)
+              const avatarUrl = safeAvatarUrl(c?.outroFotoURL || c?.outroPhotoURL || c?.outroFoto)
               const inicial = pessoa.slice(0, 1).toUpperCase() || 'C'
 
               return (
@@ -260,10 +459,10 @@ export default function ListaConversas({
                   whileHover={{ y: -2 }}
                   whileTap={{ scale: 0.98 }}
                   type="button"
-                  onClick={() => {
-                    marcarLidaOptimista(c.pedidoId)
-                    onAbrirChat?.(c.pedidoId)
-                  }}
+                  onClick={() => abrirConversa(c.pedidoId)}
+                  onPointerEnter={() => onPreloadChat?.(c.pedidoId)}
+                  onPointerDown={() => onPreloadChat?.(c.pedidoId)}
+                  onFocus={() => onPreloadChat?.(c.pedidoId)}
                   className={[
                     'w-full rounded-[17px] border px-2.5 py-2.5 text-left transition-all duration-200 md:rounded-[20px] md:px-3 md:py-3',
                     c.unread
@@ -275,10 +474,15 @@ export default function ListaConversas({
                     <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
                       <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full border border-cyan-300/25 bg-gradient-to-br from-blue-600 to-emerald-500 text-sm font-black text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)] md:h-12 md:w-12 md:text-base">
                         {avatarUrl ? (
-                          <span
-                            className="h-full w-full bg-cover bg-center"
-                            style={{ backgroundImage: `url(${JSON.stringify(avatarUrl)})` }}
-                            aria-hidden="true"
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={avatarUrl}
+                            alt=""
+                            width="48"
+                            height="48"
+                            loading="lazy"
+                            decoding="async"
+                            className="h-full w-full object-cover"
                           />
                         ) : inicial}
                       </div>

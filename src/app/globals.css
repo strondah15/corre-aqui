@@ -1,31 +1,33 @@
 @import 'leaflet/dist/leaflet.css';
 @import "tailwindcss";
 
+/*
+ * O Corre Aqui possui um único tema visual: claro.
+ * Mantemos as variantes dark: legadas nos componentes, mas elas só podem ser
+ * ativadas por um atributo explícito que o aplicativo nunca define como dark.
+ * Assim, a preferência do sistema operacional não altera a interface.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /* ============================= */
 /* VARIÁVEIS BASE */
 /* ============================= */
 
 :root {
-  --background: #0b73ff;
-  --foreground: #e5e7eb;
+  color-scheme: only light;
+
+  --background: #eaf7ff;
+  --foreground: #102451;
   --app-shell-bg: #eaf7ff;
   --bottom-bar-height: 66px;
   --bottom-bar-offset: 0.45rem;
   --bottom-bar-safe-space: calc(var(--bottom-bar-height) + env(safe-area-inset-bottom) + var(--bottom-bar-offset) + 1rem);
 
-  --color-background: #0b73ff;
-  --color-foreground: #e5e7eb;
+  --color-background: #eaf7ff;
+  --color-foreground: #102451;
 
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Fira Code', monospace;
-}
-
-/* Se quiser respeitar o sistema, mantenha. Mas seu app é DARK por padrão. */
-@media (prefers-color-scheme: light) {
-  :root {
-    --background: #0b73ff;
-    --foreground: #e5e7eb;
-  }
 }
 
 /* ============================= */
@@ -37,6 +39,7 @@ html, body {
 }
 
 html {
+  color-scheme: only light;
   background: var(--app-shell-bg);
   overflow-x: hidden;
 }
@@ -49,56 +52,56 @@ body {
   color: var(--foreground);
   background-color: var(--app-shell-bg);
   background-image:
-    radial-gradient(circle at 16% 12%, rgba(255,255,255,0.18), transparent 38%),
-    radial-gradient(circle at 84% 16%, rgba(255,217,26,0.28), transparent 42%),
-    radial-gradient(circle at 80% 86%, rgba(25,183,200,0.22), transparent 48%),
-    linear-gradient(135deg, #071a47 0%, #0b73ff 34%, #19b7c8 68%, #ffe36b 125%);
+    radial-gradient(circle at 16% 12%, rgba(255,255,255,0.95), transparent 38%),
+    radial-gradient(circle at 84% 16%, rgba(255,217,26,0.18), transparent 42%),
+    radial-gradient(circle at 80% 86%, rgba(25,183,200,0.12), transparent 48%),
+    linear-gradient(145deg, #e5f5ff 0%, #f7fbff 48%, #ffffff 100%);
   background-attachment: scroll;
   overflow-x: hidden;
   overscroll-behavior-x: none;
 }
 
-/* Topografia: mais sutil (menos “claro”) */
+/* Textura sutil do shell claro. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.55;
+  opacity: 0.42;
   background:
     repeating-radial-gradient(
       circle at 20% 25%,
-      rgba(255,255,255,0.035) 0px,
-      rgba(255,255,255,0.035) 1px,
+      rgba(37,99,235,0.045) 0px,
+      rgba(37,99,235,0.045) 1px,
       transparent 10px,
       transparent 18px
     ),
     repeating-radial-gradient(
       circle at 78% 72%,
-      rgba(255,255,255,0.05) 0px,
-      rgba(255,255,255,0.05) 1px,
+      rgba(14,165,233,0.04) 0px,
+      rgba(14,165,233,0.04) 1px,
       transparent 12px,
       transparent 22px
     ),
     repeating-radial-gradient(
       circle at 55% 40%,
-      rgba(255,217,26,0.05) 0px,
-      rgba(255,217,26,0.05) 1px,
+      rgba(234,179,8,0.04) 0px,
+      rgba(234,179,8,0.04) 1px,
       transparent 11px,
       transparent 20px
     );
   filter: blur(0.35px);
 }
 
-/* Vinheta: dá profundidade sem clarear */
+/* Profundidade leve sem escurecer a interface. */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(circle at 50% 35%, rgba(0,0,0,0) 0%, rgba(2,6,23,0.26) 72%, rgba(2,6,23,0.58) 100%);
+  background: radial-gradient(circle at 50% 35%, rgba(255,255,255,0) 0%, rgba(186,230,253,0.06) 72%, rgba(30,64,175,0.08) 100%);
 }
 
 /* Sugestão compacta da PWA: acima da navegação e dos controles flutuantes. */
@@ -147,31 +150,31 @@ body::after {
 /* ============================= */
 
 .glass {
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.82);
+  border: 1px solid rgba(148,163,184,0.22);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  box-shadow: 0 20px 60px rgba(15,23,42,0.12);
 }
 
 .glass-card {
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.88);
+  border: 1px solid rgba(148,163,184,0.20);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 14px 40px rgba(0,0,0,0.35);
+  box-shadow: 0 14px 40px rgba(15,23,42,0.10);
 }
 
 .glass-soft {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(148,163,184,0.18);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
 
-/* Inputs no dark por padrão (opcional, ajuda muito) */
+/* Controles nativos também permanecem claros quando o aparelho está em dark. */
 input, textarea, select {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 /* ============================= */
