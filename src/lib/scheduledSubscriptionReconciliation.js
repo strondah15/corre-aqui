@@ -113,7 +113,9 @@ function retryJob(error, count, now) {
   const reason = status === 429 ? 'provider_rate_limited'
     : status >= 500 ? 'provider_unavailable'
       : status >= 400 ? 'provider_request_rejected'
-        : ['AbortError', 'TimeoutError'].includes(error?.name) ? 'deadline_exceeded' : 'reconciliation_failed'
+        : ['AbortError', 'TimeoutError'].includes(error?.name) ? 'deadline_exceeded'
+          : error?.message === 'payment_subscription_identity_mismatch' ? 'approved_payment_identity_review'
+            : 'reconciliation_failed'
   const backoff = Math.min(12 * hour, 30 * minute * 2 ** Math.min(count - 1, 5))
   const providerResumeAt = Math.min(now + day, Number(error?.retryAfterAt) || 0)
   return { dueAt: Math.max(now + backoff, providerResumeAt), reason }

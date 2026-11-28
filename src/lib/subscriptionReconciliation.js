@@ -52,14 +52,22 @@ export async function reconcileRecurringInvoicePage({
     .filter((invoice) => resolveInvoicePreapprovalId(invoice) === preapprovalId)
     .sort((left, right) => (Date.parse(right.date_created) || 0) - (Date.parse(left.date_created) || 0))
   const seen = new Set()
+  let identityReviewPending = false
   for (const invoice of invoices) {
     const paymentId = resolveAuthorizedPaymentId(invoice)
     if (!/^\d{1,30}$/.test(paymentId) || seen.has(paymentId) || paymentId === checkedPaymentId) continue
     seen.add(paymentId)
     signal?.throwIfAborted()
     const applied = await processRecurringInvoicePayment({ database, invoice, preapprovalId, signal })
+    if (applied?.reason === 'payment_subscription_identity_mismatch') {
+      identityReviewPending = true
+      continue
+    }
     if (!applied?.ok || applied.retryable) throw new Error('recovery_payment_not_applied')
   }
+  // Finish the page so a disputed payment cannot delay matching siblings.
+  // Keep the cursor on this page while the provider's identity data conflicts.
+  if (identityReviewPending) throw new Error('payment_subscription_identity_mismatch')
   const next = offset + rows.length
   return rows.length && (total === undefined ? rows.length === limit : next < total) ? next : 0
 }

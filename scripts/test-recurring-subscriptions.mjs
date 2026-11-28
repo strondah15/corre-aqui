@@ -39,6 +39,7 @@ const {
 } = await import('../src/lib/subscriptionNotifications.js')
 const {
   cancelMercadoPagoRecurringSubscription,
+  createExternalReference,
   createMercadoPagoRecurringCheckout,
   mercadoPagoApiRequest,
   processApprovedCommercialPayment,
@@ -501,8 +502,24 @@ for (const amountInCents of [4990, 5000]) {
   const blockedLedger = database.read(`processedPaymentEvents/${referenceKey('wrong-payer:approved')}`)
   assert.equal(blockedLedger.status, 'failed')
   assert.equal(blockedLedger.reason, 'payment_subscription_identity_mismatch')
-  assert.equal((await processApprovedCommercialPayment({ database, payment: chargedAmount })).activated, true)
-  assert.equal((await processApprovedCommercialPayment({ database, payment: chargedAmount })).duplicate, true)
+  assert.equal(blockedLedger.identityReview.payer, true)
+  assert.equal(blockedLedger.identityReview.application, false)
+  assert.equal(blockedLedger.identityReview.invoice, false)
+  const alternate = {
+    ...attempt, userId: 'another-user', targetId: 'another-user', id: 'other-attempt', preapprovalId: 'other-authorization',
+  }
+  alternate.externalReference = createExternalReference({ ...alternate, attemptId: alternate.id })
+  await database.ref(`commercialCheckoutAttempts/${alternate.id}`).set(alternate)
+  const corrected = { ...chargedAmount, id: mismatched.id }
+  const rebound = { ...corrected, external_reference: alternate.externalReference }
+  assert.equal((await processApprovedCommercialPayment({ database, payment: rebound })).reason, 'payment_subscription_identity_mismatch')
+  assert.equal(database.read('users/another-user/subscriptions/professional'), undefined)
+  assert.equal((await processApprovedCommercialPayment({ database, payment: corrected })).activated, true)
+  assert.equal((await processApprovedCommercialPayment({ database, payment: corrected })).duplicate, true)
+  const reviewedLedger = database.read(`processedPaymentEvents/${referenceKey('wrong-payer:approved')}`)
+  assert.equal(reviewedLedger.status, 'processed')
+  assert.equal(reviewedLedger.identityReview.firstSeenAt, blockedLedger.identityReview.firstSeenAt)
+  assert.ok(reviewedLedger.identityReview.resolvedAt >= blockedLedger.identityReview.lastSeenAt)
   const payments = Object.values(database.read('subscriptionPaymentHistory/user-b/professional'))
   assert.deepEqual(payments.map((entry) => entry.amountInCents), [amountInCents])
   console.log(`Professional webhook validates ${amountInCents} cents against its original checkout and applies payment once`)

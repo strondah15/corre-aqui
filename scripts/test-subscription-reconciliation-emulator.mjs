@@ -17,7 +17,7 @@ registerHooks({
   },
 })
 
-const { reconcileOwnedSubscriptions } = await import('../src/lib/subscriptionReconciliation.js')
+const { reconcileOwnedSubscriptions, reconcileRecurringInvoicePage } = await import('../src/lib/subscriptionReconciliation.js')
 const { runScheduledSubscriptionReconciliation } = await import('../src/lib/scheduledSubscriptionReconciliation.js')
 const { referenceKey } = await import('../src/lib/commercialServer.js')
 const { nextQuarterlyExpiration } = await import('../src/lib/recurringSubscriptions.js')
@@ -398,6 +398,32 @@ try {
   assert.deepEqual(warnings, [], 'valid fixtures reconcile without unexpected provider errors')
   console.log('Subscription reconciliation Emulator: concurrency, idempotent approved payment, trial, owner, terminal state and out-of-order updates PASS')
   await testScheduledReconciliation()
+
+  const review = await seedSubscription('payer-review')
+  const disputed = '930000000001'
+  const valid = '930000000002'
+  const disputedInvoice = providerPayment(review, disputed, now - 2_000)
+  const consistentPayment = responses.get(`/v1/payments/${disputed}`)
+  responses.set(`/v1/payments/${disputed}`, { ...consistentPayment, payer: { id: 933 } })
+  const validInvoice = providerPayment(review, valid, now - 90 * day)
+  responses.set(invoiceSearch(review, 0, 8), { results: [disputedInvoice, validInvoice] })
+  const page = () => reconcileRecurringInvoicePage({ database, preapprovalId: review.preapprovalId })
+  const disputedLedgerPath = `processedPaymentEvents/${referenceKey(`${disputed}:approved`)}`
+  await assert.rejects(page(), { message: 'payment_subscription_identity_mismatch' })
+  assert.equal(await read(`${disputedLedgerPath}/identityReview/payer`), true)
+  assert.equal(await read(`${review.planPath}/paymentId`), valid, 'a mismatch in the first invoice must not block a valid sibling')
+  assert.equal(await read(`${review.historyPath}/${referenceKey(disputed)}`), null)
+  await assert.rejects(page(), { message: 'payment_subscription_identity_mismatch' })
+  assert.equal(Object.keys(await read(`${review.planPath}/processedPayments`)).length, 1)
+  responses.set(`/v1/payments/${disputed}`, consistentPayment)
+  assert.equal(await page(), 0, 'the same invoice page recovers when the provider returns matching data')
+  const recoveredPlan = await read(review.planPath)
+  assert.equal(recoveredPlan.paymentId, disputed)
+  assert.equal(Object.keys(recoveredPlan.processedPayments).length, 2)
+  assert.ok(await read(`${disputedLedgerPath}/identityReview/resolvedAt`))
+  assert.equal(await page(), 0)
+  assert.deepEqual(await read(review.planPath), recoveredPlan, 'a corrected payment never extends access twice')
+  console.log('Payment identity review Emulator: valid sibling, corrected payment and deduplication PASS')
 } finally {
   globalThis.fetch = originalFetch
   if (originalToken === undefined) delete process.env.MERCADO_PAGO_ACCESS_TOKEN

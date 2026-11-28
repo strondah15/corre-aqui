@@ -43,6 +43,7 @@ import { ensureProfessionalTrial } from '@/lib/subscriptionServer'
 export const COMMERCIAL_SOURCE = 'mercado_pago'
 const PAYMENT_EVENT_LEASE_MS = 5 * 60 * 1000
 const SUBSCRIPTION_CANCEL_LEASE_MS = 60_000
+const PAYMENT_SUBSCRIPTION_IDENTITY_MISMATCH = 'payment_subscription_identity_mismatch'
 
 export const safeText = (value) => String(value || '').trim()
 
@@ -1325,6 +1326,8 @@ export async function processApprovedCommercialPayment({ database, payment, recu
   const lockNow = Date.now()
   const transaction = await lockRef.transaction((current) => {
     if (current && typeof current === 'object') {
+      if ((current.identityReview || current.reason === PAYMENT_SUBSCRIPTION_IDENTITY_MISMATCH)
+        && current.externalReference !== externalReference) return undefined
       const lockStatus = safeText(current.status).toLowerCase()
       const lockUpdatedAt = asTimestamp(current.updatedAt || current.createdAt)
       const retryable = lockStatus === 'failed'
@@ -1343,8 +1346,13 @@ export async function processApprovedCommercialPayment({ database, payment, recu
       updatedAt: lockNow,
     }
   })
+  const ledgerEntry = transaction.snapshot.val()
   if (!transaction.committed || transaction.snapshot.val()?.processingToken !== processingToken) {
-    if (transaction.snapshot.val()?.status === 'processing') {
+    if ((ledgerEntry?.identityReview || ledgerEntry?.reason === PAYMENT_SUBSCRIPTION_IDENTITY_MISMATCH)
+      && ledgerEntry.externalReference !== externalReference) {
+      return { ok: false, reason: PAYMENT_SUBSCRIPTION_IDENTITY_MISMATCH }
+    }
+    if (ledgerEntry?.status === 'processing') {
       return { ok: false, duplicate: true, retryable: true, reason: 'payment_processing_in_progress' }
     }
     await writeCommercialAudit(database, {
@@ -1391,8 +1399,27 @@ export async function processApprovedCommercialPayment({ database, payment, recu
   const providerPayerMismatch = recurring && safeText(payment?.payer?.id)
     && safeText(attempt.payerId) && safeText(attempt.payerId) !== safeText(payment.payer.id)
   if (invoiceMismatch || providerApplicationMismatch || providerPayerMismatch) {
-    await lockRef.update({ status: 'failed', reason: 'payment_subscription_identity_mismatch', updatedAt: Date.now() })
-    return { ok: false, reason: 'payment_subscription_identity_mismatch' }
+    const seenAt = Date.now()
+    const firstSeenAt = ledgerEntry.identityReview?.firstSeenAt
+      || (ledgerEntry.reason === PAYMENT_SUBSCRIPTION_IDENTITY_MISMATCH ? ledgerEntry.createdAt : seenAt)
+    await lockRef.update({
+      status: 'failed',
+      reason: PAYMENT_SUBSCRIPTION_IDENTITY_MISMATCH,
+      ...(status === 'approved' && {
+        identityReview: {
+          firstSeenAt,
+          lastSeenAt: seenAt,
+          invoice: Boolean(invoiceMismatch),
+          application: Boolean(providerApplicationMismatch),
+          payer: Boolean(providerPayerMismatch),
+        },
+      }),
+      updatedAt: seenAt,
+    })
+    if (status === 'approved' && !ledgerEntry.identityReview) {
+      console.warn('[commercial] approved_payment_identity_review', { productId: product.id })
+    }
+    return { ok: false, reason: PAYMENT_SUBSCRIPTION_IDENTITY_MISMATCH }
   }
   const expectedAmountInCents = recurring ? recurringCheckoutAmountInCents(attempt, product.id) : product.amountInCents
   const validAmount = recurring
@@ -1488,6 +1515,9 @@ export async function processApprovedCommercialPayment({ database, payment, recu
   await lockRef.update(cleanFirebasePayload({
     status: activation.activated || paidHistoryOnly ? 'processed' : 'blocked',
     reason: activation.reason || null,
+    ...(ledgerEntry.identityReview && {
+      identityReview: { ...ledgerEntry.identityReview, resolvedAt: Date.now() },
+    }),
     updatedAt: Date.now(),
   }))
 
